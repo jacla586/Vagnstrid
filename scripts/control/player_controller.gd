@@ -4,7 +4,7 @@ extends Node
 ##
 ## Commander view: the turret only moves when "turret_to_view" is pressed; it then
 ## goes to the point under the screen centre and keeps aiming there.
-## Debug view: the turret follows the camera.
+## Gunner's sight and debug view: the turret follows the view's aim every frame.
 
 @export var tank: Tank
 @export var views: PlayerViews
@@ -27,7 +27,7 @@ func _physics_process(_delta: float) -> void:
 	_command.throttle = Input.get_axis("move_backward", "move_forward")
 	_command.steering = Input.get_axis("turn_left", "turn_right")
 	_command.hatch_open = _hatch_wanted
-	if views != null and (views.is_debug_view() or _turret_to_view_requested):
+	if views != null and (views.drives_turret() or _turret_to_view_requested):
 		# Ray queries are done here (physics frame), not in the input callback.
 		_command.aim_point = views.get_aim_point()
 		_command.has_aim = true

@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="TankData" format=3]
 
 [ext_resource type="Script" path="res://scripts/data/tank_data.gd" id="1_data"]
+[ext_resource type="Resource" path="res://data/shells/test_ap.tres" id="2_shell"]
 
 [resource]
 script = ExtResource("1_data")
@@ -32,3 +33,8 @@ periscope_turn_speed_deg = 60.0
 periscope_yaw_limit_deg = 180.0
 periscope_pitch_min_deg = -10.0
 periscope_pitch_max_deg = 15.0
+gunner_sight_fov_deg = PackedFloat32Array(24, 12)
+sight_range_step_m = 100.0
+sight_range_max_m = 2000.0
+sight_range_label_step_m = 200.0
+main_shell = ExtResource("2_shell")

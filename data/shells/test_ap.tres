@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ShellData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/shell_data.gd" id="1_shell"]
+
+[resource]
+script = ExtResource("1_shell")
+display_name = "Test AP 75 mm"
+muzzle_velocity_mps = 500.0
+mass_kg = 6.8
+caliber_mm = 75.0
+drag_coefficient = 0.3

@@ -30,6 +30,7 @@ var _hatch_progress: float = 0.0
 @onready var _hatch_hinge: Node3D = $Visual/Turret/Cupola/HatchHinge
 @onready var _head_closed: Marker3D = $Visual/Turret/Cupola/HeadClosed
 @onready var _head_open: Marker3D = $Visual/Turret/Cupola/HeadOpen
+@onready var _gunner_sight: Marker3D = $Visual/Turret/GunPivot/GunnerSight
 
 
 func _ready() -> void:
@@ -91,6 +92,11 @@ func is_commander_exposed() -> bool:
 func get_commander_eye_position() -> Vector3:
 	return _head_closed.global_position.lerp(_head_open.global_position,
 			smoothstep(0.0, 1.0, _hatch_progress))
+
+
+## Gunner's sight in world space. Fixed to the gun: follows traverse and elevation.
+func get_gunner_sight_transform() -> Transform3D:
+	return _gunner_sight.global_transform
 
 
 func _physics_process(delta: float) -> void:
