@@ -114,8 +114,9 @@ func _on_hit(hit: Dictionary) -> void:
 	queue_free()
 
 
+## Tells the shooter what a hit did. Null results (nothing of note) aren't reported.
 func _report(result: HitResult) -> void:
-	if is_instance_valid(_shooter) and _shooter.has_method("report_shot"):
+	if result != null and is_instance_valid(_shooter) and _shooter.has_method("report_shot"):
 		_shooter.report_shot(result)
 
 

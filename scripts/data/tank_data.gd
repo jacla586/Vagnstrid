@@ -20,6 +20,14 @@ extends Resource
 ## Steepest slope the tracks can still climb (degrees). The tracks cancel gravity on
 ## slopes up to this; steeper and the tank stalls or slides back.
 @export var max_climb_deg: float = 32.0
+## Thickest tree trunk this tank can push over (m). Thicker trees stop it.
+@export var tree_push_max_diameter_m: float = 0.7
+## Hitting a pushable tree at least this fast fells it at once (km/h).
+@export var tree_push_min_speed_kmh: float = 6.0
+## Share of speed lost when felling a tree on the move (0..1).
+@export var tree_push_speed_loss: float = 0.25
+## Slower than the minimum speed, keep pushing this long to fell the tree (s).
+@export var tree_slow_push_time_s: float = 1.5
 ## Max yaw rate when steering fully (degrees/s).
 @export var max_turn_rate_deg: float = 30.0
 ## How fast the yaw rate builds up or stops (degrees/s²).

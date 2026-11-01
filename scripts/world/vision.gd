@@ -5,10 +5,12 @@ extends RefCounted
 ##
 ## Physics layers (named in project settings):
 ##   1 world             terrain, hulls, tree trunks: block sight and shells
+##   2 vehicles          tanks (also on layer 1); watched by tree push triggers
 ##   3 commander_hitbox  exposed commanders (areas)
 ##   5 vision_blocker    bushes and tree canopies (areas): block sight only
 ## Shells and fragments use SHOT_MASK, so they pass through vision blockers.
 
+const LAYER_VEHICLES: int = 1 << 1
 const LAYER_COMMANDER_HITBOX: int = 1 << 2
 const LAYER_VISION_BLOCKER: int = 1 << 4
 ## Mask for shell and fragment rays: everything except vision blockers.

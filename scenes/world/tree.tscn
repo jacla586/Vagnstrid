@@ -1,8 +1,16 @@
 [gd_scene format=3]
 
+[ext_resource type="Script" path="res://scripts/world/breakable_tree.gd" id="1_tree"]
+[ext_resource type="Script" path="res://scripts/world/tree_trunk.gd" id="2_trunk"]
+[ext_resource type="Resource" path="res://data/world/tree_pine.tres" id="3_data"]
+
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_trunk"]
 height = 6.0
 radius = 0.25
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_push"]
+height = 3.0
+radius = 0.9
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_canopy"]
 height = 7.0
@@ -31,26 +39,42 @@ height = 8.0
 radial_segments = 10
 
 [node name="Tree" type="Node3D"]
+script = ExtResource("1_tree")
+data = ExtResource("3_data")
 
 [node name="Trunk" type="StaticBody3D" parent="."]
+script = ExtResource("2_trunk")
 
 [node name="Shape" type="CollisionShape3D" parent="Trunk"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 0)
 shape = SubResource("CylinderShape3D_trunk")
 
-[node name="TrunkMesh" type="MeshInstance3D" parent="."]
+[node name="PushTrigger" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="PushTrigger"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+shape = SubResource("CylinderShape3D_push")
+
+[node name="FallPivot" type="Node3D" parent="."]
+
+[node name="Visual" type="Node3D" parent="FallPivot"]
+
+[node name="TrunkMesh" type="MeshInstance3D" parent="FallPivot/Visual"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 0)
 mesh = SubResource("CylinderMesh_trunk")
 
-[node name="CanopyMesh" type="MeshInstance3D" parent="."]
+[node name="CanopyMesh" type="MeshInstance3D" parent="FallPivot/Visual"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.5, 0)
 mesh = SubResource("CylinderMesh_canopy")
 
-[node name="VisionBlocker" type="Area3D" parent="."]
+[node name="VisionBlocker" type="Area3D" parent="FallPivot"]
 collision_layer = 16
 collision_mask = 0
 monitoring = false
 
-[node name="Shape" type="CollisionShape3D" parent="VisionBlocker"]
+[node name="Shape" type="CollisionShape3D" parent="FallPivot/VisionBlocker"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.5, 0)
 shape = SubResource("CylinderShape3D_canopy")

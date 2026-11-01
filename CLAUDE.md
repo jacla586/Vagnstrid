@@ -44,6 +44,7 @@ shows on the minimap. This is what we test first.
 ## Physics layers and terrain
 
 - Layers (named in project settings): 1 `world` (terrain, hulls, tree trunks),
+  2 `vehicles` (tanks, also on 1; watched by tree push triggers),
   3 `commander_hitbox` (exposed commander, Area3D), 5 `vision_blocker` (bushes,
   canopies, Area3D). Anything that "sees" uses `Vision.has_line_of_sight()`;
   shells and fragments use `Vision.SHOT_MASK` and pass through vision blockers.

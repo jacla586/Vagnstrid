@@ -60,6 +60,7 @@ bottom_radius = 0.32
 height = 0.05
 
 [node name="Tank" type="RigidBody3D"]
+collision_layer = 3
 center_of_mass_mode = 1
 center_of_mass = Vector3(0, -0.4, 0)
 can_sleep = false

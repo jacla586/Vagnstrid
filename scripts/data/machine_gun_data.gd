@@ -9,7 +9,7 @@ extends Resource
 @export var burst_time_s: float = 1.5
 @export var burst_pause_s: float = 1.2
 ## Random spread of each bullet around the aim (mrad, radius).
-@export var dispersion_mrad: float = 4.0
+@export var dispersion_mrad: float = 10.0
 ## Won't engage targets farther than this (m).
 @export var max_range_m: float = 800.0
 ## How long a target must be seen before the gunner opens fire (s).

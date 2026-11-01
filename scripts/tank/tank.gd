@@ -113,6 +113,24 @@ func set_command(command: TankCommand) -> void:
 	_command = command
 
 
+## Throttle commanded this frame (-1..1).
+func get_throttle() -> float:
+	return _command.throttle
+
+
+## Half size of the hull's collision box (m): x = half width, z = half length.
+func get_hull_half_extents() -> Vector3:
+	var box := _hull_shape.shape as BoxShape3D
+	return box.size * 0.5 if box != null else Vector3.ONE
+
+
+## Takes `fraction` of the horizontal speed away (e.g. felling a tree). Physics
+## contact, not input: the command rule still holds.
+func apply_obstacle_drag(fraction: float) -> void:
+	var horizontal := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
+	apply_central_impulse(-horizontal * clampf(fraction, 0.0, 1.0) * mass)
+
+
 func is_knocked_out() -> bool:
 	return _knocked_out
 
