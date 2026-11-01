@@ -7,6 +7,8 @@ extends RigidBody3D
 ## Driving: the command is turned into a target forward speed and yaw rate. The
 ## needed force/torque (limited by the data's accelerations) is split into a left and
 ## right track force, applied at the grounded wheels' contact points.
+## Turret: turns toward the command's aim point at the data's traverse/elevation speed.
+## No stabilization: when the hull turns, the turret has to catch up.
 
 const KMH_TO_MS: float = 1.0 / 3.6
 
@@ -18,6 +20,8 @@ var _right_rays: Array[RayCast3D] = []
 var _track_half_width: float = 1.0
 
 @onready var _suspension: Node3D = $Suspension
+@onready var _turret: Node3D = $Visual/Turret
+@onready var _gun_pivot: Node3D = $Visual/Turret/GunPivot
 
 
 func _ready() -> void:
@@ -49,7 +53,18 @@ func get_forward_speed() -> float:
 	return linear_velocity.dot(-global_basis.z)
 
 
+## Turret angle relative to the hull (radians, positive = left).
+func get_turret_yaw() -> float:
+	return _turret.rotation.y
+
+
+## Gun angle relative to the turret (radians, positive = up).
+func get_gun_pitch() -> float:
+	return _gun_pivot.rotation.x
+
+
 func _physics_process(delta: float) -> void:
+	_update_turret(delta)
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -73,6 +88,25 @@ func _physics_process(delta: float) -> void:
 			-data.track_lateral_grip, data.track_lateral_grip)
 	lateral_accel *= float(grounded) / float(ray_count)
 	apply_central_force(right_dir * lateral_accel * mass)
+
+
+func _update_turret(delta: float) -> void:
+	if not _command.has_aim:
+		return
+	# Yaw: aim point in the turret's parent (hull) space; forward is -Z, positive = left.
+	var hull_local: Vector3 = (_turret.get_parent() as Node3D).to_local(_command.aim_point)
+	var target_yaw: float = atan2(-hull_local.x, -hull_local.z)
+	var yaw_step: float = deg_to_rad(data.turret_traverse_speed_deg) * delta
+	var yaw_diff: float = wrapf(target_yaw - _turret.rotation.y, -PI, PI)
+	_turret.rotation.y = wrapf(_turret.rotation.y + clampf(yaw_diff, -yaw_step, yaw_step), -PI, PI)
+
+	# Pitch: aim point in turret space, measured from the gun pivot.
+	var from_pivot: Vector3 = _turret.to_local(_command.aim_point) - _gun_pivot.position
+	var horizontal: float = Vector2(from_pivot.x, from_pivot.z).length()
+	var target_pitch: float = clampf(atan2(from_pivot.y, horizontal),
+			-deg_to_rad(data.gun_max_depression_deg), deg_to_rad(data.gun_max_elevation_deg))
+	var pitch_step: float = deg_to_rad(data.gun_elevation_speed_deg) * delta
+	_gun_pivot.rotation.x += clampf(target_pitch - _gun_pivot.rotation.x, -pitch_step, pitch_step)
 
 
 func _apply_suspension(state: PhysicsDirectBodyState3D, rays: Array[RayCast3D],

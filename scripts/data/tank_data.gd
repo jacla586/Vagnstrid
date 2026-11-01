@@ -31,3 +31,13 @@ extends Resource
 @export var suspension_frequency_hz: float = 1.5
 ## 1.0 = critically damped (no bounce), lower = bouncier.
 @export var suspension_damping_ratio: float = 0.6
+
+@export_group("Turret")
+## How fast the turret turns relative to the hull (degrees/s).
+@export var turret_traverse_speed_deg: float = 20.0
+## How fast the gun elevates/depresses (degrees/s).
+@export var gun_elevation_speed_deg: float = 5.0
+## Max gun elevation above the turret's horizontal plane (degrees).
+@export var gun_max_elevation_deg: float = 20.0
+## Max gun depression below the turret's horizontal plane (degrees, positive number).
+@export var gun_max_depression_deg: float = 8.0

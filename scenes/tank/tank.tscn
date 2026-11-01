@@ -78,12 +78,15 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0.3)
 [node name="TurretMesh" type="MeshInstance3D" parent="Visual/Turret"]
 mesh = SubResource("CylinderMesh_turret")
 
-[node name="Mantlet" type="MeshInstance3D" parent="Visual/Turret"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -1.15)
+[node name="GunPivot" type="Node3D" parent="Visual/Turret"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -1.0)
+
+[node name="Mantlet" type="MeshInstance3D" parent="Visual/Turret/GunPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.15)
 mesh = SubResource("BoxMesh_mantlet")
 
-[node name="Gun" type="MeshInstance3D" parent="Visual/Turret"]
-transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0.05, -3.0)
+[node name="Gun" type="MeshInstance3D" parent="Visual/Turret/GunPivot"]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, -2.0)
 mesh = SubResource("CylinderMesh_gun")
 
 [node name="Suspension" type="Node3D" parent="."]

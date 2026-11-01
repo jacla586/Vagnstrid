@@ -2,7 +2,8 @@
 
 [ext_resource type="PackedScene" path="res://scenes/tank/tank.tscn" id="1_tank"]
 [ext_resource type="Script" path="res://scripts/control/player_controller.gd" id="2_player"]
-[ext_resource type="Script" path="res://scripts/camera/chase_camera.gd" id="3_camera"]
+[ext_resource type="Script" path="res://scripts/camera/orbit_camera.gd" id="3_camera"]
+[ext_resource type="Script" path="res://scripts/ui/crosshair.gd" id="5_crosshair"]
 [ext_resource type="Shader" path="res://assets/shaders/grid.gdshader" id="4_grid"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
@@ -46,10 +47,23 @@ shape = SubResource("BoxShape3D_ground")
 [node name="Tank" parent="." instance=ExtResource("1_tank")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 
-[node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank")]
+[node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "camera")]
 script = ExtResource("2_player")
 tank = NodePath("../Tank")
+camera = NodePath("../OrbitCamera")
 
-[node name="ChaseCamera" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
+[node name="OrbitCamera" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
 script = ExtResource("3_camera")
 target = NodePath("../Tank")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="Crosshair" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("5_crosshair")

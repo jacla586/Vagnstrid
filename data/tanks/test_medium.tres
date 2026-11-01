@@ -16,3 +16,7 @@ track_lateral_grip = 8.0
 suspension_rest_length = 0.6
 suspension_frequency_hz = 1.5
 suspension_damping_ratio = 0.6
+turret_traverse_speed_deg = 20.0
+gun_elevation_speed_deg = 5.0
+gun_max_elevation_deg = 20.0
+gun_max_depression_deg = 8.0

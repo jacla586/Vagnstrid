@@ -7,3 +7,7 @@ extends RefCounted
 var throttle: float = 0.0
 ## -1 = full left, 0 = straight, 1 = full right.
 var steering: float = 0.0
+## World-space point the turret and gun should aim at.
+var aim_point: Vector3 = Vector3.ZERO
+## False = no aim this frame; turret and gun hold their position.
+var has_aim: bool = false
