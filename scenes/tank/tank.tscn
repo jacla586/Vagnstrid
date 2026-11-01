@@ -42,6 +42,18 @@ top_radius = 0.07
 bottom_radius = 0.09
 height = 3.6
 
+[sub_resource type="CylinderMesh" id="CylinderMesh_cupola"]
+material = SubResource("Material_paint")
+top_radius = 0.33
+bottom_radius = 0.36
+height = 0.3
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_hatch"]
+material = SubResource("Material_paint")
+top_radius = 0.32
+bottom_radius = 0.32
+height = 0.05
+
 [node name="Tank" type="RigidBody3D"]
 center_of_mass_mode = 1
 center_of_mass = Vector3(0, -0.4, 0)
@@ -77,6 +89,23 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0.3)
 
 [node name="TurretMesh" type="MeshInstance3D" parent="Visual/Turret"]
 mesh = SubResource("CylinderMesh_turret")
+
+[node name="Cupola" type="MeshInstance3D" parent="Visual/Turret"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.55, 0.35)
+mesh = SubResource("CylinderMesh_cupola")
+
+[node name="HatchHinge" type="Node3D" parent="Visual/Turret/Cupola"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0.32)
+
+[node name="HatchLid" type="MeshInstance3D" parent="Visual/Turret/Cupola/HatchHinge"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.025, -0.32)
+mesh = SubResource("CylinderMesh_hatch")
+
+[node name="HeadClosed" type="Marker3D" parent="Visual/Turret/Cupola"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
+
+[node name="HeadOpen" type="Marker3D" parent="Visual/Turret/Cupola"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0.05)
 
 [node name="GunPivot" type="Node3D" parent="Visual/Turret"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -1.0)

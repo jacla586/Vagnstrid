@@ -11,3 +11,5 @@ var steering: float = 0.0
 var aim_point: Vector3 = Vector3.ZERO
 ## False = no aim this frame; turret and gun hold their position.
 var has_aim: bool = false
+## Desired hatch state. The tank opens/closes over its hatch transition time.
+var hatch_open: bool = false

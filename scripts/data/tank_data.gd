@@ -41,3 +41,26 @@ extends Resource
 @export var gun_max_elevation_deg: float = 20.0
 ## Max gun depression below the turret's horizontal plane (degrees, positive number).
 @export var gun_max_depression_deg: float = 8.0
+
+@export_group("Optics")
+## Time for the commander to open or close the hatch (s).
+@export var hatch_transition_time_s: float = 0.8
+## Commander's vertical field of view with the hatch open, naked eye (degrees).
+@export var commander_fov_deg: float = 70.0
+## Binocular magnification (hatch open only).
+@export var binocular_magnification: float = 6.0
+## Pitch limits for the commander's head with the hatch open (degrees).
+@export var open_pitch_min_deg: float = -40.0
+@export var open_pitch_max_deg: float = 60.0
+## Vertical field of view through the cupola periscope (degrees).
+@export var periscope_fov_deg: float = 45.0
+## Size of the periscope's visible window, as fractions of screen width/height.
+@export var periscope_window_width: float = 0.55
+@export var periscope_window_height: float = 0.22
+## Max rotation speed of the periscope (degrees/s). Makes it feel sluggish.
+@export var periscope_turn_speed_deg: float = 60.0
+## How far the periscope can turn from turret forward (degrees). 180 = all round.
+@export var periscope_yaw_limit_deg: float = 180.0
+## Pitch limits through the periscope (degrees).
+@export var periscope_pitch_min_deg: float = -10.0
+@export var periscope_pitch_max_deg: float = 15.0

@@ -9,8 +9,12 @@ extends RigidBody3D
 ## right track force, applied at the grounded wheels' contact points.
 ## Turret: turns toward the command's aim point at the data's traverse/elevation speed.
 ## No stabilization: when the hull turns, the turret has to catch up.
+## Hatch: opens/closes toward the command's hatch_open over the data's transition
+## time. The commander is exposed whenever the hatch isn't fully closed.
 
 const KMH_TO_MS: float = 1.0 / 3.6
+## Visual only: how far the hatch lid swings open.
+const HATCH_OPEN_ANGLE_DEG: float = 110.0
 
 @export var data: TankData
 
@@ -18,10 +22,14 @@ var _command: TankCommand = TankCommand.new()
 var _left_rays: Array[RayCast3D] = []
 var _right_rays: Array[RayCast3D] = []
 var _track_half_width: float = 1.0
+var _hatch_progress: float = 0.0
 
 @onready var _suspension: Node3D = $Suspension
 @onready var _turret: Node3D = $Visual/Turret
 @onready var _gun_pivot: Node3D = $Visual/Turret/GunPivot
+@onready var _hatch_hinge: Node3D = $Visual/Turret/Cupola/HatchHinge
+@onready var _head_closed: Marker3D = $Visual/Turret/Cupola/HeadClosed
+@onready var _head_open: Marker3D = $Visual/Turret/Cupola/HeadOpen
 
 
 func _ready() -> void:
@@ -63,8 +71,31 @@ func get_gun_pitch() -> float:
 	return _gun_pivot.rotation.x
 
 
+## Turret heading in world space (radians, same convention as Node3D rotation.y).
+func get_turret_global_yaw() -> float:
+	var forward: Vector3 = -_turret.global_basis.z
+	return atan2(-forward.x, -forward.z)
+
+
+## 0 = hatch closed, 1 = fully open.
+func get_hatch_progress() -> float:
+	return _hatch_progress
+
+
+## True whenever the hatch isn't fully closed.
+func is_commander_exposed() -> bool:
+	return _hatch_progress > 0.0
+
+
+## Commander's eye in world space: rises out of the cupola as the hatch opens.
+func get_commander_eye_position() -> Vector3:
+	return _head_closed.global_position.lerp(_head_open.global_position,
+			smoothstep(0.0, 1.0, _hatch_progress))
+
+
 func _physics_process(delta: float) -> void:
 	_update_turret(delta)
+	_update_hatch(delta)
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -107,6 +138,13 @@ func _update_turret(delta: float) -> void:
 			-deg_to_rad(data.gun_max_depression_deg), deg_to_rad(data.gun_max_elevation_deg))
 	var pitch_step: float = deg_to_rad(data.gun_elevation_speed_deg) * delta
 	_gun_pivot.rotation.x += clampf(target_pitch - _gun_pivot.rotation.x, -pitch_step, pitch_step)
+
+
+func _update_hatch(delta: float) -> void:
+	var target: float = 1.0 if _command.hatch_open else 0.0
+	_hatch_progress = move_toward(_hatch_progress, target,
+			delta / maxf(data.hatch_transition_time_s, 0.01))
+	_hatch_hinge.rotation.x = deg_to_rad(HATCH_OPEN_ANGLE_DEG) * _hatch_progress
 
 
 func _apply_suspension(state: PhysicsDirectBodyState3D, rays: Array[RayCast3D],
