@@ -12,6 +12,7 @@ extends Node
 var _command: TankCommand = TankCommand.new()
 var _hatch_wanted: bool = false
 var _turret_to_view_requested: bool = false
+var _fire_armed: bool = false
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -32,4 +33,17 @@ func _physics_process(_delta: float) -> void:
 		_command.aim_point = views.get_aim_point()
 		_command.has_aim = true
 	_turret_to_view_requested = false
+	_command.fire = _wants_fire()
 	tank.set_command(_command)
+
+
+## Fire while the button is held, but only presses that start with the mouse
+## captured count, so the click that captures the mouse doesn't also fire.
+func _wants_fire() -> bool:
+	var captured: bool = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var pressed: bool = Input.is_action_pressed("fire")
+	if not captured:
+		_fire_armed = false
+	elif not pressed:
+		_fire_armed = true
+	return captured and pressed and _fire_armed

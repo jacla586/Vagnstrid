@@ -38,3 +38,5 @@ sight_range_step_m = 100.0
 sight_range_max_m = 2000.0
 sight_range_label_step_m = 200.0
 main_shell = ExtResource("2_shell")
+reload_time_s = 6.0
+recoil_impulse_ns = 30000.0

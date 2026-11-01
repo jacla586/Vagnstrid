@@ -13,3 +13,5 @@ var aim_point: Vector3 = Vector3.ZERO
 var has_aim: bool = false
 ## Desired hatch state. The tank opens/closes over its hatch transition time.
 var hatch_open: bool = false
+## True = wants to fire this frame. The tank fires only when loaded.
+var fire: bool = false

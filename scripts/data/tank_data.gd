@@ -72,5 +72,9 @@ extends Resource
 @export var sight_range_label_step_m: float = 200.0
 
 @export_group("Armament")
-## Shell the sight's range ladder is calibrated for. Ammo selection comes with firing.
+## Shell fired by the main gun; the sight's range ladder is calibrated for it.
 @export var main_shell: ShellData
+## Time to reload the main gun after a shot (s).
+@export var reload_time_s: float = 6.0
+## Backward impulse on the tank when firing (N·s). Tuned for feel, not history.
+@export var recoil_impulse_ns: float = 30000.0

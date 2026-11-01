@@ -11,8 +11,15 @@ extends RigidBody3D
 ## No stabilization: when the hull turns, the turret has to catch up.
 ## Hatch: opens/closes toward the command's hatch_open over the data's transition
 ## time. The commander is exposed whenever the hatch isn't fully closed.
+## Gun: fires the data's main shell when the command says fire and it's loaded,
+## then reloads. Recoil is an impulse at the muzzle.
+
+## Emitted after a shot leaves the barrel.
+signal fired(shell: Shell)
 
 const KMH_TO_MS: float = 1.0 / 3.6
+const SHELL_SCENE: PackedScene = preload("res://scenes/weapons/shell.tscn")
+const MUZZLE_FLASH_SCENE: PackedScene = preload("res://scenes/effects/muzzle_flash.tscn")
 ## Visual only: how far the hatch lid swings open.
 const HATCH_OPEN_ANGLE_DEG: float = 110.0
 
@@ -23,6 +30,7 @@ var _left_rays: Array[RayCast3D] = []
 var _right_rays: Array[RayCast3D] = []
 var _track_half_width: float = 1.0
 var _hatch_progress: float = 0.0
+var _reload_remaining: float = 0.0
 
 @onready var _suspension: Node3D = $Suspension
 @onready var _turret: Node3D = $Visual/Turret
@@ -31,6 +39,7 @@ var _hatch_progress: float = 0.0
 @onready var _head_closed: Marker3D = $Visual/Turret/Cupola/HeadClosed
 @onready var _head_open: Marker3D = $Visual/Turret/Cupola/HeadOpen
 @onready var _gunner_sight: Marker3D = $Visual/Turret/GunPivot/GunnerSight
+@onready var _muzzle: Marker3D = $Visual/Turret/GunPivot/Muzzle
 
 
 func _ready() -> void:
@@ -99,9 +108,19 @@ func get_gunner_sight_transform() -> Transform3D:
 	return _gunner_sight.global_transform
 
 
+func is_loaded() -> bool:
+	return _reload_remaining <= 0.0
+
+
+## Seconds until the gun is loaded again (0 when loaded).
+func get_reload_remaining() -> float:
+	return _reload_remaining
+
+
 func _physics_process(delta: float) -> void:
 	_update_turret(delta)
 	_update_hatch(delta)
+	_update_gun(delta)
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -151,6 +170,28 @@ func _update_hatch(delta: float) -> void:
 	_hatch_progress = move_toward(_hatch_progress, target,
 			delta / maxf(data.hatch_transition_time_s, 0.01))
 	_hatch_hinge.rotation.x = deg_to_rad(HATCH_OPEN_ANGLE_DEG) * _hatch_progress
+
+
+func _update_gun(delta: float) -> void:
+	_reload_remaining = maxf(_reload_remaining - delta, 0.0)
+	if _command.fire and is_loaded() and data.main_shell != null:
+		_fire()
+
+
+func _fire() -> void:
+	var direction: Vector3 = -_muzzle.global_basis.z
+	var muzzle_position: Vector3 = _muzzle.global_position
+	var shell := SHELL_SCENE.instantiate() as Shell
+	get_parent().add_child(shell)
+	# The tank's own motion carries over to the shell: firing on the move costs accuracy.
+	shell.launch(data.main_shell, muzzle_position,
+			direction * data.main_shell.muzzle_velocity_mps + linear_velocity, self)
+	var flash: Node3D = MUZZLE_FLASH_SCENE.instantiate()
+	get_parent().add_child(flash)
+	flash.global_position = muzzle_position
+	apply_impulse(-direction * data.recoil_impulse_ns, muzzle_position - global_position)
+	_reload_remaining = data.reload_time_s
+	fired.emit(shell)
 
 
 func _apply_suspension(state: PhysicsDirectBodyState3D, rays: Array[RayCast3D],

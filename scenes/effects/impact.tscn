@@ -1,0 +1,30 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/effects/timed_effect.gd" id="1_effect"]
+
+[sub_resource type="StandardMaterial3D" id="Material_impact"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.75, 0.45, 0.2, 0.85)
+
+[sub_resource type="SphereMesh" id="SphereMesh_impact"]
+radius = 0.8
+height = 1.6
+radial_segments = 12
+rings = 6
+
+[node name="Impact" type="Node3D"]
+script = ExtResource("1_effect")
+lifetime = 1.0
+start_scale = 0.5
+end_scale = 3.0
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+material_override = SubResource("Material_impact")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_impact")
+
+[node name="Light" type="OmniLight3D" parent="."]
+light_color = Color(1, 0.6, 0.3, 1)
+light_energy = 3.0
+omni_range = 8.0

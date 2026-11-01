@@ -11,3 +11,5 @@ extends Resource
 @export var caliber_mm: float = 75.0
 ## Aerodynamic drag coefficient. Higher = slows down faster, drops more at range.
 @export var drag_coefficient: float = 0.3
+## Colour of the glowing tracer.
+@export var tracer_color: Color = Color(1.0, 0.55, 0.15, 1.0)

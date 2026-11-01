@@ -123,6 +123,9 @@ mesh = SubResource("CylinderMesh_gun")
 [node name="GunnerSight" type="Marker3D" parent="Visual/Turret/GunPivot"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.35, 0.12, -0.3)
 
+[node name="Muzzle" type="Marker3D" parent="Visual/Turret/GunPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3.85)
+
 [node name="Suspension" type="Node3D" parent="."]
 
 [node name="Left1" type="RayCast3D" parent="Suspension"]

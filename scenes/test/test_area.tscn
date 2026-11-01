@@ -11,6 +11,8 @@
 [ext_resource type="Shader" path="res://assets/shaders/view_mask.gdshader" id="9_mask"]
 [ext_resource type="Script" path="res://scripts/camera/gunner_camera.gd" id="10_gunner"]
 [ext_resource type="Script" path="res://scripts/ui/gunner_reticle.gd" id="11_reticle"]
+[ext_resource type="PackedScene" path="res://scenes/world/target_board.tscn" id="12_board"]
+[ext_resource type="Script" path="res://scripts/ui/weapon_status.gd" id="13_status"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 
@@ -27,10 +29,10 @@ shader = ExtResource("4_grid")
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
 material = SubResource("ShaderMaterial_ground")
-size = Vector2(400, 400)
+size = Vector2(4000, 4000)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
-size = Vector3(400, 1, 400)
+size = Vector3(4000, 1, 4000)
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -55,6 +57,28 @@ shape = SubResource("BoxShape3D_ground")
 
 [node name="Tank" parent="." instance=ExtResource("1_tank")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+
+[node name="Targets" type="Node3D" parent="."]
+
+[node name="Board200" parent="Targets" instance=ExtResource("12_board")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, -200)
+range_label = "200 m"
+
+[node name="Board500" parent="Targets" instance=ExtResource("12_board")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0, -500)
+range_label = "500 m"
+
+[node name="Board800" parent="Targets" instance=ExtResource("12_board")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, -800)
+range_label = "800 m"
+
+[node name="Board1000" parent="Targets" instance=ExtResource("12_board")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0, -1000)
+range_label = "1000 m"
+
+[node name="Board1500" parent="Targets" instance=ExtResource("12_board")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0, -1500)
+range_label = "1500 m"
 
 [node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views")]
 script = ExtResource("2_player")
@@ -114,4 +138,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("11_reticle")
+views = NodePath("../../PlayerViews")
+
+[node name="WeaponStatus" type="Label" parent="HUD" node_paths=PackedStringArray("views")]
+script = ExtResource("13_status")
 views = NodePath("../../PlayerViews")
