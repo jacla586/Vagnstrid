@@ -1,0 +1,76 @@
+# Stridsvagn – tank game (hobby project)
+
+Semi-realistic tank game in the spirit of War Thunder, vs bots (multiplayer later).
+Few tanks, lots of feel. Not for publication. Full spec (Swedish):
+`Stridsvagnsspel – specifikation (utkast).md` – read it when working on a new area.
+
+**Core idea (USP):** the player is the commander in the cupola. Hatch open = full
+360° view and binoculars, but exposed to shrapnel/HE/snipers. Hatch closed = safe,
+but narrow periscope view. No markers above enemies in the 3D world; spotting only
+shows on the minimap. This is what we test first.
+
+## Engine and language – IMPORTANT
+
+- **Godot 4.7** (4.7.2-stable), Forward+ renderer, **Jolt Physics** (set in project.godot).
+- **GDScript only, always statically typed** (`var speed: float = 10.0`, typed
+  function args and return values, `:=` where the type is obvious).
+- **Godot 4 syntax only.** Much code online is Godot 3. Common traps:
+  - `Node3D` not `Spatial`, `CharacterBody3D` not `KinematicBody`
+  - `@export`, `@onready` not `export`, `onready`
+  - `move_and_slide()` takes no arguments; use the `velocity` property
+  - `instantiate()` not `instance()`, `await` not `yield`, `super()` not `.method()`
+  - `signal.connect(callable)` not `connect("signal", self, "method")`
+  - `deg_to_rad()` not `deg2rad()`, `FileAccess`/`DirAccess` not `File`/`Directory`
+- **English throughout:** code, names, comments, commit messages.
+- Naming: `snake_case` files, variables, functions; `PascalCase` for `class_name`
+  and nodes; `UPPER_SNAKE_CASE` for constants.
+
+## Architecture rules
+
+- **All game data in data files, not in code.** Armour, penetration, speed, optics,
+  fire-control level, costs etc. live in custom `Resource` classes saved as `.tres`.
+  Code reads them; no magic numbers for balance values.
+- **Tanks never read input directly.** Input (player keyboard/mouse, bot AI, later
+  network) produces a command (throttle, steering, turret aim, fire, hatch...). The
+  tank only acts on commands. This keeps bots and future multiplayer possible.
+- **Bots follow the same rules as players** – same vision and spotting, no cheating.
+- Fire control and optics are per-tank properties in data, so all levels (none,
+  rangefinder, full computer) run on the same code.
+- Shells are simulated (gravity, travel time); hit detection by raycasting from the
+  previous to the current position each physics frame, not by fast physics bodies.
+- Prototype graphics: simple shapes (boxes, cylinders). Only free, correctly licensed
+  assets (Kenney, Sketchfab CC with attribution). Never assets from other games.
+
+## Controls
+
+- Driving: **WASD**, controlled directly by the player.
+- Further bindings are defined in the Input Map (project settings), never hardcoded keys.
+
+## Checking for errors (run these yourself)
+
+- Load/import the project: `godot --headless --path . --import`
+- Check one script: `godot --headless --path . --check-only --script res://path/to/file.gd`
+- Run a scene briefly: `godot --headless --path . res://path/scene.tscn --quit-after 300`
+- Run these after changes and read the output before telling the user something works.
+  Feel/visuals still need the user to test in the editor (F5/F6).
+
+## Way of working
+
+- Work in small steps. One limited feature at a time; explain what was changed and why.
+- Use plan mode before bigger features.
+- After a step works, the user tests in Godot and we commit. Commit often.
+- Division of labour: the user places terrain, lights and objects in the editor;
+  Claude writes logic and may create scene files.
+- Prefer editing `.tscn`/`.tres` files carefully; keep them valid (unique ids, correct
+  `ext_resource` paths). Don't edit `project.godot` by hand unless needed.
+
+## Current milestone: Prototype 1
+
+A simple tank (primitive shapes) on a flat test area with some obstacles:
+- drives with WASD
+- turret rotates
+- hatch open/closed with the matching views (cupola/periscope)
+- gunner's sight
+
+Later: Terrain3D for real maps (check it supports Godot 4.7 first), damage model,
+spotting/minimap, bots, game modes, multiplayer.
