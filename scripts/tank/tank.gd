@@ -429,7 +429,12 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	var speeding_up: bool = target_speed * speed >= 0.0 and absf(target_speed) > absf(speed)
 	var accel_limit: float = data.acceleration if speeding_up else data.brake_deceleration
 	var accel: float = clampf((target_speed - speed) / delta, -accel_limit, accel_limit)
-	var drive_force: float = mass * accel
+	# The tracks also cancel gravity along the slope (uphill pull, downhill push),
+	# up to what the steepest climbable slope needs.
+	var gravity_along: float = state.total_gravity.dot(forward)
+	var traction_limit: float = maxf(state.total_gravity.length()
+			* sin(deg_to_rad(data.max_climb_deg)), accel_limit)
+	var drive_force: float = mass * clampf(accel - gravity_along, -traction_limit, traction_limit)
 
 	# Yaw: chase the target turn rate. Positive yaw (around +Y) turns left.
 	var steering: float = clampf(_command.steering, -1.0, 1.0)

@@ -1,0 +1,7 @@
+Terrain textures, copied from the Terrain3D v1.1.0 demo (demo/assets/textures).
+Source: ambientCG, Creative Commons CC0 1.0 Universal (https://docs.ambientcg.com/license/)
+
+ground037_* : Grass  https://ambientcg.com/view?id=Ground037
+rock023_*   : Cliff  https://ambientcg.com/view?id=Rock023
+
+Packed by Terrain3D: *_alb_ht = albedo + height, *_nrm_rgh = normal + roughness.

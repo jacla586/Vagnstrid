@@ -53,5 +53,7 @@ static func _has_line_of_sight(world: World3D, from: Vector3, to: Vector3,
 		collider: CollisionObject3D) -> bool:
 	var query := PhysicsRayQueryParameters3D.create(from, to + (to - from).normalized() * 0.5)
 	query.collide_with_areas = true
+	# Fragments fly through bushes; only solid things give cover.
+	query.collision_mask = Vision.SHOT_MASK
 	var hit: Dictionary = world.direct_space_state.intersect_ray(query)
 	return not hit.is_empty() and hit["collider"] == collider

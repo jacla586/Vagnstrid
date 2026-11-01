@@ -1,0 +1,102 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/tank/tank.tscn" id="1_tank"]
+[ext_resource type="Script" path="res://scripts/control/player_controller.gd" id="2_player"]
+[ext_resource type="Script" path="res://scripts/camera/orbit_camera.gd" id="3_camera"]
+[ext_resource type="Script" path="res://scripts/ui/crosshair.gd" id="5_crosshair"]
+[ext_resource type="Script" path="res://scripts/camera/commander_camera.gd" id="6_commander"]
+[ext_resource type="Script" path="res://scripts/control/player_views.gd" id="7_views"]
+[ext_resource type="Script" path="res://scripts/ui/view_overlay.gd" id="8_overlay"]
+[ext_resource type="Script" path="res://scripts/camera/gunner_camera.gd" id="10_gunner"]
+[ext_resource type="Script" path="res://scripts/ui/gunner_reticle.gd" id="11_reticle"]
+[ext_resource type="Script" path="res://scripts/ui/weapon_status.gd" id="13_status"]
+[ext_resource type="Script" path="res://scripts/ui/hit_feedback.gd" id="15_hit_feedback"]
+[ext_resource type="Script" path="res://scripts/ui/commander_status.gd" id="17_commander_status"]
+[ext_resource type="Shader" path="res://assets/shaders/view_mask.gdshader" id="9_mask"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
+shader = ExtResource("9_mask")
+
+[node name="PlayerRig" type="Node3D"]
+
+[node name="Tank" parent="." instance=ExtResource("1_tank")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+
+[node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views")]
+script = ExtResource("2_player")
+tank = NodePath("../Tank")
+views = NodePath("../PlayerViews")
+
+[node name="CommanderCamera" type="Camera3D" parent="." node_paths=PackedStringArray("tank")]
+near = 0.03
+script = ExtResource("6_commander")
+tank = NodePath("../Tank")
+
+[node name="GunnerCamera" type="Camera3D" parent="." node_paths=PackedStringArray("tank")]
+near = 0.03
+script = ExtResource("10_gunner")
+tank = NodePath("../Tank")
+
+[node name="OrbitCamera" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
+script = ExtResource("3_camera")
+target = NodePath("../Tank")
+
+[node name="PlayerViews" type="Node" parent="." node_paths=PackedStringArray("commander_camera", "gunner_camera", "debug_camera")]
+script = ExtResource("7_views")
+commander_camera = NodePath("../CommanderCamera")
+gunner_camera = NodePath("../GunnerCamera")
+debug_camera = NodePath("../OrbitCamera")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="ViewOverlay" type="ColorRect" parent="HUD" node_paths=PackedStringArray("views")]
+material = SubResource("ShaderMaterial_mask")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("8_overlay")
+views = NodePath("../../PlayerViews")
+
+[node name="Crosshair" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("5_crosshair")
+views = NodePath("../../PlayerViews")
+
+[node name="GunnerReticle" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("11_reticle")
+views = NodePath("../../PlayerViews")
+
+[node name="WeaponStatus" type="Label" parent="HUD" node_paths=PackedStringArray("views")]
+script = ExtResource("13_status")
+views = NodePath("../../PlayerViews")
+
+[node name="HitFeedback" type="Label" parent="HUD" node_paths=PackedStringArray("views")]
+script = ExtResource("15_hit_feedback")
+views = NodePath("../../PlayerViews")
+
+[node name="CommanderStatus" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("17_commander_status")
+views = NodePath("../../PlayerViews")

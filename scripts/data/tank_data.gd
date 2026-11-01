@@ -17,6 +17,9 @@ extends Resource
 @export var acceleration: float = 1.5
 ## How fast the tank slows down when throttle is released or reversed (m/s²).
 @export var brake_deceleration: float = 4.0
+## Steepest slope the tracks can still climb (degrees). The tracks cancel gravity on
+## slopes up to this; steeper and the tank stalls or slides back.
+@export var max_climb_deg: float = 32.0
 ## Max yaw rate when steering fully (degrees/s).
 @export var max_turn_rate_deg: float = 30.0
 ## How fast the yaw rate builds up or stops (degrees/s²).

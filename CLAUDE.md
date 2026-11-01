@@ -41,6 +41,21 @@ shows on the minimap. This is what we test first.
 - Prototype graphics: simple shapes (boxes, cylinders). Only free, correctly licensed
   assets (Kenney, Sketchfab CC with attribution). Never assets from other games.
 
+## Physics layers and terrain
+
+- Layers (named in project settings): 1 `world` (terrain, hulls, tree trunks),
+  3 `commander_hitbox` (exposed commander, Area3D), 5 `vision_blocker` (bushes,
+  canopies, Area3D). Anything that "sees" uses `Vision.has_line_of_sight()`;
+  shells and fragments use `Vision.SHOT_MASK` and pass through vision blockers.
+- Terrain: Terrain3D v1.1.0 in `addons/terrain_3d` (desktop binaries only). Maps
+  must use collision mode Full / Game (shells and nests act far from the camera).
+  In game modes ray hits report the Terrain3D node as collider.
+- `tools/generate_hills.gd` and `tools/build_hills_scene.gd` made the starter
+  `scenes/maps/hills.tscn` once; the map is now edited in the editor. Don't rerun
+  them (they overwrite the user's edits).
+- Vegetation that matters for gameplay is real scenes (`tree.tscn`, `bush.tscn`),
+  placed with the `Scatter` tool node, not the Terrain3D instancer (no collision).
+
 ## Controls
 
 - Driving: **WASD**, controlled directly by the player.

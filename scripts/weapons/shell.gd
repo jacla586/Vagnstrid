@@ -73,6 +73,8 @@ func _physics_process(delta: float) -> void:
 	query.exclude = _exclude
 	# Areas too: the exposed commander's hitbox is an Area3D.
 	query.collide_with_areas = true
+	# Bushes and canopies hide things but don't stop shells.
+	query.collision_mask = Vision.SHOT_MASK
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		_on_hit(hit)

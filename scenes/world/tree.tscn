@@ -1,0 +1,56 @@
+[gd_scene format=3]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_trunk"]
+height = 6.0
+radius = 0.25
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_canopy"]
+height = 7.0
+radius = 2.0
+
+[sub_resource type="StandardMaterial3D" id="Material_bark"]
+albedo_color = Color(0.3, 0.22, 0.15, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Material_needles"]
+albedo_color = Color(0.13, 0.25, 0.13, 1)
+roughness = 1.0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_trunk"]
+material = SubResource("Material_bark")
+top_radius = 0.18
+bottom_radius = 0.25
+height = 6.0
+radial_segments = 8
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_canopy"]
+material = SubResource("Material_needles")
+top_radius = 0.0
+bottom_radius = 2.4
+height = 8.0
+radial_segments = 10
+
+[node name="Tree" type="Node3D"]
+
+[node name="Trunk" type="StaticBody3D" parent="."]
+
+[node name="Shape" type="CollisionShape3D" parent="Trunk"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 0)
+shape = SubResource("CylinderShape3D_trunk")
+
+[node name="TrunkMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 0)
+mesh = SubResource("CylinderMesh_trunk")
+
+[node name="CanopyMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.5, 0)
+mesh = SubResource("CylinderMesh_canopy")
+
+[node name="VisionBlocker" type="Area3D" parent="."]
+collision_layer = 16
+collision_mask = 0
+monitoring = false
+
+[node name="Shape" type="CollisionShape3D" parent="VisionBlocker"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.5, 0)
+shape = SubResource("CylinderShape3D_canopy")

@@ -146,11 +146,8 @@ func _can_see_commander(tank: Tank) -> bool:
 	var from: Vector3 = _eye.global_position
 	if from.distance_to(head) > data.max_range_m:
 		return false
-	var query := PhysicsRayQueryParameters3D.create(from, head + (head - from).normalized())
-	query.collide_with_areas = true
-	query.exclude = [get_rid()]
-	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
-	return not hit.is_empty() and hit["collider"] == tank.get_commander_hitbox()
+	return Vision.has_line_of_sight(get_world_3d(), from, head, tank.get_commander_hitbox(),
+			[get_rid()])
 
 
 ## Direction to fire: leads the commander's motion and adds drop.
