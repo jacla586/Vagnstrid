@@ -75,6 +75,10 @@ extends Resource
 ## small at other ranges. 0 = sight parallel to the bore.
 @export var sight_zero_range_m: float = 800.0
 
+@export_group("Crew")
+## How long a hit commander stays wounded (s): hatch locked shut meanwhile.
+@export var commander_wound_time_s: float = 20.0
+
 @export_group("Armour")
 @export var armour: ArmourData
 

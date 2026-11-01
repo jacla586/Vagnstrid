@@ -1,0 +1,67 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/mg_nest.gd" id="1_nest"]
+[ext_resource type="Resource" path="res://data/weapons/mg_nest.tres" id="2_data"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_bags"]
+height = 0.9
+radius = 1.5
+
+[sub_resource type="StandardMaterial3D" id="Material_bags"]
+albedo_color = Color(0.55, 0.48, 0.34, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Material_gun"]
+albedo_color = Color(0.1, 0.1, 0.1, 1)
+roughness = 0.6
+
+[sub_resource type="StandardMaterial3D" id="Material_crew"]
+albedo_color = Color(0.3, 0.33, 0.25, 1)
+roughness = 1.0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_bags"]
+material = SubResource("Material_bags")
+top_radius = 1.3
+bottom_radius = 1.5
+height = 0.9
+radial_segments = 16
+
+[sub_resource type="BoxMesh" id="BoxMesh_gun"]
+material = SubResource("Material_gun")
+size = Vector3(0.1, 0.12, 1.2)
+
+[sub_resource type="SphereMesh" id="SphereMesh_crew"]
+material = SubResource("Material_crew")
+radius = 0.2
+height = 0.4
+
+[node name="MGNest" type="StaticBody3D"]
+script = ExtResource("1_nest")
+data = ExtResource("2_data")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+shape = SubResource("CylinderShape3D_bags")
+
+[node name="Sandbags" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+mesh = SubResource("CylinderMesh_bags")
+
+[node name="Mount" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0)
+
+[node name="Pitch" type="Node3D" parent="Mount"]
+
+[node name="Gun" type="MeshInstance3D" parent="Mount/Pitch"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.4)
+mesh = SubResource("BoxMesh_gun")
+
+[node name="Muzzle" type="Marker3D" parent="Mount/Pitch"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1.0)
+
+[node name="Gunner" type="MeshInstance3D" parent="Mount"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0.5)
+mesh = SubResource("SphereMesh_crew")
+
+[node name="Eye" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)

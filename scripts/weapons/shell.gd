@@ -25,6 +25,7 @@ var _shooter: CollisionObject3D
 ## Bodies the hit ray ignores: the shooter, and anything already ricocheted off.
 var _exclude: Array[RID] = []
 var _age: float = 0.0
+var _tracer_base_scale: float = 1.0
 
 @onready var _tracer: MeshInstance3D = $Tracer
 
@@ -44,6 +45,8 @@ func launch(data: ShellData, start_position: Vector3, velocity: Vector3,
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.albedo_color = data.tracer_color
 	_tracer.material_override = material
+	_tracer_base_scale = data.tracer_scale
+	_tracer.scale = Vector3.ONE * _tracer_base_scale
 
 
 func get_velocity() -> Vector3:
@@ -65,6 +68,8 @@ func _physics_process(delta: float) -> void:
 	var next: PackedVector3Array = Ballistics.integrate(from, _velocity, _drag_factor, delta)
 	var query := PhysicsRayQueryParameters3D.create(from, next[0])
 	query.exclude = _exclude
+	# Areas too: the exposed commander's hitbox is an Area3D.
+	query.collide_with_areas = true
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		_on_hit(hit)
@@ -73,7 +78,7 @@ func _physics_process(delta: float) -> void:
 	_velocity = next[1]
 	_orient()
 	var width: float = 1.0 + _age * TRACER_GROWTH_PER_SECOND
-	_tracer.scale = Vector3(width, 1.0, width)
+	_tracer.scale = Vector3(width, 1.0, width) * _tracer_base_scale
 
 
 func _on_hit(hit: Dictionary) -> void:
@@ -82,6 +87,10 @@ func _on_hit(hit: Dictionary) -> void:
 	var effect: Node3D = IMPACT_SCENE.instantiate()
 	get_parent().add_child(effect)
 	effect.global_position = point
+	effect.scale = Vector3.ONE * _data.impact_scale
+	var light: OmniLight3D = effect.get_node_or_null("Light") as OmniLight3D
+	if light != null:
+		light.omni_range *= _data.impact_scale
 	var collider: Object = hit["collider"]
 	if collider == null or not collider.has_method("on_shell_hit"):
 		queue_free()

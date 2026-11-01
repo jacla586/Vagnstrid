@@ -16,6 +16,8 @@ extends RigidBody3D
 ## Armour: shells call on_shell_hit(); the hit zone comes from the collision shape
 ## and the hit normal, and Armour decides the outcome. For now one penetration
 ## knocks the tank out: it ignores commands, turns charred and smokes.
+## Commander: while exposed, a hitbox follows his head. A hit wounds him: the hatch
+## slams shut and stays locked for the data's wound time.
 
 ## Emitted after a shot leaves the barrel.
 signal fired(shell: Shell)
@@ -23,6 +25,8 @@ signal fired(shell: Shell)
 signal shot_landed(result: HitResult)
 ## Emitted when this tank is knocked out.
 signal knocked_out
+## Emitted when the exposed commander is hit.
+signal commander_wounded
 
 const KMH_TO_MS: float = 1.0 / 3.6
 const SHELL_SCENE: PackedScene = preload("res://scenes/weapons/shell.tscn")
@@ -31,6 +35,8 @@ const BURNING_SCENE: PackedScene = preload("res://scenes/effects/burning.tscn")
 ## Normals steeper than this (Y in local space) count as roof/belly.
 const ROOF_NORMAL_Y: float = 0.7
 const CHARRED_COLOR: Color = Color(0.08, 0.08, 0.075)
+## Commander hitbox centre sits this far below his eyes (m).
+const COMMANDER_HITBOX_DROP: float = 0.35
 ## Visual only: how far the hatch lid swings open.
 const HATCH_OPEN_ANGLE_DEG: float = 110.0
 
@@ -45,6 +51,7 @@ var _track_half_width: float = 1.0
 var _hatch_progress: float = 0.0
 var _reload_remaining: float = 0.0
 var _knocked_out: bool = false
+var _commander_wound_remaining: float = 0.0
 var _idle_command: TankCommand = TankCommand.new()
 var _burning: Node3D
 var _paint_override: StandardMaterial3D
@@ -59,12 +66,16 @@ var _charred_material: StandardMaterial3D
 @onready var _gunner_sight: Marker3D = $Visual/Turret/GunPivot/GunnerSight
 @onready var _muzzle: Marker3D = $Visual/Turret/GunPivot/Muzzle
 @onready var _visual: Node3D = $Visual
+@onready var _commander_hitbox: CommanderHitbox = $Visual/Turret/Cupola/CommanderHitbox
+@onready var _commander_hitbox_shape: CollisionShape3D = \
+		$Visual/Turret/Cupola/CommanderHitbox/Shape
 @onready var _hull_shape: CollisionShape3D = $HullShape
 @onready var _turret_shape: CollisionShape3D = $TurretShape
 
 
 func _ready() -> void:
 	assert(data != null, "Tank needs a TankData resource")
+	add_to_group("tanks")
 	mass = data.mass_kg
 	var width_sum: float = 0.0
 	for child: Node in _suspension.get_children():
@@ -101,6 +112,40 @@ func set_command(command: TankCommand) -> void:
 
 func is_knocked_out() -> bool:
 	return _knocked_out
+
+
+func is_commander_wounded() -> bool:
+	return _commander_wound_remaining > 0.0
+
+
+func get_commander_wound_remaining() -> float:
+	return _commander_wound_remaining
+
+
+func get_commander_hitbox() -> CommanderHitbox:
+	return _commander_hitbox
+
+
+## Centre of the commander's hitbox (head and shoulders) in world space.
+func get_commander_hitbox_position() -> Vector3:
+	return _commander_hitbox.global_position
+
+
+## Called by the commander hitbox when something hits the exposed commander.
+func on_commander_hit(_shell_data: ShellData, _point: Vector3) -> HitResult:
+	if not is_commander_exposed():
+		return null
+	_commander_wound_remaining = data.commander_wound_time_s
+	# The hatch slams shut: no second hit while it swings closed.
+	_hatch_progress = 0.0
+	_update_hatch(0.0)
+	_update_commander_hitbox()
+	commander_wounded.emit()
+	var result := HitResult.new()
+	result.outcome = HitResult.Outcome.COMMANDER_HIT
+	result.part = "commander"
+	result.target = self
+	return result
 
 
 ## Called by Shell when a shell hits this tank. Returns what happened.
@@ -247,7 +292,9 @@ func _physics_process(delta: float) -> void:
 	if _knocked_out:
 		_command = _idle_command
 	_update_turret(delta)
+	_commander_wound_remaining = maxf(_commander_wound_remaining - delta, 0.0)
 	_update_hatch(delta)
+	_update_commander_hitbox()
 	_update_gun(delta)
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
@@ -294,10 +341,17 @@ func _update_turret(delta: float) -> void:
 
 
 func _update_hatch(delta: float) -> void:
-	var target: float = 1.0 if _command.hatch_open else 0.0
+	var target: float = 1.0 if _command.hatch_open and not is_commander_wounded() else 0.0
 	_hatch_progress = move_toward(_hatch_progress, target,
 			delta / maxf(data.hatch_transition_time_s, 0.01))
 	_hatch_hinge.rotation.x = deg_to_rad(HATCH_OPEN_ANGLE_DEG) * _hatch_progress
+
+
+## Keeps the commander's hitbox on his head; only collides while he's exposed.
+func _update_commander_hitbox() -> void:
+	_commander_hitbox.position = _head_closed.position.lerp(_head_open.position,
+			smoothstep(0.0, 1.0, _hatch_progress)) - Vector3(0.0, COMMANDER_HITBOX_DROP, 0.0)
+	_commander_hitbox_shape.disabled = not is_commander_exposed()
 
 
 func _update_gun(delta: float) -> void:

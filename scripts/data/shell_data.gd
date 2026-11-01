@@ -13,5 +13,9 @@ extends Resource
 @export var penetration_mm: float = 110.0
 ## Aerodynamic drag coefficient. Higher = slows down faster, drops more at range.
 @export var drag_coefficient: float = 0.3
+## Size of the impact effect (1 = full-calibre puff, small for bullets).
+@export var impact_scale: float = 1.0
+## Size of the tracer (1 = main-gun tracer, small for bullets).
+@export var tracer_scale: float = 1.0
 ## Colour of the glowing tracer.
 @export var tracer_color: Color = Color(1.0, 0.55, 0.15, 1.0)

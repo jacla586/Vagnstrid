@@ -15,6 +15,8 @@
 [ext_resource type="Script" path="res://scripts/ui/weapon_status.gd" id="13_status"]
 [ext_resource type="Script" path="res://scripts/control/target_tank_controller.gd" id="14_target_ctrl"]
 [ext_resource type="Script" path="res://scripts/ui/hit_feedback.gd" id="15_hit_feedback"]
+[ext_resource type="PackedScene" path="res://scenes/world/mg_nest.tscn" id="16_mg_nest"]
+[ext_resource type="Script" path="res://scripts/ui/commander_status.gd" id="17_commander_status"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 
@@ -102,6 +104,14 @@ tank = NodePath("../EnemyPatrol")
 mode = 1
 waypoints = Array[Vector3]([Vector3(-150, 0, -700), Vector3(150, 0, -700)])
 
+[node name="MGNests" type="Node3D" parent="."]
+
+[node name="MGNest300" parent="MGNests" instance=ExtResource("16_mg_nest")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0, -300)
+
+[node name="MGNest600" parent="MGNests" instance=ExtResource("16_mg_nest")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 120, 0, -600)
+
 [node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views")]
 script = ExtResource("2_player")
 tank = NodePath("../Tank")
@@ -168,4 +178,15 @@ views = NodePath("../../PlayerViews")
 
 [node name="HitFeedback" type="Label" parent="HUD" node_paths=PackedStringArray("views")]
 script = ExtResource("15_hit_feedback")
+views = NodePath("../../PlayerViews")
+
+[node name="CommanderStatus" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("17_commander_status")
 views = NodePath("../../PlayerViews")

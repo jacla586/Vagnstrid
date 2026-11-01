@@ -11,6 +11,7 @@ extends Label
 @export var penetration_color: Color = Color(0.5, 1.0, 0.45, 1.0)
 @export var no_penetration_color: Color = Color(1.0, 0.85, 0.3, 1.0)
 @export var ricochet_color: Color = Color(0.5, 0.75, 1.0, 1.0)
+@export var commander_hit_color: Color = Color(1.0, 0.4, 0.35, 1.0)
 
 var _tank: Tank
 var _time_left: float = 0.0
@@ -45,6 +46,7 @@ func show_result(result: HitResult) -> void:
 			HitResult.Outcome.PENETRATION: color = penetration_color
 			HitResult.Outcome.NO_PENETRATION: color = no_penetration_color
 			HitResult.Outcome.RICOCHET: color = ricochet_color
+			HitResult.Outcome.COMMANDER_HIT: color = commander_hit_color
 	add_theme_color_override("font_color", color)
 	_time_left = show_time_s
 

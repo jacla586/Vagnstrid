@@ -2,7 +2,7 @@ class_name HitResult
 extends RefCounted
 ## What one shell did to one armour zone. Made by Armour.resolve().
 
-enum Outcome { HIT, PENETRATION, NO_PENETRATION, RICOCHET }
+enum Outcome { HIT, PENETRATION, NO_PENETRATION, RICOCHET, COMMANDER_HIT }
 
 var outcome: Outcome = Outcome.HIT
 ## Zone hit, e.g. "hull" + "side".
@@ -16,6 +16,8 @@ var angle_deg: float = 0.0
 var effective_mm: float = 0.0
 ## Shell's penetration at impact speed (mm).
 var penetration_mm: float = 0.0
+## Optional text that replaces the default description (e.g. "MG NEST DESTROYED").
+var note: String = ""
 ## Node that was hit (null for a plain hit report).
 var target: Node = null
 
@@ -26,8 +28,12 @@ func is_penetration() -> bool:
 
 ## Short readable line for the HUD and logs.
 func describe() -> String:
+	if note != "":
+		return note
 	if outcome == Outcome.HIT:
 		return "HIT"
+	if outcome == Outcome.COMMANDER_HIT:
+		return "COMMANDER HIT"
 	var head: String = {
 		Outcome.PENETRATION: "PENETRATION",
 		Outcome.NO_PENETRATION: "NO PENETRATION",

@@ -27,6 +27,9 @@ func _physics_process(_delta: float) -> void:
 		return
 	_command.throttle = Input.get_axis("move_backward", "move_forward")
 	_command.steering = Input.get_axis("turn_left", "turn_right")
+	# A wounded commander drops back inside; he doesn't pop up again on recovery.
+	if tank.is_commander_wounded():
+		_hatch_wanted = false
 	_command.hatch_open = _hatch_wanted
 	if views != null and (views.drives_turret() or _turret_to_view_requested):
 		# Ray queries are done here (physics frame), not in the input callback.
