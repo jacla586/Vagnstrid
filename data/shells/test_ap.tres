@@ -8,5 +8,6 @@ display_name = "Test AP 75 mm"
 muzzle_velocity_mps = 500.0
 mass_kg = 6.8
 caliber_mm = 75.0
+penetration_mm = 110.0
 drag_coefficient = 0.3
 tracer_color = Color(1, 0.55, 0.15, 1)

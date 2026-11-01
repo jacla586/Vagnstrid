@@ -2,6 +2,19 @@
 
 [ext_resource type="Script" path="res://scripts/data/tank_data.gd" id="1_data"]
 [ext_resource type="Resource" path="res://data/shells/test_ap.tres" id="2_shell"]
+[ext_resource type="Script" path="res://scripts/data/armour_data.gd" id="3_armour"]
+
+[sub_resource type="Resource" id="Resource_armour"]
+script = ExtResource("3_armour")
+hull_front_mm = 80.0
+hull_side_mm = 45.0
+hull_rear_mm = 30.0
+hull_roof_mm = 15.0
+turret_front_mm = 90.0
+turret_side_mm = 50.0
+turret_rear_mm = 40.0
+turret_roof_mm = 20.0
+ricochet_angle_deg = 70.0
 
 [resource]
 script = ExtResource("1_data")
@@ -37,6 +50,8 @@ gunner_sight_fov_deg = PackedFloat32Array(24, 12)
 sight_range_step_m = 100.0
 sight_range_max_m = 2000.0
 sight_range_label_step_m = 200.0
+sight_zero_range_m = 800.0
+armour = SubResource("Resource_armour")
 main_shell = ExtResource("2_shell")
 reload_time_s = 6.0
 recoil_impulse_ns = 30000.0

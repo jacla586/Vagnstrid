@@ -9,6 +9,8 @@ extends Resource
 @export var muzzle_velocity_mps: float = 500.0
 @export var mass_kg: float = 6.8
 @export var caliber_mm: float = 75.0
+## Armour penetration at muzzle velocity, straight on (mm). Falls off with speed.
+@export var penetration_mm: float = 110.0
 ## Aerodynamic drag coefficient. Higher = slows down faster, drops more at range.
 @export var drag_coefficient: float = 0.3
 ## Colour of the glowing tracer.

@@ -32,9 +32,9 @@ func _ready() -> void:
 	_mark_material.albedo_color = Color(0.95, 0.1, 0.05)
 
 
-## Hook called by Shell on impact.
+## Hook called by Shell on impact. Boards have no armour: always a plain hit (null).
 func on_shell_hit(_shell_data: ShellData, point: Vector3, _normal: Vector3,
-		_velocity: Vector3) -> void:
+		_velocity: Vector3, _shape: int = -1) -> HitResult:
 	hit_count += 1
 	last_hit_local = _board.to_local(point)
 	var mark := MeshInstance3D.new()
@@ -45,3 +45,4 @@ func on_shell_hit(_shell_data: ShellData, point: Vector3, _normal: Vector3,
 	_marks.append(mark)
 	if _marks.size() > MAX_MARKS:
 		_marks.pop_front().queue_free()
+	return null

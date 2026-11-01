@@ -13,6 +13,8 @@
 [ext_resource type="Script" path="res://scripts/ui/gunner_reticle.gd" id="11_reticle"]
 [ext_resource type="PackedScene" path="res://scenes/world/target_board.tscn" id="12_board"]
 [ext_resource type="Script" path="res://scripts/ui/weapon_status.gd" id="13_status"]
+[ext_resource type="Script" path="res://scripts/control/target_tank_controller.gd" id="14_target_ctrl"]
+[ext_resource type="Script" path="res://scripts/ui/hit_feedback.gd" id="15_hit_feedback"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 
@@ -80,6 +82,26 @@ range_label = "1000 m"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0, -1500)
 range_label = "1500 m"
 
+[node name="Enemies" type="Node3D" parent="."]
+
+[node name="EnemyStatic" parent="Enemies" instance=ExtResource("1_tank")]
+transform = Transform3D(-0.866025, 0, -0.5, 0, 1, 0, 0.5, 0, -0.866025, 20, 1.5, -400)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+
+[node name="EnemyStaticController" type="Node" parent="Enemies" node_paths=PackedStringArray("tank")]
+script = ExtResource("14_target_ctrl")
+tank = NodePath("../EnemyStatic")
+
+[node name="EnemyPatrol" parent="Enemies" instance=ExtResource("1_tank")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -150, 1.5, -700)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+
+[node name="EnemyPatrolController" type="Node" parent="Enemies" node_paths=PackedStringArray("tank")]
+script = ExtResource("14_target_ctrl")
+tank = NodePath("../EnemyPatrol")
+mode = 1
+waypoints = Array[Vector3]([Vector3(-150, 0, -700), Vector3(150, 0, -700)])
+
 [node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views")]
 script = ExtResource("2_player")
 tank = NodePath("../Tank")
@@ -142,4 +164,8 @@ views = NodePath("../../PlayerViews")
 
 [node name="WeaponStatus" type="Label" parent="HUD" node_paths=PackedStringArray("views")]
 script = ExtResource("13_status")
+views = NodePath("../../PlayerViews")
+
+[node name="HitFeedback" type="Label" parent="HUD" node_paths=PackedStringArray("views")]
+script = ExtResource("15_hit_feedback")
 views = NodePath("../../PlayerViews")

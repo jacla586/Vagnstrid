@@ -13,17 +13,30 @@ extends RigidBody3D
 ## time. The commander is exposed whenever the hatch isn't fully closed.
 ## Gun: fires the data's main shell when the command says fire and it's loaded,
 ## then reloads. Recoil is an impulse at the muzzle.
+## Armour: shells call on_shell_hit(); the hit zone comes from the collision shape
+## and the hit normal, and Armour decides the outcome. For now one penetration
+## knocks the tank out: it ignores commands, turns charred and smokes.
 
 ## Emitted after a shot leaves the barrel.
 signal fired(shell: Shell)
+## Emitted when a shell this tank fired lands. `result` is null for a plain hit.
+signal shot_landed(result: HitResult)
+## Emitted when this tank is knocked out.
+signal knocked_out
 
 const KMH_TO_MS: float = 1.0 / 3.6
 const SHELL_SCENE: PackedScene = preload("res://scenes/weapons/shell.tscn")
 const MUZZLE_FLASH_SCENE: PackedScene = preload("res://scenes/effects/muzzle_flash.tscn")
+const BURNING_SCENE: PackedScene = preload("res://scenes/effects/burning.tscn")
+## Normals steeper than this (Y in local space) count as roof/belly.
+const ROOF_NORMAL_Y: float = 0.7
+const CHARRED_COLOR: Color = Color(0.08, 0.08, 0.075)
 ## Visual only: how far the hatch lid swings open.
 const HATCH_OPEN_ANGLE_DEG: float = 110.0
 
 @export var data: TankData
+## Visual only: paint colour for this tank. Alpha 0 keeps the scene's paint.
+@export var paint_color: Color = Color(0.0, 0.0, 0.0, 0.0)
 
 var _command: TankCommand = TankCommand.new()
 var _left_rays: Array[RayCast3D] = []
@@ -31,6 +44,11 @@ var _right_rays: Array[RayCast3D] = []
 var _track_half_width: float = 1.0
 var _hatch_progress: float = 0.0
 var _reload_remaining: float = 0.0
+var _knocked_out: bool = false
+var _idle_command: TankCommand = TankCommand.new()
+var _burning: Node3D
+var _paint_override: StandardMaterial3D
+var _charred_material: StandardMaterial3D
 
 @onready var _suspension: Node3D = $Suspension
 @onready var _turret: Node3D = $Visual/Turret
@@ -40,6 +58,9 @@ var _reload_remaining: float = 0.0
 @onready var _head_open: Marker3D = $Visual/Turret/Cupola/HeadOpen
 @onready var _gunner_sight: Marker3D = $Visual/Turret/GunPivot/GunnerSight
 @onready var _muzzle: Marker3D = $Visual/Turret/GunPivot/Muzzle
+@onready var _visual: Node3D = $Visual
+@onready var _hull_shape: CollisionShape3D = $HullShape
+@onready var _turret_shape: CollisionShape3D = $TurretShape
 
 
 func _ready() -> void:
@@ -60,10 +81,115 @@ func _ready() -> void:
 	var ray_count: int = _left_rays.size() + _right_rays.size()
 	assert(ray_count > 0, "Tank needs RayCast3D children under Suspension")
 	_track_half_width = maxf(width_sum / ray_count, 0.1)
+	_align_gunner_sight()
+	_setup_paint()
+
+
+## Boresights the gunner's sight: tilts it so its line of sight crosses the gun's
+## bore at the zeroing range. Both markers live in GunPivot space.
+func _align_gunner_sight() -> void:
+	if data.sight_zero_range_m <= 0.0:
+		return
+	var bore_point: Vector3 = _muzzle.position \
+			+ _muzzle.basis * Vector3.FORWARD * data.sight_zero_range_m
+	_gunner_sight.basis = Basis.looking_at(bore_point - _gunner_sight.position)
 
 
 func set_command(command: TankCommand) -> void:
 	_command = command
+
+
+func is_knocked_out() -> bool:
+	return _knocked_out
+
+
+## Called by Shell when a shell hits this tank. Returns what happened.
+func on_shell_hit(shell_data: ShellData, _point: Vector3, normal: Vector3,
+		velocity: Vector3, shape: int = -1) -> HitResult:
+	if data.armour == null:
+		return null
+	var part: String = "hull"
+	var reference: Basis = global_basis
+	if _shape_node(shape) == _turret_shape:
+		part = "turret"
+		reference = _turret.global_basis
+	var face: String = _face_for_normal(reference.orthonormalized().inverse() * normal)
+	var result: HitResult = Armour.resolve(shell_data, velocity.length(),
+			data.armour.thickness_mm(part, face), Armour.impact_angle(velocity, normal),
+			data.armour.ricochet_angle_deg)
+	result.part = part
+	result.face = face
+	result.target = self
+	if result.is_penetration() and not _knocked_out:
+		_knock_out()
+	return result
+
+
+## Called by Shell when a shell this tank fired lands.
+func report_shot(result: HitResult) -> void:
+	shot_landed.emit(result)
+
+
+## Undoes a knock-out (test bench respawn).
+func repair() -> void:
+	_knocked_out = false
+	if _burning != null:
+		_burning.queue_free()
+		_burning = null
+	_apply_paint(false)
+
+
+func _knock_out() -> void:
+	_knocked_out = true
+	_burning = BURNING_SCENE.instantiate()
+	add_child(_burning)
+	_burning.position = _turret.position
+	_apply_paint(true)
+	knocked_out.emit()
+
+
+func _shape_node(shape: int) -> Node:
+	if shape < 0:
+		return null
+	var owner_id: int = shape_find_owner(shape)
+	return shape_owner_get_owner(owner_id) as Node
+
+
+## Zone face from a normal in the part's own space (forward is -Z).
+func _face_for_normal(local_normal: Vector3) -> String:
+	if absf(local_normal.y) > ROOF_NORMAL_Y:
+		return "roof"
+	var angle: float = absf(rad_to_deg(atan2(local_normal.x, -local_normal.z)))
+	if angle <= 45.0:
+		return "front"
+	if angle >= 135.0:
+		return "rear"
+	return "side"
+
+
+func _setup_paint() -> void:
+	if paint_color.a > 0.0:
+		_paint_override = StandardMaterial3D.new()
+		_paint_override.albedo_color = paint_color
+		_paint_override.roughness = 0.85
+	_charred_material = StandardMaterial3D.new()
+	_charred_material.albedo_color = CHARRED_COLOR
+	_charred_material.roughness = 1.0
+	_apply_paint(false)
+
+
+## Paint override goes on meshes that use the scene's paint (same material as the
+## hull); charred goes on every mesh.
+func _apply_paint(charred: bool) -> void:
+	var hull_mesh: Mesh = ($Visual/Hull as MeshInstance3D).mesh
+	var paint: Material = hull_mesh.surface_get_material(0) if hull_mesh != null else null
+	for mesh_instance: MeshInstance3D in _visual.find_children("*", "MeshInstance3D", true, false):
+		if charred:
+			mesh_instance.material_override = _charred_material
+		elif mesh_instance.mesh != null and mesh_instance.mesh.surface_get_material(0) == paint:
+			mesh_instance.material_override = _paint_override
+		else:
+			mesh_instance.material_override = null
 
 
 ## Speed along the hull's forward axis (m/s), negative when reversing.
@@ -118,6 +244,8 @@ func get_reload_remaining() -> float:
 
 
 func _physics_process(delta: float) -> void:
+	if _knocked_out:
+		_command = _idle_command
 	_update_turret(delta)
 	_update_hatch(delta)
 	_update_gun(delta)

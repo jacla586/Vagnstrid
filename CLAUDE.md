@@ -64,13 +64,17 @@ shows on the minimap. This is what we test first.
 - Prefer editing `.tscn`/`.tres` files carefully; keep them valid (unique ids, correct
   `ext_resource` paths). Don't edit `project.godot` by hand unless needed.
 
-## Current milestone: Prototype 1
+## Done: Prototype 1
 
-A simple tank (primitive shapes) on a flat test area with some obstacles:
-- drives with WASD
-- turret rotates
-- hatch open/closed with the matching views (cupola/periscope)
-- gunner's sight
+Tank of primitive shapes on a flat test area: WASD driving with raycast suspension,
+mouse-aimed turret/gun, hatch with cupola/periscope views, gunner's sight with a
+ballistic range ladder (boresighted at a zeroing range), simulated shells with
+reload/recoil/tracers, and target boards at known ranges.
+
+## Current milestone: Prototype 2 – something to fight
+
+- damage model, first step: armour and penetration from data, impact angle matters
+- an enemy target tank to shoot at (step towards bots)
 
 Later: Terrain3D for real maps (check it supports Godot 4.7 first), damage model,
 spotting/minimap, bots, game modes, multiplayer.

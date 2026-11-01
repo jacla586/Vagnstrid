@@ -5,7 +5,9 @@ extends Node3D
 ## position every physics frame. Not a physics body.
 ##
 ## On a hit it spawns an impact effect and calls
-## `on_shell_hit(shell_data, point, normal, velocity)` on the collider if it has it.
+## `on_shell_hit(shell_data, point, normal, velocity, shape)` on the collider if it
+## has it. That returns a HitResult (or null for a plain hit), which is passed to
+## the shooter's report_shot(). On a ricochet the shell bounces off and flies on.
 
 const MAX_LIFETIME: float = 15.0
 ## Freed if it somehow gets this far below the world origin (m).
@@ -13,11 +15,15 @@ const MIN_HEIGHT: float = -200.0
 ## Tracer grows wider with age so it stays visible at long range (fun over realism).
 const TRACER_GROWTH_PER_SECOND: float = 4.0
 const IMPACT_SCENE: PackedScene = preload("res://scenes/effects/impact.tscn")
+## Share of speed kept after a ricochet. Tuned for a visible bounce.
+const RICOCHET_SPEED_FACTOR: float = 0.5
 
 var _data: ShellData
 var _velocity: Vector3 = Vector3.ZERO
 var _drag_factor: float = 0.0
 var _shooter: CollisionObject3D
+## Bodies the hit ray ignores: the shooter, and anything already ricocheted off.
+var _exclude: Array[RID] = []
 var _age: float = 0.0
 
 @onready var _tracer: MeshInstance3D = $Tracer
@@ -30,6 +36,8 @@ func launch(data: ShellData, start_position: Vector3, velocity: Vector3,
 	_velocity = velocity
 	_drag_factor = Ballistics.drag_factor(data)
 	_shooter = shooter
+	if shooter != null:
+		_exclude.append(shooter.get_rid())
 	global_position = start_position
 	_orient()
 	var material := StandardMaterial3D.new()
@@ -56,8 +64,7 @@ func _physics_process(delta: float) -> void:
 	var from: Vector3 = global_position
 	var next: PackedVector3Array = Ballistics.integrate(from, _velocity, _drag_factor, delta)
 	var query := PhysicsRayQueryParameters3D.create(from, next[0])
-	if _shooter != null:
-		query.exclude = [_shooter.get_rid()]
+	query.exclude = _exclude
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		_on_hit(hit)
@@ -76,9 +83,25 @@ func _on_hit(hit: Dictionary) -> void:
 	get_parent().add_child(effect)
 	effect.global_position = point
 	var collider: Object = hit["collider"]
-	if collider != null and collider.has_method("on_shell_hit"):
-		collider.on_shell_hit(_data, point, normal, _velocity)
+	if collider == null or not collider.has_method("on_shell_hit"):
+		queue_free()
+		return
+	var result: HitResult = collider.on_shell_hit(_data, point, normal, _velocity,
+			int(hit["shape"]))
+	if is_instance_valid(_shooter) and _shooter.has_method("report_shot"):
+		_shooter.report_shot(result)
+	if result != null and result.outcome == HitResult.Outcome.RICOCHET:
+		_ricochet(point, normal, hit["rid"])
+		return
 	queue_free()
+
+
+## Bounces off the plate and keeps flying; never hits the same body again.
+func _ricochet(point: Vector3, normal: Vector3, body: RID) -> void:
+	_exclude.append(body)
+	_velocity = _velocity.bounce(normal) * RICOCHET_SPEED_FACTOR
+	global_position = point + normal * 0.05
+	_orient()
 
 
 ## Points -Z along the velocity (the tracer is stretched along Z).

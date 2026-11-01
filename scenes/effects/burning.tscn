@@ -1,0 +1,45 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="Material_smoke"]
+transparency = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(0.22, 0.21, 0.2, 0.75)
+billboard_mode = 3
+particles_anim_h_frames = 1
+particles_anim_v_frames = 1
+particles_anim_loop = false
+
+[sub_resource type="QuadMesh" id="QuadMesh_smoke"]
+material = SubResource("Material_smoke")
+size = Vector2(1.5, 1.5)
+
+[sub_resource type="Curve" id="Curve_scale"]
+_data = [Vector2(0, 0.4), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Gradient" id="Gradient_fade"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
+
+[node name="Burning" type="Node3D"]
+
+[node name="Smoke" type="CPUParticles3D" parent="."]
+amount = 40
+lifetime = 6.0
+preprocess = 3.0
+mesh = SubResource("QuadMesh_smoke")
+direction = Vector3(0, 1, 0)
+spread = 12.0
+gravity = Vector3(0.4, 1.2, 0)
+initial_velocity_min = 1.0
+initial_velocity_max = 2.0
+scale_amount_min = 1.0
+scale_amount_max = 2.5
+scale_amount_curve = SubResource("Curve_scale")
+color_ramp = SubResource("Gradient_fade")
+
+[node name="Light" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
+light_color = Color(1, 0.45, 0.15, 1)
+light_energy = 1.5
+omni_range = 6.0

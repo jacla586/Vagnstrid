@@ -70,6 +70,13 @@ extends Resource
 @export var sight_range_step_m: float = 100.0
 @export var sight_range_max_m: float = 2000.0
 @export var sight_range_label_step_m: float = 200.0
+## Range where the gunner's sight line crosses the gun's bore (m). The sight sits
+## beside the gun; boresighting at this range cancels that gap there and keeps it
+## small at other ranges. 0 = sight parallel to the bore.
+@export var sight_zero_range_m: float = 800.0
+
+@export_group("Armour")
+@export var armour: ArmourData
 
 @export_group("Armament")
 ## Shell fired by the main gun; the sight's range ladder is calibrated for it.
