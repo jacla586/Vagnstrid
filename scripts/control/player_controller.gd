@@ -6,6 +6,9 @@ extends Node
 ## goes to the point under the screen centre and keeps aiming there.
 ## Gunner's sight and debug view: the turret follows the view's aim every frame.
 
+## Input actions that pick ammo type 0, 1, ... (TankData.ammo order).
+const AMMO_ACTIONS: Array[StringName] = [&"select_ammo_1", &"select_ammo_2"]
+
 @export var tank: Tank
 @export var views: PlayerViews
 
@@ -13,6 +16,7 @@ var _command: TankCommand = TankCommand.new()
 var _hatch_wanted: bool = false
 var _turret_to_view_requested: bool = false
 var _fire_armed: bool = false
+var _ammo_requested: int = -1
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -20,6 +24,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_hatch_wanted = not _hatch_wanted
 	elif event.is_action_pressed("turret_to_view"):
 		_turret_to_view_requested = true
+	else:
+		for i: int in AMMO_ACTIONS.size():
+			if event.is_action_pressed(AMMO_ACTIONS[i]):
+				_ammo_requested = i
 
 
 func _physics_process(_delta: float) -> void:
@@ -37,6 +45,8 @@ func _physics_process(_delta: float) -> void:
 		_command.has_aim = true
 	_turret_to_view_requested = false
 	_command.fire = _wants_fire()
+	_command.ammo_select = _ammo_requested
+	_ammo_requested = -1
 	tank.set_command(_command)
 
 

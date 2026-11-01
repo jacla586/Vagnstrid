@@ -5,6 +5,7 @@
 [resource]
 script = ExtResource("1_shell")
 display_name = "Test AP 75 mm"
+short_name = "AP"
 muzzle_velocity_mps = 500.0
 mass_kg = 6.8
 caliber_mm = 75.0

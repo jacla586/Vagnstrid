@@ -12,7 +12,8 @@ extends RigidBody3D
 ## Hatch: opens/closes toward the command's hatch_open over the data's transition
 ## time. The commander is exposed whenever the hatch isn't fully closed.
 ## Gun: fires the data's main shell when the command says fire and it's loaded,
-## then reloads. Recoil is an impulse at the muzzle.
+## then reloads. Recoil is an impulse at the muzzle. Switching ammo type empties
+## the breech and starts a full reload of the new type.
 ## Armour: shells call on_shell_hit(); the hit zone comes from the collision shape
 ## and the hit normal, and Armour decides the outcome. For now one penetration
 ## knocks the tank out: it ignores commands, turns charred and smokes.
@@ -50,6 +51,8 @@ var _right_rays: Array[RayCast3D] = []
 var _track_half_width: float = 1.0
 var _hatch_progress: float = 0.0
 var _reload_remaining: float = 0.0
+## Index into data.ammo of the shell in the breech (or being loaded).
+var _ammo_index: int = 0
 var _knocked_out: bool = false
 var _commander_wound_remaining: float = 0.0
 var _idle_command: TankCommand = TankCommand.new()
@@ -288,6 +291,17 @@ func get_reload_remaining() -> float:
 	return _reload_remaining
 
 
+## Shell in the breech, or the one being loaded. Null if the tank has no ammo.
+func get_loaded_shell() -> ShellData:
+	if _ammo_index < 0 or _ammo_index >= data.ammo.size():
+		return null
+	return data.ammo[_ammo_index]
+
+
+func get_ammo_index() -> int:
+	return _ammo_index
+
+
 func _physics_process(delta: float) -> void:
 	if _knocked_out:
 		_command = _idle_command
@@ -355,8 +369,12 @@ func _update_commander_hitbox() -> void:
 
 
 func _update_gun(delta: float) -> void:
+	var wanted: int = _command.ammo_select
+	if wanted >= 0 and wanted < data.ammo.size() and wanted != _ammo_index:
+		_ammo_index = wanted
+		_reload_remaining = data.reload_time_s
 	_reload_remaining = maxf(_reload_remaining - delta, 0.0)
-	if _command.fire and is_loaded() and data.main_shell != null:
+	if _command.fire and is_loaded() and get_loaded_shell() != null:
 		_fire()
 
 
@@ -366,8 +384,9 @@ func _fire() -> void:
 	var shell := SHELL_SCENE.instantiate() as Shell
 	get_parent().add_child(shell)
 	# The tank's own motion carries over to the shell: firing on the move costs accuracy.
-	shell.launch(data.main_shell, muzzle_position,
-			direction * data.main_shell.muzzle_velocity_mps + linear_velocity, self)
+	var shell_data: ShellData = get_loaded_shell()
+	shell.launch(shell_data, muzzle_position,
+			direction * shell_data.muzzle_velocity_mps + linear_velocity, self)
 	var flash: Node3D = MUZZLE_FLASH_SCENE.instantiate()
 	get_parent().add_child(flash)
 	flash.global_position = muzzle_position

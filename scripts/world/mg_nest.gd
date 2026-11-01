@@ -6,7 +6,8 @@ extends StaticBody3D
 ## tanks with the commander exposed, within range, with a clear line of sight from
 ## its eye to the commander's head. After seeing a target for the reaction time it
 ## swings the gun on (with lead and drop) and fires bursts with random spread.
-## A main-gun shell hit destroys it.
+## A main-gun shell hit destroys it, and so do fragments (it's a fragment target,
+## aimed at the gunner).
 
 const SHELL_SCENE: PackedScene = preload("res://scenes/weapons/shell.tscn")
 const BURNING_SCENE: PackedScene = preload("res://scenes/effects/burning.tscn")
@@ -39,6 +40,7 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 @onready var _pitch: Node3D = $Mount/Pitch
 @onready var _muzzle: Marker3D = $Mount/Pitch/Muzzle
 @onready var _eye: Marker3D = $Eye
+@onready var _gunner: Node3D = $Mount/Gunner
 
 
 func _ready() -> void:
@@ -47,6 +49,7 @@ func _ready() -> void:
 	_charred_material.albedo_color = CHARRED_COLOR
 	_rng.randomize()
 	_aim_direction = -_mount.global_basis.z
+	add_to_group(Explosion.TARGET_GROUP)
 
 
 func is_destroyed() -> bool:
@@ -68,6 +71,28 @@ func on_shell_hit(shell_data: ShellData, _point: Vector3, _normal: Vector3,
 		_velocity: Vector3, _shape: int = -1) -> HitResult:
 	if _destroyed or shell_data.caliber_mm < MIN_DESTROY_CALIBER_MM:
 		return null
+	return _destroy_with_result()
+
+
+func is_fragment_target_active() -> bool:
+	return not _destroyed
+
+
+func get_fragment_aim_point() -> Vector3:
+	return _gunner.global_position
+
+
+func get_fragment_collider() -> CollisionObject3D:
+	return self
+
+
+func on_fragment_hit(_shell_data: ShellData, _distance: float) -> HitResult:
+	if _destroyed:
+		return null
+	return _destroy_with_result()
+
+
+func _destroy_with_result() -> HitResult:
 	_destroy()
 	var result := HitResult.new()
 	result.note = "MG NEST DESTROYED"

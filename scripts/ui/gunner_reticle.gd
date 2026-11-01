@@ -30,7 +30,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# Build the table at load (~50 ms) rather than on first entering the sight.
 	if views != null:
-		_update_range_table(views.get_tank_data())
+		_update_range_table(views.get_tank_data(), views.get_tank().get_loaded_shell())
 
 
 func _process(_delta: float) -> void:
@@ -42,7 +42,7 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	var camera: GunnerCamera = views.gunner_camera
 	var data: TankData = views.get_tank_data()
-	_update_range_table(data)
+	_update_range_table(data, views.get_tank().get_loaded_shell())
 
 	var centre: Vector2 = size * 0.5
 	var unit: float = size.y / 1080.0  # 1 px at 1080p
@@ -111,6 +111,12 @@ func _draw_range_ladder(data: TankData, centre: Vector2, unit: float, line_width
 			float(font_size) * 0.95 / maxf(first_step_px, 0.001),
 			data.sight_range_label_step_m / base_step))
 	label_every = maxi(label_every, mark_every)
+	# Which shell the ladder is for, above its top end.
+	if _table_shell != null:
+		var name_width: float = font.get_string_size(_table_shell.short_name,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		draw_string(font, Vector2(ladder_right - name_width, centre.y - font_size * 0.6),
+				_table_shell.short_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, reticle_color)
 	if label_every % mark_every != 0:
 		label_every *= mark_every  # every labelled range must also be a drawn mark
 	for i: int in _table_ranges.size():
@@ -146,11 +152,11 @@ static func _nice_multiple(minimum: float) -> int:
 	return 1
 
 
-## Rebuilds the range → drop table when the tank's shell (or tank) changes.
-func _update_range_table(data: TankData) -> void:
-	if data.main_shell == _table_shell and not _table_ranges.is_empty():
+## Rebuilds the range → drop table when the loaded shell (or tank) changes.
+func _update_range_table(data: TankData, shell: ShellData) -> void:
+	if shell == _table_shell and not _table_ranges.is_empty():
 		return
-	_table_shell = data.main_shell
+	_table_shell = shell
 	_table_ranges.clear()
 	_table_drops_mrad.clear()
 	if _table_shell == null or data.sight_range_step_m <= 0.0:

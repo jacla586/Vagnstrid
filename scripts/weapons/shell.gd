@@ -8,6 +8,8 @@ extends Node3D
 ## `on_shell_hit(shell_data, point, normal, velocity, shape)` on the collider if it
 ## has it. That returns a HitResult (or null for a plain hit), which is passed to
 ## the shooter's report_shot(). On a ricochet the shell bounces off and flies on.
+## Explosive shells never bounce: they detonate on any impact and throw fragments
+## (see Explosion); every fragment hit is reported to the shooter too.
 
 const MAX_LIFETIME: float = 15.0
 ## Freed if it somehow gets this far below the world origin (m).
@@ -26,6 +28,7 @@ var _shooter: CollisionObject3D
 var _exclude: Array[RID] = []
 var _age: float = 0.0
 var _tracer_base_scale: float = 1.0
+var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 @onready var _tracer: MeshInstance3D = $Tracer
 
@@ -92,17 +95,26 @@ func _on_hit(hit: Dictionary) -> void:
 	if light != null:
 		light.omni_range *= _data.impact_scale
 	var collider: Object = hit["collider"]
-	if collider == null or not collider.has_method("on_shell_hit"):
+	var result: HitResult = null
+	if collider != null and collider.has_method("on_shell_hit"):
+		result = collider.on_shell_hit(_data, point, normal, _velocity, int(hit["shape"]))
+		_report(result)
+	if _data.is_explosive():
+		_rng.randomize()
+		for fragment_result: HitResult in Explosion.detonate(get_world_3d(), get_tree(), point,
+				normal, _data, _rng):
+			_report(fragment_result)
 		queue_free()
 		return
-	var result: HitResult = collider.on_shell_hit(_data, point, normal, _velocity,
-			int(hit["shape"]))
-	if is_instance_valid(_shooter) and _shooter.has_method("report_shot"):
-		_shooter.report_shot(result)
 	if result != null and result.outcome == HitResult.Outcome.RICOCHET:
 		_ricochet(point, normal, hit["rid"])
 		return
 	queue_free()
+
+
+func _report(result: HitResult) -> void:
+	if is_instance_valid(_shooter) and _shooter.has_method("report_shot"):
+		_shooter.report_shot(result)
 
 
 ## Bounces off the plate and keeps flying; never hits the same body again.

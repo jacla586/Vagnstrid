@@ -3,6 +3,8 @@ extends Resource
 ## One type of shell. Ballistics (and later penetration/damage) read these values.
 
 @export var display_name: String = "Unnamed shell"
+## Short label for the HUD, e.g. "AP" or "HE".
+@export var short_name: String = "AP"
 ## Speed leaving the barrel (m/s). Deliberately slower than historical guns
 ## (~500 instead of ~800 for AP) so drop is readable on the reticle and range
 ## estimation matters. Fun over realism.
@@ -19,3 +21,13 @@ extends Resource
 @export var tracer_scale: float = 1.0
 ## Colour of the glowing tracer.
 @export var tracer_color: Color = Color(1.0, 0.55, 0.15, 1.0)
+
+@export_group("Explosive")
+## Fragments always hit exposed targets within this distance of the burst (m).
+@export var fragment_lethal_radius_m: float = 0.0
+## Hit chance falls linearly to zero at this distance (m). 0 = not explosive.
+@export var fragment_max_radius_m: float = 0.0
+
+
+func is_explosive() -> bool:
+	return fragment_max_radius_m > 0.0

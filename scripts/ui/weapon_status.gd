@@ -1,6 +1,7 @@
 class_name WeaponStatus
 extends Label
-## Bottom-left gun status: "LOADED" or "RELOADING 3.4 s". Hidden in the debug view.
+## Bottom-left gun status: "AP – LOADED" or "HE – RELOADING 3.4 s". Hidden in the
+## debug view.
 
 @export var views: PlayerViews
 @export var font_size: int = 22
@@ -22,9 +23,11 @@ func _process(_delta: float) -> void:
 	if not visible:
 		return
 	var tank: Tank = views.get_tank()
+	var shell: ShellData = tank.get_loaded_shell()
+	var prefix: String = (shell.short_name + " – ") if shell != null else ""
 	if tank.is_loaded():
-		text = "LOADED"
+		text = prefix + "LOADED"
 		add_theme_color_override("font_color", loaded_color)
 	else:
-		text = "RELOADING %.1f s" % tank.get_reload_remaining()
+		text = prefix + "RELOADING %.1f s" % tank.get_reload_remaining()
 		add_theme_color_override("font_color", reloading_color)

@@ -40,6 +40,9 @@ func _process(delta: float) -> void:
 
 func show_result(result: HitResult) -> void:
 	text = "HIT" if result == null else result.describe()
+	if result != null and result.outcome == HitResult.Outcome.COMMANDER_HIT \
+			and result.target == _tank:
+		text = "OWN COMMANDER HIT"
 	var color: Color = hit_color
 	if result != null:
 		match result.outcome:

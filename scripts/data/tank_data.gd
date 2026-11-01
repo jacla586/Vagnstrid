@@ -83,8 +83,9 @@ extends Resource
 @export var armour: ArmourData
 
 @export_group("Armament")
-## Shell fired by the main gun; the sight's range ladder is calibrated for it.
-@export var main_shell: ShellData
+## Main-gun ammunition types, in selection-key order (1, 2, ...). The first is
+## loaded at start. The sight's range ladder follows the loaded type.
+@export var ammo: Array[ShellData] = []
 ## Time to reload the main gun after a shot (s).
 @export var reload_time_s: float = 6.0
 ## Backward impulse on the tank when firing (N·s). Tuned for feel, not history.
