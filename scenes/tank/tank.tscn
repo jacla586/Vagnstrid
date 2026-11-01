@@ -1,0 +1,113 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/tank/tank.gd" id="1_tank"]
+[ext_resource type="Resource" path="res://data/tanks/test_medium.tres" id="2_data"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
+size = Vector3(3.2, 1.4, 6.5)
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_turret"]
+height = 0.8
+radius = 1.2
+
+[sub_resource type="StandardMaterial3D" id="Material_paint"]
+albedo_color = Color(0.36, 0.4, 0.27, 1)
+roughness = 0.85
+
+[sub_resource type="StandardMaterial3D" id="Material_track"]
+albedo_color = Color(0.12, 0.12, 0.11, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_hull"]
+material = SubResource("Material_paint")
+size = Vector3(2.3, 1.2, 6.2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_track"]
+material = SubResource("Material_track")
+size = Vector3(0.5, 1.0, 6.5)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_turret"]
+material = SubResource("Material_paint")
+top_radius = 1.05
+bottom_radius = 1.2
+height = 0.8
+
+[sub_resource type="BoxMesh" id="BoxMesh_mantlet"]
+material = SubResource("Material_paint")
+size = Vector3(0.8, 0.6, 0.4)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_gun"]
+material = SubResource("Material_paint")
+top_radius = 0.07
+bottom_radius = 0.09
+height = 3.6
+
+[node name="Tank" type="RigidBody3D"]
+center_of_mass_mode = 1
+center_of_mass = Vector3(0, -0.4, 0)
+can_sleep = false
+linear_damp_mode = 1
+angular_damp_mode = 1
+script = ExtResource("1_tank")
+data = ExtResource("2_data")
+
+[node name="HullShape" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_hull")
+
+[node name="TurretShape" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0.3)
+shape = SubResource("CylinderShape3D_turret")
+
+[node name="Visual" type="Node3D" parent="."]
+
+[node name="Hull" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+mesh = SubResource("BoxMesh_hull")
+
+[node name="TrackLeft" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.35, -0.2, 0)
+mesh = SubResource("BoxMesh_track")
+
+[node name="TrackRight" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.35, -0.2, 0)
+mesh = SubResource("BoxMesh_track")
+
+[node name="Turret" type="Node3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0.3)
+
+[node name="TurretMesh" type="MeshInstance3D" parent="Visual/Turret"]
+mesh = SubResource("CylinderMesh_turret")
+
+[node name="Mantlet" type="MeshInstance3D" parent="Visual/Turret"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -1.15)
+mesh = SubResource("BoxMesh_mantlet")
+
+[node name="Gun" type="MeshInstance3D" parent="Visual/Turret"]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0.05, -3.0)
+mesh = SubResource("CylinderMesh_gun")
+
+[node name="Suspension" type="Node3D" parent="."]
+
+[node name="Left1" type="RayCast3D" parent="Suspension"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.35, -0.7, -2.4)
+
+[node name="Left2" type="RayCast3D" parent="Suspension"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.35, -0.7, -0.8)
+
+[node name="Left3" type="RayCast3D" parent="Suspension"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.35, -0.7, 0.8)
+
+[node name="Left4" type="RayCast3D" parent="Suspension"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.35, -0.7, 2.4)
+
+[node name="Right1" type="RayCast3D" parent="Suspension"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.35, -0.7, -2.4)
+
+[node name="Right2" type="RayCast3D" parent="Suspension"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.35, -0.7, -0.8)
+
+[node name="Right3" type="RayCast3D" parent="Suspension"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.35, -0.7, 0.8)
+
+[node name="Right4" type="RayCast3D" parent="Suspension"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.35, -0.7, 2.4)

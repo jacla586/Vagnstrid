@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="TankData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tank_data.gd" id="1_data"]
+
+[resource]
+script = ExtResource("1_data")
+display_name = "Test Medium"
+mass_kg = 30000.0
+max_forward_speed_kmh = 40.0
+max_reverse_speed_kmh = 8.0
+acceleration = 1.5
+brake_deceleration = 4.0
+max_turn_rate_deg = 30.0
+turn_acceleration_deg = 90.0
+track_lateral_grip = 8.0
+suspension_rest_length = 0.6
+suspension_frequency_hz = 1.5
+suspension_damping_ratio = 0.6
