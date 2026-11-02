@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://d3ipodblnchrk"]
 
-[ext_resource type="Terrain3DMaterial" uid="uid://d4fuwte0p1wmu" path="res://terrain/vidingsjo/material.tres" id="1_eqrm0"]
+[ext_resource type="Terrain3DMaterial" path="res://terrain/vidingsjo/material.tres" id="1_eqrm0"]
 [ext_resource type="Terrain3DAssets" path="res://terrain/vidingsjo/assets.tres" id="2_4we33"]
 [ext_resource type="PackedScene" uid="uid://dow2gojxh5p5j" path="res://assets/maps/vidingsjo/vidingsjo_objekt.glb" id="3_e5r7p"]
 [ext_resource type="Script" uid="uid://d1wigxjl0rmf7" path="res://scripts/world/mesh_collision.gd" id="4_1xdyf"]

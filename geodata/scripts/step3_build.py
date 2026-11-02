@@ -12,6 +12,8 @@ from rasterio.transform import from_origin
 from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import takform, husgeometri
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -355,8 +357,44 @@ def orient(V, faces, roof, ctr):
         out.append([f[0], f[2], f[1]] if bad else list(f))
     return out
 
+TAKSTAT = {}
+LUTANDE = ('sadel', 'valmat', 'talt')
+
+def add_part(group, V, faces, roof, ctr, material):
+    if not faces:
+        return
+    msh = trimesh.Trimesh(V.copy(), np.array(orient(V, faces, roof, ctr)), process=False)
+    msh.remove_unreferenced_vertices()
+    add_merged(group, msh, material, husgeometri.plan_uv(np.asarray(msh.vertices), np.asarray(msh.faces)))
+
+def bygg_med_takform(poly, group, gz, wm, rm):
+    """Hus med takformer ur laserdatan: fotavtrycket delas i rektanglar och varje del får
+    den takmodell som passar laserhöjderna bäst (takform.py). False om laserdata saknas."""
+    delar = takform.dela_i_rektanglar(poly)
+    tolkade = [takform.tolka_delar(d, laser) for d in delar]
+    giltiga = [t for ts in tolkade for t in ts]
+    if not giltiga:
+        return False
+    ref = gz.mean(); bas = gz.min() - 0.6
+    tak = []
+    for d, ts in zip(delar, tolkade):
+        if not ts:      # del utan laserträffar: platt tak på husets takfotshöjd
+            mitt, u, v, a, b = takform.ram(d)
+            ts = [takform.Tak('platt', mitt, u, v, a, b, giltiga[0].takfot, giltiga[0].takfot)]
+        tak += ts
+    for t in tak:
+        V, fw, fr = husgeometri.bygg_del(t, to_world, ref, bas)
+        ctr = to_world(*t.mitt)
+        add_part(group, V, fw, False, ctr, wm)
+        add_part(group, V, fr, True, ctr, rm if t.modell in LUTANDE else MAT_ROOF_TIN)
+        TAKSTAT[t.modell] = TAKSTAT.get(t.modell, 0) + 1
+    TAKSTAT['hus'] = TAKSTAT.get('hus', 0) + 1
+    TAKSTAT['delade hus'] = TAKSTAT.get('delade hus', 0) + (len(tak) > 1)
+    return True
+
 def add_building(poly, kind, name, group, heights=None):
-    """heights = (takfot, nock) i meter över mark från laser, annars schablon per hustyp."""
+    """Med laserdata: takform ur laserhöjderna (bygg_med_takform). Annars, eller om laserträffar
+    saknas: heights = (takfot, nock) i meter över mark från laser, eller schablon per hustyp."""
     poly = poly.buffer(0)
     if poly.geom_type == 'MultiPolygon':
         poly = max(poly.geoms, key=lambda q: q.area)
@@ -364,6 +402,8 @@ def add_building(poly, kind, name, group, heights=None):
     gz = sample(h, ring[:, 0], ring[:, 1]); gz = np.r_[gz, sample(h, [poly.centroid.x], [poly.centroid.y])]
     eave, pitch, walls, roofs = SPEC[kind]
     wm = rng.choice(walls); rm = rng.choice(roofs)
+    if laser is not None and bygg_med_takform(poly, group, gz, wm, rm):
+        return
     rect = poly.minimum_rotated_rectangle
     gable = poly.area / max(rect.area, 1e-6) > 0.82
     top_ref = gz.max()
@@ -383,13 +423,9 @@ def add_building(poly, kind, name, group, heights=None):
         V, fw, fr = gable_house(rect, gz.min(), top_ref, eave, pitch)
     else:
         V, fw, fr = flat_building(poly, gz.min(), top_ref, eave + 1.0)
-    for part, faces, mm in (('vagg', fw, wm), ('tak', fr, rm)):
-        if not faces:
-            continue
-        cw = to_world(poly.centroid.x, poly.centroid.y)
-        msh = trimesh.Trimesh(V.copy(), np.array(orient(V, faces, part == 'tak', cw)), process=False)
-        msh.remove_unreferenced_vertices()
-        add_merged(group, msh, mm)
+    cw = to_world(poly.centroid.x, poly.centroid.y)
+    add_part(group, V, fw, False, cw, wm)
+    add_part(group, V, fr, True, cw, rm)
 
 scene.graph.update(frame_to='Byggnader_OSM', frame_from=scene.graph.base_frame)
 laser = None
@@ -421,9 +457,12 @@ if laser:
             continue
         hh = laser.heights_in(poly)
         kind = 'bod' if rect.area < 30 else ('lada' if rect.area > 250 else 'hus')
-        add_building(rect, kind, f'laser_{n_l:04d}_{kind}', 'Byggnader_laser', hh)
+        add_building(poly, kind, f'laser_{n_l:04d}_{kind}', 'Byggnader_laser', hh)
         n_l += 1
     print('laserbyggnader', n_l)
+if TAKSTAT:
+    print('takformer (delar):', {k: v for k, v in TAKSTAT.items() if k not in ('hus', 'delade hus')},
+          f"hus {TAKSTAT.get('hus', 0)}, varav delade {TAKSTAT.get('delade hus', 0)}")
 
 def placeholders():
     """Påhittade hus där OSM saknar hus; används bara utan laserdata."""

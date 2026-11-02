@@ -111,3 +111,7 @@ Ligger i `vidingsjo/` med egna `data/`, `work/` och `out/`. Se `CLAUDE.md` för 
 - Copernicus DEM GLO-30: © DLR e.V. 2010–2014 och © Airbus Defence and Space GmbH 2014–2018, tillhandahållen under COPERNICUS av EU och ESA
 - Lantmäteriet: Markhöjdmodell Nedladdning och Laserdata Nedladdning, skog. © Lantmäteriet, CC BY 4.0, bearbetad
 - NMD, Naturvårdsverket, CC0
+
+## Takformer
+
+Med laserdata får husen sina tak ur laserhöjderna (`scripts/takform.py`, `scripts/husgeometri.py`): platt, pulpet, sadeltak (rätt nockriktning), valmat och tält. L- och T-formade hus delas i delar med var sitt tak, och hus med två höjdnivåer delas vid trappsteget. Kontrollbilder: `forhandsbilder/8_takformer_<karta>.png` (laser till vänster, modell till höger) och `8_tak_godot_*.png`.

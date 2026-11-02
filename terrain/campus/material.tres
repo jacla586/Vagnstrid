@@ -1,5 +1,21 @@
-[gd_resource type="Terrain3DMaterial" format=3]
+[gd_resource type="Terrain3DMaterial" format=3 uid="uid://xjfclh5y51xr"]
 
 [resource]
+_shader_parameters = {
+&"auto_base_texture": 0,
+&"auto_height_reduction": 0.1,
+&"auto_overlay_texture": 1,
+&"auto_shader": null,
+&"auto_slope": 1.0,
+&"bias_distance": 512.0,
+&"blend_sharpness": 0.5,
+&"depth_blur": 0.0,
+&"distant_normal_scale": 2.0,
+&"flat_terrain_normals": false,
+&"general_uniforms": null,
+&"mipmap_bias": 1.0,
+&"mipmaps": null,
+&"private": null
+}
 world_background = 0
 auto_shader_enabled = true

@@ -1,30 +1,8 @@
-[gd_resource type="Resource" script_class="BotData" format=3]
+[gd_resource type="Resource" script_class="BotData" format=3 uid="uid://xul8ehta6d3o"]
 
-[ext_resource type="Script" path="res://scripts/data/bot_data.gd" id="1_bot"]
+[ext_resource type="Script" uid="uid://bn0lthtf2w3jg" path="res://scripts/data/bot_data.gd" id="1_bot"]
 [ext_resource type="Resource" path="res://data/world/concealment.tres" id="2_conceal"]
 
 [resource]
 script = ExtResource("1_bot")
-scan_interval_s = 0.25
-view_range_open_m = 1200.0
-view_range_closed_m = 700.0
-periscope_half_angle_deg = 60.0
-spot_time_open_s = 1.5
-spot_time_closed_s = 4.0
-forget_after_s = 8.0
 concealment = ExtResource("2_conceal")
-range_error_start = 0.3
-lay_error_mrad = 8.0
-lead_error = 0.3
-range_error_correction = 0.7
-aim_settle_s = 2.5
-aim_tolerance_deg = 0.3
-max_fire_speed_kmh = 3.0
-mg_range_m = 500.0
-mg_burst_s = 1.2
-mg_pause_s = 1.0
-mg_aim_tolerance_deg = 2.0
-hatch_open_when_calm = true
-close_hatch_within_m = 300.0
-close_hatch_after_hit_s = 15.0
-reopen_calm_s = 10.0

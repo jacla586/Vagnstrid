@@ -1,4 +1,4 @@
-[gd_resource type="Terrain3DMaterial" format=3]
+[gd_resource type="Terrain3DMaterial" format=3 uid="uid://dq7hpr35fg6da"]
 
 [resource]
 world_background = 0
