@@ -1,0 +1,79 @@
+{
+ "_om": "Stilkatalog för husen. Färger i sRGB. Hustyp väljs av husstil.klassa(); variant slumpas med vikt (stabilt per hus). vagg = väggmaterial (se material_semi), fonster = fönstertyp, tak = tillåtna taknamn (se tak). OSM-taggarna building:colour, roof:colour och building:material går före katalogens val.",
+ "fack_bredd_m": 3.0,
+ "hustyper": {
+  "villa": {"vaning_m": 2.8, "fonster": "villa", "skorsten": true, "varianter": [
+   {"id": "villa_vit", "vagg": "panel_staende", "farg": [236, 233, 222], "knutar": false, "vikt": 14, "tak": ["tegel_rod", "betong_svart"]},
+   {"id": "villa_gul", "vagg": "panel_staende", "farg": [226, 196, 120], "knutar": true, "vikt": 10, "tak": ["tegel_rod", "betong_svart"]},
+   {"id": "villa_gra", "vagg": "panel_staende", "farg": [176, 182, 184], "knutar": true, "vikt": 9, "tak": ["betong_svart", "plat_svart"]},
+   {"id": "villa_falu", "vagg": "panel_staende", "farg": [132, 40, 30], "knutar": true, "vikt": 16, "tak": ["tegel_rod", "betong_svart", "plat_svart"]},
+   {"id": "villa_brun", "vagg": "panel_liggande", "farg": [102, 74, 54], "knutar": false, "vikt": 9, "tak": ["betong_svart"]},
+   {"id": "villa_tegel", "vagg": "tegel", "farg": [150, 70, 52], "knutar": false, "vikt": 16, "tak": ["betong_svart", "tegel_rod"]},
+   {"id": "villa_tegel_gul", "vagg": "tegel_gult", "farg": [206, 178, 120], "knutar": false, "vikt": 8, "tak": ["betong_svart"]},
+   {"id": "villa_puts", "vagg": "puts", "farg": [232, 222, 196], "knutar": false, "vikt": 8, "tak": ["tegel_rod", "betong_svart"]}
+  ]},
+  "radhus": {"vaning_m": 2.7, "fonster": "villa", "skorsten": false, "varianter": [
+   {"id": "radhus_brun", "vagg": "panel_liggande", "farg": [110, 80, 58], "knutar": false, "vikt": 10, "tak": ["betong_svart"]},
+   {"id": "radhus_tegel", "vagg": "tegel", "farg": [150, 70, 52], "knutar": false, "vikt": 12, "tak": ["betong_svart"]},
+   {"id": "radhus_vit", "vagg": "panel_staende", "farg": [232, 230, 220], "knutar": false, "vikt": 8, "tak": ["betong_svart", "tegel_rod"]},
+   {"id": "radhus_gul", "vagg": "puts", "farg": [228, 204, 140], "knutar": false, "vikt": 6, "tak": ["tegel_rod"]}
+  ]},
+  "flerbostadshus": {"vaning_m": 2.9, "fonster": "rader", "skorsten": false, "varianter": [
+   {"id": "fler_tegel", "vagg": "tegel", "farg": [150, 70, 52], "knutar": false, "vikt": 10, "tak": ["plat_svart", "papp"]},
+   {"id": "fler_gul_tegel", "vagg": "tegel_gult", "farg": [206, 178, 120], "knutar": false, "vikt": 7, "tak": ["plat_svart", "papp"]},
+   {"id": "fler_puts_ljus", "vagg": "puts", "farg": [228, 224, 212], "knutar": false, "vikt": 9, "tak": ["plat_svart", "papp"]},
+   {"id": "fler_puts_gul", "vagg": "puts", "farg": [226, 200, 140], "knutar": false, "vikt": 5, "tak": ["tegel_rod", "plat_svart"]}
+  ]},
+  "kontor": {"vaning_m": 3.6, "fonster": "band", "skorsten": false, "varianter": [
+   {"id": "kontor_betong", "vagg": "betong", "farg": [196, 194, 188], "knutar": false, "vikt": 10, "tak": ["papp"]},
+   {"id": "kontor_tegel", "vagg": "tegel", "farg": [150, 70, 52], "knutar": false, "vikt": 6, "tak": ["papp"]},
+   {"id": "kontor_glas", "vagg": "glas", "farg": [78, 96, 112], "knutar": false, "vikt": 6, "tak": ["papp"], "fonster": "glas"}
+  ]},
+  "butik": {"vaning_m": 4.0, "fonster": "band", "skorsten": false, "varianter": [
+   {"id": "butik_plat", "vagg": "plat", "farg": [196, 200, 204], "knutar": false, "vikt": 6, "tak": ["papp"]},
+   {"id": "butik_puts", "vagg": "puts", "farg": [214, 208, 196], "knutar": false, "vikt": 6, "tak": ["papp"]}
+  ]},
+  "industri": {"vaning_m": 6.0, "fonster": "industri", "skorsten": false, "varianter": [
+   {"id": "industri_gra", "vagg": "plat", "farg": [168, 172, 176], "knutar": false, "vikt": 10, "tak": ["plat_gra", "papp"]},
+   {"id": "industri_bla", "vagg": "plat", "farg": [70, 98, 132], "knutar": false, "vikt": 5, "tak": ["plat_gra", "papp"]},
+   {"id": "industri_vit", "vagg": "plat", "farg": [222, 222, 218], "knutar": false, "vikt": 6, "tak": ["plat_gra", "papp"]}
+  ]},
+  "gard": {"vaning_m": 2.8, "fonster": "villa", "skorsten": true, "varianter": [
+   {"id": "gard_falu", "vagg": "panel_staende", "farg": [132, 40, 30], "knutar": true, "vikt": 14, "tak": ["tegel_rod", "plat_svart", "betong_svart"]},
+   {"id": "gard_vit", "vagg": "panel_staende", "farg": [236, 233, 222], "knutar": false, "vikt": 6, "tak": ["tegel_rod", "plat_svart"]},
+   {"id": "gard_gul", "vagg": "panel_staende", "farg": [226, 196, 120], "knutar": true, "vikt": 5, "tak": ["tegel_rod"]}
+  ]},
+  "lada": {"vaning_m": 4.5, "fonster": "lada", "skorsten": false, "varianter": [
+   {"id": "lada_falu", "vagg": "panel_staende", "farg": [132, 40, 30], "knutar": true, "vikt": 12, "tak": ["plat_gra", "plat_svart", "tegel_rod"]},
+   {"id": "lada_gra", "vagg": "plat", "farg": [160, 164, 166], "knutar": false, "vikt": 4, "tak": ["plat_gra"]}
+  ]},
+  "uthus": {"vaning_m": 2.6, "fonster": "uthus", "skorsten": false, "varianter": [
+   {"id": "uthus_falu", "vagg": "panel_staende", "farg": [132, 40, 30], "knutar": true, "vikt": 8, "tak": ["plat_svart", "betong_svart"]},
+   {"id": "uthus_vit", "vagg": "panel_staende", "farg": [236, 233, 222], "knutar": false, "vikt": 6, "tak": ["betong_svart"]},
+   {"id": "uthus_brun", "vagg": "panel_liggande", "farg": [102, 74, 54], "knutar": false, "vikt": 6, "tak": ["betong_svart", "papp"]}
+  ]},
+  "kyrka": {"vaning_m": 6.0, "fonster": "kyrka", "skorsten": false, "varianter": [
+   {"id": "kyrka_vit", "vagg": "puts", "farg": [240, 238, 232], "knutar": false, "vikt": 1, "tak": ["plat_svart"]}
+  ]}
+ },
+ "tak": {
+  "tegel_rod": {"farg": [150, 66, 48], "semi": "RoofingTiles006", "semi_m": 2.0},
+  "betong_svart": {"farg": [56, 56, 60], "semi": "RoofingTiles013A", "semi_m": 2.0},
+  "plat_svart": {"farg": [44, 46, 48], "semi": "CorrugatedSteel005", "semi_m": 2.0, "semi_ton": [70, 72, 76]},
+  "plat_gra": {"farg": [116, 120, 124], "semi": "CorrugatedSteel005", "semi_m": 2.0},
+  "papp": {"farg": [74, 74, 76], "semi": "Plaster003", "semi_m": 3.0, "semi_ton": [92, 92, 94]}
+ },
+ "material_semi": {
+  "panel_staende": {"textur": "WoodSiding009", "meter": 2.0, "rotera": true, "ton": true},
+  "panel_liggande": {"textur": "WoodSiding009", "meter": 2.0, "ton": true},
+  "tegel": {"textur": "Bricks059", "meter": 1.6},
+  "tegel_gult": {"textur": "Bricks105", "meter": 1.6},
+  "puts": {"textur": "Plaster001", "meter": 3.0, "ton": true},
+  "betong": {"textur": "Plaster003", "meter": 3.0, "ton": true},
+  "plat": {"textur": "CorrugatedSteel005", "meter": 2.0, "rotera": true, "ton": true},
+  "glas": {}
+ },
+ "semirealistiskt": [
+  {"karta": "vidingsjo", "vag": "Ortgatan", "avstand_m": 40}
+ ]
+}

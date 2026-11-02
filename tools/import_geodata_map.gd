@@ -55,8 +55,8 @@ func _initialize() -> void:
 
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_directory))
 	_clear_old_regions()
-	ResourceSaver.save(_make_material(), _directory + "/material.tres")
-	ResourceSaver.save(_make_assets(), _directory + "/assets.tres")
+	_save_keeping_uid(_make_material(), _directory + "/material.tres")
+	_save_keeping_uid(_make_assets(), _directory + "/assets.tres")
 	_copy_files()
 
 	_terrain = Terrain3D.new()
@@ -163,3 +163,12 @@ func _texture(asset_name: String, file: String) -> Terrain3DTextureAsset:
 	texture.set_albedo_texture(load("res://assets/terrain/%s_alb_ht.png" % file))
 	texture.set_normal_texture(load("res://assets/terrain/%s_nrm_rgh.png" % file))
 	return texture
+
+
+## Saves a resource but keeps the UID the file already had, so scenes that refer to it
+## by UID (the editor adds those) don't get a stale reference after a rebuild.
+func _save_keeping_uid(resource: Resource, path: String) -> void:
+	var uid: int = ResourceLoader.get_resource_uid(path) if FileAccess.file_exists(path) else ResourceUID.INVALID_ID
+	ResourceSaver.save(resource, path)
+	if uid != ResourceUID.INVALID_ID:
+		ResourceSaver.set_uid(path, uid)

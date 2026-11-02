@@ -266,83 +266,18 @@ json.dump(dict(coordinate_note='Godot-koordinater [x, y(höjd), z] i meter; x=ö
                roads=road_json), open(f'{OUT}/roads.json', 'w'), ensure_ascii=False)
 
 # ---------- Byggnader ----------
-MAT_WALL_RED = mat('Vagg_falurod', (128, 38, 28)); MAT_WALL_WHITE = mat('Vagg_vit', (226, 222, 210))
-MAT_WALL_YELLOW = mat('Vagg_gul', (214, 182, 104)); MAT_ROOF = mat('Tak_svart', (46, 46, 48), 0.7)
-MAT_ROOF_TILE = mat('Tak_tegel', (128, 60, 44), 0.8); MAT_ROOF_TIN = mat('Tak_plat', (90, 92, 94), 0.5)
-
-def btype(t, area):
-    b = t.get('building', 'yes')
-    if b == 'church':
-        return 'kyrka'
-    if b in ('barn', 'farm_auxiliary', 'shed', 'garage', 'industrial', 'warehouse', 'stable', 'cowshed'):
-        return 'lada' if area > 60 else 'bod'
-    if area < 30:
-        return 'bod'
-    if area > 260:
-        return 'lada'
-    return 'hus'
-
-SPEC = dict(  # takfotshöjd, takvinkel, väggmaterial, takmaterial
-    hus=(4.2, 38, [MAT_WALL_RED, MAT_WALL_RED, MAT_WALL_YELLOW, MAT_WALL_WHITE], [MAT_ROOF, MAT_ROOF_TILE]),
-    lada=(5.0, 28, [MAT_WALL_RED], [MAT_ROOF_TIN, MAT_ROOF]),
-    bod=(2.4, 30, [MAT_WALL_RED], [MAT_ROOF]),
-    kyrka=(8.5, 45, [MAT_WALL_WHITE], [MAT_ROOF]),
-)
-
-def gable_house(rect, ground_min, ground_max, eave, pitch, overhang=0.35):
-    c = np.array(rect.exterior.coords)[:4]
-    e0 = np.linalg.norm(c[1] - c[0]); e1 = np.linalg.norm(c[2] - c[1])
-    if e0 < e1:
-        c = np.roll(c, -1, axis=0); e0, e1 = e1, e0
-    # c0-c1 långsida, c1-c2 kortsida
-    base = ground_min - 0.6; top = ground_max + eave
-    ridge = top + math.tan(math.radians(pitch)) * e1 / 2
-    W_ = [to_world(*p) for p in c]
-    verts, faces_w, faces_r = [], [], []
-    def v(p, y):
-        verts.append([p[0], y, p[1]]); return len(verts) - 1
-    # väggar
-    for a_, b_ in [(0, 1), (1, 2), (2, 3), (3, 0)]:
-        i0 = v(W_[a_], base); i1 = v(W_[b_], base); i2 = v(W_[b_], top); i3 = v(W_[a_], top)
-        faces_w += [[i0, i2, i1], [i0, i3, i2]]
-    # gavlar (kortsidorna 1-2 och 3-0)
-    for a_, b_ in [(1, 2), (3, 0)]:
-        mid = ((W_[a_][0] + W_[b_][0]) / 2, (W_[a_][1] + W_[b_][1]) / 2)
-        i0 = v(W_[a_], top); i1 = v(W_[b_], top); i2 = v(mid, ridge)
-        faces_w += [[i0, i2, i1]]
-    # tak med utsprång
-    Wa = np.array(W_)
-    ax_long = (Wa[1] - Wa[0]) / e0; ax_short = (Wa[2] - Wa[1]) / e1
-    ctr = Wa.mean(0)
-    def P(sl, ss):
-        return ctr + ax_long * sl + ax_short * ss
-    hl = e0 / 2 + overhang; hs = e1 / 2 + overhang
-    drop = math.tan(math.radians(pitch)) * overhang
-    for side in (-1, 1):
-        p0 = P(-hl, side * hs); p1 = P(hl, side * hs); p2 = P(hl, 0); p3 = P(-hl, 0)
-        i0 = v(p0, top - drop); i1 = v(p1, top - drop); i2 = v(p2, ridge); i3 = v(p3, ridge)
-        faces_r += [[i0, i1, i2], [i0, i2, i3]]
-    return np.array(verts), faces_w, faces_r
-
-def flat_building(poly, ground_min, ground_max, eave):
-    base = ground_min - 0.6; top = ground_max + eave
-    verts, fw, fr = [], [], []
-    ring = np.array(poly.exterior.coords)[:-1]
-    if not poly.exterior.is_ccw:
-        ring = ring[::-1]
-    for k in range(len(ring)):
-        a_, b_ = to_world(*ring[k]), to_world(*ring[(k + 1) % len(ring)])
-        n0 = len(verts)
-        verts += [[a_[0], base, a_[1]], [b_[0], base, b_[1]], [b_[0], top, b_[1]], [a_[0], top, a_[1]]]
-        fw += [[n0, n0 + 2, n0 + 1], [n0, n0 + 3, n0 + 2]]
-    for tri in triangulate(poly):
-        if not poly.buffer(0.01).contains(tri.centroid):
-            continue
-        n0 = len(verts)
-        for p in list(tri.exterior.coords)[:3]:
-            q = to_world(*p); verts.append([q[0], top, q[1]])
-        fr.append([n0, n0 + 1, n0 + 2])
-    return np.array(verts), fw, fr
+# Husen samlas först (add_building) och byggs i bygg_alla_hus(): takform ur laserdatan (takform.py),
+# hustyp och stil ur stilar.json (husstil.py), fasader med fönster ur en atlas (husgeometri.py).
+import husstil
+husstil.satt_mat(mat)
+MAT_ROOF_TIN = mat('Tak_plat', (90, 92, 94), 0.5)
+LUTANDE = ('sadel', 'valmat', 'talt')
+# Schablon utan laserträffar: takfotshöjd (m) och takvinkel (grader, 0 = platt) per hustyp
+SCHABLON = dict(villa=(4.2, 35), radhus=(5.4, 30), flerbostadshus=(9.0, 0), kontor=(10.0, 0), butik=(5.0, 0),
+                industri=(7.0, 0), gard=(4.6, 38), lada=(5.0, 28), uthus=(2.4, 25), kyrka=(8.5, 45))
+LANDSBYGD_GRANNAR = 8       # färre hus än så inom 100 m = landsbygd
+TAKSTAT = {}; HUSSTAT = {}
+HUS = []                    # (polygon, OSM-taggar, grupp, laserhöjder (takfot, nock) eller None)
 
 def orient(V, faces, roof, ctr):
     out = []
@@ -357,75 +292,122 @@ def orient(V, faces, roof, ctr):
         out.append([f[0], f[2], f[1]] if bad else list(f))
     return out
 
-TAKSTAT = {}
-LUTANDE = ('sadel', 'valmat', 'talt')
+def add_building(poly, taggar, group, heights=None):
+    HUS.append((poly, taggar or {}, group, heights))
 
-def add_part(group, V, faces, roof, ctr, material):
+def add_part(group, V, UV, faces, roof, ctr, material, plan=False):
+    """Lägger en grupp trianglar i sammanslagningen. plan=True: UV i meter (tak), skalade
+    med materialets uv_skala om det har en (semirealistiska takpannor)."""
     if not faces:
         return
-    msh = trimesh.Trimesh(V.copy(), np.array(orient(V, faces, roof, ctr)), process=False)
-    msh.remove_unreferenced_vertices()
-    add_merged(group, msh, material, husgeometri.plan_uv(np.asarray(msh.vertices), np.asarray(msh.faces)))
-
-def bygg_med_takform(poly, group, gz, wm, rm):
-    """Hus med takformer ur laserdatan: fotavtrycket delas i rektanglar och varje del får
-    den takmodell som passar laserhöjderna bäst (takform.py). False om laserdata saknas."""
-    delar = takform.dela_i_rektanglar(poly)
-    tolkade = [takform.tolka_delar(d, laser) for d in delar]
-    giltiga = [t for ts in tolkade for t in ts]
-    if not giltiga:
-        return False
-    ref = gz.mean(); bas = gz.min() - 0.6
-    tak = []
-    for d, ts in zip(delar, tolkade):
-        if not ts:      # del utan laserträffar: platt tak på husets takfotshöjd
-            mitt, u, v, a, b = takform.ram(d)
-            ts = [takform.Tak('platt', mitt, u, v, a, b, giltiga[0].takfot, giltiga[0].takfot)]
-        tak += ts
-    for t in tak:
-        V, fw, fr = husgeometri.bygg_del(t, to_world, ref, bas)
-        ctr = to_world(*t.mitt)
-        add_part(group, V, fw, False, ctr, wm)
-        add_part(group, V, fr, True, ctr, rm if t.modell in LUTANDE else MAT_ROOF_TIN)
-        TAKSTAT[t.modell] = TAKSTAT.get(t.modell, 0) + 1
-    TAKSTAT['hus'] = TAKSTAT.get('hus', 0) + 1
-    TAKSTAT['delade hus'] = TAKSTAT.get('delade hus', 0) + (len(tak) > 1)
-    return True
-
-def add_building(poly, kind, name, group, heights=None):
-    """Med laserdata: takform ur laserhöjderna (bygg_med_takform). Annars, eller om laserträffar
-    saknas: heights = (takfot, nock) i meter över mark från laser, eller schablon per hustyp."""
-    poly = poly.buffer(0)
-    if poly.geom_type == 'MultiPolygon':
-        poly = max(poly.geoms, key=lambda q: q.area)
-    ring = np.array(poly.exterior.coords)
-    gz = sample(h, ring[:, 0], ring[:, 1]); gz = np.r_[gz, sample(h, [poly.centroid.x], [poly.centroid.y])]
-    eave, pitch, walls, roofs = SPEC[kind]
-    wm = rng.choice(walls); rm = rng.choice(roofs)
-    if laser is not None and bygg_med_takform(poly, group, gz, wm, rm):
-        return
-    rect = poly.minimum_rotated_rectangle
-    gable = poly.area / max(rect.area, 1e-6) > 0.82
-    top_ref = gz.max()
-    if heights is not None:
-        # Laserhöjderna är mot marken i varje punkt; utgå från markens medel under huset
-        top_ref = gz.mean()
-        eave = float(np.clip(heights[0], 2.0, 20.0))
-        rise = max(heights[1] - eave, 0.0)
-        c = np.array(rect.exterior.coords)[:3]
-        short = min(np.linalg.norm(c[1] - c[0]), np.linalg.norm(c[2] - c[1]))
-        if rise < 0.8 or short > 30:
-            gable = False
-            eave = float(np.clip(heights[1], 2.0, 25.0)) - 1.0   # platt tak på nockhöjd (flat_building lägger på 1 m)
-        else:
-            pitch = float(np.clip(math.degrees(math.atan(rise / (short / 2))), 12, 50))
-    if gable:
-        V, fw, fr = gable_house(rect, gz.min(), top_ref, eave, pitch)
+    F = np.array(orient(V, faces, roof, ctr))
+    used, inv = np.unique(F, return_inverse=True)
+    Vs = V[used]; Fs = inv.reshape(F.shape)
+    if plan:
+        uv = husgeometri.plan_uv(Vs, Fs)
+        if getattr(material, 'uv_skala', None):
+            uv = uv * material.uv_skala
     else:
-        V, fw, fr = flat_building(poly, gz.min(), top_ref, eave + 1.0)
-    cw = to_world(poly.centroid.x, poly.centroid.y)
-    add_part(group, V, fw, False, cw, wm)
-    add_part(group, V, fr, True, cw, rm)
+        uv = UV[used]
+    add_merged(group, trimesh.Trimesh(Vs, Fs, process=False), material, uv)
+
+def schablontak(delar, hustyp, heights):
+    """Tak utan laserträffar: schablon per hustyp, eller laserhöjderna (takfot, nock) om de finns."""
+    takfot, vinkel = SCHABLON[hustyp]
+    if heights is not None:
+        takfot = float(np.clip(heights[0], 2.0, 40.0))
+        vinkel = vinkel if heights[1] - takfot > 0.8 else 0
+    ut = []
+    for d in delar:
+        mitt, u, v, a, b = takform.ram(d)
+        if vinkel and b <= 8.0:
+            topp = takfot + math.tan(math.radians(vinkel)) * b
+            if heights is not None:
+                topp = max(float(heights[1]), takfot + 1.0)
+            ut.append(takform.Tak('sadel', mitt, u, v, a, b, takfot, topp))
+        else:
+            ut.append(takform.Tak('platt', mitt, u, v, a, b, takfot, takfot))
+    return ut
+
+def takfarg(t, stil):
+    if t.modell == 'platt':
+        return 'papp'
+    if t.modell == 'pulpet':
+        return stil['tak_namn'] if stil['tak_namn'].startswith(('plat', 'papp')) else 'plat_svart'
+    return stil['tak_namn']
+
+def semi_omrade():
+    """Områden (stilar.json 'semirealistiskt') där husen får den semirealistiska fasaden."""
+    delar = []
+    for o in husstil.KATALOG.get('semirealistiskt', []):
+        if o.get('karta') not in (NAMN, None):
+            continue
+        linjer = [r['line'] for r in roads if r['name'] == o['vag']]
+        if linjer:
+            delar.append(unary_union(linjer).buffer(o.get('avstand_m', 40)))
+    return unary_union(delar) if delar else None
+
+def bygg_alla_hus():
+    if not HUS:
+        return
+    mitter = np.array([[p.centroid.x, p.centroid.y] for p, *_ in HUS])
+    grannar = cKDTree(mitter).query_ball_point(mitter, 100.0, return_length=True)
+    semi_ytor = semi_omrade()
+    planer = []
+    for k, (poly, taggar, group, heights) in enumerate(HUS):
+        poly = poly.buffer(0)
+        if poly.geom_type == 'MultiPolygon':
+            poly = max(poly.geoms, key=lambda q: q.area)
+        if poly.is_empty or poly.area < 4:
+            continue
+        ring = np.array(poly.exterior.coords)
+        gz = np.r_[sample(h, ring[:, 0], ring[:, 1]), sample(h, [poly.centroid.x], [poly.centroid.y])]
+        delar = takform.dela_i_rektanglar(poly)
+        tak = []
+        if laser is not None:
+            tolkade = [takform.tolka_delar(d, laser) for d in delar]
+            giltiga = [t for ts in tolkade for t in ts]
+            if giltiga:
+                for d, ts in zip(delar, tolkade):
+                    if not ts:
+                        mitt, u, v, a, b = takform.ram(d)
+                        ts = [takform.Tak('platt', mitt, u, v, a, b, giltiga[0].takfot, giltiga[0].takfot)]
+                    tak += ts
+        landsbygd = grannar[k] < LANDSBYGD_GRANNAR
+        hojd = max((t.topp for t in tak), default=float(heights[1]) if heights is not None else 0.0)
+        hustyp = husstil.klassa(taggar, poly.area, hojd, landsbygd)
+        if not tak:
+            tak = schablontak(delar, hustyp, heights)
+        stil = husstil.valj_stil(hustyp, taggar, (round(poly.centroid.x), round(poly.centroid.y)))
+        semi = semi_ytor is not None and semi_ytor.contains(poly.centroid)
+        planer.append((poly, group, gz, tak, stil, semi))
+        HUSSTAT[hustyp] = HUSSTAT.get(hustyp, 0) + 1
+        for t in tak:
+            TAKSTAT[t.modell] = TAKSTAT.get(t.modell, 0) + 1
+    atlas = husstil.Atlas(bara={p[4]['id'] for p in planer if not p[5]})
+    semi_ids = {p[4]['id'] for p in planer if p[5]}
+    atlas_semi = husstil.Atlas(semi=True, bara=semi_ids) if semi_ids else None
+    for poly, group, gz, tak, stil, semi in planer:
+        at = atlas_semi if semi else atlas
+        ref = gz.mean(); bas = gz.min() - 0.6
+        storsta = max(range(len(tak)), key=lambda i: tak[i].halv_l * tak[i].halv_b)
+        for i, t in enumerate(tak):
+            fasad = dict(atlas=at, variant=stil['id'], vaning_m=stil['vaning_m'], fack_m=husstil.FACK_M,
+                         dorr=i == storsta, knutar=stil['knutar'],
+                         skorsten=stil['skorsten'] and i == storsta and t.modell in LUTANDE)
+            V, UV, grupper = husgeometri.bygg_del(t, to_world, ref, bas, fasad)
+            ctr = to_world(*t.mitt)
+            for namn, (faces, gctr, roof) in grupper.items():
+                if namn == 'tak':
+                    add_part(group, V, UV, faces, True, ctr, husstil.tak(takfarg(t, stil), semi), plan=True)
+                else:
+                    add_part(group, V, UV, faces, roof, gctr or ctr, at.material())
+    print('hustyper:', dict(sorted(HUSSTAT.items(), key=lambda x: -x[1])),
+          f"semirealistiska {sum(1 for p in planer if p[5])}")
+    print('takformer (delar):', TAKSTAT)
+    atlas.albedo.save(f'{OUT}/fasadatlas.png')
+    if atlas_semi:
+        atlas_semi.albedo.save(f'{OUT}/fasadatlas_semi.png')
 
 scene.graph.update(frame_to='Byggnader_OSM', frame_from=scene.graph.base_frame)
 laser = None
@@ -437,10 +419,9 @@ osm_b = [(gm, t) for gm, t in feat['buildings'] if BOX.intersects(gm)]
 bpolys = []
 n_h = 0
 for k, (gm, t) in enumerate(osm_b):
-    kind = btype(t, gm.area)
     hh = laser.heights_in(gm) if laser else None
     n_h += hh is not None
-    add_building(gm, kind, f'osm_{k:03d}_{kind}', 'Byggnader_OSM', hh)
+    add_building(gm, t, 'Byggnader_OSM', hh)
     bpolys.append(gm)
 print('OSM-byggnader', len(osm_b), 'varav med laserhöjd', n_h)
 
@@ -456,13 +437,9 @@ if laser:
         if not land[int(np.clip(round(r_), 0, H - 1)), int(np.clip(round(c_), 0, W - 1))]:
             continue
         hh = laser.heights_in(poly)
-        kind = 'bod' if rect.area < 30 else ('lada' if rect.area > 250 else 'hus')
-        add_building(poly, kind, f'laser_{n_l:04d}_{kind}', 'Byggnader_laser', hh)
+        add_building(poly, {}, 'Byggnader_laser', hh)
         n_l += 1
     print('laserbyggnader', n_l)
-if TAKSTAT:
-    print('takformer (delar):', {k: v for k, v in TAKSTAT.items() if k not in ('hus', 'delade hus')},
-          f"hus {TAKSTAT.get('hus', 0)}, varav delade {TAKSTAT.get('delade hus', 0)}")
 
 def placeholders():
     """Påhittade hus där OSM saknar hus; används bara utan laserdata."""
@@ -488,7 +465,7 @@ def placeholders():
         rect = affinity.rotate(box(cx - L_ / 2, cy - B_ / 2, cx + L_ / 2, cy + B_ / 2), ang + rng.uniform(-6, 6), origin=(cx, cy))
         if rect.intersects(blocked) or not R_land.buffer(-3).contains(rect):
             return False
-        add_building(rect, kind, f'ph_{len(placed):03d}_{kind}', 'Byggnader_platshallare')
+        add_building(rect, {'building': dict(hus='house', lada='barn', bod='shed')[kind]}, 'Byggnader_platshallare')
         placed.append(rect)
         return True
 
@@ -538,6 +515,7 @@ def placeholders():
 
 if laser is None:
     placeholders()
+bygg_alla_hus()
 
 # ---------- Vatten ----------
 MAT_SEA = mat('Hav', (40, 78, 108), 0.15); MAT_LAKE = mat('Sjo', (44, 84, 110), 0.15)

@@ -115,3 +115,7 @@ Ligger i `vidingsjo/` med egna `data/`, `work/` och `out/`. Se `CLAUDE.md` för 
 ## Takformer
 
 Med laserdata får husen sina tak ur laserhöjderna (`scripts/takform.py`, `scripts/husgeometri.py`): platt, pulpet, sadeltak (rätt nockriktning), valmat och tält. L- och T-formade hus delas i delar med var sitt tak, och hus med två höjdnivåer delas vid trappsteget. Kontrollbilder: `forhandsbilder/8_takformer_<karta>.png` (laser till vänster, modell till höger) och `8_tak_godot_*.png`.
+
+## Husstil
+
+Hustyp, färg, väggmaterial, fönster, knutar, skorsten och tak bestäms av `stilar.json`. Lägg till en variant under en hustyp (id, vagg, farg, vikt, tak) så kommer den med vid nästa bygge. Fasaderna ritas i en atlas (`out/fasadatlas.png`). Områden med semirealistiska fasader (fototexturer, CC0 från ambientCG) anges under `semirealistiskt` (karta, vägnamn, avstånd); texturerna hämtas med `.venv/bin/python scripts/hamta_texturer.py`.

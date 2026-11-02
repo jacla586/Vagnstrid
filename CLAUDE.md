@@ -78,6 +78,8 @@ shows on the minimap. This is what we test first.
   them (they overwrite the user's edits).
 - New real maps: `geodata/.venv/bin/python geodata/scripts/nytt_omrade.py <name> <lat,lon> <lat,lon>`
   (fetches OSM, LM/Copernicus, NMD; builds; imports; makes `scenes/maps/<name>.tscn`).
+- House style (types, colours, facades with windows, semi-realistic areas) comes from
+  `geodata/stilar.json`; rebuild the map to apply changes.
 - Real maps `scenes/maps/vikbolandet.tscn` (6.6 × 7 km) and `scenes/maps/vidingsjo.tscn`
   (3.4 × 3.1 km, Linköping) come from the Python pipeline in `geodata/` (see its
   CLAUDE.md; folder has `.gdignore`). Origin at the map's NW corner, 2 m vertex spacing.

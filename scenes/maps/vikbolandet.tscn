@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://mqv44yjc741"]
 
-[ext_resource type="Terrain3DMaterial" uid="uid://bitr3imc6giy1" path="res://terrain/vikbolandet/material.tres" id="1_sajnw"]
-[ext_resource type="Terrain3DAssets" uid="uid://cc4sggwnt131i" path="res://terrain/vikbolandet/assets.tres" id="2_ic685"]
+[ext_resource type="Terrain3DMaterial" path="res://terrain/vikbolandet/material.tres" id="1_sajnw"]
+[ext_resource type="Terrain3DAssets" path="res://terrain/vikbolandet/assets.tres" id="2_ic685"]
 [ext_resource type="PackedScene" uid="uid://g5j7j5xhu716" path="res://assets/maps/vikbolandet/vikbolandet_objekt.glb" id="3_h8kjr"]
 [ext_resource type="Script" uid="uid://d1wigxjl0rmf7" path="res://scripts/world/mesh_collision.gd" id="4_a5r2r"]
 [ext_resource type="Script" uid="uid://drs8vj81ngwqs" path="res://scripts/world/tree_field.gd" id="5_1nvce"]
