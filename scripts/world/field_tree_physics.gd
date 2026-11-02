@@ -35,6 +35,8 @@ func build(space: RID, owner_id: int, chunk_origins: Array[Transform3D],
 		species: Array[FieldTreeData], types: PackedByteArray) -> void:
 	_canopy_transforms.resize(positions.size())
 	for c: int in chunk_origins.size():
+		# A chunk holds one type; bushes (no trunk) only get the sight-blocking crowns.
+		var trunks: bool = chunk_count[c] > 0 and species[types[chunk_first[c]]].has_trunk
 		var body: RID = PhysicsServer3D.body_create()
 		PhysicsServer3D.body_set_mode(body, PhysicsServer3D.BODY_MODE_STATIC)
 		PhysicsServer3D.body_set_state(body, PhysicsServer3D.BODY_STATE_TRANSFORM, chunk_origins[c])
@@ -48,8 +50,9 @@ func build(space: RID, owner_id: int, chunk_origins: Array[Transform3D],
 					TRUNK_HEIGHT_STEP)
 			var trunk_r: float = maxf(snappedf(trunk_diameters[i] * 0.5, TRUNK_RADIUS_STEP),
 					TRUNK_RADIUS_STEP)
-			PhysicsServer3D.body_add_shape(body, _shape(trunk_r, trunk_h),
-					Transform3D(Basis(), p + Vector3(0.0, trunk_h * 0.5, 0.0)))
+			if trunks:
+				PhysicsServer3D.body_add_shape(body, _shape(trunk_r, trunk_h),
+						Transform3D(Basis(), p + Vector3(0.0, trunk_h * 0.5, 0.0)))
 			var canopy_h: float = maxf(snappedf(h * (1.0 - data.crown_base_fraction),
 					CANOPY_HEIGHT_STEP), MIN_CANOPY_HEIGHT)
 			var canopy_r: float = maxf(snappedf(crown_radii[i] * data.canopy_radius_factor,

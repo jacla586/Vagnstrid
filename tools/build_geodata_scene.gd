@@ -8,7 +8,6 @@ extends SceneTree
 ## Without a road ref (or if it isn't found) the longest road is used.
 ## After that the scene belongs to the editor; rerunning overwrites your edits.
 
-const TREE_TYPES: Array[String] = ["gran", "tall", "lov"]
 
 var _name: String = "vikbolandet"
 var _geo_out: String = "res://geodata/out"
@@ -68,11 +67,18 @@ func _build() -> void:
 		trees.name = "Trees"
 		trees.info_path = assets_dir + "/trees_info.json"
 		trees.data_path = assets_dir + "/trees.bin"
-		for type: String in TREE_TYPES:
-			trees.tree_scenes.append(load("%s/trad_%s.glb" % [assets_dir, type]))
-			trees.tree_data.append(load("res://data/world/field_tree_%s.tres" % type))
+		# Models and species data come from the info file (vegetation.json in geodata).
 		# The chunks it creates in _ready() have no owner, so they are not saved.
 		_add(_root, trees)
+
+	if FileAccess.file_exists(assets_dir + "/buskar.bin"):
+		var bushes := TreeField.new()
+		bushes.name = "Bushes"
+		bushes.info_path = assets_dir + "/buskar_info.json"
+		bushes.data_path = assets_dir + "/buskar.bin"
+		bushes.data_prefix = "field_bush_"
+		bushes.visibility_end_m = 800.0
+		_add(_root, bushes)
 
 	var rig: Node3D = load("res://scenes/player/player_rig.tscn").instantiate()
 	rig.name = "PlayerRig"

@@ -11,7 +11,7 @@ extends SceneTree
 ## z south, y metres above sea level, pixel (column j, row i) at (j * RES, i * RES).
 
 ## Copied as-is from the out dir to assets/maps/<name>/ (the object glb is renamed).
-const COPY_FILES: Array[String] = ["trees.bin", "trees_info.json", "trad_gran.glb", "trad_tall.glb", "trad_lov.glb"]
+const COPY_FILES: Array[String] = ["trees.bin", "trees_info.json", "buskar.bin", "buskar_info.json"]
 ## Terrain3D region size in pixels; with 2 m spacing a region covers 2048 m.
 const REGION_SIZE: int = 1024
 ## How strongly the land-cover colour tints the terrain textures (0 = none).
@@ -131,6 +131,8 @@ func _copy_files() -> void:
 	for file: String in DirAccess.get_files_at(_geo_out):
 		if file.ends_with("_objekt.glb"):
 			pairs[file] = "%s_objekt.glb" % _name
+		elif file.begins_with("veg_") and file.ends_with(".glb"):
+			pairs[file] = file   # tree and bush models (vegetation.json)
 	for file: String in COPY_FILES:
 		pairs[file] = file
 	for file: String in pairs:

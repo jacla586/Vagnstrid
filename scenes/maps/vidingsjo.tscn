@@ -5,9 +5,6 @@
 [ext_resource type="PackedScene" uid="uid://dow2gojxh5p5j" path="res://assets/maps/vidingsjo/vidingsjo_objekt.glb" id="3_e5r7p"]
 [ext_resource type="Script" uid="uid://d1wigxjl0rmf7" path="res://scripts/world/mesh_collision.gd" id="4_1xdyf"]
 [ext_resource type="Script" uid="uid://drs8vj81ngwqs" path="res://scripts/world/tree_field.gd" id="5_82ryi"]
-[ext_resource type="PackedScene" uid="uid://1q16q0qbli2g" path="res://assets/maps/vidingsjo/trad_gran.glb" id="6_6htov"]
-[ext_resource type="PackedScene" uid="uid://b3w5cl32au3v2" path="res://assets/maps/vidingsjo/trad_tall.glb" id="7_lqe1k"]
-[ext_resource type="PackedScene" uid="uid://d3ejvjy5qvypl" path="res://assets/maps/vidingsjo/trad_lov.glb" id="8_kk8bk"]
 [ext_resource type="Script" uid="uid://bp1iolfspf0b2" path="res://scripts/data/field_tree_data.gd" id="9_auyn3"]
 [ext_resource type="PackedScene" path="res://scenes/player/player_rig.tscn" id="9_vne7g"]
 [ext_resource type="Resource" path="res://data/world/field_tree_gran.tres" id="10_ftdgran"]
@@ -60,8 +57,14 @@ script = ExtResource("4_1xdyf")
 script = ExtResource("5_82ryi")
 info_path = "res://assets/maps/vidingsjo/trees_info.json"
 data_path = "res://assets/maps/vidingsjo/trees.bin"
-tree_scenes = Array[PackedScene]([ExtResource("6_6htov"), ExtResource("7_lqe1k"), ExtResource("8_kk8bk")])
 tree_data = Array[ExtResource("9_auyn3")]([ExtResource("10_ftdgran"), ExtResource("11_ftdtall"), ExtResource("12_ftdlov")])
+
+[node name="Bushes" type="Node3D" parent="." unique_id=648563996]
+script = ExtResource("5_82ryi")
+info_path = "res://assets/maps/vidingsjo/buskar_info.json"
+data_path = "res://assets/maps/vidingsjo/buskar.bin"
+data_prefix = "field_bush_"
+visibility_end_m = 800.0
 
 [node name="PlayerRig" parent="." unique_id=90670867 instance=ExtResource("9_vne7g")]
 transform = Transform3D(0.07993062, 0, -0.9968004, 0, 1, 0, 0.9968004, 0, 0.07993062, 1494.35, 62.09015, 1209.75)

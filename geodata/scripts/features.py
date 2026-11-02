@@ -35,7 +35,7 @@ def build(osm_path):
     def coords(w):
         return [P[k] for k in w['nds'] if k in P]
 
-    out = dict(buildings=[], roads=[], landcover=[], water=[], waterways=[], points=[])
+    out = dict(buildings=[], roads=[], landcover=[], water=[], waterways=[], points=[], hedges=[])
     used_in_rel = set()
     for rid, r in rels.items():
         t = r['tags']
@@ -76,6 +76,8 @@ def build(osm_path):
             out['roads'].append((LineString(c), t))
         elif 'waterway' in t:
             out['waterways'].append((LineString(c), t))
+        elif t.get('barrier') == 'hedge':
+            out['hedges'].append(LineString(c))
         elif closed and landcover_class(t):
             cls = landcover_class(t)
             g = Polygon(c).buffer(0)

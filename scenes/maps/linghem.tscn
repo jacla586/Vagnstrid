@@ -5,9 +5,6 @@
 [ext_resource type="PackedScene" path="res://assets/maps/linghem/linghem_objekt.glb" id="3_5m7lv"]
 [ext_resource type="Script" path="res://scripts/world/mesh_collision.gd" id="4_h1y08"]
 [ext_resource type="Script" path="res://scripts/world/tree_field.gd" id="5_8rr55"]
-[ext_resource type="PackedScene" path="res://assets/maps/linghem/trad_gran.glb" id="6_ck2vd"]
-[ext_resource type="PackedScene" path="res://assets/maps/linghem/trad_tall.glb" id="7_lkm0k"]
-[ext_resource type="PackedScene" path="res://assets/maps/linghem/trad_lov.glb" id="8_1wrab"]
 [ext_resource type="Script" path="res://scripts/data/field_tree_data.gd" id="9_65h1j"]
 [ext_resource type="Resource" path="res://data/world/field_tree_gran.tres" id="10_1q1ph"]
 [ext_resource type="Resource" path="res://data/world/field_tree_tall.tres" id="11_ixx8x"]
@@ -57,8 +54,14 @@ collision_prefixes = PackedStringArray("Byggnader")
 script = ExtResource("5_8rr55")
 info_path = "res://assets/maps/linghem/trees_info.json"
 data_path = "res://assets/maps/linghem/trees.bin"
-tree_scenes = Array[PackedScene]([ExtResource("6_ck2vd"), ExtResource("7_lkm0k"), ExtResource("8_1wrab")])
 tree_data = Array[ExtResource("9_65h1j")]([ExtResource("10_1q1ph"), ExtResource("11_ixx8x"), ExtResource("12_w5bpy")])
+
+[node name="Bushes" type="Node3D" parent="." unique_id=869949150]
+script = ExtResource("5_8rr55")
+info_path = "res://assets/maps/linghem/buskar_info.json"
+data_path = "res://assets/maps/linghem/buskar.bin"
+data_prefix = "field_bush_"
+visibility_end_m = 800.0
 
 [node name="PlayerRig" type="Node3D" parent="." unique_id=4683649 instance=ExtResource("13_p17ud")]
 transform = Transform3D(0.2525191, 0, -0.96759194, 0, 1, 0, 0.96759194, 0, 0.2525191, 1299.22, 57.879883, 324.74)

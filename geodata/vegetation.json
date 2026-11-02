@@ -1,0 +1,21 @@
+{
+ "_om": "Träd och buskar. Varje slag har modellvarianter: {\"generera\": \"<typ>\"} (egen low-poly-modell) eller {\"paket\": \"<sökväg under paketmapp>\"} (CC0-modell, t.ex. Quaternius/Kenney, normaliseras till höjd 1 och kronradie 1). Saknas paketfilen används den genererade reserven i samma post (\"reserv\"). fargvariation = hur mycket nyansen varierar per träd (0..1). allometri = kronradie a + b*höjd (m). nmd = vilka NMD-trädslagsskikt som räknas till slaget.",
+ "paketmapp": "vegetation_paket",
+ "trad": {
+  "gran": {"nmd": ["gran"], "allometri": [0.40, 0.08], "fargvariation": 0.10,
+           "varianter": [{"generera": "gran"}, {"generera": "gran"}, {"generera": "gran"}]},
+  "tall": {"nmd": ["tall"], "allometri": [0.60, 0.09], "fargvariation": 0.10,
+           "varianter": [{"generera": "tall"}, {"generera": "tall"}, {"generera": "tall"}]},
+  "bjork": {"nmd": ["trivial"], "allometri": [0.70, 0.12], "fargvariation": 0.14,
+            "varianter": [{"generera": "bjork"}, {"generera": "bjork"}, {"generera": "bjork"}]},
+  "ek": {"nmd": ["ekovradel"], "allometri": [0.90, 0.16], "fargvariation": 0.14,
+         "varianter": [{"generera": "ek"}, {"generera": "ek"}]}
+ },
+ "utan_nmd": {"gran": 0.40, "tall": 0.38, "bjork": 0.15, "ek": 0.07},
+ "utanfor_skog": {"bjork": 0.6, "ek": 0.4},
+ "buskar": {
+  "buske": {"fargvariation": 0.16, "varianter": [{"generera": "buske"}, {"generera": "buske"}, {"generera": "buske"}]},
+  "sly": {"fargvariation": 0.16, "varianter": [{"generera": "sly"}, {"generera": "sly"}]},
+  "hack": {"fargvariation": 0.08, "varianter": [{"generera": "hack"}]}
+ }
+}

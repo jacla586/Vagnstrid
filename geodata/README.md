@@ -119,3 +119,7 @@ Med laserdata får husen sina tak ur laserhöjderna (`scripts/takform.py`, `scri
 ## Husstil
 
 Hustyp, färg, väggmaterial, fönster, knutar, skorsten och tak bestäms av `stilar.json`. Lägg till en variant under en hustyp (id, vagg, farg, vikt, tak) så kommer den med vid nästa bygge. Fasaderna ritas i en atlas (`out/fasadatlas.png`). Områden med semirealistiska fasader (fototexturer, CC0 från ambientCG) anges under `semirealistiskt` (karta, vägnamn, avstånd); texturerna hämtas med `.venv/bin/python scripts/hamta_texturer.py`.
+
+## Träd och buskar
+
+`vegetation.json` styr trädslag, varianter, färgvariation och buskar. Egna low-poly-modeller genereras automatiskt (`scripts/vegmodeller.py`). Vill du använda ett CC0-paket (t.ex. Quaternius Ultimate Nature eller Kenney Nature Kit): packa upp det i `vegetation_paket/<paket>/` och lägg till en variant som `{"paket": "<paket>/BirchTree_1.gltf"}` under rätt slag, och bygg om. Modellen normaliseras till höjd 1 och kronradie 1 med origo vid stammens fot; saknas filen används en egen modell.

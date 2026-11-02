@@ -28,9 +28,12 @@ const SNAP_MIN_CALIBER_MM: float = 20.0
 
 @export_file("*.json") var info_path: String = ""
 @export_file("*.bin") var data_path: String = ""
-## One tree model per type, in the order of "types" in the info file.
+## Data per species is loaded as <data_dir>/<data_prefix><species>.tres when the info file
+## lists "species" (and the models from its "models", next to the info file).
+@export_dir var data_dir: String = "res://data/world"
+@export var data_prefix: String = "field_tree_"
+## Old info files without "models"/"species": one model and one data per type, in order.
 @export var tree_scenes: Array[PackedScene] = []
-## Collision and felling data per type, same order as tree_scenes.
 @export var tree_data: Array[FieldTreeData] = []
 ## Off: trees are only drawn.
 @export var physics_enabled: bool = true
@@ -40,6 +43,8 @@ const SNAP_MIN_CALIBER_MM: float = 20.0
 
 var _chunk_size: float = 250.0
 var _meshes: Array[Mesh] = []
+## FieldTreeData per type (several types can share a species).
+var _type_data: Array[FieldTreeData] = []
 var _multimeshes: Array[MultiMesh] = []
 var _chunk_type: PackedByteArray = PackedByteArray()
 var _chunk_centre: PackedVector3Array = PackedVector3Array()
@@ -71,17 +76,28 @@ func _ready() -> void:
 	var per_tree: int = int(info.floats_per_tree)
 	_chunk_size = float(info.get("chunk_m", 250.0))
 	_meshes.clear()
-	for scene: PackedScene in tree_scenes:
-		_meshes.append(_mesh_from(scene))
+	_type_data.clear()
+	if info.has("models"):
+		for model: String in info.models:
+			_meshes.append(_mesh_from(load(info_path.get_base_dir().path_join(model))))
+	else:
+		for scene: PackedScene in tree_scenes:
+			_meshes.append(_mesh_from(scene))
+	if info.has("species"):
+		for species: String in info.species:
+			_type_data.append(load(data_dir.path_join(data_prefix + species + ".tres")))
+	else:
+		_type_data.assign(tree_data)
 	_build_chunks(info.chunks, floats, per_tree)
 	if Engine.is_editor_hint() or not physics_enabled:
 		return
-	if tree_data.size() < _meshes.size():
-		push_error("TreeField: tree_data needs one FieldTreeData per tree type")
+	if _type_data.size() < _meshes.size():
+		push_error("TreeField: need one FieldTreeData per tree type")
 		return
 	_read_trees(floats, per_tree)
 	_build_physics()
-	set_physics_process(true)
+	# Only trees with trunks can be pushed over (bushes are just sight blockers).
+	set_physics_process(_type_data.any(func(d: FieldTreeData) -> bool: return d.has_trunk))
 	print_verbose("tree_field: %d trees in %d chunks" % [_position.size(), _chunk_first.size()])
 
 
@@ -104,7 +120,7 @@ func on_shell_hit(shell_data: ShellData, point: Vector3, _normal: Vector3,
 		velocity: Vector3, _shape: int = -1) -> HitResult:
 	var tree: int = _nearest_standing_tree(to_local(point))
 	if tree < 0 or shell_data.caliber_mm < SNAP_MIN_CALIBER_MM \
-			or _trunk_diameter[tree] > tree_data[_type[tree]].shell_snap_max_diameter_m:
+			or _trunk_diameter[tree] > _type_data[_type[tree]].shell_snap_max_diameter_m:
 		return null
 	fell_tree(tree, velocity)
 	var result := HitResult.new()
@@ -149,7 +165,7 @@ func fell_tree(tree: int, direction: Vector3) -> void:
 	var falling := FallingTree.new()
 	add_child(falling, false, Node.INTERNAL_MODE_BACK)
 	falling.position = _chunk_centre[chunk] + drawn.origin
-	falling.setup(_meshes[_type[tree]], drawn.basis, direction, tree_data[_type[tree]],
+	falling.setup(_meshes[_type[tree]], drawn.basis, direction, _type_data[_type[tree]],
 			cast_shadows)
 	var foot: Vector3 = _position[tree]
 	falling.landed.connect(func(tilt: Basis) -> void:
@@ -172,6 +188,8 @@ func _build_chunks(chunks: Array, floats: PackedFloat32Array, per_tree: int) -> 
 		var centre := Vector3(float(chunk[1]), 0.0, float(chunk[2]))
 		var multimesh := MultiMesh.new()
 		multimesh.transform_format = MultiMesh.TRANSFORM_3D
+		# 16 floats per instance: transform + colour (per-tree tint).
+		multimesh.use_colors = per_tree >= 16
 		multimesh.mesh = _meshes[type]
 		multimesh.instance_count = count
 		multimesh.buffer = floats.slice(first * per_tree, (first + count) * per_tree)
@@ -208,7 +226,7 @@ func _read_trees(floats: PackedFloat32Array, per_tree: int) -> void:
 	_felled.fill(0)
 	for c: int in _chunk_first.size():
 		var type: int = _chunk_type[c]
-		var data: FieldTreeData = tree_data[type]
+		var data: FieldTreeData = _type_data[type]
 		for i: int in range(_chunk_first[c], _chunk_first[c] + _chunk_count[c]):
 			var o: int = i * per_tree
 			# Row-major 3x4: column x = (o, o+4, o+8), column y = (o+1, o+5, o+9).
@@ -227,7 +245,7 @@ func _build_physics() -> void:
 		origins.append(global_transform * Transform3D(Basis(), centre))
 	_physics = FieldTreePhysics.new()
 	_physics.build(get_world_3d().space, get_instance_id(), origins, _chunk_first, _chunk_count,
-			_position, _height, _crown_radius, _trunk_diameter, tree_data, _type)
+			_position, _height, _crown_radius, _trunk_diameter, _type_data, _type)
 
 
 ## Checks the standing trees around the tank's hull with the push rule.
@@ -292,15 +310,36 @@ func _cell_of(point: Vector3) -> Vector2i:
 	return Vector2i(floori(point.x / _chunk_size), floori(point.z / _chunk_size))
 
 
-## The tree models are glb files with vertex colours; give them a material that uses them.
+## Turns an imported model (glb) into one mesh: all MeshInstance3D parts are merged with
+## their transforms. Surfaces without a texture get a vertex-colour material; textured ones
+## (CC0 packs) keep theirs. Either way the material takes the per-instance colour.
 func _mesh_from(scene: PackedScene) -> Mesh:
 	var root: Node = scene.instantiate()
-	var source: MeshInstance3D = root.find_children("*", "MeshInstance3D", true, false)[0]
-	var mesh: Mesh = source.mesh.duplicate()
+	var out := ArrayMesh.new()
+	for node: Node in root.find_children("*", "MeshInstance3D", true, false):
+		var part := node as MeshInstance3D
+		var relative: Transform3D = Transform3D.IDENTITY
+		var walker: Node = part
+		while walker != root and walker is Node3D:
+			relative = (walker as Node3D).transform * relative
+			walker = walker.get_parent()
+		for surface: int in part.mesh.get_surface_count():
+			var tool := SurfaceTool.new()
+			tool.append_from(part.mesh, surface, relative)
+			tool.commit(out)
+			var source: Material = part.get_active_material(surface)
+			out.surface_set_material(out.get_surface_count() - 1, _material_for(source))
 	root.free()
+	return out
+
+
+func _material_for(source: Material) -> Material:
+	var textured := source as BaseMaterial3D
+	if textured != null and textured.albedo_texture != null:
+		var copy := textured.duplicate() as BaseMaterial3D
+		copy.vertex_color_use_as_albedo = true   # instance colour tints it
+		return copy
 	var material := StandardMaterial3D.new()
 	material.vertex_color_use_as_albedo = true
 	material.roughness = 1.0
-	for surface: int in mesh.get_surface_count():
-		mesh.surface_set_material(surface, material)
-	return mesh
+	return material

@@ -7,10 +7,11 @@ Typ lottas efter NMD-andelarna (tall, gran, triviallöv, ek/ädellöv) i trädet
 NMD:s skogsmask (gårdar, åkerholmar) blir det lövträd.
 
 Utdata:
-  trees.bin        float32, 12 tal per träd = färdig MultiMesh-transform (3x4, radvis), origo relativt
-                   rutans mitt. Sorterad per ruta och typ.
-  trees_info.json  rutor: [typ, rutans mitt x, z, första träd, antal]; mesh-enhet: höjd 1, kronradie 1.
-  trad_gran.glb, trad_tall.glb, trad_lov.glb  low-poly-platshållare (höjd 1, kronradie 1, vertexfärger).
+  trees.bin        float32, 16 tal per träd = färdig MultiMesh-transform (3x4, radvis, origo relativt
+                   rutans mitt) + färg. Sorterad per ruta och typ (slag_variant).
+  trees_info.json  rutor: [typ, rutans mitt x, z, första träd, antal], typer, modellfiler och slag.
+  buskar.bin, buskar_info.json  samma format för buskar (laser, OSM-häckar, buskmark, skogsbryn).
+  veg_<slag>_<variant>.glb  modellerna (vegetation.json, vegmodeller.py): höjd 1, kronradie 1.
 """
 from pathlib import Path
 import os
@@ -28,7 +29,7 @@ import trimesh
 OBJ = sys.argv[1]
 OUT = Path(sys.argv[2])
 NMD_DIR = Path(sys.argv[3]) if len(sys.argv) > 3 else ROOT / 'data' / 'nmd'
-CHUNK = 250.0           # m, rutstorlek i Godot
+CHUNK = 500.0           # m, rutstorlek i Godot (en MultiMesh per ruta, slag och variant)
 MIN_H = 3.0             # lägre än så räknas som buskar/sly
 ROOF_FRAC = 15.0        # utjämnad flerekoandel (%) under detta + hög = tak, inte träd
 TYPES = ['gran', 'tall', 'lov']
@@ -93,95 +94,172 @@ E, N, ht, ground = E[keep], N[keep], ht[keep], ground[keep]
 print('träd efter rensning', E.size)
 
 # ---------- Trädslag från NMD ----------
-names = dict(tall='tall', gran='gran', trivial='trivial', ekovradel='ekovradel')
-# Utan NMD: ungefärliga andelar för svensk skog (gran, tall, löv) i stället.
-UTAN_NMD = (0.40, 0.38, 0.22)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import vegmodeller
+VEG = vegmodeller.KATALOG
+SLAG = list(VEG['trad'])                                   # t.ex. gran, tall, bjork, ek
+skikt = sorted({k for sp in VEG['trad'].values() for k in sp['nmd']})
+nmd_files = {key: glob.glob(str(NMD_DIR / f'*tradslag_{key}_*.tif')) for key in skikt}
 shares = {}
-nmd_files = {key: glob.glob(str(NMD_DIR / f'*tradslag_{key}_*.tif')) for key in names}
 if not all(nmd_files.values()):
-    print(f'Saknar NMD-trädslag i {NMD_DIR}: använder genomsnittsandelar gran/tall/löv {UTAN_NMD}')
-for key in (names if all(nmd_files.values()) else []):
+    print(f'Saknar NMD-trädslag i {NMD_DIR}: använder genomsnittsandelar {VEG["utan_nmd"]}')
+for key in (skikt if all(nmd_files.values()) else []):
     f = nmd_files[key]
-    with rasterio.open(f[0]) as s:
-        if s.crs != crs_obj and s.crs.to_epsg() != 3006:
+    with rasterio.open(f[0]) as src_n:
+        if src_n.crs != crs_obj and src_n.crs.to_epsg() != 3006:
             sys.exit(f'{f[0]} är inte i SWEREF 99 TM')
-        a = s.read(1)
-        r_, c_ = rasterio.transform.rowcol(s.transform, E, N)
+        a = src_n.read(1)
+        r_, c_ = rasterio.transform.rowcol(src_n.transform, E, N)
         r_ = np.clip(np.asarray(r_), 0, a.shape[0] - 1); c_ = np.clip(np.asarray(c_), 0, a.shape[1] - 1)
         shares[key] = a[r_, c_].astype(np.float32)
+utanfor = np.array([VEG['utanfor_skog'].get(sl, 0.0) for sl in SLAG], np.float32)
 if shares:
-    nod = shares['tall'] == 255
-    p = np.stack([shares['gran'], shares['tall'], shares['trivial'] + shares['ekovradel']], 1)
-    p[nod] = [0, 0, 1]
-    p = np.where(p == 255, 0, p)
+    nod = shares[skikt[0]] == 255
+    p = np.stack([sum(np.where(shares[k] == 255, 0, shares[k]) for k in VEG['trad'][sl]['nmd']) for sl in SLAG], 1)
+    p[nod] = utanfor
 else:
-    p = np.tile(np.asarray(UTAN_NMD, np.float32), (E.size, 1))
-p[p.sum(1) == 0] = [0, 0, 1]
+    p = np.tile(np.array([VEG['utan_nmd'].get(sl, 0.0) for sl in SLAG], np.float32), (E.size, 1))
+p[p.sum(1) == 0] = utanfor
 cum = np.cumsum(p / p.sum(1, keepdims=True), 1)
-typ = (rng.random(E.size)[:, None] > cum).sum(1).clip(0, 2)
-print('fördelning', {t: int((typ == k).sum()) for k, t in enumerate(TYPES)})
+typ = (rng.random(E.size)[:, None] > cum).sum(1).clip(0, len(SLAG) - 1)
+print('fördelning', {sl: int((typ == k).sum()) for k, sl in enumerate(SLAG)})
 
 # ---------- Kronradie: allometri, begränsad av närmaste granne ----------
-A = np.array([[0.40, 0.08], [0.60, 0.09], [0.80, 0.15]])   # r = a + b*h per typ
+A = np.array([VEG['trad'][sl]['allometri'] for sl in SLAG])   # r = a + b*h per slag
 r_allo = A[typ, 0] + A[typ, 1] * ht
 nn, _ = cKDTree(np.c_[E, N]).query(np.c_[E, N], k=2)
 crown = np.clip(np.minimum(r_allo, 0.65 * nn[:, 1]), 0.5, None)
 
-# ---------- MultiMesh-buffert per ruta och typ ----------
-x = E - OX; z = OY - N
-cx = np.floor(x / CHUNK).astype(int); cz = np.floor(z / CHUNK).astype(int)
-order = np.lexsort((typ, cx, cz))
-x, z, ground, ht, crown, typ, cx, cz = (a[order] for a in (x, z, ground, ht, crown, typ, cx, cz))
-yaw = rng.uniform(0, 2 * math.pi, x.size)
-c, s = np.cos(yaw), np.sin(yaw)
-mx_ = (cx + 0.5) * CHUNK; mz_ = (cz + 0.5) * CHUNK
-buf = np.zeros((x.size, 12), np.float32)
-buf[:, 0] = c * crown;  buf[:, 2] = s * crown;  buf[:, 3] = x - mx_
-buf[:, 5] = ht;         buf[:, 7] = ground - 0.15                     # sänk lite så stammen inte svävar
-buf[:, 8] = -s * crown; buf[:, 10] = c * crown; buf[:, 11] = z - mz_
-buf.tofile(str(OUT / 'trees.bin'))
-key = np.c_[cz, cx, typ]
-starts = np.r_[0, np.nonzero(np.any(np.diff(key, axis=0) != 0, axis=1))[0] + 1]
-counts = np.diff(np.r_[starts, x.size])
-chunks = [[int(typ[a]), float(mx_[a]), float(mz_[a]), int(a), int(n_)] for a, n_ in zip(starts, counts)]
-json.dump(dict(count=int(x.size), floats_per_tree=12, chunk_m=CHUNK, types=TYPES,
-               note='chunks: [typ, mitt_x, mitt_z, första, antal]; transform radvis 3x4 relativt rutans mitt',
-               chunks=chunks), open(str(OUT / 'trees_info.json'), 'w'))
-print('rutor', len(chunks), 'fil MB', round(buf.nbytes / 1e6, 1))
+
+# ---------- Skriv MultiMesh-buffert (träd och buskar) ----------
+def skriv(namn, grupp, slag_idx, E_, N_, mark, hojd, rx, rz, yaw):
+    """Buffert med 16 tal per instans (3x4-transform + färg) per ruta, slag och variant, samt
+    info-json med modellfilerna. slag_idx pekar i listan över slag i vegetation.json[grupp]."""
+    slaglista = list(VEG[grupp])
+    filer = vegmodeller.bygg_modeller(grupp, OUT)
+    typer, modeller, typ_slag = [], [], []
+    for si, sl in enumerate(slaglista):
+        for f in filer[sl]:
+            typer.append(f[4:-4]); modeller.append(f); typ_slag.append(si)
+    forsta = np.cumsum([0] + [len(filer[sl]) for sl in slaglista])
+    antal_var = np.array([len(filer[sl]) for sl in slaglista])
+    variant = (rng.random(E_.size) * antal_var[slag_idx]).astype(int)
+    t_idx = forsta[slag_idx] + variant
+    x = E_ - OX; z = OY - N_
+    cx = np.floor(x / CHUNK).astype(int); cz = np.floor(z / CHUNK).astype(int)
+    order = np.lexsort((t_idx, cx, cz))
+    x, z, mark, hojd, rx, rz, yaw, t_idx, slag_idx, cx, cz = (a[order] for a in
+        (x, z, mark, hojd, rx, rz, yaw, t_idx, slag_idx, cx, cz))
+    c, s_ = np.cos(yaw), np.sin(yaw)
+    mx_ = (cx + 0.5) * CHUNK; mz_ = (cz + 0.5) * CHUNK
+    buf = np.zeros((x.size, 16), np.float32)
+    buf[:, 0] = c * rx;   buf[:, 2] = s_ * rz;  buf[:, 3] = x - mx_
+    buf[:, 5] = hojd;     buf[:, 7] = mark
+    buf[:, 8] = -s_ * rx; buf[:, 10] = c * rz;  buf[:, 11] = z - mz_
+    # Färg per instans: ljushet och lite grönskiftning, styrt av slagets fargvariation
+    var = np.array([VEG[grupp][sl].get('fargvariation', 0.1) for sl in slaglista])[slag_idx]
+    ljus = 1 + rng.normal(0, 0.5, x.size) * var
+    gron = 1 + rng.normal(0, 0.3, x.size) * var
+    buf[:, 12] = np.clip(ljus * (2 - gron), 0.5, 1.5)
+    buf[:, 13] = np.clip(ljus * gron, 0.5, 1.5)
+    buf[:, 14] = np.clip(ljus, 0.5, 1.5)
+    buf[:, 15] = 1.0
+    buf.tofile(str(OUT / f'{namn}.bin'))
+    key = np.c_[cz, cx, t_idx]
+    starts = np.r_[0, np.nonzero(np.any(np.diff(key, axis=0) != 0, axis=1))[0] + 1] if x.size else np.array([], int)
+    counts = np.diff(np.r_[starts, x.size])
+    chunks = [[int(t_idx[a]), float(mx_[a]), float(mz_[a]), int(a), int(n_)] for a, n_ in zip(starts, counts)]
+    json.dump(dict(count=int(x.size), floats_per_tree=16, chunk_m=CHUNK, types=typer, models=modeller,
+                   species=[slaglista[i] for i in typ_slag],
+                   note='chunks: [typ, mitt_x, mitt_z, första, antal]; transform radvis 3x4 relativt rutans mitt + färg',
+                   chunks=chunks), open(str(OUT / f'{namn}_info.json'), 'w'))
+    print(f'{namn}: {x.size} st i {len(chunks)} rutor,', {t: int((t_idx == i).sum()) for i, t in enumerate(typer)})
 
 
-# ---------- Platshållarträd (höjd 1, kronradie 1) ----------
-def srgb2lin(rgb):
-    c = np.asarray(rgb, np.float64) / 255.0
-    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+yaw = rng.uniform(0, 2 * math.pi, E.size)
+skriv('trees', 'trad', typ, E, N, ground - 0.15, ht, crown, crown, yaw)    # sänk lite så stammen inte svävar
 
-def colored(mesh, rgb):
-    col = np.r_[np.round(srgb2lin(rgb) * 255), 255].astype(np.uint8)
-    mesh.visual = trimesh.visual.ColorVisuals(mesh, vertex_colors=np.tile(col, (len(mesh.vertices), 1)))
-    return mesh
+# ---------- Buskar ----------
+BUSKAR = list(VEG['buskar'])
+bi = {b: i for i, b in enumerate(BUSKAR)}
+bE, bN, bH, bR, bL, bY, bT = [], [], [], [], [], [], []
 
-def cyl(r, y0, y1, sections=6):
-    m = trimesh.creation.cylinder(radius=r, height=y1 - y0, sections=sections)
-    m.apply_transform(trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0]))
-    m.apply_translation([0, (y0 + y1) / 2, 0]); return m
+def lagg(E_, N_, h_, r_, l_, y_, typ_):
+    n_ = np.size(E_)
+    bE.append(np.atleast_1d(E_)); bN.append(np.atleast_1d(N_)); bH.append(np.broadcast_to(h_, n_).astype(float))
+    bR.append(np.broadcast_to(r_, n_).astype(float)); bL.append(np.broadcast_to(l_, n_).astype(float))
+    bY.append(np.broadcast_to(y_, n_).astype(float)); bT.append(np.full(n_, bi[typ_]))
 
-def cone(r, y0, y1, sections=7):
-    m = trimesh.creation.cone(radius=r, height=y1 - y0, sections=sections)
-    m.apply_transform(trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0]))
-    m.apply_translation([0, y0, 0]); return m
+def ok_plats(E_, N_):
+    pj_ = np.clip(np.round((E_ - OX) / RES).astype(int), 0, lc.shape[1] - 1)
+    pi_ = np.clip(np.round((OY - N_) / RES).astype(int), 0, lc.shape[0] - 1)
+    bra = ~np.isin(lc[pi_, pj_], [LC['hav'], LC['sjö'], LC['väg_asfalt'], LC['väg_grus']])
+    if blds:
+        bra &= ~bm[pi_, pj_]
+    return bra
 
-def blob(ry, yc, sub=1):
-    m = trimesh.creation.icosphere(subdivisions=sub, radius=1.0)
-    m.apply_scale([1.0, ry, 1.0]); m.apply_translation([0, yc, 0]); return m
+# 1) Laserdatan: låg vegetation 0,7–3 m med många flerekon (inte tak, inte träd)
+lag = (b1 >= 0.7) & (b1 < 3.0) & has & (frac_s > 30) & ~roof
+rr_, cc_ = np.nonzero(lag & (rng.random(lag.shape) < (cres * cres) / 6.0))
+E_ = T.c + (cc_ + 0.5) * cres + rng.uniform(-0.4, 0.4, rr_.size)
+N_ = T.f - (rr_ + 0.5) * cres + rng.uniform(-0.4, 0.4, rr_.size)
+h_ = b1[rr_, cc_] * rng.uniform(0.85, 1.0, rr_.size)
+keep_ = ok_plats(E_, N_)
+E_, N_, h_ = E_[keep_], N_[keep_], h_[keep_]
+r_ = np.clip(0.5 + 0.35 * h_, 0.6, 1.6)
+for t_, m_ in (('sly', h_ > 2.0), ('buske', h_ <= 2.0)):
+    lagg(E_[m_], N_[m_], h_[m_], r_[m_], r_[m_], rng.uniform(0, 2 * math.pi, m_.sum()), t_)
+n_laser = E_.size
 
-BARK = (92, 70, 52); PINE_BARK = (150, 96, 60)
-models = dict(
-    gran=[colored(cyl(0.05, 0, 0.2), BARK)] + [colored(cone(r, y0, y1), (40, 74, 44))
-          for r, y0, y1 in ((1.0, 0.08, 0.55), (0.78, 0.35, 0.8), (0.52, 0.6, 1.0))],
-    tall=[colored(cyl(0.06, 0, 0.8), PINE_BARK), colored(blob(0.16, 0.84), (58, 88, 48))],
-    lov=[colored(cyl(0.07, 0, 0.45), BARK), colored(blob(0.33, 0.66), (78, 112, 54))],
-)
-for name, parts in models.items():
-    m = trimesh.util.concatenate(parts)
-    m.export(str(OUT / f'trad_{name}.glb'))
+# 2) OSM-häckar: en häckbit var 1,5 m längs linjen
+n_hack = 0
+for line in feat.get('hedges', []):
+    L_ = line.length
+    if L_ < 1:
+        continue
+    for d_ in np.arange(0.75, L_, 1.5):
+        a_ = line.interpolate(max(d_ - 0.5, 0)); b_ = line.interpolate(min(d_ + 0.5, L_)); m_ = line.interpolate(d_)
+        ang = math.atan2(b_.y - a_.y, b_.x - a_.x)
+        if ok_plats(np.array([m_.x]), np.array([m_.y]))[0]:
+            # transformens x-axel blir (E, N) = (cos, sin): vinkeln i E/N-planet direkt
+            lagg(m_.x, m_.y, rng.uniform(1.2, 1.6), 0.5, 0.85, ang, 'hack'); n_hack += 1
+
+# 3) Buskmark (OSM natural=scrub): cirka en buske per 40 m²
+n_mark = 0
+for gm, cls in feat['landcover']:
+    if cls != 'scrub':
+        continue
+    minx, miny, maxx, maxy = gm.bounds
+    n_ = int(gm.area / 40)
+    if n_ < 1:
+        continue
+    pe = rng.uniform(minx, maxx, n_ * 2); pn = rng.uniform(miny, maxy, n_ * 2)
+    from shapely import contains_xy
+    inne = contains_xy(gm, pe, pn) & ok_plats(pe, pn)
+    pe, pn = pe[inne][:n_], pn[inne][:n_]
+    hh_ = rng.uniform(1.0, 2.4, pe.size)
+    lagg(pe, pn, hh_, np.clip(0.5 + 0.35 * hh_, 0.6, 1.4), np.clip(0.5 + 0.35 * hh_, 0.6, 1.4),
+         rng.uniform(0, 2 * math.pi, pe.size), 'buske')
+    n_mark += pe.size
+
+# 4) Skogsbryn: sly på öppen mark inom 4 m från skog
+skog = lc == LC['skog']
+oppet = np.isin(lc, [LC['åker'], LC['äng'], LC['mark']])
+bryn = oppet & ndi.binary_dilation(skog, iterations=max(int(4 / RES), 1))
+ri_, ci_ = np.nonzero(bryn & (rng.random(bryn.shape) < (RES * RES) / 30.0))
+pe = OX + ci_ * RES + rng.uniform(-RES / 2, RES / 2, ri_.size)
+pn = OY - ri_ * RES + rng.uniform(-RES / 2, RES / 2, ri_.size)
+inne = ok_plats(pe, pn)
+pe, pn = pe[inne], pn[inne]
+hh_ = rng.uniform(1.2, 2.8, pe.size)
+lagg(pe, pn, hh_, np.clip(0.5 + 0.35 * hh_, 0.6, 1.5), np.clip(0.5 + 0.35 * hh_, 0.6, 1.5),
+     rng.uniform(0, 2 * math.pi, pe.size), 'sly')
+n_bryn = pe.size
+print(f'buskar: laser {n_laser}, häck {n_hack}, buskmark {n_mark}, skogsbryn {n_bryn}')
+
+if bE:
+    bE, bN, bH, bR, bL, bY, bT = (np.concatenate(a) for a in (bE, bN, bH, bR, bL, bY, bT))
+    bmark = ndi.map_coordinates(h_final, [(OY - bN) / RES, (bE - OX) / RES], order=1, mode='nearest')
+    hogt = bmark >= 0.3
+    skriv('buskar', 'buskar', bT[hogt], bE[hogt], bN[hogt], bmark[hogt] - 0.1, bH[hogt], bL[hogt], bR[hogt], bY[hogt])
 print('klart')

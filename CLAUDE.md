@@ -88,12 +88,14 @@ shows on the minimap. This is what we test first.
   `assets/maps/<name>/`). `tools/build_geodata_scene.gd` made each scene once; don't
   rerun it on a scene that has been edited. Buildings get collision via
   `scripts/world/mesh_collision.gd`. Laser trees (`scripts/world/tree_field.gd`,
-  `@tool`, MultiMesh per 250 m chunk) follow the `BreakableTree` rules without nodes:
+  `@tool`, MultiMesh per 250 m chunk, per-instance colour, models and species from the info file) follow the `BreakableTree` rules without nodes:
   `FieldTreePhysics` makes one static body (trunks, layer 1) and one area (crowns,
   layer 5) per chunk in the PhysicsServer3D, with TreeField as collider; `TreePush`
   is a copy of BreakableTree's push rule (keep them in step); felled trees animate
   with `FallingTree`. Sizes per species in `data/world/field_tree_*.tres`
-  (`FieldTreeData`). hills.tscn still uses `tree.tscn`/`BreakableTree`.
+  (`FieldTreeData`). Bushes are a second TreeField (`Bushes`, data `field_bush_*.tres`,
+  `has_trunk = false`): crowns block sight (and count as cover), tanks and shells pass.
+  hills.tscn still uses `tree.tscn`/`BreakableTree`.
 - Vegetation that matters for gameplay is real scenes (`tree.tscn`, `bush.tscn`),
   placed with the `Scatter` tool node, not the Terrain3D instancer (no collision).
 
@@ -135,6 +137,23 @@ reload/recoil/tracers, and target boards at known ranges.
 - an enemy target tank to shoot at (step towards bots)
 - first bots (Vidingsjö): patrol, spot by the same rules, shoot back, MG on open
   hatches. Next: tuning, shared spotting/minimap, bots that move to fight.
+
+## Plan: two players over the network (not started)
+
+Assessed 2026-11-02, nothing built yet. Host-authoritative with Godot's built-in
+multiplayer (ENet, RPC, MultiplayerSynchronizer):
+- The host runs the whole simulation (physics, bots, hits, felled trees). The client only
+  sends its `TankCommand` each physics frame and draws synced state.
+- Sync per tank: transform, velocity, turret yaw, gun pitch, hatch, reload, ammo, knocked out.
+  Client tanks are frozen and interpolated.
+- Shells/MG bullets: the host sends a spawn event (position, velocity, shell type); the client
+  simulates the tracer itself (ballistics are deterministic). Hits are decided on the host only.
+- World events as RPCs: felled trees (index + direction), respawns, MG nests.
+- To build: host/join-by-IP menu; one PlayerRig per peer with camera/HUD only for the local
+  tank (PlayerRig assumes a single player today); teams via `Tank.team`; bots stay host-side.
+- Estimate: first playable PvP/co-op in ~3–5 sessions, polished in 1–2 hobby weeks.
+- Internet play: Tailscale/ZeroTier (no port forwarding). Test with two local instances.
+- Steps: 1) connect + two tanks driving, 2) shells/hits, 3) bots, map choice, polish.
 
 Later: Terrain3D for real maps (check it supports Godot 4.7 first), damage model,
 spotting/minimap, bots, game modes, multiplayer.

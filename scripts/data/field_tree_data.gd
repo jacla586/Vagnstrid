@@ -5,6 +5,8 @@ extends TreeData
 ## and the sight-blocking crown are worked out from those. trunk_diameter_m (from
 ## TreeData) is not used; fall time, fallen angle and shell snapping are.
 
+## False for bushes: no trunk collider, can't be pushed over; the crown still blocks sight.
+@export var has_trunk: bool = true
 ## Trunk diameter per metre of tree height (m/m).
 @export var trunk_diameter_per_height_m: float = 0.015
 ## Thinnest trunk, for small trees (m).
