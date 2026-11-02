@@ -34,9 +34,10 @@ def mask(geoms):
     return rasterize([(g, 1) for g in geoms], out_shape=(H, W), transform=T).astype(bool)
 
 land = mask([reg['land'].intersection(area.buffer(500))])
-if DEM_TYPE == 'lm':
-    # Lantmäteriets markmodell har havet platt på ~0,4–0,5 m. Hav = sammanhängande låga ytor
-    # större än 0,2 km². Säkrare än OSM-kustlinjen, vars land/hav-klassning slår fel långt från kusten.
+if DEM_TYPE == 'lm' or 'grid_box' in reg:
+    # Lantmäteriets markmodell har havet platt på ~0,4–0,5 m (Copernicus ~0 m). Hav = sammanhängande
+    # låga ytor större än 0,2 km². Säkrare än OSM-kustlinjen, vars land/hav-klassning slår fel långt
+    # från kusten. Gäller även Copernicus i rutläge, där rutan annars räknas som land rakt igenom.
     low = h < 0.52
     lab, n = ndi.label(low)
     sizes = ndi.sum(low, lab, np.arange(1, n + 1)) * RES * RES

@@ -1,0 +1,49 @@
+[gd_scene format=3]
+
+[ext_resource type="Terrain3DMaterial" path="res://terrain/test_hackerstad/material.tres" id="1_elkjn"]
+[ext_resource type="Terrain3DAssets" path="res://terrain/test_hackerstad/assets.tres" id="2_05ttn"]
+[ext_resource type="PackedScene" path="res://assets/maps/test_hackerstad/test_hackerstad_objekt.glb" id="3_b2yap"]
+[ext_resource type="Script" path="res://scripts/world/mesh_collision.gd" id="4_k001v"]
+[ext_resource type="PackedScene" path="res://scenes/player/player_rig.tscn" id="5_gnhrl"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_4kyax"]
+
+[sub_resource type="Sky" id="Sky_i383b"]
+sky_material = SubResource("ProceduralSkyMaterial_4kyax")
+
+[sub_resource type="Environment" id="Environment_c6dvh"]
+background_mode = 2
+sky = SubResource("Sky_i383b")
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.68, 0.73, 0.8, 1)
+fog_density = 0.0004
+fog_aerial_perspective = 0.4
+fog_sky_affect = 0.25
+
+[node name="TestHackerstad" type="Node3D" unique_id=1308225176]
+
+[node name="Terrain3D" type="Terrain3D" parent="." unique_id=219229477]
+data_directory = "res://terrain/test_hackerstad"
+material = ExtResource("1_elkjn")
+assets = ExtResource("2_05ttn")
+collision_mode = 3
+vertex_spacing = 2.0
+displacement_sharpness = 0.5
+top_level = true
+metadata/_edit_lock_ = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1722510985]
+environment = SubResource("Environment_c6dvh")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=641865183]
+transform = Transform3D(0.8660254, -0.38302222, 0.32139382, 0, 0.64278764, 0.76604444, -0.5, -0.66341394, 0.5566704, 0, 0, 0)
+shadow_enabled = true
+directional_shadow_max_distance = 300.0
+
+[node name="Objects" type="Node3D" parent="." unique_id=1132460111 instance=ExtResource("3_b2yap")]
+script = ExtResource("4_k001v")
+collision_prefixes = PackedStringArray("Byggnader")
+
+[node name="PlayerRig" type="Node3D" parent="." unique_id=700429090 instance=ExtResource("5_gnhrl")]
+transform = Transform3D(-0.41794303, 0, -0.90847325, 0, 1, 0, 0.90847325, 0, -0.41794303, 1892.51, 43.466064, 642.94)

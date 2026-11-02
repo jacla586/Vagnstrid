@@ -1,32 +1,57 @@
 #!/usr/bin/env python3
 """
-Hämtar Lantmäteriets höjdmodell (1 m) och laserdata (Laserdata skog) för spelområdet
-söder om E851 på Vikbolandet, och gör om laserdatan till en liten rasterfil med
-objekthöjder (träd/hus) som är lätt att skicka vidare.
+Hämtar Lantmäteriets höjdmodell (1 m) och laserdata (Laserdata skog) för ett spelområde,
+och gör om laserdatan till en rasterfil med objekthöjder (träd/hus).
 
-Steg (kör i den här ordningen, eller "allt" för alla på en gång):
-    python3 scripts/hamta_lm_data.py lista     # visar vad som finns i katalogen för området (ingen inloggning)
-    python3 scripts/hamta_lm_data.py hojd      # -> data/markhojd_vikbolandet_e851.tif
-    python3 scripts/hamta_lm_data.py laser     # -> data/laser/*.laz  (stora filer, ~1-2 GB per 10 km-ruta)
-    python3 scripts/hamta_lm_data.py bearbeta  # -> data/objekthojd_vikbolandet_e851.tif
-    python3 scripts/hamta_lm_data.py allt
+    python3 scripts/hamta_lm_data.py lista --ruta minx,miny,maxx,maxy        # katalogen (ingen inloggning)
+    python3 scripts/hamta_lm_data.py hojd laser bearbeta --ruta ... --namn X --data X/data
+    python3 scripts/hamta_lm_data.py allt --omrade vidingsjo                 # förval för gamla områden
 
+  hojd      -> <data>/markhojd_<namn>.tif
+  laser     -> <data>/laser/*.laz  (bara den minsta rutstorleken som täcker området)
+  bearbeta  -> <data>/objekthojd_<namn>.tif
+Rutan anges i SWEREF 99 TM. Brukar köras av scripts/nytt_omrade.py.
 Inloggning: systemkontot som har beställt "Markhöjdmodell Nedladdning" och
 "Laserdata Nedladdning, skog" på Geotorget. Skriptet frågar, eller läser LM_USER / LM_PASS.
-Paket:  pip install rasterio "laspy[lazrs]"
+Skriv lösenordet i din egen terminal, aldrig i en chatt.
+Paket:  pip install rasterio "laspy[lazrs]" pyproj
 """
 import argparse, base64, getpass, json, os, sys, time, urllib.parse, urllib.request
 from datetime import datetime
 
 STAC = "https://api.lantmateriet.se/stac-hojd/v1"
-BBOX_SWEREF = (586040, 6478956, 592614, 6485950)   # minx, miny, maxx, maxy (SWEREF 99 TM)
-BBOX_WGS84 = (16.4739, 58.4414, 16.5894, 58.5057)    # samma område i lon/lat
-from pathlib import Path as _P
-DATA = _P(__file__).resolve().parent.parent / "data"
-DATA.mkdir(exist_ok=True)
-DTM_FILE = str(DATA / "markhojd_vikbolandet_e851.tif")
-OBJ_FILE = str(DATA / "objekthojd_vikbolandet_e851.tif")
-LASER_DIR = str(DATA / "laser")
+# Förval: ruta i SWEREF 99 TM (minx, miny, maxx, maxy)
+OMRADEN = {
+    "vidingsjo": (536120, 6469620, 539500, 6472670),
+    "vikbolandet_e851": (586040, 6478956, 592614, 6485950),
+}
+BBOX_SWEREF = BBOX_WGS84 = None
+DTM_FILE = OBJ_FILE = LASER_DIR = None
+
+
+def wgs84_box(sweref):
+    """Omskrivande lon/lat-ruta för en SWEREF 99 TM-ruta."""
+    from pyproj import Transformer
+    tr = Transformer.from_crs(3006, 4326, always_xy=True)
+    minx, miny, maxx, maxy = sweref
+    pts = [tr.transform(x, y) for x in (minx, maxx) for y in (miny, maxy)]
+    lons, lats = [p[0] for p in pts], [p[1] for p in pts]
+    return (min(lons), min(lats), max(lons), max(lats))
+
+
+def valj_omrade(namn, sweref, data_dir):
+    global BBOX_SWEREF, BBOX_WGS84, DTM_FILE, OBJ_FILE, LASER_DIR
+    from pathlib import Path
+    BBOX_SWEREF = tuple(float(v) for v in sweref)
+    BBOX_WGS84 = wgs84_box(BBOX_SWEREF)
+    data = Path(data_dir)
+    data.mkdir(parents=True, exist_ok=True)
+    DTM_FILE = str(data / f"markhojd_{namn}.tif")
+    OBJ_FILE = str(data / f"objekthojd_{namn}.tif")
+    LASER_DIR = str(data / "laser")
+    print(f"Område: {namn}   ruta {BBOX_SWEREF}   utmapp: {data}")
+
+
 _CRED = {}
 
 
@@ -71,7 +96,9 @@ def dtm_hrefs(items):
 
 
 def laser_items(items):
-    """Ett objekt per ruta; finns samma ruta från flera år väljs den senaste."""
+    """Ett objekt per ruta; finns samma ruta från flera år väljs den senaste. Katalogen har
+    rutor i flera storlekar (10 km och 2,5 km) över samma yta: bara den minsta storleken som
+    täcker hela området tas, så att samma punkter inte laddas ner två gånger."""
     best = {}
     for it in items:
         laz = assets_with_ext(it, (".laz", ".las"))
@@ -80,13 +107,38 @@ def laser_items(items):
         key = tuple(round(v, 3) for v in it.get("bbox", [])) or it.get("id")
         if key not in best or item_time(it) > item_time(best[key][0]):
             best[key] = (it, laz[0])
+    by_size = {}
+    for it, href in best.values():
+        b = it.get("bbox") or [0, 0, 0, 0]
+        size = round((b[2] - b[0]) * (b[3] - b[1]), 4)
+        by_size.setdefault(size, []).append((it, href))
+    for size in sorted(by_size):
+        if _covers([it.get("bbox") for it, _ in by_size[size]]):
+            return by_size[size]
     return list(best.values())
+
+
+def _covers(bboxes, steps=12):
+    """Täcker rutorna (lon/lat) hela området? Provar ett rutnät av punkter."""
+    minx, miny, maxx, maxy = BBOX_WGS84
+    for i in range(steps + 1):
+        for j in range(steps + 1):
+            x = minx + (maxx - minx) * i / steps
+            y = miny + (maxy - miny) * j / steps
+            if not any(b and b[0] <= x <= b[2] and b[1] <= y <= b[3] for b in bboxes):
+                return False
+    return True
 
 
 def creds():
     if not _CRED:
-        _CRED["u"] = os.environ.get("LM_USER") or input("Lantmäteriet systemkonto, användarnamn: ")
-        _CRED["p"] = os.environ.get("LM_PASS") or getpass.getpass("Lösenord: ")
+        try:
+            _CRED["u"] = os.environ.get("LM_USER") or input("Lantmäteriet systemkonto, användarnamn: ")
+            _CRED["p"] = os.environ.get("LM_PASS") or getpass.getpass("Lösenord: ")
+        except (EOFError, KeyboardInterrupt):
+            sys.exit("Ingen inloggning till Lantmäteriet (sätt LM_USER/LM_PASS eller kör i en terminal).")
+        if not _CRED["u"] or not _CRED["p"]:
+            sys.exit("Ingen inloggning till Lantmäteriet.")
     return _CRED["u"], _CRED["p"]
 
 
@@ -118,7 +170,7 @@ def cmd_hojd(args):
     print("Söker höjdrutor …")
     hrefs = dtm_hrefs(stac_search())
     if not hrefs:
-        sys.exit("Hittade inga höjdrutor. Kör 'lista' och skicka utskriften till Claude.")
+        sys.exit("Hittade inga höjdrutor för området. Kör 'lista' för att se katalogen.")
     for h in hrefs:
         print("  ", h)
     u, p = creds()
@@ -189,7 +241,7 @@ def cmd_laser(args):
     print("Söker laserrutor …")
     sel = laser_items(stac_search())
     if not sel:
-        sys.exit("Hittade inga laserrutor. Kör 'lista' och skicka utskriften till Claude.")
+        sys.exit("Hittade inga laserrutor för området. Kör 'lista' för att se katalogen.")
     os.makedirs(LASER_DIR, exist_ok=True)
     print(f"  {len(sel)} ruta(or). Filerna är stora; avbryter du kan du köra igen så fortsätter nedladdningen.")
     for it, href in sel:
@@ -271,18 +323,29 @@ def cmd_bearbeta(args):
         dst.set_band_description(3, "antal markpunkter")
     cover = (n_all > 0).mean() * 100
     print(f"Klart: {OBJ_FILE}  ({os.path.getsize(OBJ_FILE) / 1e6:.0f} MB, punkter i {cover:.0f} % av cellerna)")
-    print(f"Nästa steg: python3 scripts/bygg.py --dem {DTM_FILE} --dem-typ lm")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("steg", choices=["lista", "hojd", "laser", "bearbeta", "allt"])
+    ap.add_argument("steg", nargs="+", choices=["lista", "hojd", "laser", "bearbeta", "allt"])
+    ap.add_argument("--ruta", help="minx,miny,maxx,maxy i SWEREF 99 TM")
+    ap.add_argument("--namn", help="ger filnamnen markhojd_<namn>.tif och objekthojd_<namn>.tif")
+    ap.add_argument("--data", help="utmapp (standard: data/ där du står)")
+    ap.add_argument("--omrade", choices=sorted(OMRADEN), help="förval i stället för --ruta/--namn")
     ap.add_argument("--res", type=float, default=1.0, help="upplösning för höjdmodellen i meter (standard 1)")
     a = ap.parse_args()
-    steps = dict(lista=[cmd_lista], hojd=[cmd_hojd], laser=[cmd_laser], bearbeta=[cmd_bearbeta],
-                 allt=[cmd_hojd, cmd_laser, cmd_bearbeta])[a.steg]
-    for s in steps:
-        s(a)
+    if a.omrade:
+        ruta, namn = OMRADEN[a.omrade], a.namn or a.omrade
+    elif a.ruta:
+        ruta, namn = [float(v) for v in a.ruta.split(",")], a.namn or "omrade"
+    else:
+        ap.error("ange --ruta (och --namn) eller --omrade")
+    valj_omrade(namn, ruta, a.data or os.path.join(os.getcwd(), "data"))
+    table = dict(lista=[cmd_lista], hojd=[cmd_hojd], laser=[cmd_laser], bearbeta=[cmd_bearbeta],
+                 allt=[cmd_hojd, cmd_laser, cmd_bearbeta])
+    for steg in a.steg:
+        for s in table[steg]:
+            s(a)
 
 
 if __name__ == "__main__":

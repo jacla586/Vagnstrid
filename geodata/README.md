@@ -2,7 +2,22 @@
 
 Projektet bygger en spelbar 3D-värld av området söder om väg E851 på Vikbolandet (Östergötland), ner till Slätbaken. Som underlag används öppna geodata. Resultatet är en glb-scen, en heightmap och tilläggsdata som går att dra in direkt i Godot 4.
 
-## Snabbstart
+## Ny karta från två GPS-punkter
+
+Det enklaste sättet att göra en ny karta. Ange ett namn och två diagonala hörn (lat,lon, t.ex. från Google Maps):
+
+```bash
+.venv/bin/python scripts/nytt_omrade.py hackerstad 58.4785,16.5108 58.4645,16.5368
+```
+
+Verktyget räknar ut rutan i SWEREF 99 TM, hämtar OpenStreetMap (Overpass), Lantmäteriets höjdmodell och laser (frågar efter inloggning; skriv lösenordet i din egen terminal), klipper NMD-trädslag ur den lokala rikstäckande filen, bygger och importerar till Godot. Resultatet är `scenes/maps/<namn>.tscn`. Allt för området hamnar i `<namn>/` (`omrade.json`, `data/`, `work/`, `out/`).
+
+- Avbryts det kan du köra samma kommando igen; gjorda steg hoppas över. `--om STEG` gör om ett steg och alla efter.
+- Utan inloggning till Lantmäteriet används Copernicus DEM 30 m (öppen) i stället: terräng, vägar, vatten och OSM-hus, men inga laserträd, laserhus eller riktiga hushöjder. `--copernicus` gör det direkt, `--utan-laser` hämtar bara höjdmodellen.
+- Håll områden runt några km. Laserrutorna är 2,5 km (cirka 80 MB) eller 10 km (cirka 1 GB).
+- En befintlig scen skrivs aldrig över; terräng och objekt uppdateras.
+
+## Snabbstart (Vikbolandet för hand)
 
 ```bash
 sudo apt install python3-venv
@@ -29,12 +44,12 @@ Resultatet hamnar i `out/`.
 Lantmäteriets data kräver ett systemkonto på Geotorget som har beställt **Markhöjdmodell Nedladdning** och **Laserdata Nedladdning, skog**. Båda är gratis.
 
 ```bash
-python3 scripts/hamta_lm_data.py lista      # kontrollera att rutor hittas (ingen inloggning)
-python3 scripts/hamta_lm_data.py allt       # höjd (1 m) + laser + bearbetning -> data/
+python3 scripts/hamta_lm_data.py lista --omrade vikbolandet_e851 --data data   # rutor (ingen inloggning)
+python3 scripts/hamta_lm_data.py allt --omrade vikbolandet_e851 --data data    # höjd + laser + bearbetning
 python3 scripts/bygg.py --dem data/markhojd_vikbolandet_e851.tif --dem-typ lm
 ```
 
-`hamta_lm_data.py` frågar efter användarnamn och lösenord, eller läser dem från `LM_USER` och `LM_PASS`. Höjdmodellen hämtas som COG, och skriptet läser bara den del som behövs. Laserrutorna är 10 × 10 km och ungefär 1–2 GB styck. Avbryter du nedladdningen fortsätter den där den slutade nästa gång du kör samma kommando.
+`hamta_lm_data.py` frågar efter användarnamn och lösenord, eller läser dem från `LM_USER` och `LM_PASS`. Höjdmodellen hämtas som COG, och skriptet läser bara den del som behövs. Katalogen har laserrutor på både 10 km (1–2 GB) och 2,5 km; skriptet tar bara den minsta storleken som täcker området. Avbryter du nedladdningen fortsätter den där den slutade nästa gång du kör samma kommando.
 
 `bearbeta` gör om laserdatan till `data/objekthojd_vikbolandet_e851.tif`. Den filen har samma rutnät som höjdmodellen och tre band:
 1. Höjd över mark i decimeter, från den högsta oklassade punkten (klass 1), alltså träd, hus med mera

@@ -23,6 +23,9 @@ Projektet bygger Godot 4-världar utifrån öppna geodata: Vikbolandet söder om
 - `step4_trees.py <objekthöjd> <ut> [nmd-mapp]` → `trees.bin` (färdiga MultiMesh-transformer, 12 float32 per träd, relativt rutans mitt), `trees_info.json` och `trad_{gran,tall,lov}.glb` (höjd 1, kronradie 1).
 
 ## Köra och föra in i Godot
+- **Ny karta:** `.venv/bin/python scripts/nytt_omrade.py <namn> <lat1,lon1> <lat2,lon2>` gör allt (ruta → OSM via Overpass → LM höjd/laser, annars Copernicus → NMD-klipp → bygg → Godot-import och scen). Stegen hoppar över det som redan finns; `--om STEG` gör om. Områdesmappen `<namn>/` har `omrade.json`. LM-inloggningen skrivs av användaren i egen terminal (eller `LM_USER`/`LM_PASS`), aldrig i chatten.
+- `scripts/hamta_lm_data.py` är det enda LM-skriptet: `--ruta`, `--namn`, `--data` (eller `--omrade vidingsjo|vikbolandet_e851`). Laser: bara den minsta rutstorleken som täcker området.
+- Copernicus i rutläge använder samma havsregel som LM (låga sammanhängande ytor), annars blir hela rutan land.
 - Python-miljö: `.venv/`. Vikbolandet: `.venv/bin/python scripts/bygg.py --dem data/markhojd_vikbolandet_e851.tif --dem-typ lm`.
 - Vidingsjö: `.venv/bin/python scripts/bygg.py --projekt vidingsjo --ruta 536120,6469620,539500,6472670 --osm vidingsjo/vidingsjo.osm --dem vidingsjo/data/markhojd_vidingsjo.tif --dem-typ lm --objekt vidingsjo/data/objekthojd_vidingsjo.tif` (NMD klipps med `klipp_nmd.py --ruta ... --ut vidingsjo/data/nmd`).
 - `out/<namn>_objekt.glb` är scenen utan terrängrutor. Godot använder den, medan marken kommer från `heightmap.r16` via Terrain3D.

@@ -94,11 +94,14 @@ print('träd efter rensning', E.size)
 
 # ---------- Trädslag från NMD ----------
 names = dict(tall='tall', gran='gran', trivial='trivial', ekovradel='ekovradel')
+# Utan NMD: ungefärliga andelar för svensk skog (gran, tall, löv) i stället.
+UTAN_NMD = (0.40, 0.38, 0.22)
 shares = {}
-for key in names:
-    f = glob.glob(str(NMD_DIR / f'*tradslag_{key}_*.tif'))
-    if not f:
-        sys.exit(f'Saknar NMD-skiktet {key} i {NMD_DIR}')
+nmd_files = {key: glob.glob(str(NMD_DIR / f'*tradslag_{key}_*.tif')) for key in names}
+if not all(nmd_files.values()):
+    print(f'Saknar NMD-trädslag i {NMD_DIR}: använder genomsnittsandelar gran/tall/löv {UTAN_NMD}')
+for key in (names if all(nmd_files.values()) else []):
+    f = nmd_files[key]
     with rasterio.open(f[0]) as s:
         if s.crs != crs_obj and s.crs.to_epsg() != 3006:
             sys.exit(f'{f[0]} är inte i SWEREF 99 TM')
@@ -106,10 +109,13 @@ for key in names:
         r_, c_ = rasterio.transform.rowcol(s.transform, E, N)
         r_ = np.clip(np.asarray(r_), 0, a.shape[0] - 1); c_ = np.clip(np.asarray(c_), 0, a.shape[1] - 1)
         shares[key] = a[r_, c_].astype(np.float32)
-nod = shares['tall'] == 255
-p = np.stack([shares['gran'], shares['tall'], shares['trivial'] + shares['ekovradel']], 1)
-p[nod] = [0, 0, 1]
-p = np.where(p == 255, 0, p)
+if shares:
+    nod = shares['tall'] == 255
+    p = np.stack([shares['gran'], shares['tall'], shares['trivial'] + shares['ekovradel']], 1)
+    p[nod] = [0, 0, 1]
+    p = np.where(p == 255, 0, p)
+else:
+    p = np.tile(np.asarray(UTAN_NMD, np.float32), (E.size, 1))
 p[p.sum(1) == 0] = [0, 0, 1]
 cum = np.cumsum(p / p.sum(1, keepdims=True), 1)
 typ = (rng.random(E.size)[:, None] > cum).sum(1).clip(0, 2)
