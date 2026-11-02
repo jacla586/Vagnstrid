@@ -1,0 +1,19 @@
+work/*
+!work/.gitkeep
+out/*
+!out/.gitkeep
+data/*.tif
+data/laser
+data/nmd/
+.venv/
+__pycache__/
+/*.tif
+/laser/
+/lm-env/
+/forhandsbilder/
+# Andra områden (bygg.py --projekt <mapp>): samma upplägg per mapp
+/*/data/
+/*/work/
+/*/out/
+/*/.venv/
+/*/*.tif

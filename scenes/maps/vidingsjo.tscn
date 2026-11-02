@@ -1,0 +1,63 @@
+[gd_scene format=3]
+
+[ext_resource type="Terrain3DMaterial" path="res://terrain/vidingsjo/material.tres" id="1_eqrm0"]
+[ext_resource type="Terrain3DAssets" path="res://terrain/vidingsjo/assets.tres" id="2_4we33"]
+[ext_resource type="PackedScene" path="res://assets/maps/vidingsjo/vidingsjo_objekt.glb" id="3_e5r7p"]
+[ext_resource type="Script" path="res://scripts/world/mesh_collision.gd" id="4_1xdyf"]
+[ext_resource type="Script" path="res://scripts/world/tree_field.gd" id="5_82ryi"]
+[ext_resource type="PackedScene" path="res://assets/maps/vidingsjo/trad_gran.glb" id="6_6htov"]
+[ext_resource type="PackedScene" path="res://assets/maps/vidingsjo/trad_tall.glb" id="7_lqe1k"]
+[ext_resource type="PackedScene" path="res://assets/maps/vidingsjo/trad_lov.glb" id="8_kk8bk"]
+[ext_resource type="PackedScene" path="res://scenes/player/player_rig.tscn" id="9_vne7g"]
+[ext_resource type="Resource" path="res://data/world/field_tree_gran.tres" id="10_ftdgran"]
+[ext_resource type="Resource" path="res://data/world/field_tree_tall.tres" id="11_ftdtall"]
+[ext_resource type="Resource" path="res://data/world/field_tree_lov.tres" id="12_ftdlov"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_auyn3"]
+
+[sub_resource type="Sky" id="Sky_phr17"]
+sky_material = SubResource("ProceduralSkyMaterial_auyn3")
+
+[sub_resource type="Environment" id="Environment_7r0vo"]
+background_mode = 2
+sky = SubResource("Sky_phr17")
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.68, 0.73, 0.8, 1)
+fog_density = 0.0004
+fog_aerial_perspective = 0.4
+fog_sky_affect = 0.25
+
+[node name="Vidingsjo" type="Node3D" unique_id=824125006]
+
+[node name="Terrain3D" type="Terrain3D" parent="." unique_id=1769904055]
+data_directory = "res://terrain/vidingsjo"
+material = ExtResource("1_eqrm0")
+assets = ExtResource("2_4we33")
+collision_mode = 3
+vertex_spacing = 2.0
+displacement_sharpness = 0.5
+top_level = true
+metadata/_edit_lock_ = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=781846039]
+environment = SubResource("Environment_7r0vo")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=761683273]
+transform = Transform3D(0.8660254, -0.38302222, 0.32139382, 0, 0.64278764, 0.76604444, -0.5, -0.66341394, 0.5566704, 0, 0, 0)
+shadow_enabled = true
+directional_shadow_max_distance = 300.0
+
+[node name="Objects" type="Node3D" parent="." unique_id=1714118398 instance=ExtResource("3_e5r7p")]
+script = ExtResource("4_1xdyf")
+collision_prefixes = PackedStringArray("Byggnader")
+
+[node name="Trees" type="Node3D" parent="." unique_id=383895229]
+script = ExtResource("5_82ryi")
+info_path = "res://assets/maps/vidingsjo/trees_info.json"
+data_path = "res://assets/maps/vidingsjo/trees.bin"
+tree_scenes = Array[PackedScene]([ExtResource("6_6htov"), ExtResource("7_lqe1k"), ExtResource("8_kk8bk")])
+tree_data = Array[FieldTreeData]([ExtResource("10_ftdgran"), ExtResource("11_ftdtall"), ExtResource("12_ftdlov")])
+
+[node name="PlayerRig" type="Node3D" parent="." unique_id=90670867 instance=ExtResource("9_vne7g")]
+transform = Transform3D(0.07993062, 0, -0.9968004, 0, 1, 0, 0.9968004, 0, 0.07993062, 1494.35, 62.09015, 1209.75)

@@ -54,6 +54,20 @@ shows on the minimap. This is what we test first.
 - `tools/generate_hills.gd` and `tools/build_hills_scene.gd` made the starter
   `scenes/maps/hills.tscn` once; the map is now edited in the editor. Don't rerun
   them (they overwrite the user's edits).
+- Real maps `scenes/maps/vikbolandet.tscn` (6.6 × 7 km) and `scenes/maps/vidingsjo.tscn`
+  (3.4 × 3.1 km, Linköping) come from the Python pipeline in `geodata/` (see its
+  CLAUDE.md; folder has `.gdignore`). Origin at the map's NW corner, 2 m vertex spacing.
+  After rebuilding geodata, rerun `tools/import_geodata_map.gd -- <name> <out dir>`
+  (rewrites `terrain/<name>/`, copies object glb, trees and tree models to
+  `assets/maps/<name>/`). `tools/build_geodata_scene.gd` made each scene once; don't
+  rerun it on a scene that has been edited. Buildings get collision via
+  `scripts/world/mesh_collision.gd`. Laser trees (`scripts/world/tree_field.gd`,
+  `@tool`, MultiMesh per 250 m chunk) follow the `BreakableTree` rules without nodes:
+  `FieldTreePhysics` makes one static body (trunks, layer 1) and one area (crowns,
+  layer 5) per chunk in the PhysicsServer3D, with TreeField as collider; `TreePush`
+  is a copy of BreakableTree's push rule (keep them in step); felled trees animate
+  with `FallingTree`. Sizes per species in `data/world/field_tree_*.tres`
+  (`FieldTreeData`). hills.tscn still uses `tree.tscn`/`BreakableTree`.
 - Vegetation that matters for gameplay is real scenes (`tree.tscn`, `bush.tscn`),
   placed with the `Scatter` tool node, not the Terrain3D instancer (no collision).
 
