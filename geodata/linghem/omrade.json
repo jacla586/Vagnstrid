@@ -1,0 +1,29 @@
+{
+ "namn": "linghem",
+ "punkter": [
+  [
+   58.44047,
+   15.800591
+  ],
+  [
+   58.417491,
+   15.77047
+  ]
+ ],
+ "ruta": [
+  545000,
+  6475450,
+  546740,
+  6478030
+ ],
+ "wgs84": [
+  15.770299,
+  58.417309,
+  15.800607,
+  58.440661
+ ],
+ "uppdaterad": "2026-11-02T19:41:37",
+ "dem": "data/markhojd_linghem.tif",
+ "dem_typ": "lm",
+ "objekt": "data/objekthojd_linghem.tif"
+}
