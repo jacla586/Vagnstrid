@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://scripts/ui/hit_feedback.gd" id="15_hit_feedback"]
 [ext_resource type="Script" path="res://scripts/ui/commander_status.gd" id="17_commander_status"]
 [ext_resource type="Shader" path="res://assets/shaders/view_mask.gdshader" id="9_mask"]
+[ext_resource type="Resource" path="res://data/tanks/player_medium.tres" id="18_player_data"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -20,6 +21,7 @@ shader = ExtResource("9_mask")
 [node name="PlayerRig" type="Node3D"]
 
 [node name="Tank" parent="." instance=ExtResource("1_tank")]
+data = ExtResource("18_player_data")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 
 [node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views")]

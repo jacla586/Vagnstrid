@@ -1,65 +1,21 @@
-[gd_resource type="Resource" script_class="TankData" format=3]
+[gd_resource type="Resource" script_class="TankData" format=3 uid="uid://yqi1tervnkin"]
 
-[ext_resource type="Script" path="res://scripts/data/tank_data.gd" id="1_data"]
+[ext_resource type="Script" uid="uid://d0mt6mn55kuva" path="res://scripts/data/tank_data.gd" id="1_data"]
 [ext_resource type="Resource" path="res://data/shells/test_ap.tres" id="2_shell"]
-[ext_resource type="Script" path="res://scripts/data/armour_data.gd" id="3_armour"]
+[ext_resource type="Script" uid="uid://bog8g77aoojet" path="res://scripts/data/armour_data.gd" id="3_armour"]
 [ext_resource type="Resource" path="res://data/shells/test_he.tres" id="4_he"]
-[ext_resource type="Script" path="res://scripts/data/shell_data.gd" id="5_shell_script"]
+[ext_resource type="Script" uid="uid://bxbikwibppxfd" path="res://scripts/data/shell_data.gd" id="5_shell_script"]
+[ext_resource type="Resource" path="res://data/weapons/tank_coax_mg.tres" id="6_coax"]
+[ext_resource type="Resource" path="res://data/weapons/tank_roof_mg.tres" id="7_roof"]
 
 [sub_resource type="Resource" id="Resource_armour"]
 script = ExtResource("3_armour")
-hull_front_mm = 80.0
-hull_side_mm = 45.0
-hull_rear_mm = 30.0
-hull_roof_mm = 15.0
-turret_front_mm = 90.0
-turret_side_mm = 50.0
-turret_rear_mm = 40.0
-turret_roof_mm = 20.0
-ricochet_angle_deg = 70.0
 
 [resource]
 script = ExtResource("1_data")
 display_name = "Test Medium"
-mass_kg = 30000.0
-max_forward_speed_kmh = 40.0
-max_reverse_speed_kmh = 8.0
-acceleration = 1.5
-brake_deceleration = 4.0
-max_climb_deg = 32.0
-tree_push_max_diameter_m = 0.7
-tree_push_min_speed_kmh = 6.0
-tree_push_speed_loss = 0.25
-tree_slow_push_time_s = 1.5
-max_turn_rate_deg = 30.0
-turn_acceleration_deg = 90.0
-track_lateral_grip = 8.0
-suspension_rest_length = 0.6
-suspension_frequency_hz = 1.5
-suspension_damping_ratio = 0.6
-turret_traverse_speed_deg = 20.0
-gun_elevation_speed_deg = 5.0
-gun_max_elevation_deg = 20.0
-gun_max_depression_deg = 8.0
-hatch_transition_time_s = 0.8
-commander_fov_deg = 70.0
-binocular_magnification = 6.0
-open_pitch_min_deg = -40.0
-open_pitch_max_deg = 60.0
-periscope_fov_deg = 45.0
-periscope_window_width = 0.55
-periscope_window_height = 0.22
-periscope_turn_speed_deg = 60.0
-periscope_yaw_limit_deg = 180.0
-periscope_pitch_min_deg = -10.0
-periscope_pitch_max_deg = 15.0
 gunner_sight_fov_deg = PackedFloat32Array(24, 12)
-sight_range_step_m = 100.0
-sight_range_max_m = 2000.0
-sight_range_label_step_m = 200.0
-sight_zero_range_m = 800.0
-commander_wound_time_s = 20.0
 armour = SubResource("Resource_armour")
 ammo = Array[ExtResource("5_shell_script")]([ExtResource("2_shell"), ExtResource("4_he")])
-reload_time_s = 6.0
-recoil_impulse_ns = 30000.0
+coax_mg = ExtResource("6_coax")
+roof_mg = ExtResource("7_roof")

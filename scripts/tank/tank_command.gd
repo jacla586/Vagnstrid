@@ -17,3 +17,9 @@ var hatch_open: bool = false
 var ammo_select: int = -1
 ## True = wants to fire this frame. The tank fires only when loaded.
 var fire: bool = false
+## True = wants to fire a machine gun this frame (held for bursts).
+var fire_mg: bool = false
+## True = the roof MG (needs the hatch fully open), false = the coaxial MG.
+var mg_use_roof: bool = false
+## World-space point the roof MG should aim at.
+var mg_aim_point: Vector3 = Vector3.ZERO

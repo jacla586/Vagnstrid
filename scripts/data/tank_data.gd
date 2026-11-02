@@ -58,8 +58,9 @@ extends Resource
 @export var hatch_transition_time_s: float = 0.8
 ## Commander's vertical field of view with the hatch open, naked eye (degrees).
 @export var commander_fov_deg: float = 70.0
-## Binocular magnification (hatch open only).
-@export var binocular_magnification: float = 6.0
+## Binoculars (hatch open only) zoom this many times more than the gunner's
+## strongest sight zoom (narrowest gunner_sight_fov_deg).
+@export var binocular_zoom_vs_gunner: float = 2.0
 ## Pitch limits for the commander's head with the hatch open (degrees).
 @export var open_pitch_min_deg: float = -40.0
 @export var open_pitch_max_deg: float = 60.0
@@ -101,3 +102,17 @@ extends Resource
 @export var reload_time_s: float = 6.0
 ## Backward impulse on the tank when firing (N·s). Tuned for feel, not history.
 @export var recoil_impulse_ns: float = 30000.0
+## Machine gun beside the main gun; aims with it. Null = none.
+@export var coax_mg: MachineGunData
+## Machine gun on the cupola, aimed by the commander with the hatch open. Null = none.
+## Uses traverse_speed_deg from its data.
+@export var roof_mg: MachineGunData
+
+
+## Vertical field of view through the binoculars (degrees).
+func binocular_fov_deg() -> float:
+	var narrowest: float = commander_fov_deg
+	for fov: float in gunner_sight_fov_deg:
+		narrowest = minf(narrowest, fov)
+	var half: float = deg_to_rad(narrowest) * 0.5
+	return rad_to_deg(2.0 * atan(tan(half) / maxf(binocular_zoom_vs_gunner, 1.0)))

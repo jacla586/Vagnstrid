@@ -79,7 +79,7 @@ func _process(delta: float) -> void:
 		_pitch = _target_pitch
 		target_fov = d.commander_fov_deg
 		if is_binoculars_active():
-			target_fov = _zoomed_fov(d.commander_fov_deg, d.binocular_magnification)
+			target_fov = d.binocular_fov_deg()
 	else:
 		_target_pitch = clampf(_target_pitch,
 				deg_to_rad(d.periscope_pitch_min_deg), deg_to_rad(d.periscope_pitch_max_deg))
@@ -100,8 +100,3 @@ func _process(delta: float) -> void:
 func _update_transform() -> void:
 	global_transform = Transform3D(Basis.from_euler(Vector3(_pitch, _yaw, 0.0)),
 			tank.get_commander_eye_position())
-
-
-static func _zoomed_fov(base_fov_deg: float, magnification: float) -> float:
-	var half: float = deg_to_rad(base_fov_deg) * 0.5
-	return rad_to_deg(2.0 * atan(tan(half) / maxf(magnification, 1.0)))

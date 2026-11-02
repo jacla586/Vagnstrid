@@ -1,0 +1,103 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/maps/vikbolandet.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scripts/control/respawn_at_start.gd" id="14_7g7af"]
+[ext_resource type="PackedScene" path="res://scenes/tank/tank.tscn" id="15_pp8dj"]
+[ext_resource type="Script" path="res://scripts/control/bot_controller.gd" id="18_gmy8b"]
+[ext_resource type="Resource" path="res://data/bots/bot_regular.tres" id="19_gjvj3"]
+[ext_resource type="Script" path="res://scripts/control/bot_group.gd" id="20_j1gog"]
+
+[node name="Hackerstad" instance=ExtResource("1_base")]
+
+[node name="PlayerRig" parent="."]
+transform = Transform3D(0.5152087, 0, 0.8570648, 0, 1, 0, -0.8570648, 0, 0.5152087, 2837.00, 26.5, 3736.00)
+
+[node name="PlayerRespawn" type="Node" parent="." unique_id=1369375435 node_paths=PackedStringArray("tank")]
+script = ExtResource("14_7g7af")
+tank = NodePath("../PlayerRig/Tank")
+
+[node name="Enemies" type="Node3D" parent="." unique_id=1875898153]
+
+[node name="Enemy1" type="RigidBody3D" parent="Enemies" unique_id=1616404277 instance=ExtResource("15_pp8dj")]
+transform = Transform3D(-0.2335439, 0, -0.9723463, 0, 1, 0, 0.9723463, 0, -0.2335439, 1819.76, 13.46, 2890.12)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+team = 1
+
+[node name="Enemy1Bot" type="Node" parent="Enemies" unique_id=995475132 node_paths=PackedStringArray("tank")]
+script = ExtResource("18_gmy8b")
+bot_data = ExtResource("19_gjvj3")
+tank = NodePath("../Enemy1")
+respawn_delay_s = 0.0
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="Enemy2" type="RigidBody3D" parent="Enemies" unique_id=214315474 instance=ExtResource("15_pp8dj")]
+transform = Transform3D(-0.4836071, 0, -0.8752852, 0, 1, 0, 0.8752852, 0, -0.4836071, 1775.85, 13.61, 2881.62)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+team = 1
+
+[node name="Enemy2Bot" type="Node" parent="Enemies" unique_id=798459189 node_paths=PackedStringArray("tank")]
+script = ExtResource("18_gmy8b")
+bot_data = ExtResource("19_gjvj3")
+tank = NodePath("../Enemy2")
+respawn_delay_s = 0.0
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="Enemy3" type="RigidBody3D" parent="Enemies" unique_id=1634842789 instance=ExtResource("15_pp8dj")]
+transform = Transform3D(-0.65375, 0, -0.7567106, 0, 1, 0, 0.7567106, 0, -0.65375, 1748.80, 12.60, 2848.24)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+team = 1
+
+[node name="Enemy3Bot" type="Node" parent="Enemies" unique_id=1258273031 node_paths=PackedStringArray("tank")]
+script = ExtResource("18_gmy8b")
+bot_data = ExtResource("19_gjvj3")
+tank = NodePath("../Enemy3")
+respawn_delay_s = 0.0
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="Enemy4" type="RigidBody3D" parent="Enemies" unique_id=975739512 instance=ExtResource("15_pp8dj")]
+transform = Transform3D(-0.6544538, 0, -0.756102, 0, 1, 0, 0.756102, 0, -0.6544538, 1719.75, 11.53, 2820.86)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+team = 1
+
+[node name="Enemy4Bot" type="Node" parent="Enemies" unique_id=1715668153 node_paths=PackedStringArray("tank")]
+script = ExtResource("18_gmy8b")
+bot_data = ExtResource("19_gjvj3")
+tank = NodePath("../Enemy4")
+respawn_delay_s = 0.0
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="Enemy5" type="RigidBody3D" parent="Enemies" unique_id=241146389 instance=ExtResource("15_pp8dj")]
+transform = Transform3D(-0.6662548, 0, -0.7457242, 0, 1, 0, 0.7457242, 0, -0.6662548, 1685.14, 9.54, 2795.35)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+team = 1
+
+[node name="Enemy5Bot" type="Node" parent="Enemies" unique_id=1551671503 node_paths=PackedStringArray("tank")]
+script = ExtResource("18_gmy8b")
+bot_data = ExtResource("19_gjvj3")
+tank = NodePath("../Enemy5")
+respawn_delay_s = 0.0
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="Enemy6" type="RigidBody3D" parent="Enemies" unique_id=885084190 instance=ExtResource("15_pp8dj")]
+transform = Transform3D(-0.9111526, 0, -0.412069, 0, 1, 0, 0.412069, 0, -0.9111526, 1669.93, 9.13, 2758.40)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+team = 1
+
+[node name="Enemy6Bot" type="Node" parent="Enemies" unique_id=56121850 node_paths=PackedStringArray("tank")]
+script = ExtResource("18_gmy8b")
+bot_data = ExtResource("19_gjvj3")
+tank = NodePath("../Enemy6")
+respawn_delay_s = 0.0
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="EnemyGroup" type="Node" parent="Enemies" unique_id=1881676361 node_paths=PackedStringArray("members")]
+script = ExtResource("20_j1gog")
+members = [NodePath("../Enemy1Bot"), NodePath("../Enemy2Bot"), NodePath("../Enemy3Bot"), NodePath("../Enemy4Bot"), NodePath("../Enemy5Bot"), NodePath("../Enemy6Bot")]
+route = Array[Vector3]([Vector3(1620.81, 12.78, 2691.26), Vector3(1637.46, 12.27, 2708.17), Vector3(1649.57, 10.86, 2724.1), Vector3(1660.78, 9.31, 2740.62), Vector3(1669.93, 8.13, 2758.4), Vector3(1678.17, 7.82, 2776.62), Vector3(1685.14, 8.54, 2795.35), Vector3(1702.5, 9.72, 2810.86), Vector3(1719.75, 10.53, 2820.86), Vector3(1734.85, 11.13, 2833.93), Vector3(1748.8, 11.6, 2848.24), Vector3(1763.94, 12.1, 2861.32), Vector3(1775.85, 12.61, 2881.62), Vector3(1795.94, 12.67, 2892.72), Vector3(1819.76, 12.46, 2890.12), Vector3(1839.12, 12.3, 2894.77), Vector3(1861.9, 12.16, 2902.33), Vector3(1880.89, 12.07, 2908.62), Vector3(1902.95, 12.02, 2917.94), Vector3(1923.23, 12.04, 2930.69), Vector3(1942.3, 12.11, 2945.26), Vector3(1960.75, 12.15, 2960.61), Vector3(1975.7, 12.17, 2973.9), Vector3(1990.85, 12.18, 2986.96), Vector3(2005.67, 12.19, 3000.38), Vector3(2019.88, 12.28, 3014.46), Vector3(2033.68, 12.41, 3028.94), Vector3(2047.53, 12.56, 3043.37), Vector3(2061.55, 12.78, 3057.64), Vector3(2075.57, 13.08, 3071.91), Vector3(2093.28, 13.55, 3088.05), Vector3(2110.1, 14.05, 3098.82), Vector3(2127.55, 14.53, 3108.57), Vector3(2145.64, 14.91, 3117.09), Vector3(2163.5, 15.3, 3126.09), Vector3(2181.04, 15.66, 3135.69), Vector3(2197.86, 15.93, 3146.51), Vector3(2214.38, 16.11, 3157.79), Vector3(2234.71, 16.24, 3170.51), Vector3(2253.93, 16.18, 3184.83), Vector3(2272.74, 15.92, 3199.73), Vector3(2287.24, 15.6, 3213.51), Vector3(2305, 15.28, 3229.64), Vector3(2319.68, 15.1, 3243.22), Vector3(2334.55, 14.96, 3256.6), Vector3(2349.64, 14.87, 3269.73), Vector3(2364.58, 14.77, 3283.03), Vector3(2379.51, 14.61, 3296.34), Vector3(2394.44, 14.44, 3309.65), Vector3(2409.38, 14.33, 3322.97), Vector3(2424.31, 14.25, 3336.28), Vector3(2439.23, 14.2, 3349.6), Vector3(2457.09, 14.33, 3365.64), Vector3(2471.97, 14.54, 3379.01), Vector3(2489.82, 14.46, 3395.05), Vector3(2504.61, 14.17, 3408.52), Vector3(2523.43, 14, 3423.36), Vector3(2540.14, 14.03, 3434.35), Vector3(2560.45, 14.17, 3447.14), Vector3(2577.38, 14.46, 3457.79), Vector3(2596.98, 14.47, 3471.58), Vector3(2611.15, 13.75, 3490.54), Vector3(2619.19, 13.15, 3508.83), Vector3(2626.34, 12.78, 3527.52), Vector3(2634.91, 12.67, 3549.94), Vector3(2642.08, 12.87, 3568.61), Vector3(2649.35, 13.18, 3587.25), Vector3(2656.62, 13.58, 3605.88), Vector3(2664.18, 14.14, 3624.4), Vector3(2673.57, 14.94, 3641.98), Vector3(2687.72, 15.98, 3655.99), Vector3(2705.21, 17.08, 3665.67), Vector3(2723.19, 18.22, 3674.44), Vector3(2741.01, 19.66, 3683.52), Vector3(2758.62, 21.16, 3693), Vector3(2776.6, 22.05, 3701.74), Vector3(2794.58, 22.64, 3710.5), Vector3(2812.46, 23.59, 3719.46), Vector3(2830.25, 24.54, 3728.59), Vector3(2844.67, 25, 3735.53)])
+objective = Vector3(2837, 26, 3736)

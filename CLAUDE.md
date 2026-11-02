@@ -38,6 +38,28 @@ shows on the minimap. This is what we test first.
   rangefinder, full computer) run on the same code.
 - Shells are simulated (gravity, travel time); hit detection by raycasting from the
   previous to the current position each physics frame, not by fast physics bodies.
+  MG bullets are Shells too (`mg_bullet.tres`).
+- Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
+  only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
+- Bots: `BotController` (extends `TargetTankController`, so patrols waypoints) with
+  crew skill in `BotData` (`data/bots/*.tres`). Spots only via `Vision` from its own
+  commander's eye (hatch open: all round, far, fast; closed: periscope sector),
+  stops to fire with range/laying errors that shrink per shot, MGs exposed
+  commanders, closes the hatch when hit or an enemy is close. `Tank.team` decides
+  enemies. `RespawnAtStart` brings a knocked-out tank back (test bench).
+- Concealment (`Concealment`, `data/world/concealment.tres`): sight-blocker shapes
+  (layer 5: bushes, tree crowns, laser-tree crowns) around a target, and standing
+  still, make it slower and shorter-ranged to spot; moving fast makes it easier.
+  Bots also spot faster the more of 4 hull points (+ exposed commander) they see.
+- The player's tank uses `data/tanks/player_medium.tres` (set in `player_rig.tscn`);
+  enemies use `test_medium.tres`. Binoculars zoom `binocular_zoom_vs_gunner` times
+  the gunner's strongest sight zoom.
+- `BotGroup` moves bots together: column along a route, on the first contact
+  (shared to all members) line abreast towards an objective, short halts to fire.
+  Bots on an ordered route that get stuck reverse and detour sideways.
+- Scenarios are scenes inherited from a map (`scenes/scenarios/*.tscn`, base e.g.
+  `vikbolandet.tscn`), so map edits carry over. `hackerstad.tscn`: player at
+  Hackerstad, 6 bots advance from Ring along the road (Vikbolandet).
 - Prototype graphics: simple shapes (boxes, cylinders). Only free, correctly licensed
   assets (Kenney, Sketchfab CC with attribution). Never assets from other games.
 
@@ -54,6 +76,8 @@ shows on the minimap. This is what we test first.
 - `tools/generate_hills.gd` and `tools/build_hills_scene.gd` made the starter
   `scenes/maps/hills.tscn` once; the map is now edited in the editor. Don't rerun
   them (they overwrite the user's edits).
+- New real maps: `geodata/.venv/bin/python geodata/scripts/nytt_omrade.py <name> <lat,lon> <lat,lon>`
+  (fetches OSM, LM/Copernicus, NMD; builds; imports; makes `scenes/maps/<name>.tscn`).
 - Real maps `scenes/maps/vikbolandet.tscn` (6.6 × 7 km) and `scenes/maps/vidingsjo.tscn`
   (3.4 × 3.1 km, Linköping) come from the Python pipeline in `geodata/` (see its
   CLAUDE.md; folder has `.gdignore`). Origin at the map's NW corner, 2 m vertex spacing.
@@ -74,6 +98,8 @@ shows on the minimap. This is what we test first.
 ## Controls
 
 - Driving: **WASD**, controlled directly by the player.
+- Main gun: mouse 1. MG: mouse 2 (roof MG in the commander view with the hatch
+  open, coaxial otherwise). Binoculars: B. Hatch: H.
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 
 ## Checking for errors (run these yourself)
@@ -105,6 +131,8 @@ reload/recoil/tracers, and target boards at known ranges.
 
 - damage model, first step: armour and penetration from data, impact angle matters
 - an enemy target tank to shoot at (step towards bots)
+- first bots (Vidingsjö): patrol, spot by the same rules, shoot back, MG on open
+  hatches. Next: tuning, shared spotting/minimap, bots that move to fight.
 
 Later: Terrain3D for real maps (check it supports Godot 4.7 first), damage model,
 spotting/minimap, bots, game modes, multiplayer.

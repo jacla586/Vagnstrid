@@ -5,6 +5,8 @@ extends Node
 ## Commander view: the turret only moves when "turret_to_view" is pressed; it then
 ## goes to the point under the screen centre and keeps aiming there.
 ## Gunner's sight and debug view: the turret follows the view's aim every frame.
+## "fire_mg" fires the roof MG at the screen centre in the commander view with the
+## hatch open, otherwise the coaxial MG (wherever the gun points).
 
 ## Input actions that pick ammo type 0, 1, ... (TankData.ammo order).
 const AMMO_ACTIONS: Array[StringName] = [&"select_ammo_1", &"select_ammo_2"]
@@ -45,6 +47,12 @@ func _physics_process(_delta: float) -> void:
 		_command.has_aim = true
 	_turret_to_view_requested = false
 	_command.fire = _wants_fire()
+	_command.fire_mg = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \
+			and Input.is_action_pressed("fire_mg")
+	_command.mg_use_roof = views != null and not views.drives_turret() \
+			and tank.is_commander_exposed()
+	if _command.mg_use_roof:
+		_command.mg_aim_point = views.get_aim_point()
 	_command.ammo_select = _ammo_requested
 	_ammo_requested = -1
 	tank.set_command(_command)

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ConcealmentData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/concealment_data.gd" id="1_conceal"]
+
+[resource]
+script = ExtResource("1_conceal")
+cover_box_size = Vector3(16, 30, 16)
+full_cover_blockers = 6
+cover_spot_time_factor = 3.0
+cover_range_factor = 0.5
+stationary_speed_mps = 1.0
+stationary_spot_time_factor = 1.5
+fast_speed_mps = 4.0
+moving_fast_spot_time_factor = 0.7

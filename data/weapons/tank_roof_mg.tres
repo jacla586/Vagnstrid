@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="MachineGunData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/machine_gun_data.gd" id="1_mg"]
+[ext_resource type="Resource" path="res://data/shells/mg_bullet.tres" id="2_bullet"]
+
+[resource]
+script = ExtResource("1_mg")
+display_name = "Roof MG"
+bullet = ExtResource("2_bullet")
+rounds_per_minute = 600.0
+burst_time_s = 1.2
+burst_pause_s = 1.0
+dispersion_mrad = 5.0
+max_range_m = 600.0
+reaction_time_s = 0.0
+traverse_speed_deg = 120.0

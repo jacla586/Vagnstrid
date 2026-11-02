@@ -1,17 +1,22 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://d3ipodblnchrk"]
 
-[ext_resource type="Terrain3DMaterial" path="res://terrain/vidingsjo/material.tres" id="1_eqrm0"]
+[ext_resource type="Terrain3DMaterial" uid="uid://d4fuwte0p1wmu" path="res://terrain/vidingsjo/material.tres" id="1_eqrm0"]
 [ext_resource type="Terrain3DAssets" path="res://terrain/vidingsjo/assets.tres" id="2_4we33"]
-[ext_resource type="PackedScene" path="res://assets/maps/vidingsjo/vidingsjo_objekt.glb" id="3_e5r7p"]
-[ext_resource type="Script" path="res://scripts/world/mesh_collision.gd" id="4_1xdyf"]
-[ext_resource type="Script" path="res://scripts/world/tree_field.gd" id="5_82ryi"]
-[ext_resource type="PackedScene" path="res://assets/maps/vidingsjo/trad_gran.glb" id="6_6htov"]
-[ext_resource type="PackedScene" path="res://assets/maps/vidingsjo/trad_tall.glb" id="7_lqe1k"]
-[ext_resource type="PackedScene" path="res://assets/maps/vidingsjo/trad_lov.glb" id="8_kk8bk"]
+[ext_resource type="PackedScene" uid="uid://dow2gojxh5p5j" path="res://assets/maps/vidingsjo/vidingsjo_objekt.glb" id="3_e5r7p"]
+[ext_resource type="Script" uid="uid://d1wigxjl0rmf7" path="res://scripts/world/mesh_collision.gd" id="4_1xdyf"]
+[ext_resource type="Script" uid="uid://drs8vj81ngwqs" path="res://scripts/world/tree_field.gd" id="5_82ryi"]
+[ext_resource type="PackedScene" uid="uid://1q16q0qbli2g" path="res://assets/maps/vidingsjo/trad_gran.glb" id="6_6htov"]
+[ext_resource type="PackedScene" uid="uid://b3w5cl32au3v2" path="res://assets/maps/vidingsjo/trad_tall.glb" id="7_lqe1k"]
+[ext_resource type="PackedScene" uid="uid://d3ejvjy5qvypl" path="res://assets/maps/vidingsjo/trad_lov.glb" id="8_kk8bk"]
+[ext_resource type="Script" uid="uid://bp1iolfspf0b2" path="res://scripts/data/field_tree_data.gd" id="9_auyn3"]
 [ext_resource type="PackedScene" path="res://scenes/player/player_rig.tscn" id="9_vne7g"]
 [ext_resource type="Resource" path="res://data/world/field_tree_gran.tres" id="10_ftdgran"]
 [ext_resource type="Resource" path="res://data/world/field_tree_tall.tres" id="11_ftdtall"]
 [ext_resource type="Resource" path="res://data/world/field_tree_lov.tres" id="12_ftdlov"]
+[ext_resource type="PackedScene" path="res://scenes/tank/tank.tscn" id="13_tank"]
+[ext_resource type="Script" uid="uid://t1duuxcrtose" path="res://scripts/control/bot_controller.gd" id="14_tctrl"]
+[ext_resource type="Resource" path="res://data/bots/bot_regular.tres" id="15_botdata"]
+[ext_resource type="Script" uid="uid://bc1odctfft7i4" path="res://scripts/control/respawn_at_start.gd" id="16_respawn"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_auyn3"]
 
@@ -48,16 +53,77 @@ transform = Transform3D(0.8660254, -0.38302222, 0.32139382, 0, 0.64278764, 0.766
 shadow_enabled = true
 directional_shadow_max_distance = 300.0
 
-[node name="Objects" type="Node3D" parent="." unique_id=1714118398 instance=ExtResource("3_e5r7p")]
+[node name="Objects" parent="." unique_id=1714118398 instance=ExtResource("3_e5r7p")]
 script = ExtResource("4_1xdyf")
-collision_prefixes = PackedStringArray("Byggnader")
 
 [node name="Trees" type="Node3D" parent="." unique_id=383895229]
 script = ExtResource("5_82ryi")
 info_path = "res://assets/maps/vidingsjo/trees_info.json"
 data_path = "res://assets/maps/vidingsjo/trees.bin"
 tree_scenes = Array[PackedScene]([ExtResource("6_6htov"), ExtResource("7_lqe1k"), ExtResource("8_kk8bk")])
-tree_data = Array[FieldTreeData]([ExtResource("10_ftdgran"), ExtResource("11_ftdtall"), ExtResource("12_ftdlov")])
+tree_data = Array[ExtResource("9_auyn3")]([ExtResource("10_ftdgran"), ExtResource("11_ftdtall"), ExtResource("12_ftdlov")])
 
-[node name="PlayerRig" type="Node3D" parent="." unique_id=90670867 instance=ExtResource("9_vne7g")]
+[node name="PlayerRig" parent="." unique_id=90670867 instance=ExtResource("9_vne7g")]
 transform = Transform3D(0.07993062, 0, -0.9968004, 0, 1, 0, 0.9968004, 0, 0.07993062, 1494.35, 62.09015, 1209.75)
+
+[node name="Enemies" type="Node3D" parent="." unique_id=795425564]
+
+[node name="EnemyAlerydsvagen" parent="Enemies" unique_id=423946139 instance=ExtResource("13_tank")]
+transform = Transform3D(-0.440212, 0, -0.897894, 0, 1, 0, 0.897894, 0, -0.440212, 953.17, 68.6, 1096.81)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+team = 1
+
+[node name="EnemyAlerydsvagenController" type="Node" parent="Enemies" unique_id=947876999 node_paths=PackedStringArray("tank")]
+script = ExtResource("14_tctrl")
+bot_data = ExtResource("15_botdata")
+tank = NodePath("../EnemyAlerydsvagen")
+mode = 1
+waypoints = Array[Vector3]([Vector3(953.2, 67.6, 1096.8), Vector3(971.2, 67.7, 1105.6), Vector3(989.1, 67.8, 1114.5), Vector3(1007.1, 67.9, 1123.4), Vector3(1025.2, 68, 1132), Vector3(1043.2, 68.1, 1140.8), Vector3(1061.2, 68.2, 1149.5), Vector3(1079.2, 68.3, 1158.3), Vector3(1097.4, 68.3, 1166.8), Vector3(1115.6, 68.4, 1175.2), Vector3(1134, 68.4, 1183), Vector3(1152.9, 68.4, 1189.6), Vector3(1172, 68.3, 1195.6), Vector3(1191.4, 68.1, 1200.8), Vector3(1210.9, 67.9, 1205.2), Vector3(1230.7, 67.6, 1208.8), Vector3(1250.5, 67.3, 1211.6), Vector3(1270.4, 67, 1213.9), Vector3(1290.4, 66.4, 1215.3), Vector3(1310.4, 65.5, 1216), Vector3(1330.4, 65.2, 1215.7), Vector3(1350.4, 65.1, 1214.6), Vector3(1370.4, 64.7, 1212.6), Vector3(1378.3, 64.5, 1211.6)])
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="EnemyKonstruktorsgatan" parent="Enemies" unique_id=1497871144 instance=ExtResource("13_tank")]
+transform = Transform3D(-0.838147, 0, -0.545445, 0, 1, 0, 0.545445, 0, -0.838147, 1055.91, 66.71, 749.81)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+team = 1
+
+[node name="EnemyKonstruktorsgatanController" type="Node" parent="Enemies" unique_id=203694312 node_paths=PackedStringArray("tank")]
+script = ExtResource("14_tctrl")
+bot_data = ExtResource("15_botdata")
+tank = NodePath("../EnemyKonstruktorsgatan")
+mode = 1
+waypoints = Array[Vector3]([Vector3(1055.9, 65.7, 749.8), Vector3(1066.8, 65.8, 766.6), Vector3(1076.5, 66, 784.1), Vector3(1082.5, 66.2, 803.2), Vector3(1088.4, 66.2, 822.3), Vector3(1094.5, 66.1, 841.4), Vector3(1100.5, 65.9, 860.4), Vector3(1106.5, 65.6, 879.5), Vector3(1112.5, 65.4, 898.6), Vector3(1118.5, 65.2, 917.7), Vector3(1124.6, 65.1, 936.8), Vector3(1128.9, 65.2, 956.3), Vector3(1132.6, 65.3, 976), Vector3(1136.2, 65.6, 995.7), Vector3(1139.6, 65.8, 1015.4), Vector3(1143.2, 66.1, 1035.1), Vector3(1148.9, 66.4, 1054.2), Vector3(1157, 66.5, 1072.5), Vector3(1167.3, 66.6, 1089.6), Vector3(1179.9, 66.5, 1105.2), Vector3(1194.2, 66.4, 1119.2), Vector3(1212.1, 66, 1132), Vector3(1229.8, 65.7, 1141.2), Vector3(1248.7, 65.4, 1147.8), Vector3(1268.1, 65.2, 1152.9), Vector3(1287.8, 64.9, 1156.2), Vector3(1301.7, 64.8, 1157.9)])
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="EnemyOrtgatan" parent="Enemies" unique_id=255555737 instance=ExtResource("13_tank")]
+transform = Transform3D(-0.152918, 0, 0.988239, 0, 1, 0, -0.988239, 0, -0.152918, 1273.53, 67.37, 1376.77)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+team = 1
+
+[node name="EnemyOrtgatanController" type="Node" parent="Enemies" unique_id=1863673106 node_paths=PackedStringArray("tank")]
+script = ExtResource("14_tctrl")
+bot_data = ExtResource("15_botdata")
+tank = NodePath("../EnemyOrtgatan")
+mode = 1
+waypoints = Array[Vector3]([Vector3(1273.5, 66.4, 1376.8), Vector3(1253.7, 66.9, 1379.8), Vector3(1233.8, 67.5, 1382.9), Vector3(1214, 68.2, 1386), Vector3(1194.2, 68.9, 1389), Vector3(1174.3, 69.5, 1392.1), Vector3(1154.8, 70, 1396.7), Vector3(1137.5, 70.4, 1406.5), Vector3(1123.7, 70.7, 1420.9), Vector3(1115.5, 71, 1439.1), Vector3(1112.3, 71.2, 1458.8), Vector3(1116.9, 71.4, 1478.3), Vector3(1126.1, 71.5, 1496.1), Vector3(1137.4, 71.5, 1512.7), Vector3(1148.7, 71.4, 1529.2), Vector3(1161.1, 71.2, 1545), Vector3(1177, 70.9, 1557), Vector3(1195.8, 70.6, 1563.8), Vector3(1215.7, 70.3, 1565.2), Vector3(1235.6, 70, 1562.4), Vector3(1255.4, 69.4, 1559.3), Vector3(1275.3, 68.7, 1556.2), Vector3(1293.1, 68.3, 1553.5)])
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="EnemySpanngatan" parent="Enemies" unique_id=1250797845 instance=ExtResource("13_tank")]
+transform = Transform3D(0.145651, 0, -0.989336, 0, 1, 0, 0.989336, 0, 0.145651, 1298.1, 66.43, 1405.8)
+paint_color = Color(0.62, 0.55, 0.4, 1)
+team = 1
+
+[node name="EnemySpanngatanController" type="Node" parent="Enemies" unique_id=302142728 node_paths=PackedStringArray("tank")]
+script = ExtResource("14_tctrl")
+bot_data = ExtResource("15_botdata")
+tank = NodePath("../EnemySpanngatan")
+mode = 1
+waypoints = Array[Vector3]([Vector3(1298.1, 65.4, 1405.8), Vector3(1318.1, 65.1, 1402.9), Vector3(1338, 64.7, 1399.9), Vector3(1358, 64.2, 1397), Vector3(1378, 63.7, 1394.1), Vector3(1398, 63.2, 1391.2), Vector3(1418, 62.8, 1388.3), Vector3(1437.9, 62.5, 1385.5), Vector3(1459.8, 62.2, 1382), Vector3(1479.5, 62, 1378.2), Vector3(1499.1, 61.7, 1374.4), Vector3(1518.8, 61.4, 1370.7), Vector3(1538.5, 61, 1366.9), Vector3(1558.1, 60.8, 1363.1), Vector3(1577.8, 60.6, 1359.4), Vector3(1597.5, 60.5, 1355.6), Vector3(1611.2, 60.4, 1353)])
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="PlayerRespawn" type="Node" parent="." unique_id=1735214609 node_paths=PackedStringArray("tank")]
+script = ExtResource("16_respawn")
+tank = NodePath("../PlayerRig/Tank")

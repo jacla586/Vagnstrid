@@ -19,6 +19,9 @@ extends RigidBody3D
 ## knocks the tank out: it ignores commands, turns charred and smokes.
 ## Commander: while exposed, a hitbox follows his head. A hit wounds him: the hatch
 ## slams shut and stays locked for the data's wound time.
+## Machine guns: the command's fire_mg fires the roof MG (aimed at mg_aim_point; only
+## with the hatch fully open and the commander unhurt) or the coaxial MG (aims with
+## the gun). Bullets are Shells like the main gun's, with the MG data's spread.
 
 ## Emitted after a shot leaves the barrel.
 signal fired(shell: Shell)
@@ -28,6 +31,11 @@ signal shot_landed(result: HitResult)
 signal knocked_out
 ## Emitted when the exposed commander is hit.
 signal commander_wounded
+## Emitted when a shell or bullet hits the tank, penetrating or not. `direction` is
+## the projectile's flight direction (bots turn towards where it came from).
+signal hit_taken(direction: Vector3)
+## Emitted for every machine-gun bullet fired.
+signal mg_fired(bullet: Shell, roof: bool)
 
 const KMH_TO_MS: float = 1.0 / 3.6
 const SHELL_SCENE: PackedScene = preload("res://scenes/weapons/shell.tscn")
@@ -44,6 +52,8 @@ const HATCH_OPEN_ANGLE_DEG: float = 110.0
 @export var data: TankData
 ## Visual only: paint colour for this tank. Alpha 0 keeps the scene's paint.
 @export var paint_color: Color = Color(0.0, 0.0, 0.0, 0.0)
+## Side this tank fights for. Tanks of other teams are enemies (bots use this).
+@export var team: int = 0
 
 var _command: TankCommand = TankCommand.new()
 var _left_rays: Array[RayCast3D] = []
@@ -59,6 +69,8 @@ var _idle_command: TankCommand = TankCommand.new()
 var _burning: Node3D
 var _paint_override: StandardMaterial3D
 var _charred_material: StandardMaterial3D
+var _mg_shot_timer: float = 0.0
+var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 @onready var _suspension: Node3D = $Suspension
 @onready var _turret: Node3D = $Visual/Turret
@@ -74,6 +86,10 @@ var _charred_material: StandardMaterial3D
 		$Visual/Turret/Cupola/CommanderHitbox/Shape
 @onready var _hull_shape: CollisionShape3D = $HullShape
 @onready var _turret_shape: CollisionShape3D = $TurretShape
+@onready var _coax_muzzle: Marker3D = $Visual/Turret/GunPivot/CoaxMuzzle
+@onready var _roof_mg: Node3D = $Visual/Turret/RoofMG
+@onready var _roof_mg_pitch: Node3D = $Visual/Turret/RoofMG/Pitch
+@onready var _roof_mg_muzzle: Marker3D = $Visual/Turret/RoofMG/Pitch/Muzzle
 
 
 func _ready() -> void:
@@ -97,6 +113,8 @@ func _ready() -> void:
 	_track_half_width = maxf(width_sum / ray_count, 0.1)
 	_align_gunner_sight()
 	_setup_paint()
+	_rng.randomize()
+	_roof_mg.visible = data.roof_mg != null
 
 
 ## Boresights the gunner's sight: tilts it so its line of sight crosses the gun's
@@ -129,6 +147,36 @@ func get_hull_half_extents() -> Vector3:
 func apply_obstacle_drag(fraction: float) -> void:
 	var horizontal := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
 	apply_central_impulse(-horizontal * clampf(fraction, 0.0, 1.0) * mass)
+
+
+func is_enemy_of(other: Tank) -> bool:
+	return other != null and other != self and other.team != team
+
+
+## True when the roof MG can be used: the tank has one, the hatch is fully open and
+## the commander is unhurt.
+func can_use_roof_mg() -> bool:
+	return data.roof_mg != null and _hatch_progress >= 1.0 and not is_commander_wounded()
+
+
+## Machine gun the command picks (roof if asked for and usable, else coax), or null.
+func get_active_mg(use_roof: bool) -> MachineGunData:
+	if use_roof and can_use_roof_mg():
+		return data.roof_mg
+	return data.coax_mg
+
+
+## Main gun's muzzle in world space; -Z is the bore direction.
+func get_muzzle_transform() -> Transform3D:
+	return _muzzle.global_transform
+
+
+func get_coax_muzzle_transform() -> Transform3D:
+	return _coax_muzzle.global_transform
+
+
+func get_roof_mg_muzzle_transform() -> Transform3D:
+	return _roof_mg_muzzle.global_transform
 
 
 func is_knocked_out() -> bool:
@@ -186,6 +234,7 @@ func on_shell_hit(shell_data: ShellData, _point: Vector3, normal: Vector3,
 	result.part = part
 	result.face = face
 	result.target = self
+	hit_taken.emit(velocity.normalized())
 	if result.is_penetration() and not _knocked_out:
 		_knock_out()
 	return result
@@ -328,6 +377,8 @@ func _physics_process(delta: float) -> void:
 	_update_hatch(delta)
 	_update_commander_hitbox()
 	_update_gun(delta)
+	_update_roof_mg(delta)
+	_update_mg(delta)
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -394,6 +445,47 @@ func _update_gun(delta: float) -> void:
 	_reload_remaining = maxf(_reload_remaining - delta, 0.0)
 	if _command.fire and is_loaded() and get_loaded_shell() != null:
 		_fire()
+
+
+## Swings the roof MG towards the command's MG aim point while it's in use.
+func _update_roof_mg(delta: float) -> void:
+	if not _command.mg_use_roof or not can_use_roof_mg():
+		return
+	var local: Vector3 = _turret.to_local(_command.mg_aim_point) - _roof_mg.position
+	var target_yaw: float = atan2(-local.x, -local.z)
+	var target_pitch: float = atan2(local.y, Vector2(local.x, local.z).length())
+	var step: float = deg_to_rad(data.roof_mg.traverse_speed_deg) * delta
+	_roof_mg.rotation.y = wrapf(_roof_mg.rotation.y
+			+ clampf(wrapf(target_yaw - _roof_mg.rotation.y, -PI, PI), -step, step), -PI, PI)
+	_roof_mg_pitch.rotation.x += clampf(target_pitch - _roof_mg_pitch.rotation.x, -step, step)
+
+
+func _update_mg(delta: float) -> void:
+	var roof: bool = _command.mg_use_roof and can_use_roof_mg()
+	var mg: MachineGunData = data.roof_mg if roof else data.coax_mg
+	if not _command.fire_mg or mg == null or mg.bullet == null:
+		_mg_shot_timer = 0.0
+		return
+	_mg_shot_timer -= delta
+	var interval: float = 60.0 / maxf(mg.rounds_per_minute, 1.0)
+	var muzzle: Marker3D = _roof_mg_muzzle if roof else _coax_muzzle
+	while _mg_shot_timer <= 0.0:
+		_mg_shot_timer += interval
+		_fire_bullet(mg, muzzle, roof)
+
+
+func _fire_bullet(mg: MachineGunData, muzzle: Marker3D, roof: bool) -> void:
+	# Random point in a disc of radius dispersion around the barrel's axis.
+	var radius: float = sqrt(_rng.randf()) * mg.dispersion_mrad * 0.001
+	var angle: float = _rng.randf() * TAU
+	var muzzle_basis: Basis = muzzle.global_basis
+	var direction: Vector3 = (-muzzle_basis.z + muzzle_basis.x * cos(angle) * radius
+			+ muzzle_basis.y * sin(angle) * radius).normalized()
+	var bullet := SHELL_SCENE.instantiate() as Shell
+	get_parent().add_child(bullet)
+	bullet.launch(mg.bullet, muzzle.global_position,
+			direction * mg.bullet.muzzle_velocity_mps + linear_velocity, self)
+	mg_fired.emit(bullet, roof)
 
 
 func _fire() -> void:
