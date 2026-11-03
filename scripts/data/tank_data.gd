@@ -96,6 +96,27 @@ extends Resource
 @export_group("Armour")
 @export var armour: ArmourData
 
+@export_group("Damage")
+## Hit points of the tank's structure. Penetrations take ShellData.damage_hp; 0 = knocked out.
+@export var structure_hp: float = 100.0
+## Where the modules (engine, tracks, turret ring, fuel, ammo) sit.
+@export var layout: ModuleLayoutData
+## Standing still this long (s, no shots, no hits) repairs all modules.
+@export var repair_time_s: float = 25.0
+## Slower than this counts as standing still (km/h).
+@export var repair_max_speed_kmh: float = 1.0
+## After the modules, structure hp comes back this fast while standing still (hp/s)...
+@export var repair_hp_per_s: float = 0.4
+## ...up to this share of structure_hp.
+@export var repair_hp_max_fraction: float = 0.5
+## A hit fuel tank burns this long (s), taking fire_hp_per_s. No repairs while burning.
+@export var fire_duration_s: float = 10.0
+@export var fire_hp_per_s: float = 3.0
+## Top speed with a damaged engine, as a share of normal (destroyed = 0).
+@export var engine_damaged_speed_factor: float = 0.5
+## Turret traverse with a damaged turret ring, as a share of normal (destroyed = 0).
+@export var ring_damaged_traverse_factor: float = 0.4
+
 @export_group("Armament")
 ## Main-gun ammunition types, in selection-key order (1, 2, ...). The first is
 ## loaded at start. The sight's range ladder follows the loaded type.

@@ -133,7 +133,12 @@ func _physics_process(delta: float) -> void:
 		_settle_time = 0.0
 		_mg_time = 0.0
 		_look_ahead_or_at_threat()
-	if not _orders.is_empty():
+	# Damaged and no enemy in sight: stand still and repair (same rules as players).
+	var repairing: bool = _target == null and tank.needs_repair() and not tank.is_burning()
+	if repairing:
+		_command.throttle = 0.0
+		_command.steering = 0.0
+	elif not _orders.is_empty():
 		if not _halting:
 			_order_step(delta)
 	elif _target == null:

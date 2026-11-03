@@ -8,6 +8,8 @@
 [ext_resource type="Resource" path="res://data/weapons/tank_coax_mg.tres" id="6_coax"]
 [ext_resource type="Resource" path="res://data/weapons/tank_roof_mg.tres" id="7_roof"]
 
+[ext_resource type="Resource" path="res://data/tanks/layout_medium.tres" id="20_layout"]
+
 [sub_resource type="Resource" id="Resource_armour"]
 script = ExtResource("3_armour")
 hull_front_mm = 95.0
@@ -23,6 +25,7 @@ script = ExtResource("1_data")
 display_name = "Player Medium"
 gunner_sight_fov_deg = PackedFloat32Array(24, 12)
 armour = SubResource("Resource_armour")
+layout = ExtResource("20_layout")
 ammo = Array[ExtResource("5_shell_script")]([ExtResource("2_shell"), ExtResource("4_he")])
 coax_mg = ExtResource("6_coax")
 roof_mg = ExtResource("7_roof")

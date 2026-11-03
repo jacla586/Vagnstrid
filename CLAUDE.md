@@ -39,6 +39,15 @@ shows on the minimap. This is what we test first.
 - Shells are simulated (gravity, travel time); hit detection by raycasting from the
   previous to the current position each physics frame, not by fast physics bodies.
   MG bullets are Shells too (`mg_bullet.tres`).
+- Damage model (`TankDamage`, owned by Tank): structure hp (`TankData.structure_hp`) and
+  modules from `TankData.layout` (`ModuleLayoutData`, e.g. `data/tanks/layout_medium.tres`:
+  engine, fuel, tracks, turret ring, ammo in the turret rear). A penetration takes
+  `ShellData.damage_hp` and damages modules on the shell's path (`module_reach_m`); ammo =
+  knocked out, fuel = fire. Hits that don't penetrate wear their plate cell (`ArmourData`
+  wear settings, `ShellData.wear_mm`). Tracks are external: any shell landing on them and HE
+  fragments (`ModuleFragmentTarget`) damage them. Standing still `repair_time_s` repairs
+  modules, then hp creeps back to `repair_hp_max_fraction`. The player sees own hp/modules
+  (`DamagePanel`), never the enemy's; bots stop to repair when they have no target.
 - Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
   only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
 - Bots: `BotController` (extends `TargetTankController`, so patrols waypoints) with

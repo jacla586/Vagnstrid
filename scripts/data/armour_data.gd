@@ -15,6 +15,15 @@ extends Resource
 @export var turret_rear_mm: float = 40.0
 @export var turret_roof_mm: float = 20.0
 
+@export_group("Wear")
+## Plates are split into square cells of this size (m). Hits that don't penetrate wear
+## their cell, so heavy armour only gives way to shots that land close together.
+@export var wear_cell_m: float = 0.75
+## Worn armour never gets thinner than this share of the plate.
+@export_range(0.0, 1.0) var wear_min_fraction: float = 0.4
+## The eight neighbouring cells wear this share of the hit cell's wear.
+@export_range(0.0, 1.0) var wear_neighbour_share: float = 0.5
+
 @export_group("Ricochet")
 ## Hits flatter than this (angle from the plate's normal, degrees) bounce off.
 @export var ricochet_angle_deg: float = 70.0

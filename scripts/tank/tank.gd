@@ -17,6 +17,10 @@ extends RigidBody3D
 ## Armour: shells call on_shell_hit(); the hit zone comes from the collision shape
 ## and the hit normal, and Armour decides the outcome. For now one penetration
 ## knocks the tank out: it ignores commands, turns charred and smokes.
+## Damage (TankDamage): penetrations take structure hp and damage the modules on the
+## shell's path (engine, tracks, turret ring, fuel = fire, ammo in the turret rear =
+## knocked out). Hits that don't penetrate wear the plate locally. Standing still
+## repairs modules, then slowly some hp. HE fragments reach the external tracks.
 ## Commander: while exposed, a hitbox follows his head. A hit wounds him: the hatch
 ## slams shut and stays locked for the data's wound time.
 ## Machine guns: the command's fire_mg fires the roof MG (aimed at mg_aim_point; only
@@ -36,6 +40,8 @@ signal commander_wounded
 ## Emitted when a shell or bullet hits the tank, penetrating or not. `direction` is
 ## the projectile's flight direction (bots turn towards where it came from).
 signal hit_taken(direction: Vector3)
+## Emitted when a module changes state (TankDamage.State).
+signal module_changed(id: StringName, state: int)
 ## Emitted for every machine-gun bullet fired.
 signal mg_fired(bullet: Shell, roof: bool)
 ## Emitted when the commander spots: `point` is the world position he marked.
@@ -75,6 +81,10 @@ var _paint_override: StandardMaterial3D
 var _charred_material: StandardMaterial3D
 var _mg_shot_timer: float = 0.0
 var _spot_cooldown_remaining: float = 0.0
+var _damage: TankDamage
+## Time since the main gun fired, for repairs (which need the tank to stand quiet).
+var _since_fired: float = 999.0
+var _fire_effect: Node3D
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 @onready var _suspension: Node3D = $Suspension
@@ -120,6 +130,16 @@ func _ready() -> void:
 	_setup_paint()
 	_rng.randomize()
 	_roof_mg.visible = data.roof_mg != null
+	_damage = TankDamage.new(data)
+	_damage.module_changed.connect(func(id: StringName, st: TankDamage.State) -> void:
+		module_changed.emit(id, st))
+	for m: ModuleData in _damage.get_modules():
+		if m.external and m.frame == &"hull":
+			var target := ModuleFragmentTarget.new()
+			target.tank = self
+			target.module_id = m.id
+			target.position = m.center
+			add_child(target)
 
 
 ## Boresights the gunner's sight: tilts it so its line of sight crosses the gun's
@@ -188,6 +208,41 @@ func is_knocked_out() -> bool:
 	return _knocked_out
 
 
+## Structure hp left, 0..1. Only for the own tank's HUD and bots (not shown for enemies).
+func get_hp_fraction() -> float:
+	return _damage.hp_fraction()
+
+
+func get_module_state(id: StringName) -> int:
+	return _damage.state(id)
+
+
+func has_module(id: StringName) -> bool:
+	return _damage.has_module(id)
+
+
+## True if the world point lies in a hull module's box (grown by margin m).
+func is_point_in_module(id: StringName, point: Vector3, margin: float) -> bool:
+	return _damage.point_in_module(id, to_local(point), margin)
+
+
+func is_burning() -> bool:
+	return _damage.is_burning()
+
+
+func needs_repair() -> bool:
+	return _damage.needs_repair()
+
+
+## 0..1 towards the module repair; 0 while moving, firing, burning or just hit.
+func get_repair_progress() -> float:
+	return _damage.repair_progress()
+
+
+func get_repair_time_left() -> float:
+	return maxf(data.repair_time_s - _damage.repair_time, 0.0)
+
+
 func is_commander_wounded() -> bool:
 	return _commander_wound_remaining > 0.0
 
@@ -223,25 +278,48 @@ func on_commander_hit(_shell_data: ShellData, _point: Vector3) -> HitResult:
 
 
 ## Called by Shell when a shell hits this tank. Returns what happened.
-func on_shell_hit(shell_data: ShellData, _point: Vector3, normal: Vector3,
+func on_shell_hit(shell_data: ShellData, point: Vector3, normal: Vector3,
 		velocity: Vector3, shape: int = -1) -> HitResult:
 	if data.armour == null:
 		return null
 	var part: String = "hull"
-	var reference: Basis = global_basis
+	var frame: Node3D = self
 	if _shape_node(shape) == _turret_shape:
 		part = "turret"
-		reference = _turret.global_basis
-	var face: String = _face_for_normal(reference.orthonormalized().inverse() * normal)
-	var result: HitResult = Armour.resolve(shell_data, velocity.length(),
-			data.armour.thickness_mm(part, face), Armour.impact_angle(velocity, normal),
-			data.armour.ricochet_angle_deg)
+		frame = _turret
+	var to_part: Basis = frame.global_basis.orthonormalized().inverse()
+	var face: String = _face_for_normal(to_part * normal)
+	var local_point: Vector3 = frame.to_local(point)
+	var plate_mm: float = _damage.armour_mm(part, face, local_point)
+	var result: HitResult = Armour.resolve(shell_data, velocity.length(), plate_mm,
+			Armour.impact_angle(velocity, normal), data.armour.ricochet_angle_deg)
 	result.part = part
 	result.face = face
 	result.target = self
+	result.unworn_mm = data.armour.thickness_mm(part, face)
 	hit_taken.emit(velocity.normalized())
-	if result.is_penetration() and not _knocked_out:
+	var dir: Vector3 = velocity.normalized()
+	var hull_basis: Basis = global_basis.orthonormalized().inverse()
+	var turret_basis: Basis = _turret.global_basis.orthonormalized().inverse()
+	if _damage.apply_hit(shell_data, result, part, face, local_point, to_local(point),
+			hull_basis * dir, _turret.to_local(point), turret_basis * dir):
 		_knock_out()
+	return result
+
+
+## Called by a ModuleFragmentTarget when HE fragments reach an external module.
+func on_module_fragment(id: StringName, shell_data: ShellData) -> HitResult:
+	if _knocked_out or shell_data.fragment_module_damage <= 0.0:
+		return null
+	var before: int = _damage.state(id)
+	_damage.apply_fragment(id, shell_data)
+	if _damage.state(id) == before:
+		return null
+	var result := HitResult.new()
+	result.outcome = HitResult.Outcome.HIT
+	result.part = "fragments"
+	result.modules.append(String(id))
+	result.target = self
 	return result
 
 
@@ -253,6 +331,8 @@ func report_shot(result: HitResult) -> void:
 ## Undoes a knock-out (test bench respawn).
 func repair() -> void:
 	_knocked_out = false
+	_damage.reset()
+	_set_fire_effect(false)
 	if _burning != null:
 		_burning.queue_free()
 		_burning = null
@@ -266,6 +346,28 @@ func _knock_out() -> void:
 	_burning.position = _turret.position
 	_apply_paint(true)
 	knocked_out.emit()
+
+
+## Smoke and flames while the fuel tank burns (the knock-out has its own).
+func _set_fire_effect(on: bool) -> void:
+	if on and _fire_effect == null:
+		_fire_effect = BURNING_SCENE.instantiate()
+		add_child(_fire_effect)
+		_fire_effect.position = Vector3(0.0, 0.6, 1.1)
+		_fire_effect.scale = Vector3.ONE * 0.6
+	elif not on and _fire_effect != null:
+		_fire_effect.queue_free()
+		_fire_effect = null
+
+
+func _update_damage(delta: float) -> void:
+	_since_fired += delta
+	var still: bool = absf(get_forward_speed()) < data.repair_max_speed_kmh * KMH_TO_MS \
+			and absf(_command.throttle) < 0.05 and _since_fired > 1.0
+	_damage.tick(delta, still)
+	_set_fire_effect(_damage.is_burning() and not _knocked_out)
+	if _damage.knocked_out and not _knocked_out:
+		_knock_out()
 
 
 func _shape_node(shape: int) -> Node:
@@ -385,6 +487,7 @@ func _physics_process(delta: float) -> void:
 	_update_roof_mg(delta)
 	_update_mg(delta)
 	_update_spotting(delta)
+	_update_damage(delta)
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -416,7 +519,7 @@ func _update_turret(delta: float) -> void:
 	# Yaw: aim point in the turret's parent (hull) space; forward is -Z, positive = left.
 	var hull_local: Vector3 = (_turret.get_parent() as Node3D).to_local(_command.aim_point)
 	var target_yaw: float = atan2(-hull_local.x, -hull_local.z)
-	var yaw_step: float = deg_to_rad(data.turret_traverse_speed_deg) * delta
+	var yaw_step: float = deg_to_rad(data.turret_traverse_speed_deg) * delta * _damage.traverse_factor()
 	var yaw_diff: float = wrapf(target_yaw - _turret.rotation.y, -PI, PI)
 	_turret.rotation.y = wrapf(_turret.rotation.y + clampf(yaw_diff, -yaw_step, yaw_step), -PI, PI)
 
@@ -520,6 +623,7 @@ func _fire() -> void:
 	flash.global_position = muzzle_position
 	apply_impulse(-direction * data.recoil_impulse_ns, muzzle_position - global_position)
 	_reload_remaining = data.reload_time_s
+	_since_fired = 0.0
 	fired.emit(shell)
 
 
@@ -552,7 +656,7 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	# Longitudinal: chase the target speed, limited by acceleration / braking.
 	var throttle: float = clampf(_command.throttle, -1.0, 1.0)
 	var top_speed_kmh: float = data.max_forward_speed_kmh if throttle >= 0.0 else data.max_reverse_speed_kmh
-	var target_speed: float = throttle * top_speed_kmh * KMH_TO_MS
+	var target_speed: float = throttle * top_speed_kmh * KMH_TO_MS * _damage.speed_factor()
 	var speed: float = linear_velocity.dot(forward)
 	var speeding_up: bool = target_speed * speed >= 0.0 and absf(target_speed) > absf(speed)
 	var accel_limit: float = data.acceleration if speeding_up else data.brake_deceleration
@@ -572,11 +676,24 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	var yaw_accel: float = clampf((target_yaw_rate - yaw_rate) / delta, -turn_limit, turn_limit)
 	var yaw_inertia: float = 1.0 / maxf((state.inverse_inertia_tensor * up).dot(up), 1e-9)
 	var yaw_torque: float = yaw_accel * yaw_inertia
+	if _damage.speed_factor() <= 0.0:
+		yaw_torque = 0.0   # dead engine: no drive at all
 
 	# Skid steer: right track pushing harder turns the tank left, and vice versa.
 	var track_split: float = yaw_torque / (2.0 * _track_half_width)
-	_apply_track_force(drive_force * 0.5 - track_split, forward, left_points, left_normals)
-	_apply_track_force(drive_force * 0.5 + track_split, forward, right_points, right_normals)
+	# A destroyed track gives no drive on its side, but drags like a brake (it doesn't
+	# roll freely): the tank can only pivot round it, and still holds on slopes.
+	var hold_force: float = 0.5 * mass * clampf(
+			clampf(-speed / delta, -data.brake_deceleration, data.brake_deceleration) - gravity_along,
+			-traction_limit, traction_limit)
+	var left_force: float = drive_force * 0.5 - track_split
+	var right_force: float = drive_force * 0.5 + track_split
+	if _damage.track_factor(-1) <= 0.0:
+		left_force = hold_force
+	if _damage.track_factor(1) <= 0.0:
+		right_force = hold_force
+	_apply_track_force(left_force, forward, left_points, left_normals)
+	_apply_track_force(right_force, forward, right_points, right_normals)
 
 
 func _apply_track_force(force: float, forward: Vector3,

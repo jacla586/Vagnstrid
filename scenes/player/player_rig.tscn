@@ -18,6 +18,7 @@
 [ext_resource type="Resource" path="res://data/world/spotting.tres" id="20_spotting"]
 [ext_resource type="Script" path="res://scripts/ui/spot_marks.gd" id="21_spot_marks"]
 [ext_resource type="Script" path="res://scripts/ui/big_map.gd" id="22_big_map"]
+[ext_resource type="Script" path="res://scripts/ui/damage_panel.gd" id="23_damage_panel"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -133,3 +134,9 @@ views = NodePath("../../PlayerViews")
 spot_marks = NodePath("../../SpotMarks")
 grid_step_m = 500.0
 font_size = 20
+
+[node name="DamagePanel" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
+layout_mode = 3
+mouse_filter = 2
+script = ExtResource("23_damage_panel")
+views = NodePath("../../PlayerViews")

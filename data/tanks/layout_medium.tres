@@ -1,0 +1,64 @@
+[gd_resource type="Resource" script_class="ModuleLayoutData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/module_layout_data.gd" id="1_layout"]
+[ext_resource type="Script" path="res://scripts/data/module_data.gd" id="2_module"]
+
+[sub_resource type="Resource" id="Module_engine"]
+script = ExtResource("2_module")
+id = &"engine"
+frame = &"hull"
+center = Vector3(0, 0.1, 2.3)
+size = Vector3(2, 1, 1.6)
+hp = 70.0
+damaged_below = 0.75
+
+[sub_resource type="Resource" id="Module_fuel"]
+script = ExtResource("2_module")
+id = &"fuel"
+frame = &"hull"
+center = Vector3(0, -0.1, 1.1)
+size = Vector3(2.4, 0.7, 0.5)
+hp = 30.0
+damaged_below = 1.0
+
+[sub_resource type="Resource" id="Module_track_left"]
+script = ExtResource("2_module")
+id = &"track_left"
+frame = &"hull"
+center = Vector3(-1.35, -0.35, 0)
+size = Vector3(0.5, 0.8, 6.5)
+hp = 30.0
+damaged_below = 0.6
+external = true
+
+[sub_resource type="Resource" id="Module_track_right"]
+script = ExtResource("2_module")
+id = &"track_right"
+frame = &"hull"
+center = Vector3(1.35, -0.35, 0)
+size = Vector3(0.5, 0.8, 6.5)
+hp = 30.0
+damaged_below = 0.6
+external = true
+
+[sub_resource type="Resource" id="Module_turret_ring"]
+script = ExtResource("2_module")
+id = &"turret_ring"
+frame = &"hull"
+center = Vector3(0, 0.65, 0.3)
+size = Vector3(2.2, 0.3, 2.2)
+hp = 60.0
+damaged_below = 0.75
+
+[sub_resource type="Resource" id="Module_ammo"]
+script = ExtResource("2_module")
+id = &"ammo"
+frame = &"turret"
+center = Vector3(0, 0, 0.8)
+size = Vector3(1.4, 0.6, 0.6)
+hp = 1.0
+damaged_below = 1.0
+
+[resource]
+script = ExtResource("1_layout")
+modules = Array[ExtResource("2_module")]([SubResource("Module_engine"), SubResource("Module_fuel"), SubResource("Module_track_left"), SubResource("Module_track_right"), SubResource("Module_turret_ring"), SubResource("Module_ammo")])

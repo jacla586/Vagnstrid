@@ -10,6 +10,8 @@ extends RefCounted
 ##   get_fragment_aim_point() -> Vector3
 ##   get_fragment_collider() -> CollisionObject3D
 ##   on_fragment_hit(shell_data: ShellData, distance: float) -> HitResult
+## and optionally fragment_hit_ok(point: Vector3) -> bool, for targets that are only
+## part of their collider (a tank's tracks): the fragment must strike near the target.
 
 const TARGET_GROUP: StringName = &"fragment_targets"
 ## Line-of-sight rays start this far off the surface, so the plate hit doesn't block.
@@ -39,7 +41,7 @@ static func detonate(world: World3D, tree: SceneTree, point: Vector3, normal: Ve
 		var aim: Vector3 = target.get_fragment_aim_point()
 		var distance: float = origin.distance_to(aim)
 		var chance: float = fragment_hit_chance(shell, distance)
-		if chance <= 0.0 or not _has_line_of_sight(world, origin, aim, target.get_fragment_collider()):
+		if chance <= 0.0 or not _has_line_of_sight(world, origin, aim, target):
 			continue
 		if rng.randf() >= chance:
 			continue
@@ -49,11 +51,12 @@ static func detonate(world: World3D, tree: SceneTree, point: Vector3, normal: Ve
 	return results
 
 
-static func _has_line_of_sight(world: World3D, from: Vector3, to: Vector3,
-		collider: CollisionObject3D) -> bool:
+static func _has_line_of_sight(world: World3D, from: Vector3, to: Vector3, target: Node) -> bool:
 	var query := PhysicsRayQueryParameters3D.create(from, to + (to - from).normalized() * 0.5)
 	query.collide_with_areas = true
 	# Fragments fly through bushes; only solid things give cover.
 	query.collision_mask = Vision.SHOT_MASK
 	var hit: Dictionary = world.direct_space_state.intersect_ray(query)
-	return not hit.is_empty() and hit["collider"] == collider
+	if hit.is_empty() or hit["collider"] != target.get_fragment_collider():
+		return false
+	return not target.has_method("fragment_hit_ok") or target.fragment_hit_ok(hit["position"])
