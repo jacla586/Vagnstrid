@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://d3ipodblnchrk"]
 
-[ext_resource type="Terrain3DMaterial" path="res://terrain/vidingsjo/material.tres" id="1_eqrm0"]
-[ext_resource type="Terrain3DAssets" path="res://terrain/vidingsjo/assets.tres" id="2_4we33"]
+[ext_resource type="Terrain3DMaterial" uid="uid://d4fuwte0p1wmu" path="res://terrain/vidingsjo/material.tres" id="1_eqrm0"]
+[ext_resource type="Terrain3DAssets" uid="uid://d26hyqd7spf2n" path="res://terrain/vidingsjo/assets.tres" id="2_4we33"]
 [ext_resource type="PackedScene" uid="uid://dow2gojxh5p5j" path="res://assets/maps/vidingsjo/vidingsjo_objekt.glb" id="3_e5r7p"]
 [ext_resource type="Script" uid="uid://d1wigxjl0rmf7" path="res://scripts/world/mesh_collision.gd" id="4_1xdyf"]
 [ext_resource type="Script" uid="uid://drs8vj81ngwqs" path="res://scripts/world/tree_field.gd" id="5_82ryi"]
@@ -12,7 +12,7 @@
 [ext_resource type="Resource" path="res://data/world/field_tree_lov.tres" id="12_ftdlov"]
 [ext_resource type="PackedScene" path="res://scenes/tank/tank.tscn" id="13_tank"]
 [ext_resource type="Script" uid="uid://t1duuxcrtose" path="res://scripts/control/bot_controller.gd" id="14_tctrl"]
-[ext_resource type="Resource" path="res://data/bots/bot_regular.tres" id="15_botdata"]
+[ext_resource type="Resource" uid="uid://xul8ehta6d3o" path="res://data/bots/bot_regular.tres" id="15_botdata"]
 [ext_resource type="Script" uid="uid://bc1odctfft7i4" path="res://scripts/control/respawn_at_start.gd" id="16_respawn"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_auyn3"]
@@ -67,7 +67,7 @@ data_prefix = "field_bush_"
 visibility_end_m = 800.0
 
 [node name="PlayerRig" parent="." unique_id=90670867 instance=ExtResource("9_vne7g")]
-transform = Transform3D(0.07993062, 0, -0.9968004, 0, 1, 0, 0.9968004, 0, 0.07993062, 1494.35, 62.09015, 1209.75)
+transform = Transform3D(0.07993062, 0, -0.9968004, 0, 1, 0, 0.9968004, 0, 0.07993062, 998.47327, 69.628944, 1464.941)
 
 [node name="Enemies" type="Node3D" parent="." unique_id=795425564]
 
