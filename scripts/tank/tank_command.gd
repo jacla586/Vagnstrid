@@ -23,3 +23,7 @@ var fire_mg: bool = false
 var mg_use_roof: bool = false
 ## World-space point the roof MG should aim at.
 var mg_aim_point: Vector3 = Vector3.ZERO
+## True = the commander marks spot_point this frame (ignored while on cooldown).
+var spot: bool = false
+## World-space point the commander wants to mark as spotted.
+var spot_point: Vector3 = Vector3.ZERO

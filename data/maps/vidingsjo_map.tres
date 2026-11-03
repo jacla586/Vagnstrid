@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="MapImageData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/map_image_data.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/maps/vidingsjo/map_image.png" id="2_texture"]
+
+[resource]
+script = ExtResource("1_script")
+texture = ExtResource("2_texture")
+world_rect = Rect2(0.0, 0.0, 3380.0, 3050.0)

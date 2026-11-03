@@ -96,13 +96,21 @@ shows on the minimap. This is what we test first.
   (`FieldTreeData`). Bushes are a second TreeField (`Bushes`, data `field_bush_*.tres`,
   `has_trunk = false`): crowns block sight (and count as cover), tanks and shells pass.
   hills.tscn still uses `tree.tscn`/`BreakableTree`.
+- Map pictures (minimap, big map on M): `tools/render_map_image.gd -- <map>` renders
+  `scenes/maps/<map>.tscn` from above (needs a window, not `--headless`; add
+  `--disable-vsync`) into `assets/maps/<map>/map_image.png` + `data/maps/<map>_map.tres`
+  (`MapImageData`). The HUD finds it from the Terrain3D data directory name. Rerun
+  after map changes. Spot marks live in `SpotMarks` (player rig), drawn by `MapView`.
 - Vegetation that matters for gameplay is real scenes (`tree.tscn`, `bush.tscn`),
   placed with the `Scatter` tool node, not the Terrain3D instancer (no collision).
 
 ## Controls
 
 - Driving: **WASD**, controlled directly by the player.
-- Main gun: mouse 1. MG: mouse 2 (roof MG in the commander view with the hatch
+- Main gun: mouse 1 in the gunner's sight. In the commander view mouse 1 spots
+  (red mark on the minimap, cooldown `TankData.spot_cooldown_s`, marks fade per
+  `data/world/spotting.tres`). Commander view: turret holds its hull-relative
+  direction; T lays it on the view. MG: mouse 2 (roof MG in the commander view with the hatch
   open, coaxial otherwise). Binoculars: B. Hatch: H.
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 

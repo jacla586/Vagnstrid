@@ -14,6 +14,10 @@
 [ext_resource type="Script" path="res://scripts/ui/commander_status.gd" id="17_commander_status"]
 [ext_resource type="Shader" path="res://assets/shaders/view_mask.gdshader" id="9_mask"]
 [ext_resource type="Resource" path="res://data/tanks/player_medium.tres" id="18_player_data"]
+[ext_resource type="Script" path="res://scripts/ui/minimap.gd" id="19_minimap"]
+[ext_resource type="Resource" path="res://data/world/spotting.tres" id="20_spotting"]
+[ext_resource type="Script" path="res://scripts/ui/spot_marks.gd" id="21_spot_marks"]
+[ext_resource type="Script" path="res://scripts/ui/big_map.gd" id="22_big_map"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -102,3 +106,30 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("17_commander_status")
 views = NodePath("../../PlayerViews")
+
+[node name="SpotMarks" type="Node" parent="." node_paths=PackedStringArray("views")]
+script = ExtResource("21_spot_marks")
+views = NodePath("../PlayerViews")
+spotting = ExtResource("20_spotting")
+
+[node name="Minimap" type="Control" parent="HUD" node_paths=PackedStringArray("views", "spot_marks", "big_map")]
+layout_mode = 3
+mouse_filter = 2
+script = ExtResource("19_minimap")
+views = NodePath("../../PlayerViews")
+spot_marks = NodePath("../../SpotMarks")
+big_map = NodePath("../BigMap")
+
+[node name="BigMap" type="Control" parent="HUD" node_paths=PackedStringArray("views", "spot_marks")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("22_big_map")
+views = NodePath("../../PlayerViews")
+spot_marks = NodePath("../../SpotMarks")
+grid_step_m = 500.0
+font_size = 20

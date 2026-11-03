@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="SpottingData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/spotting_data.gd" id="1_data"]
+
+[resource]
+script = ExtResource("1_data")
+mark_lifetime_s = 25.0
+mark_fade_s = 5.0

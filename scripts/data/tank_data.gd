@@ -90,6 +90,8 @@ extends Resource
 @export_group("Crew")
 ## How long a hit commander stays wounded (s): hatch locked shut meanwhile.
 @export var commander_wound_time_s: float = 20.0
+## Time between two spots by the commander (s).
+@export var spot_cooldown_s: float = 5.0
 
 @export_group("Armour")
 @export var armour: ArmourData

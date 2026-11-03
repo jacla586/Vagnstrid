@@ -22,6 +22,8 @@ extends RigidBody3D
 ## Machine guns: the command's fire_mg fires the roof MG (aimed at mg_aim_point; only
 ## with the hatch fully open and the commander unhurt) or the coaxial MG (aims with
 ## the gun). Bullets are Shells like the main gun's, with the MG data's spread.
+## Spotting: the command's spot marks spot_point (emits `spotted`), then waits the
+## data's spot cooldown.
 
 ## Emitted after a shot leaves the barrel.
 signal fired(shell: Shell)
@@ -36,6 +38,8 @@ signal commander_wounded
 signal hit_taken(direction: Vector3)
 ## Emitted for every machine-gun bullet fired.
 signal mg_fired(bullet: Shell, roof: bool)
+## Emitted when the commander spots: `point` is the world position he marked.
+signal spotted(point: Vector3)
 
 const KMH_TO_MS: float = 1.0 / 3.6
 const SHELL_SCENE: PackedScene = preload("res://scenes/weapons/shell.tscn")
@@ -70,6 +74,7 @@ var _burning: Node3D
 var _paint_override: StandardMaterial3D
 var _charred_material: StandardMaterial3D
 var _mg_shot_timer: float = 0.0
+var _spot_cooldown_remaining: float = 0.0
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 @onready var _suspension: Node3D = $Suspension
@@ -379,6 +384,7 @@ func _physics_process(delta: float) -> void:
 	_update_gun(delta)
 	_update_roof_mg(delta)
 	_update_mg(delta)
+	_update_spotting(delta)
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -445,6 +451,18 @@ func _update_gun(delta: float) -> void:
 	_reload_remaining = maxf(_reload_remaining - delta, 0.0)
 	if _command.fire and is_loaded() and get_loaded_shell() != null:
 		_fire()
+
+
+## Time until the commander can spot again (s), 0 when ready.
+func get_spot_cooldown_remaining() -> float:
+	return _spot_cooldown_remaining
+
+
+func _update_spotting(delta: float) -> void:
+	_spot_cooldown_remaining = maxf(_spot_cooldown_remaining - delta, 0.0)
+	if _command.spot and _spot_cooldown_remaining <= 0.0:
+		_spot_cooldown_remaining = data.spot_cooldown_s
+		spotted.emit(_command.spot_point)
 
 
 ## Swings the roof MG towards the command's MG aim point while it's in use.
