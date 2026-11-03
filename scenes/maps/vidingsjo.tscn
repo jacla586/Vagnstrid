@@ -67,7 +67,7 @@ data_prefix = "field_bush_"
 visibility_end_m = 800.0
 
 [node name="PlayerRig" parent="." unique_id=90670867 instance=ExtResource("9_vne7g")]
-transform = Transform3D(0.07993062, 0, -0.9968004, 0, 1, 0, 0.9968004, 0, 0.07993062, 998.47327, 69.628944, 1464.941)
+transform = Transform3D(0.07993062, 0, -0.9968004, 0, 1, 0, 0.9968004, 0, 0.07993062, 1161.1959, 65.67955, 1815.0171)
 
 [node name="Enemies" type="Node3D" parent="." unique_id=795425564]
 

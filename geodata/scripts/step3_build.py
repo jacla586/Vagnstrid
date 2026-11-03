@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri
+import takform, husgeometri, broar, stenar, okarta
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -71,21 +71,25 @@ for geom, t in feat['roads']:
         roads.append(dict(line=part, tags=t, width=WIDTH.get(t['highway'], 3.0), surface=surface_of(t),
                           name=t.get('name') or t.get('ref') or t['highway']))
 print('vägsegment', len(roads), 'total km', round(sum(r['line'].length for r in roads) / 1000, 1))
+BRO = broar.Broar(roads)   # brobanor och undergångar (broar.py)
 
 # Täta ut mittlinjerna (var 2 m) och jämna ut längsprofilen
 samples = []  # x, y, z, halvbredd, vägindex
 for k, r in enumerate(roads):
     L = r['line']
     n = max(2, int(L.length / 2) + 1)
-    pts = np.array([L.interpolate(d).coords[0] for d in np.linspace(0, L.length, n)])
+    ss = np.linspace(0, L.length, n)
+    pts = np.array([L.interpolate(d).coords[0] for d in ss])
     z = sample(h, pts[:, 0], pts[:, 1])
+    z = BRO.justera_profil(k, ss, z, lambda xs, ys: sample(h, xs, ys))  # rakt över däck
     z = ndi.gaussian_filter1d(z, sigma=max(1, min(8, n / 6)), mode='nearest')  # ~16 m utjämning
+    r['pts'], r['z'], r['s'] = pts, z, ss
     if r['tags']['highway'] in ('path', 'footway'):
-        r['pts'], r['z'] = pts, z
         continue  # stigar följer terrängen, ingen schaktning
-    r['pts'], r['z'] = pts, z
-    for (x, y), zz in zip(pts, z):
-        samples.append((x, y, zz, r['width'] / 2, k))
+    pa_dack = BRO.pa_bro(k, ss)
+    for (x, y), zz, dack in zip(pts, z, pa_dack):
+        if not dack:   # under däcken ligger marken kvar på den lägre nivån
+            samples.append((x, y, zz, r['width'] / 2, k))
 S = np.array(samples)
 SHOULDER = 8.0
 tree = cKDTree(S[:, :2])
@@ -96,7 +100,7 @@ m = rasterize([(road_union, 1)], out_shape=(H, W), transform=T).astype(bool)
 ii, jj = np.nonzero(m)
 cx, cy = OX + jj * RES, OY - ii * RES
 d, idx = tree.query(np.c_[cx, cy], distance_upper_bound=maxr)
-ok = np.isfinite(d)
+ok = np.isfinite(d) & ~BRO.dack_raster((H, W), T)[ii, jj]
 ii, jj, d, idx = ii[ok], jj[ok], d[ok], idx[ok]
 hw = S[idx, 3]
 t_ = np.clip((d - hw - 2.0) / SHOULDER, 0, 1)
@@ -117,8 +121,33 @@ for wp in water_polys:
         h[wm] = np.minimum(h[wm], lvl - np.minimum(dist[wm] * 0.15, 2.0))
     water_levels.append(lvl)
 
+# Vattendrag i orienteringskartan som saknas i OSM (okarta.py klassa): läggs till som bäckar,
+# men inte där de korsar vägar (där går de i trumma) eller ligger nära ett OSM-vattendrag
+OK_VD = WORK / 'okarta_vattendrag.pkl'
+OK_LINJER = None   # orienteringskartans vattendrag (buffrade), för att ge OSM-diken vatten
+if OK_VD.exists():
+    OK_LINJER = unary_union([LineString(xy).buffer(6.0) for xy in pickle.load(open(str(OK_VD), 'rb'))
+                             if len(xy) >= 2])
+    osm_vd = unary_union([gm for gm, _ in feat['waterways']]).buffer(6.0) if feat['waterways'] else None
+    vagar_b = unary_union([r['line'].buffer(r['width'] / 2 + 1.5) for r in roads])
+    n_ok = 0
+    for xy in pickle.load(open(str(OK_VD), 'rb')):
+        ln = LineString(xy).simplify(1.0)
+        if ln.length < 20 or (osm_vd is not None and ln.intersection(osm_vd).length > 0.5 * ln.length):
+            continue
+        rest = ln.difference(vagar_b)
+        if osm_vd is not None:
+            rest = rest.difference(osm_vd)
+        for part in getattr(rest, 'geoms', [rest]):
+            if part.geom_type == 'LineString' and part.length >= 10:
+                feat['waterways'].append((part, {'waterway': 'stream', 'kalla': 'orienteringskarta'}))
+                n_ok += 1
+    print('vattendrag ur orienteringskartan:', n_ok)
+
 # Diken och bäckar: smal fåra
 for geom, t in feat['waterways']:
+    if t.get('tunnel') in ('culvert', 'yes'):
+        continue  # trumma under väg: vägen ligger kvar på marken
     gg = geom.intersection(BOX)
     if gg.is_empty:
         continue
@@ -126,6 +155,8 @@ for geom, t in feat['waterways']:
     wm = rasterize([(gg.buffer(1.5), 1)], out_shape=(H, W), transform=T).astype(bool)
     h[wm] -= depth * 0.7
 h = ndi.gaussian_filter(h, 0.6) * 0.5 + h * 0.5  # mjuka kanter efter schaktning
+BRO.schakta(h, sample, (H, W), T, OX, OY, RES)   # undergångar: fri höjd under däcken
+BRO.spara_mask(str(WORK / 'broar_mask.npy'), (H, W), T)   # step4: inga träd i schakt och på broar
 
 # ---------- Heightmap-export ----------
 hmin, hmax = float(h.min()), float(h.max())
@@ -149,6 +180,20 @@ for cls in order:
     if gs:
         mm = rasterize([(x, 1) for x in gs], out_shape=(H, W), transform=T).astype(bool) & land
         lc[mm] = CIDX[cmap[cls]]
+# Orienteringskartan (okarta.py klassa), där den täcker: myr, odlad/öppen/halvöppen mark och snår.
+# Tomt, hårdgjort och skog lämnas till OSM; öppen mark blir äng utom där OSM säger åker.
+OKARTA_KLASS = WORK / 'okarta_klass.npy'
+if OKARTA_KLASS.exists():
+    ok_k = np.load(str(OKARTA_KLASS))
+    if ok_k.shape == lc.shape:
+        K = okarta.KODER
+        for kod, klass in ((K['myr'], 'våtmark'), (K['odlad'], 'åker'), (K['halvoppen'], 'mark'),
+                           (K['snar1'], 'buskmark'), (K['snar2'], 'buskmark'), (K['snar3'], 'buskmark')):
+            lc[(ok_k == kod) & land] = CIDX[klass]
+        lc[(ok_k == K['oppen']) & land & (lc != CIDX['åker'])] = CIDX['äng']
+        print('orienteringskarta: marktäcke justerat på', int((ok_k != okarta.UTANFOR).sum()), 'celler')
+    else:
+        print('orienteringskarta: fel storlek, hoppar över', ok_k.shape, lc.shape)
 if water_polys:
     lc[rasterize([(x, 1) for x in water_polys], out_shape=(H, W), transform=T).astype(bool)] = CIDX['sjö']
 for r in roads:
@@ -237,12 +282,14 @@ for k, r in enumerate(roads):
     nrm = np.c_[-dvec[:, 1], dvec[:, 0]]
     hw = r['width'] / 2
     L = pts + nrm * hw; Rr = pts - nrm * hw
-    lift = 0.15 if r['tags']['highway'] not in ('path', 'footway') else 0.04
+    lift = broar.lyft(r['tags'])
     if r['tags']['highway'] in ('path', 'footway'):
         zl = sample(h, L[:, 0], L[:, 1]) + lift; zr = sample(h, Rr[:, 0], Rr[:, 1]) + lift
     else:
         zc = np.maximum(sample(h, pts[:, 0], pts[:, 1]), np.maximum(sample(h, L[:, 0], L[:, 1]), sample(h, Rr[:, 0], Rr[:, 1])))
         zl = zr = zc + lift
+    dack = BRO.pa_dack(k, r['s'])
+    zl = np.where(dack, r['z'] + lift, zl); zr = np.where(dack, r['z'] + lift, zr)  # brobanans yta
     wl = np.array([to_world(*p) for p in L]); wr = np.array([to_world(*p) for p in Rr])
     V = np.empty((2 * len(pts), 3))
     V[0::2] = np.c_[wl[:, 0], zl, wl[:, 1]]
@@ -262,6 +309,35 @@ for k, r in enumerate(roads):
     road_json.append(dict(name=r['name'], highway=r['tags']['highway'], ref=r['tags'].get('ref'), surface=r['surface'],
                           width_m=r['width'], osm_name=r['tags'].get('name'),
                           points=[[round(float(x), 2), round(float(z), 2), round(float(y), 2)] for (x, y), z in zip(cw, cz)]))
+scene.graph.update(frame_to='Broar', frame_from=scene.graph.base_frame)
+BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 0.95),
+                mat('Tra', (120, 88, 58), 0.9), mat('Racke', (72, 74, 76), 0.6))
+
+# ---------- Stenblock ur orienteringskartan (stenar.py) ----------
+STEN_FIL = WORK / 'okarta_stenar.npy'
+sten_mask = np.zeros((H, W), bool)
+if STEN_FIL.exists():
+    hus_r = rasterize([(gm.buffer(2.0), 1) for gm, _ in feat['buildings']], out_shape=(H, W),
+                      transform=T).astype(bool) if feat['buildings'] else np.zeros((H, W), bool)
+    bro_r = np.load(str(WORK / 'broar_mask.npy')) if (WORK / 'broar_mask.npy').exists() else np.zeros((H, W), bool)
+    stopp = hus_r | bro_r | np.isin(lc, [CIDX['väg_asfalt'], CIDX['väg_grus'], CIDX['sjö'], CIDX['hav']])
+    def sten_hinder(E, N):
+        c, r_ = to_px(E, N)
+        i_, j_ = int(round(r_)), int(round(c))
+        return not (0 <= i_ < H and 0 <= j_ < W) or bool(stopp[i_, j_])
+    scene.graph.update(frame_to='Stenar', frame_from=scene.graph.base_frame)
+    auto = np.load(str(STEN_FIL))
+    inmatta = []
+    if (WORK.parent / 'stenar_manuellt.json').exists():
+        inmatta, auto = stenar.manuella(str(WORK.parent / 'stenar_manuellt.json'), auto)
+    lagda = stenar.bygg_stenar(auto, sample, h, to_world, add_merged,
+                               mat('Sten', (128, 126, 120), 0.95), sten_hinder, inmatta)
+    for E, N, rad in lagda:   # inga träd eller buskar på stenarna (step4)
+        c, r_ = to_px(E, N)
+        n_ = int(np.ceil(rad / RES)) + 1
+        i_, j_ = int(round(r_)), int(round(c))
+        sten_mask[max(i_ - n_, 0):i_ + n_ + 1, max(j_ - n_, 0):j_ + n_ + 1] = True
+np.save(str(WORK / 'stenar_mask.npy'), sten_mask)
 json.dump(dict(coordinate_note='Godot-koordinater [x, y(höjd), z] i meter; x=öst, z=syd. Se heightmap_info.json',
                roads=road_json), open(f'{OUT}/roads.json', 'w'), ensure_ascii=False)
 
@@ -310,6 +386,17 @@ def add_part(group, V, UV, faces, roof, ctr, material, plan=False):
     else:
         uv = UV[used]
     add_merged(group, trimesh.Trimesh(Vs, Fs, process=False), material, uv)
+
+MAT_TAKUNDER = mat('Takunder', (92, 80, 68), 0.9)   # takfotens undersida (målade brädor)
+
+def add_takunder(group, V, faces, ctr):
+    """Takets undersida: samma trianglar vända nedåt, så att takutsprånget syns underifrån
+    (Godot ritar inte baksidor)."""
+    if not faces:
+        return
+    F = np.array([[a_, c_, b_] for a_, b_, c_ in orient(V, faces, True, ctr)])
+    used, inv = np.unique(F, return_inverse=True)
+    add_merged(group, trimesh.Trimesh(V[used], inv.reshape(F.shape), process=False), MAT_TAKUNDER)
 
 def schablontak(delar, hustyp, heights):
     """Tak utan laserträffar: schablon per hustyp, eller laserhöjderna (takfot, nock) om de finns."""
@@ -400,6 +487,8 @@ def bygg_alla_hus():
             for namn, (faces, gctr, roof) in grupper.items():
                 if namn == 'tak':
                     add_part(group, V, UV, faces, True, ctr, husstil.tak(takfarg(t, stil), semi), plan=True)
+                    if t.modell in ('sadel', 'valmat', 'talt'):   # de har takutsprång
+                        add_takunder(group, V, faces, ctr)
                 else:
                     add_part(group, V, UV, faces, roof, gctr or ctr, at.material())
     print('hustyper:', dict(sorted(HUSSTAT.items(), key=lambda x: -x[1])),
@@ -550,6 +639,43 @@ for k, (wp, lvl) in enumerate(zip(water_polys, water_levels)):
                 msh.faces = msh.faces[:, ::-1]
             msh.visual = trimesh.visual.TextureVisuals(material=MAT_LAKE)
             scene.add_geometry(msh, node_name=f'Sjo_{k}', geom_name=f'Sjo_{k}')
+
+# Bäckar och åar: en vattenyta i den utgrävda fåran (trummor och tunnlar hoppas över)
+VATTENDRAG_BREDD = dict(stream=1.6, river=5.0, canal=4.0)
+n_vd = 0
+for geom, t in feat['waterways']:
+    if t.get('tunnel'):
+        continue
+    if t.get('waterway') not in VATTENDRAG_BREDD:
+        # diken med vatten: där orienteringskartan ritar ett heldraget vattendrag
+        if t.get('waterway') not in ('ditch', 'drain') or OK_LINJER is None \
+                or geom.intersection(OK_LINJER).length < 0.5 * geom.length:
+            continue
+        t = dict(t, waterway='stream')
+    gg = geom.intersection(BOX)
+    for part in getattr(gg, 'geoms', [gg]):
+        if part.geom_type != 'LineString' or part.length < 6:
+            continue
+        n_ = max(2, int(part.length / 2) + 1)
+        pts = np.array([part.interpolate(d).coords[0] for d in np.linspace(0, part.length, n_)])
+        dv = np.gradient(pts, axis=0)
+        dv /= np.maximum(np.linalg.norm(dv, axis=1, keepdims=True), 1e-9)
+        nrm = np.c_[-dv[:, 1], dv[:, 0]]
+        bw = VATTENDRAG_BREDD[t['waterway']] / 2
+        botten = sample(h, pts[:, 0], pts[:, 1])
+        kant = np.minimum(sample(h, *(pts + nrm * (bw + 1.0)).T), sample(h, *(pts - nrm * (bw + 1.0)).T))
+        niva = ndi.gaussian_filter1d(botten + 0.25, 1.5, mode='nearest')
+        niva = np.clip(niva, botten + 0.08, np.maximum(kant - 0.1, botten + 0.08))
+        Lw = np.array([to_world(*q) for q in pts + nrm * bw]); Rw = np.array([to_world(*q) for q in pts - nrm * bw])
+        V = np.empty((2 * n_, 3)); V[0::2] = np.c_[Lw[:, 0], niva, Lw[:, 1]]; V[1::2] = np.c_[Rw[:, 0], niva, Rw[:, 1]]
+        a_ = np.arange(n_ - 1) * 2
+        msh = trimesh.Trimesh(V, np.r_[np.c_[a_, a_ + 1, a_ + 2], np.c_[a_ + 1, a_ + 3, a_ + 2]], process=False)
+        if msh.face_normals[:, 1].mean() < 0:
+            msh.faces = msh.faces[:, ::-1]
+        add_merged('Vattendrag', msh, MAT_LAKE)
+        n_vd += 1
+scene.graph.update(frame_to='Vattendrag', frame_from=scene.graph.base_frame)
+print('vattendrag med vattenyta', n_vd)
 
 flush_merged()
 # Först utan terrängrutor, för Godot där Terrain3D står för marken, sedan hela scenen

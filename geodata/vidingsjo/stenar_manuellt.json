@@ -1,0 +1,8 @@
+{
+ "anm": "Stenar som läggs in för hand (step3/stenar.py). E/N i SWEREF 99 TM; mått i meter; riktning = längdens riktning i grader från norr. Automatiska stenar inom ersatt_radie m tas bort.",
+ "ersatt_radie": 6.0,
+ "stenar": [
+  {"namn": "Lekparksstenen i Ortgatans C", "E": 537343.8, "N": 6471175.7,
+   "hojd": 1.2, "bredd": 2.0, "langd": 4.0, "riktning": 0.0}
+ ]
+}

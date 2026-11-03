@@ -87,6 +87,15 @@ if blds:
     Tg = from_origin(X0, Y1, RES, RES)
     bm = rasterize([(b, 1) for b in blds], out_shape=lc.shape, transform=Tg).astype(bool)
     bad |= bm[pi, pj]
+# broar och undergångar (step3/broar.py): inga träd i schakten eller på brobanorna
+bro_fil = WORK / 'broar_mask.npy'
+bro_mask = np.load(str(bro_fil)) if bro_fil.exists() else None
+sten_fil = WORK / 'stenar_mask.npy'   # stenblock ur orienteringskartan (step3)
+if sten_fil.exists():
+    sm = np.load(str(sten_fil))
+    bro_mask = sm if bro_mask is None else (bro_mask | sm)
+if bro_mask is not None:
+    bad |= bro_mask[pi, pj]
 ground = ndi.map_coordinates(h_final, [(OY - N) / RES, (E - OX) / RES], order=1, mode='nearest')
 bad |= ground < 0.3
 keep = ~bad
@@ -196,6 +205,8 @@ def ok_plats(E_, N_):
     bra = ~np.isin(lc[pi_, pj_], [LC['hav'], LC['sjö'], LC['väg_asfalt'], LC['väg_grus']])
     if blds:
         bra &= ~bm[pi_, pj_]
+    if bro_mask is not None:
+        bra &= ~bro_mask[pi_, pj_]
     return bra
 
 # 1) Laserdatan: låg vegetation 0,7–3 m med många flerekon (inte tak, inte träd)
@@ -241,6 +252,28 @@ for gm, cls in feat['landcover']:
     lagg(pe, pn, hh_, np.clip(0.5 + 0.35 * hh_, 0.6, 1.4), np.clip(0.5 + 0.35 * hh_, 0.6, 1.4),
          rng.uniform(0, 2 * math.pi, pe.size), 'buske')
     n_mark += pe.size
+
+# 5) Snår ur orienteringskartan (okarta.py klassa): ljus/mellan/mörk grön = tätare och tätare
+n_snar = 0
+ok_fil = WORK / 'okarta_klass.npy'
+if ok_fil.exists():
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import okarta
+    ok_k = np.load(str(ok_fil))
+    for kod, m2_per_buske, sly_andel in ((okarta.KODER['snar1'], 30.0, 0.1), (okarta.KODER['snar2'], 14.0, 0.25),
+                                         (okarta.KODER['snar3'], 7.0, 0.4)):
+        ri_, ci_ = np.nonzero((ok_k == kod) & (rng.random(ok_k.shape) < (RES * RES) / m2_per_buske))
+        pe = OX + ci_ * RES + rng.uniform(-RES / 2, RES / 2, ri_.size)
+        pn = OY - ri_ * RES + rng.uniform(-RES / 2, RES / 2, ri_.size)
+        inne = ok_plats(pe, pn)
+        pe, pn = pe[inne], pn[inne]
+        hh_ = rng.uniform(1.2, 2.6, pe.size)
+        rr_ = np.clip(0.5 + 0.35 * hh_, 0.6, 1.5)
+        sly_ = rng.random(pe.size) < sly_andel
+        for t_, m_ in (('sly', sly_), ('buske', ~sly_)):
+            lagg(pe[m_], pn[m_], hh_[m_], rr_[m_], rr_[m_], rng.uniform(0, 2 * math.pi, m_.sum()), t_)
+        n_snar += pe.size
+    print('snår ur orienteringskartan:', n_snar, 'buskar')
 
 # 4) Skogsbryn: sly på öppen mark inom 4 m från skog
 skog = lc == LC['skog']

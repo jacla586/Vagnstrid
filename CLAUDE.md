@@ -96,6 +96,11 @@ shows on the minimap. This is what we test first.
   (`FieldTreeData`). Bushes are a second TreeField (`Bushes`, data `field_bush_*.tres`,
   `has_trunk = false`): crowns block sight (and count as cover), tanks and shells pass.
   hills.tscn still uses `tree.tscn`/`BreakableTree`.
+- Bridges and underpasses come from the geodata pipeline (`geodata/scripts/broar.py`): glb group
+  `Broar` (decks, parapets, pillars, trench floors, retaining walls). `mesh_collision.gd` gives
+  `Byggnader`, `Broar` and `Stenar` trimesh collision. Underpasses are tank-sized (≥ 5 m wide, 3.8 m clear).
+- Orienteering maps (club-owned, private use only, in `geodata/<area>/data/`, outside git) add
+  boulders (`Stenar`), thickets (extra bushes) and marsh/open-land classes: `geodata/scripts/okarta.py`.
 - Map pictures (minimap, big map on M): `tools/render_map_image.gd -- <map>` renders
   `scenes/maps/<map>.tscn` from above (needs a window, not `--headless`; add
   `--disable-vsync`) into `assets/maps/<map>/map_image.png` + `data/maps/<map>_map.tres`

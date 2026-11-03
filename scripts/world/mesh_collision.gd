@@ -4,7 +4,7 @@ extends Node3D
 ## direct children whose names start with one of the prefixes are processed, with
 ## all MeshInstance3D nodes below them.
 
-@export var collision_prefixes: PackedStringArray = ["Byggnader"]
+@export var collision_prefixes: PackedStringArray = ["Byggnader", "Broar", "Stenar"]
 
 
 func _ready() -> void:
