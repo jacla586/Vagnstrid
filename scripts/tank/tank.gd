@@ -164,6 +164,7 @@ func _ready() -> void:
 		squad.name = "%sSquad" % name
 		squad.tank = self
 		squad.data = data.squad
+		squad.net_puppet = net_puppet
 		get_parent().add_child.call_deferred(squad)
 	if data.sounds != null:
 		_audio = TankAudio.new()
@@ -683,6 +684,8 @@ func _update_mg(delta: float) -> void:
 func set_net_puppet(predict: bool) -> void:
 	net_puppet = true
 	net_predict = predict
+	if squad != null:
+		squad.net_puppet = true
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = true
 	if not predict:

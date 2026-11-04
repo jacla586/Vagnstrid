@@ -25,6 +25,8 @@ const FALLBACK_SPAWN_DISTANCE_M: float = 300.0
 const BOT_SPAWN_OFFSET_M: float = 15.0
 ## King of the Hill state to clients this often (s), and at once on zone changes.
 const KOTH_SEND_INTERVAL_S: float = 0.5
+## Infantry squads to clients every this many physics ticks (6 = 10 Hz, unreliable).
+const SQUAD_SEND_TICKS: int = 6
 
 ## net_id -> Tank (every replicated tank)
 var tanks: Dictionary = {}
@@ -45,6 +47,7 @@ var _input: NetInput
 var _my_rig: Node
 var _map: Node
 var _koth_timer: float = 0.0
+var _squad_tick: int = 0
 var _koth_hooked: KothMode
 
 
@@ -148,6 +151,18 @@ func _register(tank: Tank, owner_peer: int) -> int:
 	tank.fired.connect(_on_fired.bind(tank))
 	tank.shot_landed.connect(_on_shot_landed.bind(tank))
 	tank.spotted.connect(_on_spotted.bind(tank))
+	if tank.squad != null:
+		var squad: Squad = tank.squad
+		squad.soldier_down.connect(func(index: int, screamed: bool) -> void:
+			if not multiplayer.get_peers().is_empty():
+				NetSession.instance.rpc("rpc_squad_down", net_id, index, screamed))
+		squad.smoke_thrown.connect(func(at: Vector3) -> void:
+			if not multiplayer.get_peers().is_empty():
+				NetSession.instance.rpc("rpc_squad_smoke", net_id, at))
+		squad.fired_round.connect(func(kind: int, from: Vector3, velocity: Vector3) -> void:
+			if not multiplayer.get_peers().is_empty():
+				NetSession.instance.rpc("rpc_squad_shot", net_id, kind, from, velocity)
+				NetSession.instance.count_out(32))
 	if owner_peer != 0:
 		tank.knocked_out.connect(func() -> void: _respawn_timers[net_id] = RESPAWN_DELAY_S)
 	return net_id
@@ -270,6 +285,7 @@ func _physics_process(delta: float) -> void:
 	if not NetRole.is_host():
 		return
 	_update_koth(delta)
+	_send_squads()
 	for net_id: int in _respawn_timers.keys():
 		_respawn_timers[net_id] -= delta
 		if _respawn_timers[net_id] > 0.0:
@@ -309,7 +325,75 @@ func _send_koth_state(mode: KothMode) -> void:
 	NetSession.instance.count_out(160)
 
 
+## Host: every registered tank's squad to every client (10 Hz, one unreliable packet).
+func _send_squads() -> void:
+	_squad_tick += 1
+	if _squad_tick % SQUAD_SEND_TICKS != 0 or multiplayer.get_peers().is_empty():
+		return
+	var buf := StreamPeerBuffer.new()
+	buf.put_u8(NetSession.PACKET_SQUADS)
+	var count_at: int = buf.get_position()
+	buf.put_u8(0)
+	var count: int = 0
+	for net_id: int in tanks:
+		var tank: Tank = tanks[net_id]
+		if not is_instance_valid(tank) or tank.squad == null or not is_instance_valid(tank.squad):
+			continue
+		buf.put_u16(net_id)
+		tank.squad.write_net_state(buf)
+		count += 1
+		if count == 255:
+			break
+	var bytes: PackedByteArray = buf.data_array
+	bytes[count_at] = count
+	for peer: int in multiplayer.get_peers():
+		NetSession.instance.send_raw(bytes, peer, NetSession.CH_SNAPSHOT)
+
+
+## Host: a client sent its squad (via its own tank).
+func on_squad_order(peer: int, kind: int, target: Vector3) -> void:
+	var tank: Tank = tank_of_peer(peer)
+	if tank != null and tank.squad != null and is_instance_valid(tank.squad):
+		tank.squad.order(kind, target)
+
+
 # --- Client ------------------------------------------------------------------------------
+
+func on_squads(buf: StreamPeerBuffer) -> void:
+	var count: int = buf.get_u8()
+	for i: int in count:
+		var net_id: int = buf.get_u16()
+		var tank: Tank = tanks.get(net_id)
+		if tank != null and is_instance_valid(tank) and tank.squad != null and is_instance_valid(tank.squad) \
+				and tank.squad.is_inside_tree():
+			tank.squad.read_net_state(buf)
+		else:
+			Squad.skip_net_state(buf)
+
+
+func _squad_of(net_id: int) -> Squad:
+	var tank: Tank = tanks.get(net_id)
+	if tank == null or not is_instance_valid(tank) or tank.squad == null or not is_instance_valid(tank.squad):
+		return null
+	return tank.squad
+
+
+func on_squad_down(net_id: int, index: int, screamed: bool) -> void:
+	var squad: Squad = _squad_of(net_id)
+	if squad != null:
+		squad.net_soldier_down(index, screamed)
+
+
+func on_squad_smoke(net_id: int, at: Vector3) -> void:
+	var squad: Squad = _squad_of(net_id)
+	if squad != null:
+		squad.throw_smoke(at)
+
+
+func on_squad_shot(net_id: int, kind: int, from: Vector3, velocity: Vector3) -> void:
+	var squad: Squad = _squad_of(net_id)
+	if squad != null:
+		squad.net_show_shot(kind, from, velocity)
 
 func on_koth_state(state: Dictionary) -> void:
 	if KothMode.instance != null:

@@ -71,7 +71,10 @@ shows on the minimap. This is what we test first.
   blocker) and fall back; losses to rifles: fall back. Mounted they refill one by one;
   wiped out, a full squad is back after `wipe_cooldown_s`. HUD: `SquadPanel`.
   Placeholder soldiers are green capsules. Own team's squads show on the maps.
-  Decided rules: memory `squad-rules`. Not yet: network, bot use, models.
+  Network: clients send squad orders by reliable RPC (`rpc_squad_order`); the host
+  sends all squads in a 10 Hz unreliable packet (`PACKET_SQUADS`, `Squad.write_net_state`,
+  31 B each) and soldier-down/smoke/shot events by RPC; client squads are puppets.
+  Decided rules: memory `squad-rules`. Not yet: bot use, models.
 - Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
   only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
 - Bots: `BotController` (extends `TargetTankController`, so patrols waypoints) with

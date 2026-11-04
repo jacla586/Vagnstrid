@@ -23,6 +23,9 @@ func _physics_process(_delta: float) -> void:
 	if c.spot:
 		_spot_seq = (_spot_seq + 1) & 255
 		_spot_point = c.spot_point
+	if c.squad_order != 0:
+		# Squad orders are rare and must not get lost: reliable, not in the stream.
+		NetSession.instance.rpc_id(1, "rpc_squad_order", c.squad_order, c.squad_target)
 	_tick += 1
 	if _tick % SEND_TICKS != 0:
 		return

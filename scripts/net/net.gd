@@ -23,6 +23,7 @@ const CH_SNAPSHOT: int = 0
 const CH_COMMAND: int = 1
 const PACKET_SNAPSHOT: int = 1
 const PACKET_COMMAND: int = 2
+const PACKET_SQUADS: int = 3
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const DEFAULT_MAP: String = "res://scenes/maps/vidingsjo.tscn"
 ## ENet drops a peer it hasn't heard from in this long (ms). Loading a big map (and the
@@ -221,6 +222,8 @@ func _on_packet(id: int, packet: PackedByteArray) -> void:
 		game.on_snapshot(buf)
 	elif kind == PACKET_COMMAND and NetRole.is_host():
 		game.on_command(id, buf)
+	elif kind == PACKET_SQUADS and NetRole.is_client() and id == 1:
+		game.on_squads(buf)
 
 
 # --- RPCs (all reliable; the game logic is in NetGame) --------------------------------
@@ -281,6 +284,30 @@ func rpc_team_spot(point: Vector3) -> void:
 func rpc_tree_felled(field: NodePath, index: int, direction: Vector3) -> void:
 	if game != null:
 		game.on_tree_felled(field, index, direction)
+
+
+@rpc("any_peer", "call_remote", "reliable", 2)
+func rpc_squad_order(kind: int, target: Vector3) -> void:
+	if NetRole.is_host() and game != null:
+		game.on_squad_order(multiplayer.get_remote_sender_id(), kind, target)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_squad_down(net_id: int, index: int, screamed: bool) -> void:
+	if game != null:
+		game.on_squad_down(net_id, index, screamed)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_squad_smoke(net_id: int, at: Vector3) -> void:
+	if game != null:
+		game.on_squad_smoke(net_id, at)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_squad_shot(net_id: int, kind: int, from: Vector3, velocity: Vector3) -> void:
+	if game != null:
+		game.on_squad_shot(net_id, kind, from, velocity)
 
 
 @rpc("authority", "call_remote", "reliable", 2)

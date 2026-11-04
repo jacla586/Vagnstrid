@@ -26,6 +26,8 @@ extends Node3D
 
 signal soldier_down(index: int, screamed: bool)
 signal smoke_thrown(at: Vector3)
+## A round left a soldier's weapon (kind: SHOT_RIFLE / SHOT_AT), for the network.
+signal fired_round(kind: int, from: Vector3, velocity: Vector3)
 
 enum State { MOUNTED, MOVING, HOLDING, RETURNING, WIPED }
 
@@ -43,6 +45,12 @@ const RETURN_REPLAN_S: float = 3.0
 const TANK_LOOK_HEIGHTS: Array[float] = [0.5, 1.9]
 ## Loaded at start, not preloaded: shell.gd refers back to Squad (a preload would cycle).
 const SHELL_SCENE_PATH: String = "res://scenes/weapons/shell.tscn"
+const SHOT_RIFLE: int = 0
+const SHOT_AT: int = 1
+## Bytes in one squad's network state (write_net_state).
+const NET_STATE_BYTES: int = 31
+## Puppets slide to the host's position this fast (1/s).
+const NET_FOLLOW_RATE: float = 10.0
 ## Kneeling soldiers' body height as a share of standing (hitbox).
 const KNEEL_HITBOX_SHARE: float = 0.6
 
@@ -86,6 +94,11 @@ var _withdraw_timer: float = 0.0
 # Losses
 var _refill_timer: float = 0.0
 var _wipe_timer: float = 0.0
+# Network puppet: the host's numbers
+var _net_position: Vector3 = Vector3.ZERO
+var _net_at: int = 0
+var _net_smoke: int = 0
+var _net_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -142,23 +155,27 @@ func get_hitboxes() -> Array[SoldierHitbox]:
 
 
 func get_at_rounds_left() -> int:
-	return _at_left
+	return _net_at if net_puppet else _at_left
 
 
 func get_smoke_left() -> int:
-	return _smoke_left
+	return _net_smoke if net_puppet else _smoke_left
 
 
 ## Seconds until the next soldier is back on the tank (0 when full).
 func get_refill_time_left() -> float:
 	if get_alive_count() >= data.soldier_count or _state != State.MOUNTED:
 		return 0.0
+	if net_puppet:
+		return _net_timer
 	return maxf(data.refill_time_s - _refill_timer, 0.0)
 
 
 ## Seconds until a wiped-out squad is back (0 otherwise).
 func get_wipe_time_left() -> float:
-	return maxf(data.wipe_cooldown_s - _wipe_timer, 0.0) if _state == State.WIPED else 0.0
+	if _state != State.WIPED:
+		return 0.0
+	return _net_timer if net_puppet else maxf(data.wipe_cooldown_s - _wipe_timer, 0.0)
 
 
 ## The leader: the first living soldier (null if none).
@@ -210,7 +227,12 @@ func _physics_process(delta: float) -> void:
 		queue_free()
 		return
 	if net_puppet:
-		_place_soldiers(delta)
+		if is_out():
+			global_position = global_position.lerp(_net_position, minf(delta * NET_FOLLOW_RATE, 1.0))
+			_place_soldiers(delta)
+		else:
+			global_position = tank.global_position
+		_update_bodies(delta)
 		return
 	_clock += delta
 	match _state:
@@ -331,6 +353,8 @@ func _walk(delta: float) -> void:
 
 
 func _is_moving() -> bool:
+	if net_puppet:
+		return _state == State.MOVING or _state == State.RETURNING
 	return (_state == State.MOVING or _state == State.RETURNING) and not _path.is_empty()
 
 
@@ -572,6 +596,8 @@ func _fire(i: int, shell_data: ShellData, aim: Vector3, target: Node3D, spread_m
 	get_parent().add_child(shell)
 	shell.launch(shell_data, from, dir * shell_data.muzzle_velocity_mps, _hitboxes[i])
 	SoundFx.play_at(self, sound, from)
+	fired_round.emit(SHOT_AT if shell_data == data.at_round else SHOT_RIFLE, from,
+			dir * shell_data.muzzle_velocity_mps)
 
 
 func _first_alive() -> int:
@@ -708,6 +734,79 @@ func _restore_full() -> void:
 	_at_left = data.at_rounds
 	_smoke_left = data.smoke_grenades
 	_mount()
+
+
+# --- Network ---------------------------------------------------------------------
+
+## Host: this squad's state for the clients (NET_STATE_BYTES bytes).
+func write_net_state(buf: StreamPeerBuffer) -> void:
+	var mask: int = 0
+	for i: int in mini(_alive.size(), 8):
+		if _alive[i]:
+			mask |= 1 << i
+	buf.put_u8(_state)
+	buf.put_u8(mask)
+	buf.put_u8(roundi(_kneel * 255.0))
+	buf.put_float(global_position.x)
+	buf.put_float(global_position.y)
+	buf.put_float(global_position.z)
+	buf.put_float(atan2(_heading.x, _heading.z))
+	var goal: Vector3 = get_goal()
+	buf.put_float(goal.x)
+	buf.put_float(goal.z)
+	buf.put_u8(_at_left)
+	buf.put_u8(_smoke_left)
+	var timer: float = get_wipe_time_left() if _state == State.WIPED else get_refill_time_left()
+	buf.put_u16(clampi(roundi(timer * 10.0), 0, 65535))
+
+
+## Client: takes the host's state (a puppet shows it; no logic of its own).
+func read_net_state(buf: StreamPeerBuffer) -> void:
+	var state: State = buf.get_u8() as State
+	var mask: int = buf.get_u8()
+	_kneel = buf.get_u8() / 255.0
+	_net_position = Vector3(buf.get_float(), buf.get_float(), buf.get_float())
+	var yaw: float = buf.get_float()
+	_heading = Vector3(sin(yaw), 0.0, cos(yaw))
+	_goal = Vector3(buf.get_float(), _net_position.y, buf.get_float())
+	_net_at = buf.get_u8()
+	_net_smoke = buf.get_u8()
+	_net_timer = buf.get_u16() / 10.0
+	var was_out: bool = is_out()
+	_state = state
+	if is_out() and not was_out:
+		global_position = _net_position   # just got off: no sliding from the tank
+	for i: int in _alive.size():
+		var alive: bool = (mask >> i) & 1 == 1
+		if alive and not _alive[i]:
+			_alive[i] = true
+			_soldiers[i].visible = true
+		elif not alive and _alive[i]:
+			_put_down(i, false)   # screams come as their own event
+	visible = is_out() or _state == State.WIPED
+	_set_hitboxes_active(false)
+
+
+## Client: skips one squad's state (its tank isn't known here yet).
+static func skip_net_state(buf: StreamPeerBuffer) -> void:
+	buf.seek(buf.get_position() + NET_STATE_BYTES)
+
+
+## Client: the host says soldier `index` fell (and whether he screamed).
+func net_soldier_down(index: int, screamed: bool) -> void:
+	if index >= 0 and index < _alive.size() and _alive[index]:
+		_put_down(index, screamed)
+	elif screamed:
+		SoundFx.play_at(self, data.scream_sound, _soldiers[index].global_position + Vector3.UP)
+
+
+## Client: a round the host's squad fired, shown here without effect.
+func net_show_shot(kind: int, from: Vector3, velocity: Vector3) -> void:
+	var shell_data: ShellData = data.at_round if kind == SHOT_AT else data.rifle_bullet
+	var shell := _shell_scene.instantiate() as Shell
+	get_parent().add_child(shell)
+	shell.launch(shell_data, from, velocity, null, true)
+	SoundFx.play_at(self, data.at_sound if kind == SHOT_AT else data.rifle_sound, from)
 
 
 # --- Soldiers ----------------------------------------------------------------------
