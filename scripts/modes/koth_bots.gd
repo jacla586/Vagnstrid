@@ -78,6 +78,7 @@ func _find_bots() -> void:
 		_bots.append(bot)
 		bot.respawn_delay_s = 0.0   # no repair on the spot: we bring it back at the spawn
 		bot.tank.knocked_out.connect(_on_knocked_out.bind(bot))
+		bot.tank.squad_contact.connect(_on_squad_contact.bind(bot))
 	var per_team: Dictionary = {}
 	for bot: BotController in _bots:
 		var n: int = int(per_team.get(bot.tank.team, 0))
@@ -355,6 +356,14 @@ func _random_point(radius: float) -> Vector3:
 		offset = Vector2.from_angle(_rng.randf() * TAU) * sqrt(_rng.randf()) * radius * (1.0 - i / 8.0)
 		point = Vector3(center.x + offset.x, center.y, center.z + offset.y)
 	return center
+
+
+## A bot's squad saw an enemy: the radio tells the rest of its team.
+func _on_squad_contact(enemy: Node3D, at: Vector3, from: BotController) -> void:
+	for other: BotController in _bots:
+		if other != from and is_instance_valid(other) and is_instance_valid(other.tank) \
+				and other.tank.team == from.tank.team and not other.tank.is_knocked_out():
+			other.share_contact(enemy as Tank, at)
 
 
 func _on_knocked_out(bot: BotController) -> void:

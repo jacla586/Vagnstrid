@@ -33,6 +33,20 @@ const ALERT_TIME_S: float = 10.0
 ## Stuck on an ordered route: try a point this far to the side (and a bit ahead) (m).
 const DETOUR_SIDE_M: float = 25.0
 const DETOUR_AHEAD_M: float = 10.0
+## Infantry: the bot thinks about its squad this often (s)...
+const SQUAD_THINK_S: float = 3.0
+## ...sends it to look about this far ahead / towards a threat (m)...
+const SQUAD_LOOK_AHEAD_M: float = 150.0
+## ...moves it on once the look point has moved this far (m)...
+const SQUAD_MOVE_ON_M: float = 80.0
+## ...and calls it back when the tank is this far from it (m), or has been driving on
+## for SQUAD_RECALL_DRIVE_S (the squad rides along rather than run behind).
+const SQUAD_RECALL_DISTANCE_M: float = 230.0
+const SQUAD_RECALL_DRIVE_S: float = 5.0
+## Faster than this counts as driving on (m/s).
+const SQUAD_DRIVE_SPEED: float = 3.0
+## Enemy soldiers: spotted with this many times the time a tank takes (small, low).
+const SOLDIER_SPOT_FACTOR: float = 2.5
 ## Shoot and scoot: hidden backing out of sight, or returning to fire.
 enum Scoot { NONE, HIDING, RETURNING }
 ## Hide spot candidates: angles off straight back from the target (degrees).
@@ -96,6 +110,12 @@ var _yield_time: float = 0.0
 ## Scouting stops still ahead on the current path, and time left at the current one.
 var _scout_points: Array[Vector3] = []
 var _scout_wait: float = 0.0
+var _squad_think: float = 0.0
+var _squad_look: Vector3 = Vector3.INF
+var _driving_time: float = 0.0
+## Enemy squads: seconds looked at, and the one being fired on.
+var _squad_awareness: Dictionary = {}  # Squad -> seconds
+var _squad_target: Squad
 var _scoot: Scoot = Scoot.NONE
 var _scoot_point: Vector3 = Vector3.ZERO
 var _peek_point: Vector3 = Vector3.ZERO
@@ -116,6 +136,7 @@ func _ready() -> void:
 	if tank != null:
 		tank.hit_taken.connect(_on_hit_taken)
 		tank.fired.connect(_on_fired)
+		tank.squad_contact.connect(_on_squad_contact)
 
 
 ## The enemy tank this bot is engaging, or null.
@@ -264,10 +285,15 @@ func _physics_process(delta: float) -> void:
 		_target = null
 	if _target != null:
 		_engage(_target, delta)
+	elif _squad_target != null and is_instance_valid(_squad_target) and _squad_target.is_out():
+		_settle_time = 0.0
+		_engage_squad(_squad_target, delta)
 	else:
 		_settle_time = 0.0
 		_mg_time = 0.0
 		_look_ahead_or_at_threat()
+	_command.squad_order = Squad.ORDER_NONE
+	_update_squad(delta)
 	if _scoot != Scoot.NONE:
 		_update_scoot(delta)
 		_update_hatch(delta)
@@ -308,6 +334,7 @@ func _scan(dt: float) -> void:
 			_forget(other)
 			continue
 		_look_at(other, dt)
+	_scan_squads(dt)
 	_pick_target()
 	if _target != null:
 		_update_superelevation(_target)
@@ -538,6 +565,141 @@ func _look_ahead_or_at_threat() -> void:
 		return
 	_command.aim_point = eye + direction.normalized() * 200.0
 	_command.has_aim = true
+
+
+# --- Infantry ----------------------------------------------------------------------
+
+## Enemy squads: the same sight rules as for tanks, on the soldiers (small: slow to make
+## out). The nearest spotted one in MG range is fired on when there is no tank target.
+func _scan_squads(dt: float) -> void:
+	var best: Squad = null
+	var best_d: float = INF
+	var mg_range: float = bot_data.mg_range_m
+	for node: Node in get_tree().get_nodes_in_group("squads"):
+		var enemy := node as Squad
+		if enemy == null or not enemy.is_out() or enemy.get_team() == tank.team:
+			_squad_awareness.erase(enemy)
+			continue
+		var seen: int = 0
+		var total: int = 0
+		for hb: SoldierHitbox in enemy.get_hitboxes():
+			if not enemy.is_soldier_exposed(hb.index):
+				continue
+			total += 1
+			if _can_see_point(hb.get_aim_point(), hb):
+				seen += 1
+		var aware: float = float(_squad_awareness.get(enemy, 0.0))
+		if seen == 0:
+			aware = maxf(aware - dt, 0.0)
+		else:
+			aware += dt
+		_squad_awareness[enemy] = aware
+		var needed: float = _spot_time() * SOLDIER_SPOT_FACTOR / maxf(float(seen) / maxf(total, 1), MIN_SHOWN_SHARE)
+		var d: float = tank.global_position.distance_to(enemy.global_position)
+		if seen > 0 and aware >= needed and d <= mg_range and d < best_d:
+			best = enemy
+			best_d = d
+	_squad_target = best
+
+
+## MG bursts at the nearest exposed soldier of `enemy` (roof MG with the hatch open,
+## else the coax, which needs the turret on him).
+func _engage_squad(enemy: Squad, delta: float) -> void:
+	var aim := Vector3.INF
+	var best: float = INF
+	for hb: SoldierHitbox in enemy.get_hitboxes():
+		if enemy.is_soldier_exposed(hb.index):
+			var d: float = tank.global_position.distance_to(hb.global_position)
+			if d < best:
+				best = d
+				aim = hb.get_aim_point()
+	if aim == Vector3.INF:
+		return
+	var roof: bool = tank.can_use_roof_mg()
+	_command.aim_point = aim
+	_command.has_aim = true
+	var muzzle: Transform3D = tank.get_roof_mg_muzzle_transform() if roof else tank.get_coax_muzzle_transform()
+	if roof:
+		_command.mg_aim_point = aim
+		_command.mg_use_roof = true
+	if (-muzzle.basis.z).angle_to(aim - muzzle.origin) > deg_to_rad(bot_data.mg_aim_tolerance_deg):
+		return
+	_mg_time += delta
+	_command.fire_mg = fmod(_mg_time, bot_data.mg_burst_s + bot_data.mg_pause_s) < bot_data.mg_burst_s
+
+
+## The own squad saw an enemy: a radio contact for this crew.
+func _on_squad_contact(enemy: Node3D, at: Vector3) -> void:
+	share_contact(enemy as Tank, at)
+
+
+## Uses the own squad like a player would (orders via the command): when the tank
+## stops (scouting, watching, holding, after an alert) it goes out to look where the
+## tank can't see; it is called back when hurt, left behind, or the tank drives on.
+func _update_squad(delta: float) -> void:
+	var squad: Squad = tank.squad
+	if squad == null or not is_instance_valid(squad) or squad.net_puppet:
+		return
+	if tank.linear_velocity.length() > SQUAD_DRIVE_SPEED:
+		_driving_time += delta
+	else:
+		_driving_time = 0.0
+	_squad_think -= delta
+	if _squad_think > 0.0:
+		return
+	_squad_think = SQUAD_THINK_S
+	if squad.is_out():
+		var lost_half: bool = squad.get_alive_count() * 2 <= squad.data.soldier_count
+		var left_behind: bool = Squad._flat(squad.global_position - tank.global_position).length() \
+				> SQUAD_RECALL_DISTANCE_M
+		var driving_on: bool = _driving_time >= SQUAD_RECALL_DRIVE_S
+		if lost_half or left_behind or driving_on:
+			_squad_order(Squad.ORDER_RECALL, Vector3.ZERO)
+			_squad_look = Vector3.INF
+			return
+	elif not squad.is_mounted() or squad.get_alive_count() < squad.data.soldier_count:
+		return   # wiped out, or refilling on the tank
+	if _driving_time > 0.0:
+		return   # out (or moved on) only while the tank stands
+	var look: Vector3 = _squad_look_point()
+	if look == Vector3.INF:
+		return
+	if _squad_look != Vector3.INF and Squad._flat(look - _squad_look).length() < SQUAD_MOVE_ON_M:
+		return
+	_squad_look = look
+	_squad_order(Squad.ORDER_MOVE, look)
+
+
+func _squad_order(kind: int, target: Vector3) -> void:
+	_command.squad_order = kind
+	_command.squad_target = target
+
+
+## Where the squad should look from: a covered spot with a view, about
+## SQUAD_LOOK_AHEAD_M ahead on the way, towards an alert, or towards the enemy.
+func _squad_look_point() -> Vector3:
+	var here: Vector3 = tank.global_position
+	var toward := Vector3.ZERO
+	if _alert_timer > 0.0 and _target == null and _alert_direction.length() > 0.01:
+		toward = Squad._flat(_alert_direction).normalized()
+	elif has_orders_left():
+		var ahead: Vector3 = _orders[mini(_order_index + 1, _orders.size() - 1)]
+		var flat: Vector3 = Squad._flat(ahead - here)
+		if flat.length() > 1.0:
+			toward = flat.normalized()
+	else:
+		toward = get_threat_direction()
+	if toward == Vector3.ZERO:
+		return Vector3.INF
+	var point: Vector3 = here + toward * SQUAD_LOOK_AHEAD_M
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene, tank.squad.data.tactics)
+	if map == null:
+		return point
+	var threat: Vector3 = get_threat_direction()
+	if threat == Vector3.ZERO:
+		threat = toward
+	return map.find_position(tank.get_world_3d(), point, 50.0, threat, point + threat * 200.0,
+			200.0, here, PackedVector3Array(), tank.squad.data.tactics, _rng, [tank.get_rid()])
 
 
 # --- Shoot and scoot, relocation ----------------------------------------------------

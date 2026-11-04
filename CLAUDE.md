@@ -74,7 +74,11 @@ shows on the minimap. This is what we test first.
   Network: clients send squad orders by reliable RPC (`rpc_squad_order`); the host
   sends all squads in a 10 Hz unreliable packet (`PACKET_SQUADS`, `Squad.write_net_state`,
   31 B each) and soldier-down/smoke/shot events by RPC; client squads are puppets.
-  Decided rules: memory `squad-rules`. Not yet: bot use, models.
+  Bots: see and MG enemy squads (no tank target); use their own squad via the command
+  when the tank stops (look ahead / towards an alert / the enemy, `find_position`
+  with infantry costs), recall it when hurt, left behind or driving on; squad
+  contacts reach the crew and (KothBots) its team. Decided rules: memory
+  `squad-rules`. Not yet: models.
 - Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
   only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
 - Bots: `BotController` (extends `TargetTankController`, so patrols waypoints) with
