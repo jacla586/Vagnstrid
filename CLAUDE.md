@@ -69,6 +69,21 @@ shows on the minimap. This is what we test first.
 - Scenarios are scenes inherited from a map (`scenes/scenarios/*.tscn`, base e.g.
   `vikbolandet.tscn`), so map edits carry over. `hackerstad.tscn`: player at
   Hackerstad, 6 bots advance from Ring along the road (Vikbolandet).
+- King of the Hill (`KothMode`, node `KothZone` in a scenario; its Marker3D children
+  are the spots where zones may open; rules in `data/modes/koth_default.tres`,
+  `KothData`). Zones one at a time: open at full size, hold, shrink while scoring
+  faster; a zone closes when it has paid out its point budget (zone scoring and kill
+  bonuses) or at its lifetime; the next spot shows on the map during the gap. First to
+  `score_to_win` wins (`zone_count` 0 = no zone limit). Never
+  contested: each team scores per own tank in the zone (capped), the team with most
+  tanks there gets a multiplier, an in-zone knock-out from inside the zone gives a
+  bonus. Each zone moves the spawns (`get_spawn`/`get_free_spawn`): `south_team` south
+  of it, other teams north, `spawn_distance_m` away (closer if off-map/water/house).
+  Tanks go to their spawn at the start; respawns (`RespawnAtStart`, `KothBots`) use the
+  current spawn. `KothBots` orders every BotController into the (next) zone. Runs
+  offline/host only. HUD: `ScorePanel`; `MapView` draws zone and own spawn.
+  Scenario: `vidingsjo_koth.tscn`. Not yet: networking (clients see nothing, NetGame
+  spawns ignore the zone).
 - Sound: `SoundSetData` (`data/sounds/*.tres`, random variant, optional `distant` set
   far away) on `TankData.sounds` (`TankSoundData`: engine, tracks, gun, hatch),
   `ShellData` (hit armour/ground, ricochet; explosive shells add `sound_explosion` on every impact) and `MachineGunData.sound_shot` (one per bullet, `GunfireSound`, polyphonic).

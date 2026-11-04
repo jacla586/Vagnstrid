@@ -1,6 +1,7 @@
 class_name RespawnAtStart
 extends Node
-## Test bench: brings a knocked-out tank back where it started, repaired, after a delay.
+## Brings a knocked-out tank back, repaired, after a delay: where it started, or at
+## its team's current spawn in King of the Hill (spawns follow the zone).
 
 @export var tank: Tank
 ## Seconds after the knock-out until the tank is back at its start.
@@ -24,7 +25,6 @@ func _physics_process(delta: float) -> void:
 	if _timer > 0.0:
 		return
 	_timer = -1.0
-	tank.global_transform = _start
-	tank.linear_velocity = Vector3.ZERO
-	tank.angular_velocity = Vector3.ZERO
+	var mode: KothMode = KothMode.instance
+	KothMode.place_tank(tank, mode.get_free_spawn(tank.team, tank) if mode != null else _start)
 	tank.repair()

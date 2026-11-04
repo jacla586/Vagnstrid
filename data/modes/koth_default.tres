@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="KothData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/koth_data.gd" id="1_koth"]
+
+[resource]
+script = ExtResource("1_koth")
+zone_count = 0
+zone_point_budget = 1000.0
+zone_hold_s = 120.0
+zone_lifetime_s = 300.0
+zone_gap_s = 30.0
+radius_start_m = 300.0
+radius_end_m = 60.0
+points_per_tank_start = 0.5
+points_per_tank_end = 4.0
+max_counted_tanks = 4
+majority_multiplier = 1.5
+kill_bonus_points = 75.0
+kill_bonus_factor_start = 1.0
+kill_bonus_factor_end = 3.0
+score_to_win = 3000.0
+tick_interval_s = 0.25
+spawn_distance_m = 800.0
+spawn_min_distance_m = 400.0
+south_team = 0
+spawn_spacing_m = 15.0
+bot_respawn_delay_s = 12.0

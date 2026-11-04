@@ -16,6 +16,12 @@ extends Control
 @export var mark_color: Color = Color(1.0, 0.15, 0.1, 1.0)
 @export var mark_radius_px: float = 7.0
 @export var text_color: Color = Color(0.9, 0.9, 0.85, 1.0)
+## King of the Hill zone: open zone (edge, fill), the next zone during a gap (dashed),
+## and the own team's spawn.
+@export var zone_color: Color = Color(1.0, 0.85, 0.2, 0.9)
+@export var zone_fill_color: Color = Color(1.0, 0.85, 0.2, 0.12)
+@export var zone_next_color: Color = Color(1.0, 0.85, 0.2, 0.7)
+@export var spawn_color: Color = Color(0.45, 0.85, 1.0, 0.8)
 
 var _map_image: MapImageData
 var _map_looked_up: bool = false
@@ -47,6 +53,7 @@ func draw_map(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 				Rect2(_to_screen(world.position, rect, centre, scale_px), world.size * scale_px),
 				false)
 	_draw_grid(rect, centre, scale_px)
+	_draw_zone(rect, centre, scale_px)
 	if spot_marks != null:
 		for mark: SpotMarks.Mark in spot_marks.get_marks():
 			var p: Vector2 = _to_screen(Vector2(mark.point.x, mark.point.z), rect, centre, scale_px)
@@ -72,6 +79,32 @@ func get_map_world_rect() -> Rect2:
 
 func _to_screen(world: Vector2, rect: Rect2, centre: Vector2, scale_px: float) -> Vector2:
 	return rect.get_center() + (world - centre) * scale_px
+
+
+## King of the Hill (if the scene has one): the open zone filled, or the announced next
+## zone dashed during a gap; and a small square at the own team's spawn.
+func _draw_zone(rect: Rect2, centre: Vector2, scale_px: float) -> void:
+	var mode: KothMode = KothMode.instance
+	if mode == null or mode.is_over():
+		return
+	var c3: Vector3 = mode.get_center()
+	var p: Vector2 = _to_screen(Vector2(c3.x, c3.z), rect, centre, scale_px)
+	var r: float = mode.get_radius() * scale_px
+	if rect.grow(r).has_point(p):
+		if mode.is_zone_open():
+			draw_circle(p, r, zone_fill_color)
+			draw_arc(p, r, 0.0, TAU, 96, zone_color, 2.0, true)
+		else:
+			var dashes: int = 48
+			for i: int in dashes:
+				if i % 2 == 0:
+					draw_arc(p, r, TAU * i / dashes, TAU * (i + 1) / dashes, 4, zone_next_color, 2.0, true)
+	var tank: Tank = get_tank()
+	if tank != null:
+		var s3: Vector3 = mode.get_spawn(tank.team).origin
+		var s: Vector2 = _to_screen(Vector2(s3.x, s3.z), rect, centre, scale_px)
+		if rect.has_point(s):
+			draw_rect(Rect2(s - Vector2(5.0, 5.0), Vector2(10.0, 10.0)), spawn_color, false, 2.0)
 
 
 func _draw_grid(rect: Rect2, centre: Vector2, scale_px: float) -> void:

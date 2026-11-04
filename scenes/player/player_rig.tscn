@@ -20,6 +20,7 @@
 [ext_resource type="Script" path="res://scripts/ui/big_map.gd" id="22_big_map"]
 [ext_resource type="Script" path="res://scripts/ui/damage_panel.gd" id="23_damage_panel"]
 [ext_resource type="Script" path="res://scripts/audio/hatch_muffle.gd" id="24_hatch_muffle"]
+[ext_resource type="Script" path="res://scripts/ui/score_panel.gd" id="25_score_panel"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -144,4 +145,8 @@ font_size = 20
 layout_mode = 3
 mouse_filter = 2
 script = ExtResource("23_damage_panel")
+views = NodePath("../../PlayerViews")
+
+[node name="ScorePanel" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
+script = ExtResource("25_score_panel")
 views = NodePath("../../PlayerViews")
