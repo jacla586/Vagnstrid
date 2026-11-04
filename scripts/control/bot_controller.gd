@@ -33,6 +33,12 @@ const ALERT_TIME_S: float = 10.0
 ## Stuck on an ordered route: try a point this far to the side (and a bit ahead) (m).
 const DETOUR_SIDE_M: float = 25.0
 const DETOUR_AHEAD_M: float = 10.0
+## Shoot and scoot: hidden backing out of sight, or returning to fire.
+enum Scoot { NONE, HIDING, RETURNING }
+## Hide spot candidates: angles off straight back from the target (degrees).
+const HIDE_ANGLES_DEG: Array[float] = [0.0, 30.0, -30.0, 60.0, -60.0]
+## Hits counted for relocation come from "the same direction" within this (degrees).
+const RELOCATE_SAME_DIR_DEG: float = 45.0
 ## Cells remembered as blocked where this tank got stuck (planned round from then on).
 const AVOID_MEMORY: int = 6
 ## The obstacle is taken to be this far ahead of the tank when it gets stuck (m).
@@ -90,6 +96,13 @@ var _yield_time: float = 0.0
 ## Scouting stops still ahead on the current path, and time left at the current one.
 var _scout_points: Array[Vector3] = []
 var _scout_wait: float = 0.0
+var _scoot: Scoot = Scoot.NONE
+var _scoot_point: Vector3 = Vector3.ZERO
+var _peek_point: Vector3 = Vector3.ZERO
+var _scoot_time: float = 0.0
+## Recent hits: [time, flat direction they came from].
+var _hits: Array = []
+var _clock: float = 0.0
 ## Grid cells where this tank got stuck on something (newest last).
 var _avoid_cells: Array[Vector2i] = []
 ## Seconds since the last contact (enemy seen, reported or a hit).
@@ -102,6 +115,7 @@ func _ready() -> void:
 	_rng.randomize()
 	if tank != null:
 		tank.hit_taken.connect(_on_hit_taken)
+		tank.fired.connect(_on_fired)
 
 
 ## The enemy tank this bot is engaging, or null.
@@ -245,6 +259,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		_since_contact += delta
 	_halting = false
+	_clock += delta
 	if _target != null and not is_instance_valid(_target):
 		_target = null
 	if _target != null:
@@ -253,6 +268,11 @@ func _physics_process(delta: float) -> void:
 		_settle_time = 0.0
 		_mg_time = 0.0
 		_look_ahead_or_at_threat()
+	if _scoot != Scoot.NONE:
+		_update_scoot(delta)
+		_update_hatch(delta)
+		tank.set_command(_command)
+		return
 	# Damaged and no enemy in sight: stand still and repair (same rules as players).
 	var repairing: bool = _target == null and tank.needs_repair() and not tank.is_burning()
 	if repairing:
@@ -520,10 +540,121 @@ func _look_ahead_or_at_threat() -> void:
 	_command.has_aim = true
 
 
+# --- Shoot and scoot, relocation ----------------------------------------------------
+
+## After a shot at a tank: back into a spot the target can't see while reloading.
+func _on_fired(_shell: Shell) -> void:
+	var t: TacticsData = _tactics()
+	if not t.shoot_and_scoot or _target == null or not is_instance_valid(_target) or _scoot != Scoot.NONE:
+		return
+	var map: TacticalMap = _tactical_map()
+	if map == null:
+		return
+	var away: Vector3 = tank.global_position - _target.global_position
+	away.y = 0.0
+	if away.length() < 1.0:
+		return
+	away = away.normalized()
+	var their_eye: Vector3 = _target.get_commander_eye_position()
+	var exclude: Array[RID] = [tank.get_rid(), _target.get_rid()]
+	var best := Vector3.INF
+	for dist: float in [t.hide_distance_min_m, (t.hide_distance_min_m + t.hide_distance_max_m) * 0.5,
+			t.hide_distance_max_m]:
+		for angle: float in HIDE_ANGLES_DEG:
+			var dir: Vector3 = away.rotated(Vector3.UP, deg_to_rad(angle))
+			var p: Vector3 = tank.global_position + dir * dist
+			if map.is_blocked(p):
+				continue
+			p.y = map._height_at(p)
+			# Hidden: the target's commander can't see where our commander's head would be.
+			if not TacticalMap._sight_clear(tank.get_world_3d(), their_eye,
+					p + Vector3.UP * TacticalMap.EYE_HEIGHT_M, exclude):
+				best = p
+				break
+		if best != Vector3.INF:
+			break
+	if best == Vector3.INF:
+		return   # nowhere to hide nearby: stay and fight
+	var side: Vector3 = away.cross(Vector3.UP) * (1.0 if _rng.randf() < 0.5 else -1.0)
+	var peek: Vector3 = tank.global_position + side * _rng.randf_range(t.peek_side_min_m, t.peek_side_max_m)
+	_peek_point = tank.global_position if map.is_blocked(peek) else peek
+	_scoot_point = best
+	_scoot = Scoot.HIDING
+	_scoot_time = 0.0
+
+
+## Backs to the hide spot (gun still on the target), waits for the reload, then drives
+## up to the new firing spot; there the normal halt-and-fire takes over again.
+func _update_scoot(delta: float) -> void:
+	var t: TacticsData = _tactics()
+	_scoot_time += delta
+	_command.fire = false
+	if _target == null or not is_instance_valid(_target) or _target.is_knocked_out():
+		_scoot = Scoot.NONE
+		return
+	match _scoot:
+		Scoot.HIDING:
+			var reloaded: bool = tank.is_loaded() and _scoot_time >= tank.data.reload_time_s + t.hide_extra_s
+			if reloaded or _scoot_time >= t.hide_max_s:
+				_scoot = Scoot.RETURNING
+				_scoot_time = 0.0
+				return
+			_reverse_towards(_scoot_point)
+		Scoot.RETURNING:
+			if _steer_towards(_peek_point, 0.5) or _scoot_time >= t.hide_max_s:
+				_scoot = Scoot.NONE
+
+
+## Backs towards `point` (stops when there). Steering turns the hull the same way in
+## reverse, so the rear is steered like a nose.
+func _reverse_towards(point: Vector3) -> void:
+	var to_point: Vector3 = point - tank.global_position
+	to_point.y = 0.0
+	if to_point.length() < WAYPOINT_RADIUS * 0.5:
+		_command.throttle = 0.0
+		_command.steering = 0.0
+		return
+	var back: Vector3 = tank.global_basis.z
+	back.y = 0.0
+	var error: float = back.signed_angle_to(to_point, Vector3.UP)
+	_command.steering = clampf(-error / FULL_STEER_ERROR, -1.0, 1.0)
+	_command.throttle = -1.0 * clampf(1.0 - absf(error) / PI * 1.5, 0.3, 1.0)
+
+
+## Hit again and again from one side: find a new position away from that threat.
+func _check_relocation(from_dir: Vector3) -> void:
+	var t: TacticsData = _tactics()
+	if t.relocate_after_hits <= 0 or _tactical_map() == null:
+		return
+	_hits.append([_clock, from_dir])
+	var same: int = 0
+	var kept: Array = []
+	for h: Array in _hits:
+		if _clock - float(h[0]) <= t.relocate_window_s:
+			kept.append(h)
+			if (h[1] as Vector3).angle_to(from_dir) <= deg_to_rad(RELOCATE_SAME_DIR_DEG):
+				same += 1
+	_hits = kept
+	if same < t.relocate_after_hits:
+		return
+	_hits.clear()
+	_scoot = Scoot.NONE
+	var here: Vector3 = tank.global_position
+	var center: Vector3 = here - from_dir * t.relocate_distance_m * 0.6
+	var friends := PackedVector3Array()
+	var spot: Vector3 = _tactical_map().find_position(tank.get_world_3d(), center,
+			t.relocate_distance_m * 0.5, from_dir, here + from_dir * 200.0, 150.0, here,
+			friends, t, _rng, [tank.get_rid()])
+	order_path(spot, 0.8, true)
+
+
 func _on_hit_taken(direction: Vector3) -> void:
 	_hit_close_timer = bot_data.close_hatch_after_hit_s if bot_data != null else 0.0
 	_alert_direction = -direction
 	_alert_timer = ALERT_TIME_S
+	var from_dir := Vector3(-direction.x, 0.0, -direction.z)
+	if from_dir.length() > 0.01:
+		_check_relocation(from_dir.normalized())
 	contact.emit(null, tank.global_position - direction.normalized() * HIT_ORIGIN_GUESS_M)
 
 

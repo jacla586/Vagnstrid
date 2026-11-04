@@ -62,3 +62,23 @@ extends Resource
 ## Contact this recent switches to bounding even far from the objective (s).
 @export var bound_after_contact_s: float = 30.0
 
+@export_group("Shoot and scoot")
+## After a shot, back out of the target's sight while reloading, then come up again a
+## little to the side (not where the enemy last saw the flash).
+@export var shoot_and_scoot: bool = true
+## Hide spots are looked for this far back (m)...
+@export var hide_distance_min_m: float = 8.0
+@export var hide_distance_max_m: float = 25.0
+## ...and the next firing spot this far to the side of the last one (m).
+@export var peek_side_min_m: float = 5.0
+@export var peek_side_max_m: float = 15.0
+## Stay hidden until reloaded plus this (s), at most hide_max_s in all.
+@export var hide_extra_s: float = 1.0
+@export var hide_max_s: float = 12.0
+## Hit this many times from about the same direction within relocate_window_s: move
+## to a new position away from that threat (0 = never).
+@export var relocate_after_hits: int = 2
+@export var relocate_window_s: float = 30.0
+## The new position is looked for about this far away (m).
+@export var relocate_distance_m: float = 80.0
+

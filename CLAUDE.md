@@ -85,7 +85,10 @@ shows on the minimap. This is what we test first.
   move in turns (one watches, one drives to the next `find_position` spot that must
   get closer; the watcher goes anyway after `overwatch_max_s`, a move is never cut
   short). Long drives go by a random flank point (teammates prefer different flanks)
-  so routes vary. Without a baked grid bots drive
+  so routes vary. Shoot and scoot (`TacticsData.shoot_and_scoot`): after a shot a bot
+  backs to a spot its target's commander can't see while it reloads, then comes up a
+  few metres to the side; hit repeatedly from one side, it relocates (find_position
+  away from that threat). Needs a baked grid. Without a baked grid bots drive
   straight. Baked so far: vidingsjo. Spawns avoid blocked cells.
 - `BotGroup` moves bots together: column along a route, on the first contact
   (shared to all members) line abreast towards an objective, short halts to fire.
