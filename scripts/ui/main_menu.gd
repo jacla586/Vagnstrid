@@ -3,6 +3,7 @@ extends Control
 ## Start menu: name, Host (map, bots on/off), Join (host's IP, e.g. a Tailscale address)
 ## and Single player (any map or scenario, offline as before). Built in code.
 
+const GARAGE_SCENE: String = "res://scenes/menu/garage.tscn"
 const MAP_DIRS: Array[String] = ["res://scenes/scenarios/", "res://scenes/maps/"]
 
 var _name: LineEdit
@@ -11,6 +12,8 @@ var _bots: CheckBox
 var _ip: LineEdit
 var _status: Label
 var _maps: PackedStringArray = []
+var _tank: OptionButton
+var _tank_configs: Array[TankConfig] = []
 
 
 func _ready() -> void:
@@ -40,6 +43,13 @@ func _ready() -> void:
 		_map.add_item(_maps[i].get_file().get_basename(), i)
 		if _maps[i] == NetSession.DEFAULT_MAP:
 			_map.select(i)
+	box.add_child(_label("Tank (single player)"))
+	_tank = OptionButton.new()
+	box.add_child(_tank)
+	_fill_tanks()
+	_tank.item_selected.connect(func(i: int) -> void:
+		TankConfigs.select(_tank_configs[i - 1] if i > 0 else null))
+	_button(box, "Garage", func() -> void: get_tree().change_scene_to_file(GARAGE_SCENE))
 	_bots = CheckBox.new()
 	_bots.text = "Bots (host)"
 	box.add_child(_bots)
@@ -52,6 +62,20 @@ func _ready() -> void:
 	NetSession.instance.status_changed.connect(func(t: String) -> void:
 		if is_instance_valid(_status):
 			_status.text = t)
+
+
+## The tank list: the map's own tank first, then saved configs and presets.
+func _fill_tanks() -> void:
+	_tank_configs = TankConfigs.all()
+	_tank.clear()
+	_tank.add_item("Map default")
+	var chosen: TankConfig = TankConfigs.get_selected()
+	_tank.select(0)
+	for i: int in _tank_configs.size():
+		var c: TankConfig = _tank_configs[i]
+		_tank.add_item(c.display_name + ("  (preset)" if TankConfigs.is_preset(c) else ""))
+		if chosen != null and c.resource_path == chosen.resource_path:
+			_tank.select(i + 1)
 
 
 func _field(box: Container, caption: String, value: String) -> LineEdit:

@@ -81,6 +81,9 @@ const HATCH_OPEN_ANGLE_DEG: float = 110.0
 @export var data: TankData
 ## Built in the garage: if set, `data` is built from it (TankBuilder) at start.
 @export var config: TankConfig
+## The player's tank: offline, it is built from the config chosen in the garage
+## (TankConfigs.get_selected(); none chosen = `data` as set).
+@export var use_player_config: bool = false
 ## Visual only: paint colour for this tank. Alpha 0 keeps the scene's paint.
 @export var paint_color: Color = Color(0.0, 0.0, 0.0, 0.0)
 ## Side this tank fights for. Tanks of other teams are enemies (bots use this).
@@ -141,6 +144,8 @@ var squad: Squad
 
 
 func _ready() -> void:
+	if config == null and use_player_config and not NetRole.is_online():
+		config = TankConfigs.get_selected()
 	if config != null:
 		var built: TankData = TankBuilder.build(config)
 		if built != null:
@@ -198,13 +203,21 @@ func _ready() -> void:
 ## spread along the hull, the turret sits on its roof, cupola and roof MG move with the
 ## turret, the barrel and its muzzle with the gun's length.
 func apply_geometry() -> void:
+	# Looked up here (not the @onready fields) so a preview can size a tank out of the tree.
+	var hull_shape: CollisionShape3D = $HullShape
+	var turret_shape: CollisionShape3D = $TurretShape
+	var turret: Node3D = $Visual/Turret
+	var roof_mg: Node3D = $Visual/Turret/RoofMG
+	var gun_pivot: Node3D = $Visual/Turret/GunPivot
+	var muzzle: Marker3D = $Visual/Turret/GunPivot/Muzzle
+	var suspension: Node3D = $Suspension
 	var hull: Vector3 = data.hull_size
 	var s := Vector3(hull.x / BASE_HULL.x, hull.y / BASE_HULL.y, hull.z / BASE_HULL.z)
 	var tr: float = data.turret_radius_m / BASE_TURRET_RADIUS
 	var th: float = data.turret_height_m
-	var box := (_hull_shape.shape as BoxShape3D).duplicate() as BoxShape3D
+	var box := (hull_shape.shape as BoxShape3D).duplicate() as BoxShape3D
 	box.size = hull
-	_hull_shape.shape = box
+	hull_shape.shape = box
 	var hull_mesh: MeshInstance3D = $Visual/Hull
 	var hm := (hull_mesh.mesh as BoxMesh).duplicate() as BoxMesh
 	hm.size = BASE_HULL_MESH * s
@@ -217,12 +230,12 @@ func apply_geometry() -> void:
 		track.mesh = tm
 		track.position = Vector3(side * BASE_TRACK_X * s.x, -0.2 * s.y, 0.0)
 	var turret_pos := Vector3(0.0, hull.y * 0.5 + th * 0.5, BASE_TURRET_Z * s.z)
-	_turret.position = turret_pos
-	_turret_shape.position = turret_pos
-	var cyl := (_turret_shape.shape as CylinderShape3D).duplicate() as CylinderShape3D
+	turret.position = turret_pos
+	turret_shape.position = turret_pos
+	var cyl := (turret_shape.shape as CylinderShape3D).duplicate() as CylinderShape3D
 	cyl.radius = data.turret_radius_m
 	cyl.height = th
-	_turret_shape.shape = cyl
+	turret_shape.shape = cyl
 	var turret_mesh: MeshInstance3D = $Visual/Turret/TurretMesh
 	var cm := (turret_mesh.mesh as CylinderMesh).duplicate() as CylinderMesh
 	cm.bottom_radius = data.turret_radius_m
@@ -230,8 +243,8 @@ func apply_geometry() -> void:
 	cm.height = th
 	turret_mesh.mesh = cm
 	($Visual/Turret/Cupola as Node3D).position = Vector3(BASE_CUPOLA.x * tr, th * 0.5 + 0.15, BASE_CUPOLA.z * tr)
-	_roof_mg.position = Vector3(BASE_ROOF_MG.x * tr, th * 0.5 + 0.35, BASE_ROOF_MG.z * tr)
-	_gun_pivot.position = Vector3(0.0, 0.05, -data.turret_radius_m * BASE_PIVOT_SHARE)
+	roof_mg.position = Vector3(BASE_ROOF_MG.x * tr, th * 0.5 + 0.35, BASE_ROOF_MG.z * tr)
+	gun_pivot.position = Vector3(0.0, 0.05, -data.turret_radius_m * BASE_PIVOT_SHARE)
 	var gun: MeshInstance3D = $Visual/Turret/GunPivot/Gun
 	var gm := (gun.mesh as CylinderMesh).duplicate() as CylinderMesh
 	gm.height = data.gun_length_m
@@ -239,8 +252,8 @@ func apply_geometry() -> void:
 	gm.bottom_radius = data.barrel_radius_m * 1.125
 	gun.mesh = gm
 	gun.position = Vector3(0.0, 0.0, -(0.2 + data.gun_length_m * 0.5))
-	_muzzle.position = Vector3(0.0, 0.0, -(0.25 + data.gun_length_m))
-	for child: Node in _suspension.get_children():
+	muzzle.position = Vector3(0.0, 0.0, -(0.25 + data.gun_length_m))
+	for child: Node in suspension.get_children():
 		var ray := child as RayCast3D
 		if ray != null:
 			ray.position = Vector3(signf(ray.position.x) * BASE_TRACK_X * s.x, -hull.y * 0.5,

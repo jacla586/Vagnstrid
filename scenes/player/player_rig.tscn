@@ -32,6 +32,7 @@ shader = ExtResource("9_mask")
 
 [node name="Tank" parent="." instance=ExtResource("1_tank")]
 data = ExtResource("18_player_data")
+use_player_config = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 
 [node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views", "squad_map")]
