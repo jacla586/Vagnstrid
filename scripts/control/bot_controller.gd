@@ -33,6 +33,10 @@ const ALERT_TIME_S: float = 10.0
 ## Stuck on an ordered route: try a point this far to the side (and a bit ahead) (m).
 const DETOUR_SIDE_M: float = 25.0
 const DETOUR_AHEAD_M: float = 10.0
+## Cells remembered as blocked where this tank got stuck (planned round from then on).
+const AVOID_MEMORY: int = 6
+## The obstacle is taken to be this far ahead of the tank when it gets stuck (m).
+const AVOID_AHEAD_M: float = 5.0
 ## Getting stuck again within this of the last place counts as the same spot (m).
 const REPEAT_STUCK_RADIUS_M: float = 15.0
 ## Keep this gap to a tank ahead on the way (m): slow down from FOLLOW_GAP_M, stop at
@@ -83,6 +87,13 @@ var _last_stuck_at: Vector3 = Vector3.INF
 var _stuck_repeats: int = 0
 ## Seconds stopped behind another tank (FOLLOW_PASS_S then go round).
 var _yield_time: float = 0.0
+## Scouting stops still ahead on the current path, and time left at the current one.
+var _scout_points: Array[Vector3] = []
+var _scout_wait: float = 0.0
+## Grid cells where this tank got stuck on something (newest last).
+var _avoid_cells: Array[Vector2i] = []
+## Seconds since the last contact (enemy seen, reported or a hit).
+var _since_contact: float = INF
 ## Enemies reported by the group: spotted in half the time (the crew knows where to look).
 var _reported: Dictionary = {}
 
@@ -117,18 +128,34 @@ func order_move(points: Array[Vector3], throttle: float) -> void:
 
 ## Drives to `goal` along a path round houses, water and steep ground (the map's
 ## tactical grid), then stops. Without a baked grid: straight there, as order_move.
-func order_path(goal: Vector3, throttle: float) -> void:
+## `urgent` = no scouting stops on the way (the zone is closing, back from a respawn...).
+func order_path(goal: Vector3, throttle: float, urgent: bool = false) -> void:
 	var points: Array[Vector3] = _plan_path(goal)
 	order_move(points, throttle)
 	_path_goal = goal
 	_path_throttle = throttle
+	_scout_points.clear()
+	_scout_wait = 0.0
+	var map: TacticalMap = _tactical_map()
+	if not urgent and map != null:
+		var path := PackedVector3Array(points)
+		_scout_points = map.scout_points(tank.global_position, path, _tactics())
+
+
+func is_scouting() -> bool:
+	return _scout_wait > 0.0
+
+
+func _tactics() -> TacticsData:
+	return bot_data.tactics if bot_data != null and bot_data.tactics != null \
+			else TacticalMap.DEFAULT_TACTICS
 
 
 func _plan_path(goal: Vector3) -> Array[Vector3]:
 	var points: Array[Vector3] = []
 	var map: TacticalMap = _tactical_map()
 	if map != null:
-		for p: Vector3 in map.find_path(tank.global_position, goal):
+		for p: Vector3 in map.find_path(tank.global_position, goal, _avoid_cells):
 			points.append(p)
 	if points.is_empty():
 		points.append(goal)
@@ -173,6 +200,10 @@ func _physics_process(delta: float) -> void:
 	_command.mg_use_roof = false
 	_command.has_aim = false
 	_alert_timer = maxf(_alert_timer - delta, 0.0)
+	if _target != null or _alert_timer > 0.0 or _hit_close_timer > 0.0:
+		_since_contact = 0.0
+	else:
+		_since_contact += delta
 	_halting = false
 	if _target != null and not is_instance_valid(_target):
 		_target = null
@@ -467,6 +498,15 @@ func _on_stuck() -> void:
 		_stuck_repeats = 0
 	_last_stuck_at = here
 	if _path_goal != Vector3.INF and _tactical_map() != null:
+		# Remember what we hit (just ahead of us) and plan round it from now on.
+		var forward: Vector3 = -tank.global_basis.z
+		forward.y = 0.0
+		var ahead: Vector2i = _tactical_map().grid.cell_of(tank.global_position
+				+ forward.normalized() * AVOID_AHEAD_M)
+		if not _avoid_cells.has(ahead):
+			_avoid_cells.append(ahead)
+			if _avoid_cells.size() > AVOID_MEMORY:
+				_avoid_cells.remove_at(0)
 		# On a planned path: plan again from here (after backing off). Stuck again at
 		# the same place (another tank, something the grid doesn't know): step aside
 		# first, then plan from there.
@@ -494,6 +534,8 @@ func _detour_point(next: Vector3) -> Vector3:
 func _order_step(delta: float) -> void:
 	if _order_index >= _orders.size():
 		return
+	if _update_scouting(delta):
+		return
 	if _reverse_time > 0.0:
 		_reverse_time -= delta
 		_command.throttle = -_order_throttle
@@ -503,6 +545,29 @@ func _order_step(delta: float) -> void:
 		return
 	_keep_gap(delta)
 	_update_stuck(delta)
+
+
+## Stops briefly at the next scouting point (hatch open when calm: same eyes as a
+## player's). Skipped after recent contact: then the tank just crosses. True while
+## stopped.
+func _update_scouting(delta: float) -> bool:
+	if _scout_wait > 0.0:
+		_scout_wait -= delta
+		_command.throttle = 0.0
+		_command.steering = 0.0
+		return _scout_wait > 0.0
+	if _scout_points.is_empty():
+		return false
+	var to_point: Vector3 = _scout_points[0] - tank.global_position
+	to_point.y = 0.0
+	if to_point.length() > WAYPOINT_RADIUS:
+		return false
+	_scout_points.remove_at(0)
+	if _since_contact < _tactics().scout_skip_after_contact_s:
+		return false
+	_scout_wait = _tactics().scout_time_s
+	_command.throttle = 0.0
+	return true
 
 
 ## Slows down behind a tank ahead on the way (no ramming teammates on a shared path);

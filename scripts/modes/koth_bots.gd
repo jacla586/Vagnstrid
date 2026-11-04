@@ -17,6 +17,8 @@ const ORDER_THROTTLE: float = 0.7
 ## Bots side by side at a spawn leave one after another this far apart (s), so they
 ## don't all turn into each other at once.
 const DEPART_INTERVAL_S: float = 2.5
+## The zone closing within this long counts as hurry: no scouting stops (s).
+const HURRY_BEFORE_CLOSE_S: float = 60.0
 
 @export var mode: KothMode
 
@@ -25,6 +27,7 @@ var _hold: Dictionary = {}  # BotController -> seconds left at the current point
 var _respawn: Dictionary = {}  # BotController -> seconds until back at the spawn
 var _ordered_radius: Dictionary = {}  # BotController -> zone radius when last ordered
 var _depart: Dictionary = {}  # BotController -> seconds until it leaves the spawn
+var _respawned: Dictionary = {}  # BotController -> true until its first order after a respawn
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
@@ -95,6 +98,13 @@ func _depart_later(bot: BotController, delay: float) -> void:
 	_depart[bot] = delay
 
 
+## No time for scouting stops: racing to the next zone, or the open one closes soon.
+func _hurry() -> bool:
+	if not mode.is_zone_open():
+		return true
+	return mode.get_shrink_progress() > 0.0 and mode.get_time_to_next_event() < HURRY_BEFORE_CLOSE_S
+
+
 ## Inside the zone's circle (open or announced).
 func _is_inside(point: Vector3, radius: float) -> bool:
 	var c: Vector3 = mode.get_center()
@@ -103,7 +113,9 @@ func _is_inside(point: Vector3, radius: float) -> bool:
 
 func _order_into_zone(bot: BotController) -> void:
 	var radius: float = mode.get_radius()
-	bot.order_path(_random_point(radius * INNER_SHARE), ORDER_THROTTLE)
+	var urgent: bool = _respawned.has(bot) or _hurry()
+	_respawned.erase(bot)
+	bot.order_path(_random_point(radius * INNER_SHARE), ORDER_THROTTLE, urgent)
 	_ordered_radius[bot] = radius
 	_hold[bot] = _rng.randf_range(HOLD_MIN_S, HOLD_MAX_S)
 
@@ -138,4 +150,5 @@ func _update_respawn(bot: BotController, delta: float) -> void:
 	_respawn.erase(bot)
 	KothMode.place_tank(bot.tank, mode.get_free_spawn(bot.tank.team, bot.tank))
 	bot.tank.repair()
+	_respawned[bot] = true
 	_depart_later(bot, _rng.randf_range(0.0, DEPART_INTERVAL_S))

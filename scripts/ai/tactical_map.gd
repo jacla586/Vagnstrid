@@ -19,6 +19,8 @@ static var _cache: Dictionary = {}  # TacticalGridData -> TacticalMap
 var grid: TacticalGridData
 var _astar: AStarGrid2D
 var _weights: PackedFloat32Array
+## 1 = open cell right beside forest or bushes (a tree line).
+var _edge: PackedByteArray
 
 
 ## The map for the scene's terrain, or null if its grid hasn't been baked.
@@ -41,6 +43,7 @@ func _init(data: TacticalGridData, tactics: TacticsData) -> void:
 	_astar.default_estimate_heuristic = AStarGrid2D.HEURISTIC_EUCLIDEAN
 	_astar.update()
 	_weights.resize(grid.width * grid.height)
+	_find_edges()
 	for z: int in grid.height:
 		for x: int in grid.width:
 			var c := Vector2i(x, z)
@@ -51,8 +54,27 @@ func _init(data: TacticalGridData, tactics: TacticsData) -> void:
 				_weights[i] = INF
 				continue
 			var w: float = _cost(f, tactics)
+			if _edge[i] != 0:
+				w = minf(w, tactics.cost_cover_edge)
 			_weights[i] = w
 			_astar.set_point_weight_scale(c, w)
+
+
+## Open, drivable cells with forest or bushes in a neighbouring cell.
+func _find_edges() -> void:
+	_edge.resize(grid.width * grid.height)
+	var covering: int = TacticalGridData.CONCEALED | TacticalGridData.FOREST
+	var skip: int = covering | TacticalGridData.BLOCKED
+	for z: int in grid.height:
+		for x: int in grid.width:
+			var c := Vector2i(x, z)
+			if grid.flags[grid.index_of(c)] & skip:
+				continue
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+					Vector2i(1, 1), Vector2i(-1, 1), Vector2i(1, -1), Vector2i(-1, -1)]:
+				if grid.flags_at(c + d) & covering and not grid.flags_at(c + d) & TacticalGridData.BLOCKED:
+					_edge[grid.index_of(c)] = 1
+					break
 
 
 static func _cost(f: int, t: TacticsData) -> float:
@@ -72,13 +94,70 @@ static func _cost(f: int, t: TacticsData) -> float:
 	return w
 
 
+## Something beside the way hides or shields a tank here: bushes or crowns, forest,
+## a tree line, or houses next to it.
+func is_covered(point: Vector3) -> bool:
+	var c: Vector2i = grid.cell_of(point)
+	if not grid.has_cell(c):
+		return false
+	var f: int = grid.flags[grid.index_of(c)]
+	return f & (TacticalGridData.CONCEALED | TacticalGridData.FOREST | TacticalGridData.NEAR_BLOCKED) != 0 \
+			or _edge[grid.index_of(c)] != 0
+
+
+## Where along `path` (starting at `from`) to stop and scout: the last covered spot
+## before each open stretch of at least scout_open_m, at least scout_min_spacing_m
+## apart. Not where the tank already stands in the open.
+func scout_points(from: Vector3, path: PackedVector3Array, tactics: TacticsData) -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	var step: float = grid.cell_size
+	var last_covered := Vector3.INF
+	var open_since: float = -1.0   # distance along the path where the open stretch began
+	var travelled: float = 0.0
+	var last_stop: float = -INF
+	var prev: Vector3 = from
+	for p: Vector3 in path:
+		var leg: float = prev.distance_to(p)
+		var n: int = maxi(ceili(leg / step), 1)
+		for i: int in range(1, n + 1):
+			var q: Vector3 = prev.lerp(p, float(i) / n)
+			var d: float = travelled + leg * i / n
+			if is_covered(q):
+				last_covered = q
+				open_since = -1.0
+			elif open_since < 0.0:
+				open_since = d
+				# Open ahead from a covered spot: stop there if the stretch turns out long.
+			elif d - open_since >= tactics.scout_open_m and last_covered != Vector3.INF \
+					and open_since - last_stop >= tactics.scout_min_spacing_m:
+				points.append(last_covered)
+				last_stop = open_since
+				last_covered = Vector3.INF   # one stop per stretch
+		travelled += leg
+		prev = p
+	return points
+
+
 func is_blocked(point: Vector3) -> bool:
 	return grid.flags_at(grid.cell_of(point)) & TacticalGridData.BLOCKED != 0
 
 
 ## Waypoints from `from` to `to` (world, at ground height), or empty if there is no
-## way (or both ends lie far inside closed areas).
-func find_path(from: Vector3, to: Vector3) -> PackedVector3Array:
+## way (or both ends lie far inside closed areas). `avoid`: extra cells to treat as
+## closed for this search (where this tank got stuck on something the grid misses).
+func find_path(from: Vector3, to: Vector3, avoid: Array[Vector2i] = []) -> PackedVector3Array:
+	var closed: Array[Vector2i] = []
+	for c: Vector2i in avoid:
+		if grid.has_cell(c) and not _astar.is_point_solid(c):
+			_astar.set_point_solid(c, true)
+			closed.append(c)
+	var result: PackedVector3Array = _find_path(from, to)
+	for c: Vector2i in closed:
+		_astar.set_point_solid(c, false)
+	return result
+
+
+func _find_path(from: Vector3, to: Vector3) -> PackedVector3Array:
 	var start: Vector2i = _snap(grid.cell_of(from))
 	var goal: Vector2i = _snap(grid.cell_of(to))
 	if start.x < 0 or goal.x < 0:

@@ -3,6 +3,9 @@ extends Resource
 ## How one kind of bot crew sees, shoots and handles its hatch. The tank's own
 ## abilities (optics, gun, MGs) come from its TankData; this is the crew's skill.
 
+## Movement and positions (paths, scouting, ...). Null = data/bots/tactics_regular.tres.
+@export var tactics: TacticsData
+
 @export_group("Spotting")
 ## How often the commander looks around (s).
 @export var scan_interval_s: float = 0.25

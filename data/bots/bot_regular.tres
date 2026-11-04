@@ -2,7 +2,9 @@
 
 [ext_resource type="Script" uid="uid://bn0lthtf2w3jg" path="res://scripts/data/bot_data.gd" id="1_bot"]
 [ext_resource type="Resource" path="res://data/world/concealment.tres" id="2_conceal"]
+[ext_resource type="Resource" path="res://data/bots/tactics_regular.tres" id="3_tactics"]
 
 [resource]
 script = ExtResource("1_bot")
 concealment = ExtResource("2_conceal")
+tactics = ExtResource("3_tactics")
