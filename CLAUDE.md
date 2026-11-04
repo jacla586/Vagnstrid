@@ -57,7 +57,9 @@ shows on the minimap. This is what we test first.
   off behind the tank and walks paths from `TacticalMap.for_scene(scene, tactics)`
   with infantry costs (`data/squads/tactics_infantry.tres`), at most
   `max_distance_from_tank_m` (300) from the tank; recalled or left behind it runs back
-  and mounts. Holding still they kneel and watch all round (hedgehog). The leader is the
+  and mounts. Soldiers move one by one: a loose place each on the move (own pace,
+  drift), and when holding each his own spot 4-9 m round the squad's point (covered if
+  possible), facing out and kneeling once still. The leader is the
   first living soldier; V (`toggle_squad_view`, `SquadCamera`, `PlayerViews` SQUAD
   mode) looks through his eyes while the squad is off the tank: look and spot only, no
   control, no turret or guns; binoculars on B. Spotting like tank crews (sight lines,
@@ -75,7 +77,8 @@ shows on the minimap. This is what we test first.
   it). Own team's squads show on the maps.
   Network: clients send squad orders by reliable RPC (`rpc_squad_order`); the host
   sends all squads in a 10 Hz unreliable packet (`PACKET_SQUADS`, `Squad.write_net_state`,
-  31 B each) and soldier-down/smoke/shot events by RPC; client squads are puppets.
+  31 B + 4 B per soldier offset) and soldier-down/smoke/shot events by RPC; client
+  squads are puppets.
   Bots: see and MG enemy squads (no tank target); use their own squad via the command
   when the tank stops (look ahead / towards an alert / the enemy, `find_position`
   with infantry costs), recall it when hurt, left behind or driving on; squad
@@ -213,8 +216,8 @@ shows on the minimap. This is what we test first.
   `data/world/spotting.tres`). Commander view: turret holds its hull-relative
   direction; T lays it on the view. MG: mouse 2 (roof MG in the commander view with the hatch
   open, coaxial otherwise). Binoculars: B. Hatch: H.
-- Big map: M (frees the mouse; left click on the map sends the infantry squad).
-  Recall squad: G. Squad leader's eyes: V (look and spot only). Network statistics: F3.
+- Big map: M (view only). Squad orders map: Q (`SquadMap`, 1 km round the tank with
+  the 300 m ring; frees the mouse; left click sends the squad). Recall squad: G. Squad leader's eyes: V (look and spot only). Network statistics: F3.
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 
 ## Checking for errors (run these yourself)

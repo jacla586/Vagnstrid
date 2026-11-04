@@ -23,6 +23,7 @@
 [ext_resource type="Script" path="res://scripts/ui/score_panel.gd" id="25_score_panel"]
 [ext_resource type="Script" path="res://scripts/camera/squad_camera.gd" id="26_squad_camera"]
 [ext_resource type="Script" path="res://scripts/ui/squad_panel.gd" id="27_squad_panel"]
+[ext_resource type="Script" path="res://scripts/ui/squad_map.gd" id="28_squad_map"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -33,11 +34,11 @@ shader = ExtResource("9_mask")
 data = ExtResource("18_player_data")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 
-[node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views", "big_map")]
+[node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views", "squad_map")]
 script = ExtResource("2_player")
 tank = NodePath("../Tank")
 views = NodePath("../PlayerViews")
-big_map = NodePath("../HUD/BigMap")
+squad_map = NodePath("../HUD/SquadMap")
 
 [node name="CommanderCamera" type="Camera3D" parent="." node_paths=PackedStringArray("tank")]
 near = 0.03
@@ -127,15 +128,16 @@ script = ExtResource("21_spot_marks")
 views = NodePath("../PlayerViews")
 spotting = ExtResource("20_spotting")
 
-[node name="Minimap" type="Control" parent="HUD" node_paths=PackedStringArray("views", "spot_marks", "big_map")]
+[node name="Minimap" type="Control" parent="HUD" node_paths=PackedStringArray("views", "spot_marks", "big_map", "squad_map")]
 layout_mode = 3
 mouse_filter = 2
 script = ExtResource("19_minimap")
 views = NodePath("../../PlayerViews")
 spot_marks = NodePath("../../SpotMarks")
 big_map = NodePath("../BigMap")
+squad_map = NodePath("../SquadMap")
 
-[node name="BigMap" type="Control" parent="HUD" node_paths=PackedStringArray("views", "spot_marks")]
+[node name="BigMap" type="Control" parent="HUD" node_paths=PackedStringArray("views", "spot_marks", "squad_map")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -146,6 +148,7 @@ mouse_filter = 2
 script = ExtResource("22_big_map")
 views = NodePath("../../PlayerViews")
 spot_marks = NodePath("../../SpotMarks")
+squad_map = NodePath("../SquadMap")
 grid_step_m = 500.0
 font_size = 20
 
@@ -162,3 +165,18 @@ views = NodePath("../../PlayerViews")
 [node name="SquadPanel" type="Label" parent="HUD" node_paths=PackedStringArray("views")]
 script = ExtResource("27_squad_panel")
 views = NodePath("../../PlayerViews")
+
+[node name="SquadMap" type="Control" parent="HUD" node_paths=PackedStringArray("views", "spot_marks", "big_map")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("28_squad_map")
+views = NodePath("../../PlayerViews")
+spot_marks = NodePath("../../SpotMarks")
+big_map = NodePath("../BigMap")
+grid_step_m = 100.0
+font_size = 20

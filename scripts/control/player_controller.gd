@@ -18,8 +18,8 @@ const AMMO_ACTIONS: Array[StringName] = [&"select_ammo_1", &"select_ammo_2"]
 
 @export var tank: Tank
 @export var views: PlayerViews
-## Clicks on the big map send the tank's infantry squad.
-@export var big_map: BigMap
+## Clicks on the squad orders map send the tank's infantry squad.
+@export var squad_map: SquadMap
 
 var _command: TankCommand = TankCommand.new()
 var _hatch_wanted: bool = false
@@ -33,8 +33,8 @@ var _squad_target: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
-	if big_map != null:
-		big_map.squad_order_requested.connect(func(point: Vector3) -> void:
+	if squad_map != null:
+		squad_map.squad_order_requested.connect(func(point: Vector3) -> void:
 			_squad_order = Squad.ORDER_MOVE
 			_squad_target = point)
 ## Last aim point in the hull's local space (used in the commander view).

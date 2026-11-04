@@ -11,6 +11,7 @@ extends MapView
 @export var view_range_m: float = 1500.0
 @export var cooldown_color: Color = Color(1.0, 0.8, 0.45, 1.0)
 @export var big_map: BigMap
+@export var squad_map: SquadMap
 
 
 func _ready() -> void:
@@ -29,7 +30,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	super(delta)
-	visible = big_map == null or not big_map.is_open()
+	visible = (big_map == null or not big_map.is_open()) and (squad_map == null or not squad_map.is_open())
 
 
 func _draw() -> void:

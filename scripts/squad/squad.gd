@@ -8,9 +8,11 @@ extends Node3D
 ## the tank; recalled (or left behind by its tank) it runs back and mounts.
 ## Lives in the map next to its tank, not under it (the tank moves on).
 ##
-## Holding still the soldiers kneel and watch all round (hedgehog); moving they stand
-## and face the way they go. The leader is the first living soldier (the player can
-## look through his eyes, PlayerViews squad view).
+## Soldiers move one by one: on the move each keeps a loose place of his own behind
+## the squad's point (own pace, drifting a little); when the squad holds they spread out
+## 4-9 m round it, each to a spot of his own (covered if there is one) facing outwards
+## (hedgehog), and each kneels once he stands still. The leader is the first living
+## soldier (the player can look through his eyes, PlayerViews squad view).
 ##
 ## Spotting: same rules as tank crews (sight lines, cover, stillness), all round when
 ## holding, a cone ahead when moving; enemies it makes out become marks for the team
@@ -47,8 +49,23 @@ const TANK_LOOK_HEIGHTS: Array[float] = [0.5, 1.9]
 const SHELL_SCENE_PATH: String = "res://scenes/weapons/shell.tscn"
 const SHOT_RIFLE: int = 0
 const SHOT_AT: int = 1
-## Bytes in one squad's network state (write_net_state).
-const NET_STATE_BYTES: int = 31
+## Bytes in one squad's network state before the soldiers (write_net_state), and per
+## soldier after them.
+const NET_HEADER_BYTES: int = 31
+const NET_SOLDIER_BYTES: int = 4
+## Holding, soldiers spread this far from the squad's point (m)...
+const SPREAD_MIN_M: float = 4.0
+const SPREAD_MAX_M: float = 9.0
+## ...trying this many spots each for one with cover.
+const SPREAD_TRIES: int = 5
+## Soldiers run this much faster than the squad's point, to catch up with their place.
+const CATCH_UP_FACTOR: float = 1.25
+## On the move each soldier drifts up to this far from his place in the formation (m)...
+const DRIFT_M: float = 1.5
+## ...picking a new drift this often (s).
+const DRIFT_CHANGE_S: float = 3.0
+## Slower than this a soldier counts as standing (m/s).
+const STANDING_SPEED: float = 0.4
 ## Puppets slide to the host's position this fast (1/s).
 const NET_FOLLOW_RATE: float = 10.0
 ## Kneeling soldiers' body height as a share of standing (hitbox).
@@ -75,8 +92,18 @@ var _wilhelm: int = 0
 var _replan_timer: float = 0.0
 var _map: TacticalMap
 var _map_looked_up: bool = false
-## 0 = standing, 1 = kneeling (eases between).
-var _kneel: float = 0.0
+## Per soldier: 0 = standing, 1 = kneeling (eases between).
+var _kneel: Array[float] = []
+## Per soldier: his spot round the squad's point while holding (offset), his pace, his
+## drift on the move (and its target).
+var _spot: Array[Vector3] = []
+var _pace: Array[float] = []
+var _drift: Array[Vector3] = []
+var _drift_target: Array[Vector3] = []
+var _drift_timer: float = 0.0
+var _spots_chosen: bool = false
+## Client: soldiers' offsets from the squad's point, from the host.
+var _net_offsets: Array[Vector3] = []
 var _clock: float = 0.0
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _shell_scene: PackedScene
@@ -196,8 +223,10 @@ func get_leader_eye() -> Vector3:
 	return at + Vector3.UP * _eye_height()
 
 
+## The leader kneels (lower eyes).
 func is_kneeling() -> bool:
-	return _kneel >= 0.5
+	var i: int = _first_alive()
+	return i >= 0 and _kneel[i] >= 0.5
 
 
 ## Where it is going (for the map), or its own position when holding.
@@ -232,7 +261,7 @@ func _physics_process(delta: float) -> void:
 	if net_puppet:
 		if is_out():
 			global_position = global_position.lerp(_net_position, minf(delta * NET_FOLLOW_RATE, 1.0))
-			_place_soldiers(delta)
+			_move_soldiers(delta)
 		else:
 			global_position = tank.global_position
 		_update_bodies(delta)
@@ -265,7 +294,7 @@ func _physics_process(delta: float) -> void:
 			_path = _plan(tank.global_position)
 	if _state == State.MOVING or _state == State.RETURNING:
 		_walk(delta)
-	_place_soldiers(delta)
+	_move_soldiers(delta)
 	_update_bodies(delta)
 	_withdraw_timer = maxf(_withdraw_timer - delta, 0.0)
 	_scan_timer -= delta
@@ -289,7 +318,8 @@ func _dismount() -> void:
 		_soldiers[i].visible = _alive[i]
 	_set_hitboxes_active(true)
 	global_position.y = _ground_height(global_position, global_position.y)
-	_place_soldiers(0.0)
+	_spots_chosen = false
+	_snap_soldiers()
 
 
 func _mount() -> void:
@@ -361,36 +391,111 @@ func _is_moving() -> bool:
 	return (_state == State.MOVING or _state == State.RETURNING) and not _path.is_empty()
 
 
-## Living soldiers in a loose wedge behind the squad's point, facing its heading, on
-## the ground; kneeling and watching all round while the squad holds still.
-func _place_soldiers(delta: float) -> void:
-	var step: float = delta / maxf(data.stance_change_s, 0.01)
-	var was_kneeling: bool = is_kneeling()
-	_kneel = move_toward(_kneel, 0.0 if _is_moving() else 1.0, step)
-	if is_kneeling() != was_kneeling or delta == 0.0:
-		_size_hitboxes()
-	var height_scale: float = lerpf(1.0, data.kneel_height_share, _kneel)
+## Each living soldier heads for his own place: a loose spot in the formation behind
+## the squad's point on the move, his own spot round it when holding; he walks there at
+## his own pace, faces where he goes (outwards when standing) and kneels once still.
+func _move_soldiers(delta: float) -> void:
+	var moving_squad: bool = _is_moving()
+	if moving_squad:
+		_spots_chosen = false
+		_update_drift(delta)
+	elif not _spots_chosen and not net_puppet:
+		_choose_spots()
 	var side: Vector3 = _heading.cross(Vector3.UP).normalized()
 	for i: int in _soldiers.size():
 		if not _alive[i]:
 			continue   # the fallen stay where they fell
-		var row: int = (i + 1) >> 1
-		var lateral: float = row * (1.0 if i % 2 == 1 else -1.0)
-		var p: Vector3 = global_position - _heading * row * data.spacing_m \
-				+ side * lateral * data.spacing_m
-		p.y = _ground_height(p, global_position.y)
+		var target: Vector3 = _place_of(i, moving_squad, side)
 		var soldier: Node3D = _soldiers[i]
-		soldier.global_position = p
-		# Hedgehog: kneeling, each soldier watches his own direction all round.
-		var facing: Vector3 = _heading.rotated(Vector3.UP, TAU * i / maxf(_soldiers.size(), 1) * _kneel)
-		soldier.look_at(p + facing, Vector3.UP)
+		var pos: Vector3 = soldier.global_position
+		var to: Vector3 = _flat(target - pos)
+		var step: float = minf(to.length(), data.run_speed_mps * CATCH_UP_FACTOR * _pace[i] * delta)
+		var walking: bool = delta > 0.0 and step / delta > STANDING_SPEED
+		if step > 0.001:
+			pos += to.normalized() * step
+		pos.y = _ground_height(pos, global_position.y)
+		soldier.global_position = pos
+		var facing: Vector3 = to.normalized() if walking else _flat(pos - global_position)
+		if facing.length() < 0.1:
+			facing = _heading
+		soldier.look_at(pos + facing.normalized(), Vector3.UP)
+		var was: bool = _kneel[i] >= 0.5
+		_kneel[i] = move_toward(_kneel[i], 0.0 if walking else 1.0,
+				delta / maxf(data.stance_change_s, 0.01))
+		if (_kneel[i] >= 0.5) != was:
+			_size_hitbox(i)
+		var height_scale: float = lerpf(1.0, data.kneel_height_share, _kneel[i])
 		_meshes[i].rotation = Vector3(0.0, _body_yaw(), 0.0)
 		_meshes[i].scale = _body_scale() * Vector3(1.0, height_scale, 1.0)
 		_meshes[i].position = Vector3(0.0, _body_offset * height_scale, 0.0)
 
 
+## Where soldier `i` is heading now (world, flat).
+func _place_of(i: int, moving_squad: bool, side: Vector3) -> Vector3:
+	if net_puppet and i < _net_offsets.size():
+		return global_position + _net_offsets[i]
+	if not moving_squad:
+		return global_position + _spot[i]
+	var row: int = (i + 1) >> 1
+	var lateral: float = row * (1.0 if i % 2 == 1 else -1.0)
+	return global_position - _heading * row * data.spacing_m + side * lateral * data.spacing_m \
+			+ _drift[i]
+
+
+## Everyone straight to his place (getting off the tank).
+func _snap_soldiers() -> void:
+	var side: Vector3 = _heading.cross(Vector3.UP).normalized()
+	for i: int in _soldiers.size():
+		if _alive[i]:
+			var p: Vector3 = _place_of(i, true, side)
+			p.y = _ground_height(p, global_position.y)
+			_soldiers[i].global_position = p
+			_kneel[i] = 0.0
+			_size_hitbox(i)
+	_move_soldiers(0.0)
+
+
+## Each soldier gets his own spot round the squad's point: spread out all round,
+## covered (bushes, trees, a wall) if one of a few tries finds it, never in a house.
+func _choose_spots() -> void:
+	_spots_chosen = true
+	var map: TacticalMap = _tactical_map()
+	var base: float = atan2(_heading.x, _heading.z)
+	var n: int = maxi(_soldiers.size(), 1)
+	for i: int in _soldiers.size():
+		var best := Vector3.ZERO
+		var found_open: bool = false
+		for k: int in SPREAD_TRIES:
+			var angle: float = base + TAU * i / n + _rng.randf_range(-0.4, 0.4)
+			var offset := Vector3(sin(angle), 0.0, cos(angle)) * _rng.randf_range(SPREAD_MIN_M, SPREAD_MAX_M)
+			var p: Vector3 = global_position + offset
+			if map != null and map.is_blocked(p):
+				continue
+			if not found_open:
+				best = offset
+				found_open = true
+			if map == null or map.is_covered(p):
+				best = offset
+				break
+		_spot[i] = best
+
+
+## On the move each soldier drifts slowly round his place in the formation.
+func _update_drift(delta: float) -> void:
+	_drift_timer -= delta
+	if _drift_timer <= 0.0:
+		_drift_timer = DRIFT_CHANGE_S
+		for i: int in _drift_target.size():
+			var v: Vector2 = Vector2.from_angle(_rng.randf() * TAU) * _rng.randf() * DRIFT_M
+			_drift_target[i] = Vector3(v.x, 0.0, v.y)
+	for i: int in _drift.size():
+		_drift[i] = _drift[i].move_toward(_drift_target[i], delta * 0.5)
+
+
 func _eye_height() -> float:
-	return lerpf(data.eye_height_standing_m, data.eye_height_kneeling_m, _kneel)
+	var i: int = _first_alive()
+	var k: float = _kneel[i] if i >= 0 else 0.0
+	return lerpf(data.eye_height_standing_m, data.eye_height_kneeling_m, k)
 
 
 ## Ground (terrain, a bridge deck...) under `p`; tree trunks and tanks don't count.
@@ -584,7 +689,8 @@ func _try_at_round(targets: Array[Node3D]) -> void:
 ## One round from soldier `i` at `aim` (led for a moving tank), with random spread.
 func _fire(i: int, shell_data: ShellData, aim: Vector3, target: Node3D, spread_mrad: float,
 		sound: SoundSetData) -> void:
-	var from: Vector3 = _soldiers[i].global_position + Vector3.UP * _eye_height()
+	var from: Vector3 = _soldiers[i].global_position + Vector3.UP \
+			* lerpf(data.eye_height_standing_m, data.eye_height_kneeling_m, _kneel[i])
 	var moving: Tank = target as Tank
 	if moving != null:
 		var flight: float = from.distance_to(aim) / maxf(shell_data.muzzle_velocity_mps, 1.0)
@@ -741,7 +847,7 @@ func _restore_full() -> void:
 
 # --- Network ---------------------------------------------------------------------
 
-## Host: this squad's state for the clients (NET_STATE_BYTES bytes).
+## Host: this squad's state for the clients (NET_HEADER_BYTES, then the soldiers).
 func write_net_state(buf: StreamPeerBuffer) -> void:
 	var mask: int = 0
 	for i: int in mini(_alive.size(), 8):
@@ -749,7 +855,7 @@ func write_net_state(buf: StreamPeerBuffer) -> void:
 			mask |= 1 << i
 	buf.put_u8(_state)
 	buf.put_u8(mask)
-	buf.put_u8(roundi(_kneel * 255.0))
+	buf.put_u8(0)   # (unused: soldiers kneel by themselves)
 	buf.put_float(global_position.x)
 	buf.put_float(global_position.y)
 	buf.put_float(global_position.z)
@@ -761,13 +867,20 @@ func write_net_state(buf: StreamPeerBuffer) -> void:
 	buf.put_u8(_smoke_left)
 	var timer: float = get_wipe_time_left() if _state == State.WIPED else get_refill_time_left()
 	buf.put_u16(clampi(roundi(timer * 10.0), 0, 65535))
+	# Each soldier's place relative to the squad's point (decimetres), so clients see
+	# them where the host's hitboxes are.
+	buf.put_u8(_soldiers.size())
+	for soldier: Node3D in _soldiers:
+		var o: Vector3 = _flat(soldier.global_position - global_position)
+		buf.put_16(clampi(roundi(o.x * 10.0), -32767, 32767))
+		buf.put_16(clampi(roundi(o.z * 10.0), -32767, 32767))
 
 
 ## Client: takes the host's state (a puppet shows it; no logic of its own).
 func read_net_state(buf: StreamPeerBuffer) -> void:
 	var state: State = buf.get_u8() as State
 	var mask: int = buf.get_u8()
-	_kneel = buf.get_u8() / 255.0
+	buf.get_u8()
 	_net_position = Vector3(buf.get_float(), buf.get_float(), buf.get_float())
 	var yaw: float = buf.get_float()
 	_heading = Vector3(sin(yaw), 0.0, cos(yaw))
@@ -775,10 +888,15 @@ func read_net_state(buf: StreamPeerBuffer) -> void:
 	_net_at = buf.get_u8()
 	_net_smoke = buf.get_u8()
 	_net_timer = buf.get_u16() / 10.0
+	var count: int = buf.get_u8()
+	_net_offsets.resize(count)
+	for i: int in count:
+		_net_offsets[i] = Vector3(buf.get_16() / 10.0, 0.0, buf.get_16() / 10.0)
 	var was_out: bool = is_out()
 	_state = state
 	if is_out() and not was_out:
 		global_position = _net_position   # just got off: no sliding from the tank
+		_snap_soldiers()
 	for i: int in _alive.size():
 		var alive: bool = (mask >> i) & 1 == 1
 		if alive and not _alive[i]:
@@ -792,7 +910,9 @@ func read_net_state(buf: StreamPeerBuffer) -> void:
 
 ## Client: skips one squad's state (its tank isn't known here yet).
 static func skip_net_state(buf: StreamPeerBuffer) -> void:
-	buf.seek(buf.get_position() + NET_STATE_BYTES)
+	buf.seek(buf.get_position() + NET_HEADER_BYTES)
+	var count: int = buf.get_u8()
+	buf.seek(buf.get_position() + count * NET_SOLDIER_BYTES)
 
 
 ## Client: the host says soldier `index` fell (and whether he screamed).
@@ -830,10 +950,15 @@ func _add_soldier(i: int) -> void:
 	_hitboxes.append(hitbox)
 	_alive.append(true)
 	_down_time.append(0.0)
+	_kneel.append(0.0)
+	_spot.append(Vector3.ZERO)
+	_pace.append(_rng.randf_range(0.9, 1.1))
+	_drift.append(Vector3.ZERO)
+	_drift_target.append(Vector3.ZERO)
 	_burst_timer.append(_rng.randf_range(0.0, data.rifle_burst_interval_s))
 	_burst_left.append(0)
 	_shot_timer.append(0.0)
-	_size_hitboxes()
+	_size_hitbox(i)
 
 
 ## The soldier model in the uniform colour, or a capsule without a model.
@@ -881,10 +1006,10 @@ func _body_yaw() -> float:
 	return deg_to_rad(data.model_yaw_deg) if data.model != null else 0.0
 
 
-func _size_hitboxes() -> void:
-	var h: float = data.soldier_height_m * (KNEEL_HITBOX_SHARE if is_kneeling() else 1.0)
-	for hb: SoldierHitbox in _hitboxes:
-		hb.set_size(h, data.soldier_radius_m)
+## Soldier `i`'s hitbox: shorter while he kneels.
+func _size_hitbox(i: int) -> void:
+	var h: float = data.soldier_height_m * (KNEEL_HITBOX_SHARE if _kneel[i] >= 0.5 else 1.0)
+	_hitboxes[i].set_size(h, data.soldier_radius_m)
 
 
 func _set_hitboxes_active(on: bool) -> void:
