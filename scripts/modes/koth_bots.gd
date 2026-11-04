@@ -71,6 +71,8 @@ func _ready() -> void:
 
 
 func _find_bots() -> void:
+	if not NetRole.is_online():
+		_fill_teams()
 	for node: Node in get_tree().current_scene.find_children("*", "", true, false):
 		var bot := node as BotController
 		if bot == null or bot.tank == null:
@@ -84,6 +86,72 @@ func _find_bots() -> void:
 		var n: int = int(per_team.get(bot.tank.team, 0))
 		per_team[bot.tank.team] = n + 1
 		_depart_later(bot, n * DEPART_INTERVAL_S)
+
+
+## Offline: brings both teams to MatchSettings.team_size tanks (the player counts as
+## one): copies of a placed bot (its controller settings, a random KothData bot config,
+## the team's paint) are added, extra bots removed. Runs before the match's first frame,
+## so KothMode puts the new tanks at the spawns with the rest.
+func _fill_teams() -> void:
+	MatchSettings.load_settings()
+	var size: int = MatchSettings.team_size
+	if size <= 0:
+		return
+	var scene: Node = get_tree().current_scene
+	var template: BotController = null
+	var bots_by_team: Dictionary = {}   # team -> Array of BotController
+	var count: Dictionary = {0: 0, 1: 0}
+	var paint: Dictionary = {}          # team -> Color
+	for node: Node in scene.find_children("*", "", true, false):
+		var tank := node as Tank
+		if tank != null:
+			count[tank.team] = int(count.get(tank.team, 0)) + 1
+			if not paint.has(tank.team) or tank.use_player_config:
+				paint[tank.team] = tank.paint_color
+		var bot := node as BotController
+		if bot != null and bot.tank != null:
+			if template == null:
+				template = bot
+			if not bots_by_team.has(bot.tank.team):
+				bots_by_team[bot.tank.team] = []
+			(bots_by_team[bot.tank.team] as Array).append(bot)
+	if template == null:
+		push_warning("KothBots: no bot to copy, team size ignored")
+		return
+	for team: int in count.keys():
+		var extra: int = int(count[team]) - size
+		var list: Array = bots_by_team.get(team, [])
+		while extra > 0 and not list.is_empty():
+			var bot: BotController = list.pop_back()
+			var tank: Tank = bot.tank
+			bot.get_parent().remove_child(bot)
+			bot.free()
+			tank.get_parent().remove_child(tank)
+			tank.free()
+			extra -= 1
+		for i: int in range(-extra):
+			_add_bot(template, team, paint.get(team, Color(0, 0, 0, 0)), i)
+
+
+func _add_bot(template: BotController, team: int, paint: Color, index: int) -> void:
+	var tank: Tank = (load(template.tank.scene_file_path) as PackedScene).instantiate()
+	tank.name = "Team%dBot%d" % [team, index + 1]
+	tank.team = team
+	tank.paint_color = paint
+	tank.data = template.tank.data
+	var pool: Array[TankConfig] = mode.data.bot_configs
+	if not pool.is_empty():
+		tank.config = pool[_rng.randi() % pool.size()]
+	var parent: Node = template.tank.get_parent()
+	parent.add_child(tank)
+	tank.global_transform = template.tank.global_transform.translated(Vector3(index * 12.0 + 12.0, 2.0, 0.0))
+	if mode.has_started():
+		KothMode.place_tank(tank, mode.get_free_spawn(team, tank))
+	var bot: BotController = template.duplicate() as BotController
+	bot.name = tank.name + "Controller"
+	bot.tank = tank
+	bot.waypoints = []
+	parent.add_child(bot)
 
 
 func _physics_process(delta: float) -> void:

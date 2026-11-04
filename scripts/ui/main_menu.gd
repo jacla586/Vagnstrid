@@ -13,6 +13,7 @@ var _ip: LineEdit
 var _status: Label
 var _maps: PackedStringArray = []
 var _tank: OptionButton
+var _team_size: OptionButton
 var _tank_configs: Array[TankConfig] = []
 
 
@@ -23,12 +24,18 @@ func _ready() -> void:
 	bg.color = Color(0.1, 0.12, 0.1)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
+	# Centred, scrolling if the window is too low for everything.
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(scroll)
+	var center := CenterContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.add_child(center)
 	var box := VBoxContainer.new()
-	box.set_anchors_preset(Control.PRESET_CENTER)
 	box.custom_minimum_size = Vector2(420, 0)
-	box.position = Vector2(-210, -220)
-	box.add_theme_constant_override("separation", 10)
-	add_child(box)
+	box.add_theme_constant_override("separation", 6)
+	center.add_child(box)
 	var title := Label.new()
 	title.text = "STRIDSVAGN"
 	title.add_theme_font_size_override("font_size", 40)
@@ -50,6 +57,15 @@ func _ready() -> void:
 	_tank.item_selected.connect(func(i: int) -> void:
 		TankConfigs.select(_tank_configs[i - 1] if i > 0 else null))
 	_button(box, "Garage", func() -> void: get_tree().change_scene_to_file(GARAGE_SCENE))
+	box.add_child(_label("Tanks per team (King of the Hill, single player)"))
+	_team_size = OptionButton.new()
+	_team_size.add_item("Map default")
+	for n: int in range(1, MatchSettings.MAX_TEAM_SIZE + 1):
+		_team_size.add_item("%d (you + %d bots vs %d bots)" % [n, n - 1, n])
+	MatchSettings.load_settings()
+	_team_size.select(MatchSettings.team_size)
+	_team_size.item_selected.connect(func(i: int) -> void: MatchSettings.set_team_size(i))
+	box.add_child(_team_size)
 	_bots = CheckBox.new()
 	_bots.text = "Bots (host)"
 	box.add_child(_bots)
