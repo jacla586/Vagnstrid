@@ -43,6 +43,7 @@ var _felled: Array = []
 var _respawn_timers: Dictionary = {}
 ## peer -> TankConfig the player chose in the garage (missing = PLAYER_DATA)
 var _configs: Dictionary = {}
+var _names: Dictionary = {}  # peer -> player name (scoreboard)
 var _replicator: NetReplicator
 var _puppets: NetPuppets
 var _input: NetInput
@@ -179,12 +180,14 @@ func _spawn_player(peer: int) -> void:
 		_my_rig = RIG_SCENE.instantiate()
 		tank = _my_rig.get_node("Tank")
 		tank.config = TankConfigs.get_selected()
+		tank.display_label = NetSession.instance.player_name
 		tank.team = team
 		_map.add_child(_my_rig)
 	else:
 		tank = TANK_SCENE.instantiate()
 		tank.data = load(PLAYER_DATA)
 		tank.config = _configs.get(peer)
+		tank.display_label = _names.get(peer, "Player %d" % peer)
 		tank.team = team
 		var rc := RemoteController.new()
 		rc.name = "RemoteController"
@@ -212,7 +215,8 @@ func _send_spawn(peer: int, net_id: int) -> void:
 			tank.global_transform)
 
 
-func on_client_hello(peer: int, _player_name: String, config_key: String) -> void:
+func on_client_hello(peer: int, player_name: String, config_key: String) -> void:
+	_names[peer] = player_name.strip_edges().left(20)
 	var cfg: TankConfig = TankConfig.from_key(config_key)
 	if cfg != null and TankBuilder.build(cfg) != null:
 		_configs[peer] = cfg
@@ -235,6 +239,7 @@ func on_client_ready(peer: int) -> void:
 func on_client_left(peer: int) -> void:
 	teams.erase(peer)
 	_configs.erase(peer)
+	_names.erase(peer)
 	for net_id: int in owners.keys():
 		if owners[net_id] == peer:
 			var tank: Tank = tanks[net_id]

@@ -2,7 +2,7 @@ class_name ScorePanel
 extends Control
 ## Top-centre King of the Hill panel: own and enemy score, which zone, its points left
 ## and what happens next (shrinking, closing, next zone opening), IN ZONE / OUT OF ZONE, kill bonus
-## pop-ups and the result.
+## pop-ups (the result is on the Scoreboard).
 ## Hidden when the scene has no KothMode.
 
 @export var views: PlayerViews
@@ -84,11 +84,6 @@ func _draw() -> void:
 		var c: Color = in_zone_color
 		c.a = clampf(_bonus_timer, 0.0, 1.0)
 		_text(font, Vector2(cx, y), _bonus_text, font_size, c, HORIZONTAL_ALIGNMENT_CENTER)
-	if mode.is_over():
-		var winner: int = mode.get_winner()
-		var result: String = "DRAW" if winner < 0 else ("VICTORY" if winner == tank.team else "DEFEAT")
-		var color: Color = text_color if winner < 0 else (own_color if winner == tank.team else enemy_color)
-		_text(font, Vector2(cx, size.y * 0.35), result, font_size * 3, color, HORIZONTAL_ALIGNMENT_CENTER)
 
 
 ## One line of outlined text; `at` is the anchor point on the baseline.

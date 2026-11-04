@@ -52,6 +52,11 @@ var _in_zone: Dictionary = {}  # team -> tanks in the zone at the last count (un
 var _over: bool = false
 var _winner: int = -1
 var _connected: Dictionary = {}  # tank instance id -> true (shot_landed connected)
+## Scoreboard: tank instance id -> [name, team, knock-outs, losses, points]. Clients get
+## the host's list (as an Array) in the net state.
+var _stats: Dictionary = {}
+var _net_stats: Array = []
+var _zone_tanks: Dictionary = {}  # team -> Array of tanks in the zone at the last count
 ## 0-based number of the open zone, or of the last closed one during a gap.
 var _zone_index: int = 0
 var _zone_open: bool = false
@@ -224,7 +229,7 @@ func get_net_state() -> Dictionary:
 		"t": _time, "zi": _zone_index, "open": _zone_open, "zs": _zone_started,
 		"ge": _gap_ends, "b": _budget_left, "c": _center,
 		"ss": _spawns.get(1, global_transform), "sn": _spawns.get(-1, global_transform),
-		"sc": _scores, "over": _over, "w": _winner,
+		"sc": _scores, "over": _over, "w": _winner, "st": get_stats(),
 	}
 
 
@@ -244,6 +249,7 @@ func apply_net_state(state: Dictionary) -> void:
 	_spawns[1] = state.get("ss", global_transform)
 	_spawns[-1] = state.get("sn", global_transform)
 	_scores = (state.get("sc", {}) as Dictionary).duplicate()
+	_net_stats = (state.get("st", []) as Array).duplicate(true)
 	var over: bool = state.get("over", false)
 	_winner = state.get("w", -1)
 	if over and not _over:
@@ -437,6 +443,7 @@ static func place_tank(tank: Tank, xform: Transform3D) -> void:
 
 func _score_zone(dt: float) -> void:
 	_in_zone.clear()
+	_zone_tanks.clear()
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var tank := node as Tank
 		if tank == null or tank.is_knocked_out():
@@ -445,6 +452,9 @@ func _score_zone(dt: float) -> void:
 			_scores[tank.team] = 0.0
 		if is_in_zone(tank.global_position):
 			_in_zone[tank.team] = int(_in_zone.get(tank.team, 0)) + 1
+			if not _zone_tanks.has(tank.team):
+				_zone_tanks[tank.team] = []
+			(_zone_tanks[tank.team] as Array).append(tank)
 	if not is_zone_open():
 		return
 	var majority_team: int = _majority_team()
@@ -463,6 +473,9 @@ func _score_zone(dt: float) -> void:
 	var scale: float = minf(1.0, _budget_left / total) if total > 0.0 else 0.0
 	for team: int in earned.keys():
 		_scores[team] = get_score(team) + float(earned[team]) * scale
+		var tanks_here: Array = _zone_tanks.get(team, [])
+		for t: Tank in tanks_here:
+			_stat_add(t, 4, float(earned[team]) * scale / tanks_here.size())
 	_budget_left = maxf(_budget_left - total * scale, 0.0)
 
 
@@ -482,6 +495,30 @@ func _majority_team() -> int:
 	return -1 if tied else best_team
 
 
+## Every tank's [name, team, knock-outs, losses, points], best first (the host's list
+## on clients).
+func get_stats() -> Array:
+	if NetRole.is_client():
+		return _net_stats
+	var out: Array = []
+	for id: int in _stats:
+		var row: Array = (_stats[id] as Array).duplicate()
+		var tank := instance_from_id(id) as Tank
+		if not is_instance_valid(tank):
+			continue   # removed (extra bots, players who left)
+		row[0] = tank.get_display_label()
+		row[4] = roundi(float(row[4]))
+		out.append(row)
+	out.sort_custom(func(a: Array, b: Array) -> bool: return int(a[4]) > int(b[4]))
+	return out
+
+
+func _stat_add(tank: Tank, field: int, amount: float) -> void:
+	var row: Array = _stats.get(tank.get_instance_id(), [])
+	if not row.is_empty():
+		row[field] = row[field] + amount
+
+
 ## Tanks come and go (respawns, network spawns): hook up new ones for the kill bonus.
 func _connect_new_tanks() -> void:
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
@@ -490,6 +527,10 @@ func _connect_new_tanks() -> void:
 			continue
 		_connected[tank.get_instance_id()] = true
 		tank.shot_landed.connect(_on_shot_landed.bind(tank))
+		_stats[tank.get_instance_id()] = [tank.get_display_label(), tank.team, 0, 0, 0.0]
+		tank.knocked_out.connect(func() -> void:
+			if not _over:
+				_stat_add(tank, 3, 1))
 
 
 func _on_shot_landed(result: HitResult, shooter: Tank) -> void:
@@ -498,6 +539,7 @@ func _on_shot_landed(result: HitResult, shooter: Tank) -> void:
 	var victim := result.target as Tank
 	if victim == null or not shooter.is_enemy_of(victim):
 		return
+	_stat_add(shooter, 2, 1)
 	if not is_in_zone(shooter.global_position) or not is_in_zone(victim.global_position):
 		return
 	var factor: float = lerpf(data.kill_bonus_factor_start, data.kill_bonus_factor_end,
@@ -507,6 +549,7 @@ func _on_shot_landed(result: HitResult, shooter: Tank) -> void:
 		return
 	_budget_left -= points
 	_scores[shooter.team] = get_score(shooter.team) + points
+	_stat_add(shooter, 4, points)
 	kill_bonus.emit(shooter.team, points)
 
 

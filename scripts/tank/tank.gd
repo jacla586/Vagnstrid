@@ -87,6 +87,8 @@ const HATCH_OPEN_ANGLE_DEG: float = 110.0
 ## The player's tank: offline, it is built from the config chosen in the garage
 ## (TankConfigs.get_selected(); none chosen = `data` as set).
 @export var use_player_config: bool = false
+## Name on the scoreboard (set for network players; empty = made up from the tank).
+var display_label: String = ""
 ## Visual only: paint colour for this tank. Alpha 0 keeps the scene's paint.
 @export var paint_color: Color = Color(0.0, 0.0, 0.0, 0.0)
 ## Side this tank fights for. Tanks of other teams are enemies (bots use this).
@@ -290,6 +292,14 @@ func get_spot_points() -> Array[Vector3]:
 	for p: Vector3 in BASE_SPOT_POINTS:
 		out.append(p * s)
 	return out
+
+
+func get_display_label() -> String:
+	if display_label != "":
+		return display_label
+	if use_player_config and not NetRole.is_online():
+		return "You"
+	return "Bot (%s)" % data.display_name
 
 
 func get_hull_half_extents() -> Vector3:

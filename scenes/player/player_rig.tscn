@@ -24,6 +24,7 @@
 [ext_resource type="Script" path="res://scripts/camera/squad_camera.gd" id="26_squad_camera"]
 [ext_resource type="Script" path="res://scripts/ui/squad_panel.gd" id="27_squad_panel"]
 [ext_resource type="Script" path="res://scripts/ui/squad_map.gd" id="28_squad_map"]
+[ext_resource type="Script" path="res://scripts/ui/scoreboard.gd" id="29_scoreboard"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -161,6 +162,10 @@ views = NodePath("../../PlayerViews")
 
 [node name="ScorePanel" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
 script = ExtResource("25_score_panel")
+views = NodePath("../../PlayerViews")
+
+[node name="Scoreboard" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
+script = ExtResource("29_scoreboard")
 views = NodePath("../../PlayerViews")
 
 [node name="SquadPanel" type="Label" parent="HUD" node_paths=PackedStringArray("views")]

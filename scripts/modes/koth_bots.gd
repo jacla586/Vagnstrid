@@ -155,6 +155,10 @@ func _add_bot(template: BotController, team: int, paint: Color, index: int) -> v
 
 
 func _physics_process(delta: float) -> void:
+	# Bots removed by others (NetGame without bots) drop out of every list.
+	for i: int in range(_bots.size() - 1, -1, -1):
+		if not is_instance_valid(_bots[i]) or not is_instance_valid(_bots[i].tank):
+			_bots.remove_at(i)
 	_update_bounding(delta)
 	for bot: BotController in _bots:
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
