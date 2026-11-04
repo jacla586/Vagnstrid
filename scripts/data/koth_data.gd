@@ -53,3 +53,5 @@ extends Resource
 @export var spawn_spacing_m: float = 15.0
 ## Knocked-out bots come back at their team's spawn after this long (s).
 @export var bot_respawn_delay_s: float = 12.0
+## Bot tanks without a config of their own get a random one of these (empty = as placed).
+@export var bot_configs: Array[TankConfig] = []

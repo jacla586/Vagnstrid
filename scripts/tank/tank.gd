@@ -75,6 +75,9 @@ const BASE_TURRET_Z: float = 0.3
 const BASE_CUPOLA: Vector3 = Vector3(-0.5, 0.0, 0.35)
 const BASE_ROOF_MG: Vector3 = Vector3(-0.5, 0.0, -0.05)
 const BASE_PIVOT_SHARE: float = 0.833
+## Hull points (local) bots try to see when spotting, for the scene's size.
+const BASE_SPOT_POINTS: Array[Vector3] = [Vector3(0.0, 0.3, 0.0), Vector3(0.0, 1.5, 0.3),
+		Vector3(0.0, 0.4, -2.9), Vector3(0.0, 0.4, 2.9)]
 ## Visual only: how far the hatch lid swings open.
 const HATCH_OPEN_ANGLE_DEG: float = 110.0
 
@@ -280,6 +283,15 @@ func get_throttle() -> float:
 
 
 ## Half size of the hull's collision box (m): x = half width, z = half length.
+## Points on the hull (local) that spotters try to see, scaled with the tank's size.
+func get_spot_points() -> Array[Vector3]:
+	var s: Vector3 = data.hull_size / BASE_HULL
+	var out: Array[Vector3] = []
+	for p: Vector3 in BASE_SPOT_POINTS:
+		out.append(p * s)
+	return out
+
+
 func get_hull_half_extents() -> Vector3:
 	var box := _hull_shape.shape as BoxShape3D
 	return box.size * 0.5 if box != null else Vector3.ONE

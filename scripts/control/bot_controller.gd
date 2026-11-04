@@ -22,8 +22,6 @@ signal contact(enemy: Tank, at: Vector3)
 
 ## Points on an enemy tank (its local space) that the commander tries to see: hull
 ## centre, turret top, front and rear of the hull. The more show, the faster he spots it.
-const HULL_SAMPLE_POINTS: Array[Vector3] = [Vector3(0.0, 0.3, 0.0), Vector3(0.0, 1.5, 0.3),
-		Vector3(0.0, 0.4, -2.9), Vector3(0.0, 0.4, 2.9)]
 ## Spotting time is divided by the share of points in sight, but never by less than this.
 const MIN_SHOWN_SHARE: float = 0.2
 ## A shot from about this far away is assumed when guessing where a hit came from (m).
@@ -351,11 +349,13 @@ func _look_at(other: Tank, dt: float) -> void:
 		cover = Concealment.cover(tank.get_world_3d(), other, conceal)
 		time_factor = Concealment.spot_time_factor(cover, other.linear_velocity.length(), conceal)
 		range_factor = Concealment.range_factor(cover, conceal)
+	time_factor *= other.data.camo_spot_factor
+	var samples: Array[Vector3] = other.get_spot_points()
 	var seen_points: int = 0
-	for local: Vector3 in HULL_SAMPLE_POINTS:
+	for local: Vector3 in samples:
 		if _can_see_point(other.to_global(local), other, range_factor):
 			seen_points += 1
-	var points: int = HULL_SAMPLE_POINTS.size()
+	var points: int = samples.size()
 	var head_seen: bool = false
 	if other.is_commander_exposed():
 		points += 1

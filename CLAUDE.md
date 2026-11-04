@@ -99,8 +99,26 @@ shows on the minimap. This is what we test first.
   (layer 5: bushes, tree crowns, laser-tree crowns) around a target, and standing
   still, make it slower and shorter-ranged to spot; moving fast makes it easier.
   Bots also spot faster the more of 4 hull points (+ exposed commander) they see.
-- The player's tank uses `data/tanks/player_medium.tres` (set in `player_rig.tscn`);
-  enemies use `test_medium.tres`. Binoculars zoom `binocular_zoom_vs_gunner` times
+- Tank builder / garage: `TankConfig` (only part ids: chassis, gun, armour package,
+  camouflage) -> `TankBuilder.build()` -> `TankData` (cached per `key()`), from the
+  catalogue `data/builder/catalogue.tres` (`ChassisData` light/medium/heavy/tank
+  destroyer, each with its `GunData` 37-120 mm and `ArmourPackageData`; coefficients in
+  `BuilderRules`: speed and acceleration from kW/t, turn rate from mass, traverse from
+  gun mass, hp per tonne, camouflage). The chassis' `base` TankData supplies the rest.
+  Medium + 75 mm = today's tank. `Tank.apply_geometry()` sizes hull, tracks, turret,
+  gun and suspension from `TankData` geometry (scene measures are the reference, consts
+  `BASE_*`); `Tank.config` builds the data at start. Camouflage
+  (`TankData.camo_spot_factor`) slows bot and squad spotting; spot points scale with the
+  hull (`Tank.get_spot_points`). Garage `scenes/menu/garage.tscn` (from the main menu,
+  which also picks the tank); `TankConfigs` keeps presets (`data/configs/`), own configs
+  (`user://configs/`) and the choice (`user://garage.cfg`). The player rig's tank
+  (`use_player_config`) uses the choice offline; online the client sends its config key
+  in `rpc_hello` and spawns carry a spec (`TankBuilder.spec_of`/`apply_spec`: "cfg:<key>"
+  or a TankData path). KotH gives placed bot tanks random `KothData.bot_configs`
+  (`KothMode._give_bots_configs`, before tanks are ready). Line-ups (three tanks within
+  a budget) come later; cost is already computed.
+- The player's tank uses `data/tanks/player_medium.tres` (set in `player_rig.tscn`)
+  unless a garage tank is chosen; enemies use `test_medium.tres`. Binoculars zoom `binocular_zoom_vs_gunner` times
   the gunner's strongest sight zoom.
 - Bot navigation: `tools/bake_tactical_grid.gd -- <map>` (headless) bakes
   `data/maps/<map>_tactical.res` (`TacticalGridData`, 8 m cells: height, flags for

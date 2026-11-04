@@ -67,6 +67,20 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 func _enter_tree() -> void:
 	instance = self
+	_give_bots_configs()
+
+
+## Before any tank is ready (the whole scene enters the tree first): every tank that
+## isn't the player's and has no config gets a random one of KothData.bot_configs, so
+## bots drive varied tanks.
+func _give_bots_configs() -> void:
+	if data == null or data.bot_configs.is_empty() or get_parent() == null:
+		return
+	for node: Node in get_parent().find_children("*", "", true, false):
+		var tank := node as Tank
+		if tank != null and not tank.is_node_ready() and tank.config == null \
+				and not tank.use_player_config:
+			tank.config = data.bot_configs[randi() % data.bot_configs.size()]
 
 
 func _exit_tree() -> void:
