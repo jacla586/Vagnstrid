@@ -41,6 +41,11 @@ func get_alpha(mark: Mark) -> float:
 
 
 func _on_spotted(point: Vector3) -> void:
+	add_mark(point)
+
+
+## A mark at `point` (own spot, or a teammate's sent by the host).
+func add_mark(point: Vector3) -> void:
 	_marks.append(Mark.new(point))
 
 

@@ -21,6 +21,10 @@ extends RigidBody3D
 ## shell's path (engine, tracks, turret ring, fuel = fire, ammo in the turret rear =
 ## knocked out). Hits that don't penetrate wear the plate locally. Standing still
 ## repairs modules, then slowly some hp. HE fragments reach the external tracks.
+## Network: on the host every tank is simulated as usual and has a net_id. On a client
+## each tank is a puppet (net_puppet): frozen, no drive, shots or damage logic; the net
+## code sets its pose and status from the host's snapshots. The client's own tank also
+## predicts turret, gun, hatch and roof MG from the local command (net_predict).
 ## Commander: while exposed, a hitbox follows his head. A hit wounds him: the hatch
 ## slams shut and stays locked for the data's wound time.
 ## Machine guns: the command's fire_mg fires the roof MG (aimed at mg_aim_point; only
@@ -82,6 +86,14 @@ var _charred_material: StandardMaterial3D
 var _mg_shot_timer: float = 0.0
 var _spot_cooldown_remaining: float = 0.0
 var _damage: TankDamage
+## Network id (0 = not replicated). Set by the net code.
+var net_id: int = 0
+## Client side: this tank is shown from the host's snapshots, not simulated here.
+var net_puppet: bool = false
+## Client's own tank: turret, gun, hatch and roof MG follow the local command at once.
+var net_predict: bool = false
+var _net_velocity: Vector3 = Vector3.ZERO
+var _net_command: TankCommand = TankCommand.new()
 ## Time since the main gun fired, for repairs (which need the tank to stand quiet).
 var _since_fired: float = 999.0
 var _fire_effect: Node3D
@@ -477,6 +489,9 @@ func get_ammo_index() -> int:
 
 
 func _physics_process(delta: float) -> void:
+	if net_puppet:
+		_puppet_process(delta)
+		return
 	if _knocked_out:
 		_command = _idle_command
 	_update_turret(delta)
@@ -595,6 +610,130 @@ func _update_mg(delta: float) -> void:
 		_fire_bullet(mg, muzzle, roof)
 
 
+# --- Network --------------------------------------------------------------------------
+
+## Makes this tank a client-side puppet. predict = it's the local player's own tank.
+func set_net_puppet(predict: bool) -> void:
+	net_puppet = true
+	net_predict = predict
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	freeze = true
+	if not predict:
+		_command = _net_command
+
+
+## The current command (the net code sends the local player's to the host).
+func get_command() -> TankCommand:
+	return _command
+
+
+## State for one snapshot. for_owner adds hp, modules, reload etc. (never sent to others).
+func get_net_state(for_owner: bool) -> TankNetState:
+	var s := TankNetState.new()
+	s.net_id = net_id
+	s.position = global_position
+	s.rotation = global_basis.orthonormalized().get_rotation_quaternion()
+	s.velocity = linear_velocity
+	s.turret_yaw = _turret.rotation.y
+	s.gun_pitch = _gun_pivot.rotation.x
+	s.hatch = _hatch_progress
+	s.roof_mg_yaw = _roof_mg.rotation.y
+	s.roof_mg_pitch = _roof_mg_pitch.rotation.x
+	if _knocked_out: s.flags |= TankNetState.FLAG_KNOCKED_OUT
+	if _damage.is_burning(): s.flags |= TankNetState.FLAG_BURNING
+	var roof: bool = _command.mg_use_roof and can_use_roof_mg()
+	if _command.fire_mg and not _knocked_out and get_active_mg(roof) != null:
+		s.flags |= TankNetState.FLAG_MG_FIRING
+	if roof: s.flags |= TankNetState.FLAG_MG_ROOF
+	if is_commander_wounded(): s.flags |= TankNetState.FLAG_WOUNDED
+	if for_owner:
+		s.flags |= TankNetState.FLAG_OWNER_DATA
+		s.hp_fraction = _damage.hp_fraction()
+		for id: StringName in TankNetState.MODULES:
+			s.module_states.append(_damage.state(id))
+		s.reload_s = _reload_remaining
+		s.ammo_index = _ammo_index
+		s.repair_s = _damage.repair_time
+		s.spot_cooldown_s = _spot_cooldown_remaining
+		s.wound_s = _commander_wound_remaining
+	return s
+
+
+## Puppet: pose interpolated by the net code, every frame.
+func net_set_pose(xform: Transform3D, turret_yaw: float, gun_pitch: float, hatch: float,
+		roof_yaw: float, roof_pitch: float, velocity: Vector3) -> void:
+	global_transform = xform
+	_net_velocity = velocity
+	if net_predict and not _knocked_out:
+		# Own tank: keep the predicted turret unless it drifted far from the host's.
+		if absf(wrapf(turret_yaw - _turret.rotation.y, -PI, PI)) > deg_to_rad(3.0):
+			_turret.rotation.y = lerp_angle(_turret.rotation.y, turret_yaw, 0.2)
+		if absf(gun_pitch - _gun_pivot.rotation.x) > deg_to_rad(3.0):
+			_gun_pivot.rotation.x = lerpf(_gun_pivot.rotation.x, gun_pitch, 0.2)
+		return
+	_turret.rotation.y = turret_yaw
+	_gun_pivot.rotation.x = gun_pitch
+	_hatch_progress = hatch
+	_hatch_hinge.rotation.x = deg_to_rad(HATCH_OPEN_ANGLE_DEG) * _hatch_progress
+	_roof_mg.rotation.y = roof_yaw
+	_roof_mg_pitch.rotation.x = roof_pitch
+
+
+## Puppet: flags and (own tank) hp/modules/reload from the newest snapshot.
+func net_set_status(s: TankNetState) -> void:
+	var ko: bool = s.has(TankNetState.FLAG_KNOCKED_OUT)
+	if ko and not _knocked_out:
+		_knock_out()
+	elif not ko and _knocked_out:
+		repair()
+	_net_command.fire_mg = s.has(TankNetState.FLAG_MG_FIRING)
+	_net_command.mg_use_roof = s.has(TankNetState.FLAG_MG_ROOF)
+	var wounded: bool = s.has(TankNetState.FLAG_WOUNDED)
+	if wounded and not is_commander_wounded():
+		_commander_wound_remaining = maxf(s.wound_s, 1.0)
+		commander_wounded.emit()
+	elif not wounded:
+		_commander_wound_remaining = 0.0
+	if s.has(TankNetState.FLAG_OWNER_DATA):
+		_reload_remaining = s.reload_s
+		_ammo_index = s.ammo_index
+		_spot_cooldown_remaining = s.spot_cooldown_s
+		if wounded:
+			_commander_wound_remaining = s.wound_s
+		_damage.set_net(s.hp_fraction, s.module_states, s.has(TankNetState.FLAG_BURNING), s.repair_s)
+	else:
+		_damage.set_net_burning(s.has(TankNetState.FLAG_BURNING))
+	_set_fire_effect(_damage.is_burning() and not _knocked_out)
+
+
+## Puppet: a main-gun shell the host fired (or a ricochet), shown here without effect.
+func net_show_shell(shell_index: int, from: Vector3, velocity: Vector3, flash: bool) -> void:
+	var shell_data: ShellData = data.ammo[shell_index] if shell_index >= 0 and shell_index < data.ammo.size() \
+			else get_loaded_shell()
+	if shell_data == null:
+		return
+	var shell := SHELL_SCENE.instantiate() as Shell
+	get_parent().add_child(shell)
+	shell.launch(shell_data, from, velocity, self, true)
+	if flash:
+		var fx: Node3D = MUZZLE_FLASH_SCENE.instantiate()
+		get_parent().add_child(fx)
+		fx.global_position = from
+
+
+func _puppet_process(delta: float) -> void:
+	if net_predict and not _knocked_out:
+		_update_turret(delta)
+		_update_hatch(delta)
+		_update_roof_mg(delta)
+	_update_commander_hitbox()
+	_commander_wound_remaining = maxf(_commander_wound_remaining - delta, 0.0)
+	_reload_remaining = maxf(_reload_remaining - delta, 0.0)
+	_spot_cooldown_remaining = maxf(_spot_cooldown_remaining - delta, 0.0)
+	if not _knocked_out:
+		_update_mg(delta)   # cosmetic bullets: own command, or the host's "firing" flag
+
+
 func _fire_bullet(mg: MachineGunData, muzzle: Marker3D, roof: bool) -> void:
 	# Random point in a disc of radius dispersion around the barrel's axis.
 	var radius: float = sqrt(_rng.randf()) * mg.dispersion_mrad * 0.001
@@ -604,8 +743,9 @@ func _fire_bullet(mg: MachineGunData, muzzle: Marker3D, roof: bool) -> void:
 			+ muzzle_basis.y * sin(angle) * radius).normalized()
 	var bullet := SHELL_SCENE.instantiate() as Shell
 	get_parent().add_child(bullet)
+	var carry: Vector3 = _net_velocity if net_puppet else linear_velocity
 	bullet.launch(mg.bullet, muzzle.global_position,
-			direction * mg.bullet.muzzle_velocity_mps + linear_velocity, self)
+			direction * mg.bullet.muzzle_velocity_mps + carry, self, net_puppet)
 	mg_fired.emit(bullet, roof)
 
 

@@ -126,6 +126,7 @@ shows on the minimap. This is what we test first.
   `data/world/spotting.tres`). Commander view: turret holds its hull-relative
   direction; T lays it on the view. MG: mouse 2 (roof MG in the commander view with the hatch
   open, coaxial otherwise). Binoculars: B. Hatch: H.
+- Big map: M. Network statistics: F3.
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 
 ## Checking for errors (run these yourself)
@@ -160,22 +161,34 @@ reload/recoil/tracers, and target boards at known ranges.
 - first bots (Vidingsjö): patrol, spot by the same rules, shoot back, MG on open
   hatches. Next: tuning, shared spotting/minimap, bots that move to fight.
 
-## Plan: two players over the network (not started)
+## Network (two players and up; built for 10v10 / 20v20)
 
-Assessed 2026-11-02, nothing built yet. Host-authoritative with Godot's built-in
-multiplayer (ENet, RPC, MultiplayerSynchronizer):
-- The host runs the whole simulation (physics, bots, hits, felled trees). The client only
-  sends its `TankCommand` each physics frame and draws synced state.
-- Sync per tank: transform, velocity, turret yaw, gun pitch, hatch, reload, ammo, knocked out.
-  Client tanks are frozen and interpolated.
-- Shells/MG bullets: the host sends a spawn event (position, velocity, shell type); the client
-  simulates the tracer itself (ballistics are deterministic). Hits are decided on the host only.
-- World events as RPCs: felled trees (index + direction), respawns, MG nests.
-- To build: host/join-by-IP menu; one PlayerRig per peer with camera/HUD only for the local
-  tank (PlayerRig assumes a single player today); teams via `Tank.team`; bots stay host-side.
-- Estimate: first playable PvP/co-op in ~3–5 sessions, polished in 1–2 hobby weeks.
-- Internet play: Tailscale/ZeroTier (no port forwarding). Test with two local instances.
-- Steps: 1) connect + two tanks driving, 2) shells/hits, 3) bots, map choice, polish.
+Host-authoritative, Godot ENet, all in `scripts/net/`:
+- `Net` autoload (`net.gd`, class `NetSession`; scripts use `NetSession.instance`, plain
+  and @tool scripts read `NetRole`). Port 24680, 3 channels. Raw packets
+  (`SceneMultiplayer.send_bytes`) for snapshots (host -> client, 20 Hz, unreliable) and
+  commands (client -> host, 30 Hz, unreliable, `NetCommandCodec`); everything else is
+  reliable RPCs on `/root/Net`. Maps load on a thread and ENet timeouts are 30–60 s, so a
+  slow map load doesn't drop the connection. F3 = net statistics.
+- `NetGame` (added to the loaded map): spawns from the map (team 0 at its PlayerRig,
+  team 1 at its first enemy tank), removes the map's rig/enemies (enemies stay as team-2
+  bots on the host if bots are on), respawns players after 10 s, forwards events
+  (shells + ricochets, hit results to the shooter, spots to the team, felled trees).
+- One packed snapshot per recipient (`NetReplicator`, `TankNetState` ~38 B per tank, plus
+  owner-only hp/modules/reload; enemy hp is never sent). `NetRelevance` decides which
+  tanks go in (v1: all) – that's where far tanks get a lower rate later.
+- Clients: every tank is a puppet (`Tank.net_puppet`: frozen, no simulation),
+  interpolated 100 ms behind (`NetPuppets`). The own tank predicts turret, gun, hatch
+  and roof MG from the local command (`net_predict`); hull follows the host.
+  Shells on clients are cosmetic (`Shell` cosmetic flag); MG fire is a snapshot flag.
+- Host drives remote tanks with `RemoteController`. Start menu `scenes/menu/main_menu.tscn`
+  (Host: map + bots, Join: IP e.g. Tailscale, Single player). Command line after `--`:
+  `--host [--map vidingsjo] [--bots]`, `--join <ip>`, `--name N`.
+- Player guide (Swedish): `SPELA_ONLINE.md` (hosting, joining, Tailscale, F3).
+- Measured: ~0.8 kB/s per tank per recipient. Test with two (or three) headless
+  instances running scratch scripts (`--script`, the autoload is there), or two windows.
+- Not yet: hull prediction, lag compensation, lobby/team choice, game modes, dedicated
+  server menu, BreakableTree/MG nests (hills.tscn) over the network.
 
 Later: Terrain3D for real maps (check it supports Godot 4.7 first), damage model,
 spotting/minimap, bots, game modes, multiplayer.

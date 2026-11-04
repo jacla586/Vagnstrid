@@ -1,0 +1,106 @@
+class_name MainMenu
+extends Control
+## Start menu: name, Host (map, bots on/off), Join (host's IP, e.g. a Tailscale address)
+## and Single player (any map or scenario, offline as before). Built in code.
+
+const MAP_DIRS: Array[String] = ["res://scenes/scenarios/", "res://scenes/maps/"]
+
+var _name: LineEdit
+var _map: OptionButton
+var _bots: CheckBox
+var _ip: LineEdit
+var _status: Label
+var _maps: PackedStringArray = []
+
+
+func _ready() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	var bg := ColorRect.new()
+	bg.color = Color(0.1, 0.12, 0.1)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(bg)
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_CENTER)
+	box.custom_minimum_size = Vector2(420, 0)
+	box.position = Vector2(-210, -220)
+	box.add_theme_constant_override("separation", 10)
+	add_child(box)
+	var title := Label.new()
+	title.text = "STRIDSVAGN"
+	title.add_theme_font_size_override("font_size", 40)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	_name = _field(box, "Name", NetSession.instance.player_name)
+	box.add_child(_label("Map"))
+	_map = OptionButton.new()
+	box.add_child(_map)
+	_maps = _find_maps()
+	for i: int in _maps.size():
+		_map.add_item(_maps[i].get_file().get_basename(), i)
+		if _maps[i] == NetSession.DEFAULT_MAP:
+			_map.select(i)
+	_bots = CheckBox.new()
+	_bots.text = "Bots (host)"
+	box.add_child(_bots)
+	_button(box, "Host game", _on_host)
+	_ip = _field(box, "Host address", "127.0.0.1")
+	_button(box, "Join game", _on_join)
+	_button(box, "Single player", _on_single)
+	_status = _label(NetSession.instance.status)
+	box.add_child(_status)
+	NetSession.instance.status_changed.connect(func(t: String) -> void:
+		if is_instance_valid(_status):
+			_status.text = t)
+
+
+func _field(box: Container, caption: String, value: String) -> LineEdit:
+	box.add_child(_label(caption))
+	var e := LineEdit.new()
+	e.text = value
+	box.add_child(e)
+	return e
+
+
+func _label(t: String) -> Label:
+	var l := Label.new()
+	l.text = t
+	return l
+
+
+func _button(box: Container, t: String, cb: Callable) -> void:
+	var b := Button.new()
+	b.text = t
+	b.pressed.connect(cb)
+	box.add_child(b)
+
+
+func _find_maps() -> PackedStringArray:
+	var out: PackedStringArray = []
+	for dir: String in MAP_DIRS:
+		var d := DirAccess.open(dir)
+		if d == null:
+			continue
+		for f: String in d.get_files():
+			var name_: String = f.trim_suffix(".remap")
+			if name_.ends_with(".tscn"):
+				out.append(dir + name_)
+	return out
+
+
+func _selected_map() -> String:
+	return _maps[_map.selected] if _map.selected >= 0 else NetSession.DEFAULT_MAP
+
+
+func _on_host() -> void:
+	NetSession.instance.player_name = _name.text
+	NetSession.instance.host(_selected_map(), _bots.button_pressed)
+
+
+func _on_join() -> void:
+	NetSession.instance.player_name = _name.text
+	NetSession.instance.join(_ip.text.strip_edges())
+
+
+func _on_single() -> void:
+	get_tree().change_scene_to_file(_selected_map())

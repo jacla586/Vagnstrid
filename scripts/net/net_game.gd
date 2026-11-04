@@ -1,0 +1,329 @@
+class_name NetGame
+extends Node
+## The networked game in a loaded map (added by Net). The map scene is used as it is:
+## its PlayerRig gives team 0's start, its first enemy tank team 1's start. Both are
+## removed (and the enemies too, unless bots are on: then they stay on the host as
+## team 2 and are replicated like any tank).
+##
+## Host: spawns a tank per player (its own in a PlayerRig, remote ones driven by a
+## RemoteController), replicates them (NetReplicator), respawns knocked-out players,
+## and forwards events: shells and ricochets, hit results to the shooter, spots to the
+## shooter's team, felled trees.
+## Client: puppets for every tank (NetPuppets), its own inside a PlayerRig with turret
+## prediction; sends its commands (NetInput).
+
+const TANK_SCENE: PackedScene = preload("res://scenes/tank/tank.tscn")
+const RIG_SCENE: PackedScene = preload("res://scenes/player/player_rig.tscn")
+const PLAYER_DATA: String = "res://data/tanks/player_medium.tres"
+const RESPAWN_DELAY_S: float = 10.0
+const BOT_TEAM: int = 2
+## Fallback start for team 1 if the map has no enemy tank: this far from team 0 (m).
+const FALLBACK_SPAWN_DISTANCE_M: float = 300.0
+## With bots on, team 1 starts this far beside the first bot (which keeps its place).
+const BOT_SPAWN_OFFSET_M: float = 15.0
+
+## net_id -> Tank (every replicated tank)
+var tanks: Dictionary = {}
+## net_id -> owning peer (1 = host, 0 = bot)
+var owners: Dictionary = {}
+## peer -> team
+var teams: Dictionary = {}
+## team -> start transform
+var spawns: Dictionary = {}
+
+var _next_id: int = 1
+## [field path, index, direction] of every felled tree, for late joiners
+var _felled: Array = []
+var _respawn_timers: Dictionary = {}
+var _replicator: NetReplicator
+var _puppets: NetPuppets
+var _input: NetInput
+var _my_rig: Node
+var _map: Node
+
+
+func _ready() -> void:
+	NetSession.instance.game = self
+	_map = get_parent()
+	_take_spawns_and_clean()
+	if NetRole.is_host():
+		_replicator = NetReplicator.new()
+		_replicator.game = self
+		add_child(_replicator)
+		for field: TreeField in _tree_fields():
+			field.tree_index_felled.connect(_on_tree_felled.bind(_map.get_path_to(field)))
+		teams[1] = 0
+		_spawn_player(1)
+	else:
+		_puppets = NetPuppets.new()
+		add_child(_puppets)
+		_input = NetInput.new()
+		_input.process_physics_priority = 100   # after PlayerController has set the command
+		add_child(_input)
+		NetSession.instance.rpc_id(1, "rpc_ready")
+
+
+func _exit_tree() -> void:
+	if NetSession.instance.game == self:
+		NetSession.instance.game = null
+
+
+func tank_of_peer(peer: int) -> Tank:
+	for net_id: int in owners:
+		if owners[net_id] == peer and is_instance_valid(tanks.get(net_id)):
+			return tanks[net_id]
+	return null
+
+
+# --- Map ---------------------------------------------------------------------------
+
+func _take_spawns_and_clean() -> void:
+	var rig: Node = _map.get_node_or_null("PlayerRig")
+	var rig_tank: Tank = rig.get_node_or_null("Tank") as Tank if rig != null else null
+	spawns[0] = rig_tank.global_transform if rig_tank != null else Transform3D(Basis(), Vector3(0, 50, 0))
+	var enemies: Node = _map.get_node_or_null("Enemies")
+	var first_enemy: Tank = null
+	if enemies != null:
+		for child: Node in enemies.get_children():
+			if child is Tank:
+				first_enemy = child
+				break
+	if first_enemy != null:
+		spawns[1] = first_enemy.global_transform
+		if NetSession.instance.bots:   # the bot stays there: start beside it
+			spawns[1].origin += first_enemy.global_basis.x * BOT_SPAWN_OFFSET_M
+	else:
+		var t: Transform3D = spawns[0]
+		t.origin += Vector3(1, 0, 1).normalized() * FALLBACK_SPAWN_DISTANCE_M
+		spawns[1] = t
+	if rig != null:
+		rig.queue_free()
+	for n: String in ["PlayerRespawn"]:
+		var node: Node = _map.get_node_or_null(n)
+		if node != null:
+			node.queue_free()
+	if enemies != null:
+		if NetRole.is_host() and NetSession.instance.bots:
+			for child: Node in enemies.get_children():
+				if child is Tank:
+					_register(child as Tank, 0)
+					(child as Tank).team = BOT_TEAM
+		else:
+			enemies.queue_free()
+
+
+func _tree_fields() -> Array[TreeField]:
+	var out: Array[TreeField] = []
+	for n: Node in _map.find_children("*", "", true, false):
+		if n is TreeField:
+			out.append(n)
+	return out
+
+
+# --- Host ----------------------------------------------------------------------------
+
+func _register(tank: Tank, owner_peer: int) -> int:
+	var net_id: int = _next_id
+	_next_id += 1
+	tank.net_id = net_id
+	tanks[net_id] = tank
+	owners[net_id] = owner_peer
+	tank.fired.connect(_on_fired.bind(tank))
+	tank.shot_landed.connect(_on_shot_landed.bind(tank))
+	tank.spotted.connect(_on_spotted.bind(tank))
+	if owner_peer != 0:
+		tank.knocked_out.connect(func() -> void: _respawn_timers[net_id] = RESPAWN_DELAY_S)
+	return net_id
+
+
+## Host: creates the tank for a player (the host's own in a PlayerRig).
+func _spawn_player(peer: int) -> void:
+	var team: int = teams.get(peer, 1)
+	var xform: Transform3D = spawns.get(team, spawns[0])
+	var tank: Tank
+	if peer == 1:
+		_my_rig = RIG_SCENE.instantiate()
+		tank = _my_rig.get_node("Tank")
+		tank.team = team
+		_map.add_child(_my_rig)
+	else:
+		tank = TANK_SCENE.instantiate()
+		tank.data = load(PLAYER_DATA)
+		tank.team = team
+		var rc := RemoteController.new()
+		rc.name = "RemoteController"
+		rc.tank = tank
+		tank.add_child(rc)
+		_map.add_child(tank)
+	tank.global_transform = xform
+	var net_id: int = _register(tank, peer)
+	for p: int in multiplayer.get_peers():
+		_send_spawn(p, net_id)
+
+
+func _send_spawn(peer: int, net_id: int) -> void:
+	var tank: Tank = tanks[net_id]
+	NetSession.instance.rpc_id(peer, "rpc_spawn_tank", net_id, owners[net_id], tank.team, tank.data.resource_path,
+			tank.global_transform)
+
+
+func on_client_hello(peer: int, _player_name: String) -> void:
+	# Teams alternate between 0 and 1 as players join.
+	var counts: Array[int] = [0, 0]
+	for p: int in teams:
+		if teams[p] < 2:
+			counts[teams[p]] += 1
+	teams[peer] = 0 if counts[0] <= counts[1] else 1
+
+
+func on_client_ready(peer: int) -> void:
+	for net_id: int in tanks:
+		_send_spawn(peer, net_id)
+	for f: Array in _felled:
+		NetSession.instance.rpc_id(peer, "rpc_tree_felled", f[0], f[1], f[2])
+	_spawn_player(peer)
+
+
+func on_client_left(peer: int) -> void:
+	teams.erase(peer)
+	for net_id: int in owners.keys():
+		if owners[net_id] == peer:
+			var tank: Tank = tanks[net_id]
+			tanks.erase(net_id)
+			owners.erase(net_id)
+			if is_instance_valid(tank):
+				tank.queue_free()
+			NetSession.instance.rpc("rpc_despawn_tank", net_id)
+
+
+func on_command(peer: int, buf: StreamPeerBuffer) -> void:
+	var tank: Tank = tank_of_peer(peer)
+	if tank == null:
+		return
+	var rc := tank.get_node_or_null("RemoteController") as RemoteController
+	if rc != null:
+		rc.receive(buf)
+
+
+func _on_fired(shell: Shell, tank: Tank) -> void:
+	if not multiplayer.get_peers().is_empty():
+		var v: Vector3 = shell.get_velocity()
+		NetSession.instance.rpc("rpc_shell", tank.net_id, tank.get_ammo_index(), shell.global_position, v, true)
+		NetSession.instance.count_out(40)
+	shell.ricocheted.connect(func(from: Vector3, velocity: Vector3) -> void:
+		if is_instance_valid(tank) and not multiplayer.get_peers().is_empty():
+			NetSession.instance.rpc("rpc_shell", tank.net_id, tank.get_ammo_index(), from, velocity, false))
+
+
+func _on_shot_landed(result: HitResult, tank: Tank) -> void:
+	var owner_peer: int = owners.get(tank.net_id, 0)
+	if owner_peer > 1 and result != null:
+		var text: String = result.describe()
+		if result.outcome == HitResult.Outcome.COMMANDER_HIT and result.target == tank:
+			text = "OWN COMMANDER HIT"
+		NetSession.instance.rpc_id(owner_peer, "rpc_shot_result", text, result.outcome)
+		NetSession.instance.count_out(text.length() + 8)
+
+
+func _on_spotted(point: Vector3, tank: Tank) -> void:
+	for peer: int in teams:
+		if peer > 1 and teams[peer] == tank.team:
+			NetSession.instance.rpc_id(peer, "rpc_team_spot", point)
+	# The host's own marks: its SpotMarks listens to its own tank; teammates' spots too.
+	if teams.get(1, -1) == tank.team and owners.get(tank.net_id, 0) != 1:
+		on_team_spot(point)
+
+
+func _on_tree_felled(index: int, direction: Vector3, field: NodePath) -> void:
+	_felled.append([field, index, direction])
+	if not multiplayer.get_peers().is_empty():
+		NetSession.instance.rpc("rpc_tree_felled", field, index, direction)
+
+
+func _physics_process(delta: float) -> void:
+	if not NetRole.is_host():
+		return
+	for net_id: int in _respawn_timers.keys():
+		_respawn_timers[net_id] -= delta
+		if _respawn_timers[net_id] > 0.0:
+			continue
+		_respawn_timers.erase(net_id)
+		var tank: Tank = tanks.get(net_id)
+		if not is_instance_valid(tank):
+			continue
+		var team: int = teams.get(owners.get(net_id, 0), tank.team)
+		tank.global_transform = spawns.get(team, spawns[0])
+		tank.linear_velocity = Vector3.ZERO
+		tank.angular_velocity = Vector3.ZERO
+		tank.repair()
+
+
+# --- Client ------------------------------------------------------------------------------
+
+func on_snapshot(buf: StreamPeerBuffer) -> void:
+	if _puppets != null:
+		_puppets.receive(buf)
+
+
+func on_spawn_tank(net_id: int, owner_peer: int, team: int, data_path: String, xform: Transform3D) -> void:
+	print_verbose("net: spawn tank %d owner %d team %d" % [net_id, owner_peer, team])
+	if tanks.has(net_id):
+		return
+	var tank: Tank
+	if owner_peer == NetSession.instance.my_id():
+		_my_rig = RIG_SCENE.instantiate()
+		tank = _my_rig.get_node("Tank")
+		tank.set_net_puppet(true)
+		tank.team = team
+		tank.net_id = net_id
+		_map.add_child(_my_rig)
+		_input.tank = tank
+	else:
+		tank = TANK_SCENE.instantiate()
+		if data_path == "":
+			push_warning("spawn without data path for net_id %d" % net_id)
+		tank.data = load(data_path) if data_path != "" else load(PLAYER_DATA)
+		tank.team = team
+		tank.net_id = net_id
+		tank.set_net_puppet(false)
+		_map.add_child(tank)
+	tank.global_transform = xform
+	tanks[net_id] = tank
+	owners[net_id] = owner_peer
+	_puppets.register(tank)
+	print_verbose("net: tanks now %s" % [tanks.keys()])
+
+
+func on_despawn_tank(net_id: int) -> void:
+	print_verbose("net: despawn tank %d" % net_id)
+	var tank: Tank = tanks.get(net_id)
+	tanks.erase(net_id)
+	owners.erase(net_id)
+	if _puppets != null:
+		_puppets.unregister(net_id)
+	if is_instance_valid(tank):
+		tank.queue_free()
+
+
+func on_shell(net_id: int, shell_index: int, from: Vector3, velocity: Vector3, flash: bool) -> void:
+	var tank: Tank = tanks.get(net_id)
+	if is_instance_valid(tank):
+		tank.net_show_shell(shell_index, from, velocity, flash)
+
+
+func on_shot_result(text: String, outcome: int) -> void:
+	var fb: HitFeedback = _my_rig.get_node_or_null("HUD/HitFeedback") as HitFeedback if _my_rig != null else null
+	if fb != null:
+		fb.show_text(text, outcome)
+
+
+func on_team_spot(point: Vector3) -> void:
+	var marks: SpotMarks = _my_rig.get_node_or_null("SpotMarks") as SpotMarks if _my_rig != null else null
+	if marks != null:
+		marks.add_mark(point)
+
+
+func on_tree_felled(field: NodePath, index: int, direction: Vector3) -> void:
+	var tf := _map.get_node_or_null(field) as TreeField
+	if tf != null and not tf.is_tree_felled(index):
+		tf.fell_tree(index, direction)

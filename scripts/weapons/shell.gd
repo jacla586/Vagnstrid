@@ -11,6 +11,9 @@ extends Node3D
 ## Explosive shells never bounce: they detonate on any impact and throw fragments
 ## (see Explosion); every fragment hit is reported to the shooter too.
 
+## Emitted on the host when the shell bounces off (the net code shows it on clients).
+signal ricocheted(from: Vector3, velocity: Vector3)
+
 const MAX_LIFETIME: float = 15.0
 ## Freed if it somehow gets this far below the world origin (m).
 const MIN_HEIGHT: float = -200.0
@@ -29,14 +32,18 @@ var _exclude: Array[RID] = []
 var _age: float = 0.0
 var _tracer_base_scale: float = 1.0
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+## Client copy of a host shell: same flight and impact effect, no damage. The host
+## decides hits and sends ricochets as new shells.
+var _cosmetic: bool = false
 
 @onready var _tracer: MeshInstance3D = $Tracer
 
 
 ## Starts the flight. Call after the shell is in the scene tree.
 func launch(data: ShellData, start_position: Vector3, velocity: Vector3,
-		shooter: CollisionObject3D) -> void:
+		shooter: CollisionObject3D, cosmetic: bool = false) -> void:
 	_data = data
+	_cosmetic = cosmetic
 	_velocity = velocity
 	_drag_factor = Ballistics.drag_factor(data)
 	_shooter = shooter
@@ -96,6 +103,9 @@ func _on_hit(hit: Dictionary) -> void:
 	var light: OmniLight3D = effect.get_node_or_null("Light") as OmniLight3D
 	if light != null:
 		light.omni_range *= _data.impact_scale
+	if _cosmetic:
+		queue_free()
+		return
 	var collider: Object = hit["collider"]
 	var result: HitResult = null
 	if collider != null and collider.has_method("on_shell_hit"):
@@ -126,6 +136,7 @@ func _ricochet(point: Vector3, normal: Vector3, body: RID) -> void:
 	_velocity = _velocity.bounce(normal) * RICOCHET_SPEED_FACTOR
 	global_position = point + normal * 0.05
 	_orient()
+	ricocheted.emit(global_position, _velocity)
 
 
 ## Points -Z along the velocity (the tracer is stretched along Z).

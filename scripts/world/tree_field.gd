@@ -19,6 +19,8 @@ extends Node3D
 
 ## Emitted once when a tree starts to fall (sound, effects, network sync later).
 signal tree_felled(at: Vector3, direction: Vector3)
+## Same event with the tree's index (the net code sends it to clients).
+signal tree_index_felled(tree: int, direction: Vector3)
 
 ## Same reach as the push trigger in tree.tscn: trigger radius 0.9 m minus trunk 0.25 m.
 const PUSH_REACH_M: float = 0.65
@@ -109,6 +111,8 @@ func _exit_tree() -> void:
 
 ## Tanks push over thin trees they drive into or lean on.
 func _physics_process(delta: float) -> void:
+	if NetRole.is_client():
+		return   # the host fells trees and sends them
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var tank := node as Tank
 		if tank != null:
@@ -172,6 +176,7 @@ func fell_tree(tree: int, direction: Vector3) -> void:
 		if _physics != null:
 			_physics.tip_canopy(chunk, shape_index, tree, foot, tilt))
 	tree_felled.emit(get_tree_position(tree), direction)
+	tree_index_felled.emit(tree, direction)
 
 
 func _build_chunks(chunks: Array, floats: PackedFloat32Array, per_tree: int) -> void:

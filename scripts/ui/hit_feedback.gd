@@ -54,6 +54,19 @@ func show_result(result: HitResult) -> void:
 	_time_left = show_time_s
 
 
+## Shows a result the host sent (network client): text plus HitResult.Outcome.
+func show_text(result_text: String, outcome: int) -> void:
+	text = result_text
+	var color: Color = hit_color
+	match outcome:
+		HitResult.Outcome.PENETRATION: color = penetration_color
+		HitResult.Outcome.NO_PENETRATION: color = no_penetration_color
+		HitResult.Outcome.RICOCHET: color = ricochet_color
+		HitResult.Outcome.COMMANDER_HIT: color = commander_hit_color
+	add_theme_color_override("font_color", color)
+	_time_left = show_time_s
+
+
 ## Follows the player's current tank (connects once it exists).
 func _connect_to_tank() -> void:
 	var tank: Tank = views.get_tank() if views != null else null

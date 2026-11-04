@@ -241,6 +241,31 @@ func _segment_hits_box(m: ModuleData, from: Vector3, dir: Vector3, reach: float)
 	return true
 
 
+# --- Network (client puppets) --------------------------------------------------------
+
+## Mirrors the host's state for the own tank's HUD. states in TankNetState.MODULES order.
+func set_net(hp_frac: float, states: PackedInt32Array, burning: bool, repair_t: float) -> void:
+	hp = hp_frac * data.structure_hp
+	fire_left = 1.0 if burning else 0.0
+	repair_time = repair_t
+	for i: int in TankNetState.MODULES.size():
+		var id: StringName = TankNetState.MODULES[i]
+		if not _modules.has(id) or i >= states.size():
+			continue
+		var m: ModuleData = _modules[id]
+		var before: State = state(id)
+		match states[i]:
+			State.OK: _module_hp[id] = m.hp
+			State.DAMAGED: _module_hp[id] = m.hp * m.damaged_below * 0.5
+			_: _module_hp[id] = 0.0
+		if state(id) != before:
+			module_changed.emit(id, state(id))
+
+
+func set_net_burning(burning: bool) -> void:
+	fire_left = 1.0 if burning else 0.0
+
+
 # --- Time --------------------------------------------------------------------------
 
 ## still: the tank stands still (slow, no throttle) and doesn't fire.

@@ -59,7 +59,8 @@ func _draw() -> void:
 			TankDamage.State.DAMAGED: color = damaged_color
 			TankDamage.State.DESTROYED: color = destroyed_color
 		var box := Rect2(x, 16.0, box_size.x, box_size.y)
-		draw_rect(box, Color(color, 0.25))
+		draw_rect(box, Color(0.0, 0.0, 0.0, 0.55))   # readable on bright grass and snow
+		draw_rect(box, Color(color, 0.2))
 		draw_rect(box, color, false, 2.0)
 		var label: String = LABELS[id]
 		var w: float = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 4).x
