@@ -40,6 +40,16 @@ extends Resource
 ## Hit chance falls linearly to zero at this distance (m). 0 = not explosive.
 @export var fragment_max_radius_m: float = 0.0
 
+@export_group("Sound")
+## Landing on a tank.
+@export var sound_hit_armour: SoundSetData
+## Landing on ground, buildings and trees.
+@export var sound_hit_ground: SoundSetData
+## Explosive shells: the detonation, played on every impact on top of the hit sound.
+@export var sound_explosion: SoundSetData
+## Bouncing off armour.
+@export var sound_ricochet: SoundSetData
+
 
 func is_explosive() -> bool:
 	return fragment_max_radius_m > 0.0

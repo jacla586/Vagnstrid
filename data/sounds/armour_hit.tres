@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="SoundSetData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/sound_set_data.gd" id="1_script"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/kenney/impactPlate_heavy_000.ogg" id="2_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/kenney/impactPlate_heavy_001.ogg" id="3_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/kenney/impactPlate_heavy_002.ogg" id="4_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/kenney/impactPlate_heavy_003.ogg" id="5_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/kenney/impactPlate_heavy_004.ogg" id="6_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/kenney/impactMetal_heavy_000.ogg" id="7_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/kenney/impactMetal_heavy_001.ogg" id="8_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/kenney/impactMetal_heavy_002.ogg" id="9_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/kenney/impactMetal_heavy_003.ogg" id="10_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/kenney/impactMetal_heavy_004.ogg" id="11_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/armour_hit_1.ogg" id="12_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/armour_thud_1.ogg" id="13_s"]
+
+[resource]
+script = ExtResource("1_script")
+streams = Array[AudioStream]([ExtResource("2_s"), ExtResource("3_s"), ExtResource("4_s"), ExtResource("5_s"), ExtResource("6_s"), ExtResource("7_s"), ExtResource("8_s"), ExtResource("9_s"), ExtResource("10_s"), ExtResource("11_s"), ExtResource("12_s"), ExtResource("13_s")])
+volume_db = 8.0
+unit_size_m = 25.0
+max_distance_m = 1500.0
+pitch_scale = 0.75
+pitch_variance = 0.1

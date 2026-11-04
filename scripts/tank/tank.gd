@@ -98,6 +98,8 @@ var _net_command: TankCommand = TankCommand.new()
 var _since_fired: float = 999.0
 var _fire_effect: Node3D
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+## Engine, track, gun and hatch sounds (null when the data has none).
+var _audio: TankAudio
 
 @onready var _suspension: Node3D = $Suspension
 @onready var _turret: Node3D = $Visual/Turret
@@ -152,6 +154,11 @@ func _ready() -> void:
 			target.module_id = m.id
 			target.position = m.center
 			add_child(target)
+	if data.sounds != null:
+		_audio = TankAudio.new()
+		_audio.name = "Audio"
+		_audio.tank = self
+		add_child(_audio)
 
 
 ## Boresights the gunner's sight: tilts it so its line of sight crosses the gun's
@@ -184,6 +191,16 @@ func get_hull_half_extents() -> Vector3:
 func apply_obstacle_drag(fraction: float) -> void:
 	var horizontal := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
 	apply_central_impulse(-horizontal * clampf(fraction, 0.0, 1.0) * mass)
+
+
+## Bus for this tank's sounds and for hits on it ("Own" for the player's tank).
+func get_audio_bus() -> StringName:
+	return _audio.bus if _audio != null else SoundFx.WORLD_BUS
+
+
+func set_audio_bus(bus_name: StringName) -> void:
+	if _audio != null:
+		_audio.set_bus(bus_name)
 
 
 func is_enemy_of(other: Tank) -> bool:
@@ -719,6 +736,11 @@ func net_show_shell(shell_index: int, from: Vector3, velocity: Vector3, flash: b
 		var fx: Node3D = MUZZLE_FLASH_SCENE.instantiate()
 		get_parent().add_child(fx)
 		fx.global_position = from
+		if _audio != null:
+			_audio.play_gun(from)
+	else:
+		# No flash = the host's shell bounced off something.
+		SoundFx.play_at(self, shell_data.sound_ricochet, from)
 
 
 func _puppet_process(delta: float) -> void:
@@ -761,6 +783,8 @@ func _fire() -> void:
 	var flash: Node3D = MUZZLE_FLASH_SCENE.instantiate()
 	get_parent().add_child(flash)
 	flash.global_position = muzzle_position
+	if _audio != null:
+		_audio.play_gun(muzzle_position)
 	apply_impulse(-direction * data.recoil_impulse_ns, muzzle_position - global_position)
 	_reload_remaining = data.reload_time_s
 	_since_fired = 0.0

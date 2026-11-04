@@ -1,6 +1,9 @@
 [gd_resource type="Resource" script_class="ShellData" format=3]
 
 [ext_resource type="Script" path="res://scripts/data/shell_data.gd" id="1_shell"]
+[ext_resource type="Resource" path="res://data/sounds/armour_hit.tres" id="80_snd0"]
+[ext_resource type="Resource" path="res://data/sounds/ground_hit.tres" id="80_snd1"]
+[ext_resource type="Resource" path="res://data/sounds/ricochet.tres" id="80_snd2"]
 
 [resource]
 script = ExtResource("1_shell")
@@ -18,3 +21,6 @@ module_damage = 40.0
 module_reach_m = 2.5
 wear_mm = 12.0
 tracer_color = Color(1, 0.55, 0.15, 1)
+sound_hit_armour = ExtResource("80_snd0")
+sound_hit_ground = ExtResource("80_snd1")
+sound_ricochet = ExtResource("80_snd2")

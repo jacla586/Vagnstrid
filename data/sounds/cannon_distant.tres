@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="SoundSetData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/sound_set_data.gd" id="1_script"]
+[ext_resource type="AudioStream" path="res://assets/audio/cannon/cannon_distant_1.ogg" id="2_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/cannon/cannon_distant_2.ogg" id="3_s"]
+
+[resource]
+script = ExtResource("1_script")
+streams = Array[AudioStream]([ExtResource("2_s"), ExtResource("3_s")])
+volume_db = 4.0
+unit_size_m = 200.0
+max_distance_m = 6000.0
+pitch_variance = 0.1

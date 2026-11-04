@@ -1,6 +1,8 @@
 [gd_resource type="Resource" script_class="ShellData" format=3]
 
 [ext_resource type="Script" path="res://scripts/data/shell_data.gd" id="1_shell"]
+[ext_resource type="Resource" path="res://data/sounds/mg_armour_hit.tres" id="80_snd0"]
+[ext_resource type="Resource" path="res://data/sounds/mg_ricochet.tres" id="80_snd1"]
 
 [resource]
 script = ExtResource("1_shell")
@@ -13,3 +15,5 @@ drag_coefficient = 0.3
 impact_scale = 0.15
 tracer_scale = 0.4
 tracer_color = Color(1, 0.25, 0.15, 1)
+sound_hit_armour = ExtResource("80_snd0")
+sound_ricochet = ExtResource("80_snd1")

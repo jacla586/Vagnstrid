@@ -132,6 +132,11 @@ extends Resource
 @export var roof_mg: MachineGunData
 
 
+@export_group("Sound")
+## Engine, tracks, gun and hatch sounds. Null = silent tank.
+@export var sounds: TankSoundData
+
+
 ## Vertical field of view through the binoculars (degrees).
 func binocular_fov_deg() -> float:
 	var narrowest: float = commander_fov_deg

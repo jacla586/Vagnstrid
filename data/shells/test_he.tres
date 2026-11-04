@@ -1,6 +1,8 @@
 [gd_resource type="Resource" script_class="ShellData" format=3]
 
 [ext_resource type="Script" path="res://scripts/data/shell_data.gd" id="1_shell"]
+[ext_resource type="Resource" path="res://data/sounds/he_explosion.tres" id="80_snd0"]
+[ext_resource type="Resource" path="res://data/sounds/armour_hit.tres" id="81_armour"]
 
 [resource]
 script = ExtResource("1_shell")
@@ -21,3 +23,5 @@ fragment_module_damage = 15.0
 tracer_color = Color(1, 0.85, 0.3, 1)
 fragment_lethal_radius_m = 4.0
 fragment_max_radius_m = 20.0
+sound_hit_armour = ExtResource("81_armour")
+sound_explosion = ExtResource("80_snd0")

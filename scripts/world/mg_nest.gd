@@ -35,6 +35,7 @@ var _respawn_timer: float = 0.0
 var _burning: Node3D
 var _charred_material: StandardMaterial3D
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _sound: GunfireSound
 
 @onready var _mount: Node3D = $Mount
 @onready var _pitch: Node3D = $Mount/Pitch
@@ -50,6 +51,8 @@ func _ready() -> void:
 	_rng.randomize()
 	_aim_direction = -_mount.global_basis.z
 	add_to_group(Explosion.TARGET_GROUP)
+	_sound = GunfireSound.new()
+	add_child(_sound)
 
 
 func is_destroyed() -> bool:
@@ -204,10 +207,12 @@ func _fire_bullet(gun_forward: Vector3) -> void:
 	get_parent().add_child(bullet)
 	bullet.launch(data.bullet, _muzzle.global_position,
 			direction * data.bullet.muzzle_velocity_mps, self)
+	_sound.on_shot(data.sound_shot, _muzzle.global_position)
 
 
 func _destroy() -> void:
 	_destroyed = true
+	_sound.silence()
 	_target = null
 	_awareness = 0.0
 	_burning = BURNING_SCENE.instantiate()

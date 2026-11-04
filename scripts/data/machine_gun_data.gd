@@ -16,3 +16,5 @@ extends Resource
 @export var reaction_time_s: float = 1.5
 ## How fast the gun swings onto a target (degrees/s).
 @export var traverse_speed_deg: float = 60.0
+## One shot, played for every bullet (so it follows the rate of fire).
+@export var sound_shot: SoundSetData

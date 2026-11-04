@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="TankSoundData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tank_sound_data.gd" id="1_script"]
+[ext_resource type="Resource" path="res://data/sounds/engine_idle.tres" id="2_idle"]
+[ext_resource type="Resource" path="res://data/sounds/engine_drive.tres" id="3_drive"]
+[ext_resource type="Resource" path="res://data/sounds/tracks.tres" id="4_tracks"]
+[ext_resource type="Resource" path="res://data/sounds/cannon_fire.tres" id="5_gun"]
+[ext_resource type="Resource" path="res://data/sounds/hatch_open.tres" id="6_open"]
+[ext_resource type="Resource" path="res://data/sounds/hatch_close.tres" id="7_close"]
+
+[resource]
+script = ExtResource("1_script")
+engine_idle = ExtResource("2_idle")
+engine_drive = ExtResource("3_drive")
+tracks = ExtResource("4_tracks")
+gun_fire = ExtResource("5_gun")
+hatch_open = ExtResource("6_open")
+hatch_close = ExtResource("7_close")
+engine_drive_min_db = -36.0

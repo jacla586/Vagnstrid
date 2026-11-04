@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="SoundSetData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/sound_set_data.gd" id="1_script"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/ap_ground_1.ogg" id="2_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/ap_ground_2.ogg" id="3_s"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact/ap_ground_3.ogg" id="4_s"]
+[ext_resource type="Resource" path="res://data/sounds/impact_distant.tres" id="90_distant"]
+
+[resource]
+script = ExtResource("1_script")
+streams = Array[AudioStream]([ExtResource("2_s"), ExtResource("3_s"), ExtResource("4_s")])
+volume_db = 8.0
+unit_size_m = 40.0
+max_distance_m = 3000.0
+distant_from_m = 450.0
+pitch_variance = 0.1
+distant = ExtResource("90_distant")

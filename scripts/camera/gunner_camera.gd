@@ -6,6 +6,8 @@ extends Camera3D
 
 ## Render layer of the tank's own gun/mantlet meshes, hidden from the sight.
 const OWN_GUN_LAYER: int = 2
+## Aim point distance when the sight has no zeroing range (m).
+const MIN_AIM_DISTANCE: float = 500.0
 
 ## Radians per pixel of mouse movement at the commander's naked-eye FOV.
 @export var mouse_sensitivity: float = 0.003
@@ -67,10 +69,13 @@ func get_desired_direction() -> Vector3:
 	return Basis.from_euler(Vector3(_target_pitch, _target_yaw, 0.0)) * Vector3.FORWARD
 
 
-## Where the turret should aim: along the desired direction from the sight.
+## Where the turret should aim: on the desired sight line, at the range where the
+## sight crosses the bore (the zeroing range). Not what a ray hits: a tree drifting
+## into the line would change the parallax and make the gun (and this view) jump.
+## Range is the gunner's job, with the reticle's range ladder.
 func get_aim_point() -> Vector3:
-	return AimRay.cast_from(get_world_3d(), tank.get_gunner_sight_transform().origin,
-			get_desired_direction(), tank)
+	var distance: float = maxf(tank.data.sight_zero_range_m, MIN_AIM_DISTANCE)
+	return tank.get_gunner_sight_transform().origin + get_desired_direction() * distance
 
 
 ## Screen position of the desired aim direction, or Vector2.INF if it's behind.

@@ -69,6 +69,15 @@ shows on the minimap. This is what we test first.
 - Scenarios are scenes inherited from a map (`scenes/scenarios/*.tscn`, base e.g.
   `vikbolandet.tscn`), so map edits carry over. `hackerstad.tscn`: player at
   Hackerstad, 6 bots advance from Ring along the road (Vikbolandet).
+- Sound: `SoundSetData` (`data/sounds/*.tres`, random variant, optional `distant` set
+  far away) on `TankData.sounds` (`TankSoundData`: engine, tracks, gun, hatch),
+  `ShellData` (hit armour/ground, ricochet; explosive shells add `sound_explosion` on every impact) and `MachineGunData.sound_shot` (one per bullet, `GunfireSound`, polyphonic).
+  `TankAudio` (made by Tank) reads only tank state, so puppets sound the same;
+  `SoundFx.play_at()` plays one-shots delayed by distance / speed of sound
+  (`data/world/audio.tres`). Buses (`default_bus_layout.tres`): `World` is muffled
+  while the own hatch is closed (`HatchMuffle` in the player rig), the own tank uses
+  `Own`. Files in `assets/audio/` (CC0, see `CREDITS.md`; made with `tools/audio/`).
+  Headless runs report "leaked at exit" for any playing AudioStreamPlayer: harmless.
 - Prototype graphics: simple shapes (boxes, cylinders). Only free, correctly licensed
   assets (Kenney, Sketchfab CC with attribution). Never assets from other games.
 

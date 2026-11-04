@@ -19,6 +19,7 @@
 [ext_resource type="Script" path="res://scripts/ui/spot_marks.gd" id="21_spot_marks"]
 [ext_resource type="Script" path="res://scripts/ui/big_map.gd" id="22_big_map"]
 [ext_resource type="Script" path="res://scripts/ui/damage_panel.gd" id="23_damage_panel"]
+[ext_resource type="Script" path="res://scripts/audio/hatch_muffle.gd" id="24_hatch_muffle"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -107,6 +108,10 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("17_commander_status")
 views = NodePath("../../PlayerViews")
+
+[node name="HatchMuffle" type="Node" parent="." node_paths=PackedStringArray("tank")]
+script = ExtResource("24_hatch_muffle")
+tank = NodePath("../Tank")
 
 [node name="SpotMarks" type="Node" parent="." node_paths=PackedStringArray("views")]
 script = ExtResource("21_spot_marks")

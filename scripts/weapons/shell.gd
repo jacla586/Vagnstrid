@@ -103,14 +103,17 @@ func _on_hit(hit: Dictionary) -> void:
 	var light: OmniLight3D = effect.get_node_or_null("Light") as OmniLight3D
 	if light != null:
 		light.omni_range *= _data.impact_scale
+	var collider: Object = hit["collider"]
 	if _cosmetic:
+		_play_hit_sound(collider, point)
 		queue_free()
 		return
-	var collider: Object = hit["collider"]
 	var result: HitResult = null
 	if collider != null and collider.has_method("on_shell_hit"):
 		result = collider.on_shell_hit(_data, point, normal, _velocity, int(hit["shape"]))
 		_report(result)
+	if _data.is_explosive() or result == null or result.outcome != HitResult.Outcome.RICOCHET:
+		_play_hit_sound(collider, point)
 	if _data.is_explosive():
 		_rng.randomize()
 		for fragment_result: HitResult in Explosion.detonate(get_world_3d(), get_tree(), point,
@@ -130,8 +133,27 @@ func _report(result: HitResult) -> void:
 		_shooter.report_shot(result)
 
 
+## Impact sound: armour clang or ground thud, plus the detonation for explosive
+## shells (whatever they hit). A hit on the player's own tank plays on its bus, so
+## it's loud inside with the hatch closed. Hitboxes (areas) get no clang or thud.
+func _play_hit_sound(collider: Object, point: Vector3) -> void:
+	var tank := collider as Tank
+	var bus_name: StringName = tank.get_audio_bus() if tank != null else SoundFx.WORLD_BUS
+	if _data.is_explosive():
+		SoundFx.play_at(self, _data.sound_explosion, point, bus_name)
+	if collider is Area3D:
+		return
+	if tank != null:
+		SoundFx.play_at(self, _data.sound_hit_armour, point, bus_name)
+	else:
+		SoundFx.play_at(self, _data.sound_hit_ground, point)
+
+
 ## Bounces off the plate and keeps flying; never hits the same body again.
 func _ricochet(point: Vector3, normal: Vector3, body: RID) -> void:
+	var tank := instance_from_id(PhysicsServer3D.body_get_object_instance_id(body)) as Tank
+	SoundFx.play_at(self, _data.sound_ricochet, point,
+			tank.get_audio_bus() if tank != null else SoundFx.WORLD_BUS)
 	_exclude.append(body)
 	_velocity = _velocity.bounce(normal) * RICOCHET_SPEED_FACTOR
 	global_position = point + normal * 0.05
