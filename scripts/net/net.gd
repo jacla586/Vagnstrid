@@ -15,6 +15,8 @@ extends Node
 signal status_changed(text: String)
 
 const PORT: int = 24680
+## Port in use: PORT, or --port N on the command line (several hosts on one machine).
+var port: int = PORT
 const MAX_CLIENTS: int = 39
 const CHANNELS: int = 3
 const CH_SNAPSHOT: int = 0
@@ -82,6 +84,9 @@ func _parse_command_line() -> void:
 			"--name":
 				i += 1
 				player_name = args[i]
+			"--port":
+				i += 1
+				port = int(args[i])
 		i += 1
 	if do_host:
 		host(map, bots)
@@ -102,22 +107,22 @@ static func _map_from_arg(a: String) -> String:
 
 func host(map: String, with_bots: bool) -> Error:
 	var peer := ENetMultiplayerPeer.new()
-	var err: Error = peer.create_server(PORT, MAX_CLIENTS, CHANNELS)
+	var err: Error = peer.create_server(port, MAX_CLIENTS, CHANNELS)
 	if err != OK:
-		_set_status("could not host on port %d (%s)" % [PORT, error_string(err)])
+		_set_status("could not host on port %d (%s)" % [port, error_string(err)])
 		return err
 	multiplayer.multiplayer_peer = peer
 	NetRole.role = NetRole.Role.HOST
 	map_path = map
 	bots = with_bots
-	_set_status("hosting on port %d" % PORT)
+	_set_status("hosting on port %d" % port)
 	_load_map(map)
 	return OK
 
 
 func join(ip: String) -> Error:
 	var peer := ENetMultiplayerPeer.new()
-	var err: Error = peer.create_client(ip, PORT, CHANNELS)
+	var err: Error = peer.create_client(ip, port, CHANNELS)
 	if err != OK:
 		_set_status("could not connect (%s)" % error_string(err))
 		return err

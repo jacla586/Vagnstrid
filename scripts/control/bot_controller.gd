@@ -127,6 +127,8 @@ func _physics_process(delta: float) -> void:
 	_command.has_aim = false
 	_alert_timer = maxf(_alert_timer - delta, 0.0)
 	_halting = false
+	if _target != null and not is_instance_valid(_target):
+		_target = null
 	if _target != null:
 		_engage(_target, delta)
 	else:
@@ -159,6 +161,7 @@ func _spot_time_for(other: Tank) -> float:
 
 
 func _scan(dt: float) -> void:
+	_drop_freed()
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var other := node as Tank
 		if other == null or not tank.is_enemy_of(other):
@@ -268,6 +271,19 @@ func _forget(other: Tank) -> void:
 	_head_visible.erase(other)
 	if other == _target:
 		_target = null
+
+
+## Forgets tanks that no longer exist (removed from the map, e.g. the map's own
+## player tank when a network game spawns the players). Keys are checked untyped:
+## a freed tank can't even be assigned to a Tank variable.
+func _drop_freed() -> void:
+	if _target != null and not is_instance_valid(_target):
+		_target = null
+	for memory: Dictionary in [_awareness, _spotted, _cover, _unseen_time, _hull_visible,
+			_head_visible, _reported]:
+		for key: Variant in memory.keys():
+			if not is_instance_valid(key):
+				memory.erase(key)
 
 
 func _forget_all() -> void:

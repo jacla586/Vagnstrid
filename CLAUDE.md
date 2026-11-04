@@ -192,7 +192,8 @@ Host-authoritative, Godot ENet, all in `scripts/net/`:
   Shells on clients are cosmetic (`Shell` cosmetic flag); MG fire is a snapshot flag.
 - Host drives remote tanks with `RemoteController`. Start menu `scenes/menu/main_menu.tscn`
   (Host: map + bots, Join: IP e.g. Tailscale, Single player). Command line after `--`:
-  `--host [--map vidingsjo] [--bots]`, `--join <ip>`, `--name N`.
+  `--host [--map vidingsjo] [--bots]`, `--join <ip>`, `--name N`, `--port N` (default 24680; lets
+  a test host run beside a game already hosting).
 - Player guide (Swedish): `SPELA_ONLINE.md` (hosting, joining, Tailscale, F3).
 - Measured: ~0.8 kB/s per tank per recipient. Test with two (or three) headless
   instances running scratch scripts (`--script`, the autoload is there), or two windows.
