@@ -30,3 +30,22 @@ extends Resource
 ## No scouting stops within this long after contact (an enemy seen, reported or a hit; s).
 @export var scout_skip_after_contact_s: float = 30.0
 
+@export_group("Positions")
+## Candidate spots tried when choosing where to stand.
+@export var position_candidates: int = 24
+## Score for a spot with something beside it (bushes, trees, tree line, houses)...
+@export var w_cover: float = 2.0
+## ...and extra when bushes or crowns hide the tank itself.
+@export var w_concealed: float = 1.5
+## Hull down: ground towards the threat 0.8-1.8 m higher than the spot, a few metres
+## ahead (hull hidden, gun and commander over the crest). Higher ground that hides the
+## view counts against.
+@export var w_hull_down: float = 3.0
+## Per sight line (of 3) from the commander's eye to the area to watch.
+@export var w_sight: float = 2.0
+## Penalty for standing closer than spread_min_m to a teammate (or his goal).
+@export var w_spacing: float = 3.0
+@export var spread_min_m: float = 40.0
+## Penalty per 100 m of driving to the spot.
+@export var w_travel: float = 0.5
+

@@ -142,6 +142,32 @@ func order_path(goal: Vector3, throttle: float, urgent: bool = false) -> void:
 		_scout_points = map.scout_points(tank.global_position, path, _tactics())
 
 
+## Where this crew believes the enemy is (flat direction from the tank), from what it
+## knows itself: its target, a fresh alert (radio report or a hit), or the nearest
+## enemy it has spotted. ZERO = no idea.
+func get_threat_direction() -> Vector3:
+	var at := Vector3.INF
+	if _target != null and is_instance_valid(_target):
+		at = _target.global_position
+	elif _alert_timer > 0.0 and _alert_direction.length() > 0.01:
+		return Vector3(_alert_direction.x, 0.0, _alert_direction.z).normalized()
+	else:
+		var best: float = INF
+		for key: Variant in _spotted.keys():
+			if not is_instance_valid(key):
+				continue
+			var other: Tank = key
+			var d: float = tank.global_position.distance_to(other.global_position)
+			if d < best:
+				best = d
+				at = other.global_position
+	if at == Vector3.INF:
+		return Vector3.ZERO
+	var dir: Vector3 = at - tank.global_position
+	dir.y = 0.0
+	return dir.normalized() if dir.length() > 0.1 else Vector3.ZERO
+
+
 func is_scouting() -> bool:
 	return _scout_wait > 0.0
 

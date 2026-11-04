@@ -76,7 +76,11 @@ shows on the minimap. This is what we test first.
   long open stretches (`TacticalMap.scout_points`, values in `TacticsData`; skipped
   when urgent or after recent contact). Keep stops short: bots must keep moving.
   KothBots lets bots leave a spawn one by one and orders urgently after respawns,
-  between zones and when the zone closes soon. Without a baked grid bots drive
+  between zones and when the zone closes soon. Positions: `TacticalMap.find_position()`
+  scores candidate spots for cover, hull down (grid heights towards the threat), sight
+  lines from the commander's eye and spacing from teammates (weights in TacticsData);
+  KothBots uses it with `BotController.get_threat_direction()` (own knowledge only;
+  default: the enemy's side of the zone). Without a baked grid bots drive
   straight. Baked so far: vidingsjo. Spawns avoid blocked cells.
 - `BotGroup` moves bots together: column along a route, on the first contact
   (shared to all members) line abreast towards an objective, short halts to fire.

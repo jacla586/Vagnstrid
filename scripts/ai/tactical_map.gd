@@ -11,6 +11,20 @@ const DEFAULT_TACTICS: TacticsData = preload("res://data/bots/tactics_regular.tr
 const SNAP_RADIUS_CELLS: int = 8
 ## Straightening looks at most this many path cells ahead.
 const SMOOTH_LOOKAHEAD: int = 48
+## Commander's eye above the ground with the hatch open (m).
+const EYE_HEIGHT_M: float = 3.0
+## What a position must see: points this high above the ground (a tank's hull, m).
+const LOOK_TARGET_HEIGHT_M: float = 1.5
+## Sight rays start this far out from the eye (the bush the tank stands in, m).
+const SIGHT_START_SKIP_M: float = 4.0
+## Sight counts as clear if the ray stops this close to its target (m).
+const SIGHT_END_SLACK_M: float = 3.0
+## Hull down: probe the ground this far towards the threat (m); a crest this high
+## above the spot hides the hull (m); higher hides the view too.
+const HULL_DOWN_PROBE_M: Array[float] = [4.0, 8.0, 12.0]
+const HULL_DOWN_MIN_M: float = 0.8
+const HULL_DOWN_MAX_M: float = 1.8
+const HULL_DOWN_BLIND_M: float = 2.5
 ## Half the width a straightened leg must keep clear, in cells (8 m cells: ~2.4 m).
 const LINE_HALF_WIDTH_CELLS: float = 0.3
 
@@ -136,6 +150,84 @@ func scout_points(from: Vector3, path: PackedVector3Array, tactics: TacticsData)
 		travelled += leg
 		prev = p
 	return points
+
+
+## Where to stand in a circle (`center`, `radius`) to fight towards `threat_dir`
+## while watching `look_at` (± `look_spread` sideways): tries candidate spots and
+## scores cover, hull-down ground (from the grid's heights), sight lines from the
+## commander's eye, spacing from `friends` and the drive from `from`. Weights in
+## `tactics`. Returns `center` (on the ground) if no candidate is drivable.
+func find_position(world: World3D, center: Vector3, radius: float, threat_dir: Vector3,
+		look_at: Vector3, look_spread: float, from: Vector3, friends: PackedVector3Array,
+		tactics: TacticsData, rng: RandomNumberGenerator, exclude: Array[RID] = []) -> Vector3:
+	var threat := Vector3(threat_dir.x, 0.0, threat_dir.z)
+	threat = threat.normalized() if threat.length() > 0.01 else Vector3.FORWARD
+	var side: Vector3 = threat.cross(Vector3.UP)
+	var looks: Array[Vector3] = []
+	for k: float in [-1.0, 0.0, 1.0]:
+		var p: Vector3 = look_at + side * look_spread * 0.5 * k
+		looks.append(Vector3(p.x, _height_at(p) + LOOK_TARGET_HEIGHT_M, p.z))
+	var best: Vector3 = Vector3(center.x, _height_at(center), center.z)
+	var best_score: float = -INF
+	for i: int in tactics.position_candidates:
+		var offset: Vector2 = Vector2.from_angle(rng.randf() * TAU) * sqrt(rng.randf()) * radius
+		var p := Vector3(center.x + offset.x, 0.0, center.z + offset.y)
+		var c: Vector2i = grid.cell_of(p)
+		if not grid.has_cell(c) or grid.flags[grid.index_of(c)] & TacticalGridData.BLOCKED:
+			continue
+		p.y = grid.heights[grid.index_of(c)]
+		var score: float = _position_score(world, p, threat, looks, from, friends, tactics, exclude)
+		if score > best_score:
+			best_score = score
+			best = p
+	return best
+
+
+func _position_score(world: World3D, p: Vector3, threat: Vector3, looks: Array[Vector3],
+		from: Vector3, friends: PackedVector3Array, t: TacticsData, exclude: Array[RID]) -> float:
+	var score: float = 0.0
+	var c: Vector2i = grid.cell_of(p)
+	if is_covered(p):
+		score += t.w_cover
+	if grid.flags[grid.index_of(c)] & TacticalGridData.CONCEALED:
+		score += t.w_concealed
+	# Hull down: the highest ground a few metres towards the threat.
+	var crest: float = -INF
+	for d: float in HULL_DOWN_PROBE_M:
+		crest = maxf(crest, _height_at(p + threat * d) - p.y)
+	if crest >= HULL_DOWN_MIN_M and crest <= HULL_DOWN_MAX_M:
+		score += t.w_hull_down
+	elif crest > HULL_DOWN_BLIND_M:
+		score -= t.w_hull_down
+	# Sight lines from the commander's eye.
+	var eye: Vector3 = p + Vector3.UP * EYE_HEIGHT_M
+	for target: Vector3 in looks:
+		if _sight_clear(world, eye, target, exclude):
+			score += t.w_sight
+	for f: Vector3 in friends:
+		var d: float = Vector2(f.x - p.x, f.z - p.z).length()
+		if d < t.spread_min_m:
+			score -= t.w_spacing * (1.0 - d / t.spread_min_m)
+	score -= t.w_travel * from.distance_to(p) / 100.0
+	return score
+
+
+## Ground height under a world point from the grid (0 off the grid).
+func _height_at(p: Vector3) -> float:
+	var c: Vector2i = grid.cell_of(p)
+	return grid.heights[grid.index_of(c)] if grid.has_cell(c) else 0.0
+
+
+## Nothing blocks sight (terrain, houses, bushes, crowns) between `from` and `to`,
+## or the first thing hit is right at `to` (the ground there). The first few metres
+## are skipped: a tank in a bush looks out through its edge.
+static func _sight_clear(world: World3D, from: Vector3, to: Vector3, exclude: Array[RID]) -> bool:
+	var dir: Vector3 = (to - from).normalized()
+	var query := PhysicsRayQueryParameters3D.create(from + dir * SIGHT_START_SKIP_M, to)
+	query.collide_with_areas = true
+	query.exclude = exclude
+	var hit: Dictionary = world.direct_space_state.intersect_ray(query)
+	return hit.is_empty() or (hit["position"] as Vector3).distance_to(to) < SIGHT_END_SLACK_M
 
 
 func is_blocked(point: Vector3) -> bool:

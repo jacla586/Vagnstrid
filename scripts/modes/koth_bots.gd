@@ -19,6 +19,9 @@ const ORDER_THROTTLE: float = 0.7
 const DEPART_INTERVAL_S: float = 2.5
 ## The zone closing within this long counts as hurry: no scouting stops (s).
 const HURRY_BEFORE_CLOSE_S: float = 60.0
+## Positions in the zone watch this share of the radius out from the centre, towards
+## the enemy: the zone's far edge, where they come in.
+const LOOK_SHARE: float = 0.8
 
 @export var mode: KothMode
 
@@ -27,6 +30,7 @@ var _hold: Dictionary = {}  # BotController -> seconds left at the current point
 var _respawn: Dictionary = {}  # BotController -> seconds until back at the spawn
 var _ordered_radius: Dictionary = {}  # BotController -> zone radius when last ordered
 var _depart: Dictionary = {}  # BotController -> seconds until it leaves the spawn
+var _goals: Dictionary = {}  # BotController -> where it was last sent
 var _respawned: Dictionary = {}  # BotController -> true until its first order after a respawn
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
@@ -115,9 +119,40 @@ func _order_into_zone(bot: BotController) -> void:
 	var radius: float = mode.get_radius()
 	var urgent: bool = _respawned.has(bot) or _hurry()
 	_respawned.erase(bot)
-	bot.order_path(_random_point(radius * INNER_SHARE), ORDER_THROTTLE, urgent)
+	var goal: Vector3 = _choose_spot(bot, radius * INNER_SHARE)
+	_goals[bot] = goal
+	bot.order_path(goal, ORDER_THROTTLE, urgent)
 	_ordered_radius[bot] = radius
 	_hold[bot] = _rng.randf_range(HOLD_MIN_S, HOLD_MAX_S)
+
+
+## A good spot in the zone (cover, hull down, sight towards the enemy, apart from
+## teammates) with the tactical grid; a random point without one.
+func _choose_spot(bot: BotController, radius: float) -> Vector3:
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+	if map == null:
+		return _random_point(radius)
+	var center: Vector3 = mode.get_center()
+	var threat: Vector3 = bot.get_threat_direction()
+	if threat == Vector3.ZERO:
+		# Nothing known: the enemy comes from its own side of the zone.
+		threat = Vector3.FORWARD if bot.tank.team == mode.data.south_team else Vector3.BACK
+	var friends := PackedVector3Array()
+	var exclude: Array[RID] = []
+	for other: BotController in _bots:
+		if other == bot or not is_instance_valid(other) or not is_instance_valid(other.tank):
+			continue
+		if other.tank.team == bot.tank.team and not other.tank.is_knocked_out():
+			friends.append(other.tank.global_position)
+			if _goals.has(other):
+				friends.append(_goals[other])
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		exclude.append((node as Tank).get_rid())
+	var look_at: Vector3 = center + threat * mode.get_radius() * LOOK_SHARE
+	var tactics: TacticsData = bot.bot_data.tactics if bot.bot_data != null and bot.bot_data.tactics != null \
+			else TacticalMap.DEFAULT_TACTICS
+	return map.find_position(mode.get_world_3d(), center, radius, threat, look_at,
+			mode.get_radius() * 1.5, bot.tank.global_position, friends, tactics, _rng, exclude)
 
 
 ## Random point inside `radius` of the zone centre, on land, at ground height.
