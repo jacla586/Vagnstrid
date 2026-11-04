@@ -109,7 +109,8 @@ func _on_hit(hit: Dictionary) -> void:
 		queue_free()
 		return
 	var result: HitResult = null
-	if collider != null and collider.has_method("on_shell_hit"):
+	# No friendly fire: a hit on the shooter's own team does nothing (the shell stops).
+	if collider != null and collider.has_method("on_shell_hit") and not Tank.is_friendly(_shooter, collider):
 		result = collider.on_shell_hit(_data, point, normal, _velocity, int(hit["shape"]))
 		_report(result)
 	if _data.is_explosive() or result == null or result.outcome != HitResult.Outcome.RICOCHET:
@@ -117,7 +118,7 @@ func _on_hit(hit: Dictionary) -> void:
 	if _data.is_explosive():
 		_rng.randomize()
 		for fragment_result: HitResult in Explosion.detonate(get_world_3d(), get_tree(), point,
-				normal, _data, _rng):
+				normal, _data, _rng, Tank.team_of(_shooter)):
 			_report(fragment_result)
 		queue_free()
 		return

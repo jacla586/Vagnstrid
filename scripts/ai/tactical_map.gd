@@ -28,7 +28,7 @@ const HULL_DOWN_BLIND_M: float = 2.5
 ## Half the width a straightened leg must keep clear, in cells (8 m cells: ~2.4 m).
 const LINE_HALF_WIDTH_CELLS: float = 0.3
 
-static var _cache: Dictionary = {}  # TacticalGridData -> TacticalMap
+static var _cache: Dictionary = {}  # "grid id/tactics id" -> TacticalMap
 
 var grid: TacticalGridData
 var _astar: AStarGrid2D
@@ -37,14 +37,18 @@ var _weights: PackedFloat32Array
 var _edge: PackedByteArray
 
 
-## The map for the scene's terrain, or null if its grid hasn't been baked.
-static func for_scene(scene_root: Node) -> TacticalMap:
+## The map for the scene's terrain with `tactics` path costs (null = the tanks'
+## default), or null if its grid hasn't been baked. One per grid and cost set.
+static func for_scene(scene_root: Node, tactics: TacticsData = null) -> TacticalMap:
 	var data: TacticalGridData = TacticalGridData.find_for_scene(scene_root)
 	if data == null:
 		return null
-	if not _cache.has(data):
-		_cache[data] = TacticalMap.new(data, DEFAULT_TACTICS)
-	return _cache[data]
+	if tactics == null:
+		tactics = DEFAULT_TACTICS
+	var key: String = "%d/%d" % [data.get_instance_id(), tactics.get_instance_id()]
+	if not _cache.has(key):
+		_cache[key] = TacticalMap.new(data, tactics)
+	return _cache[key]
 
 
 func _init(data: TacticalGridData, tactics: TacticsData) -> void:

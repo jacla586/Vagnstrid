@@ -36,6 +36,8 @@ shows on the minimap. This is what we test first.
 - **Bots follow the same rules as players** – same vision and spotting, no cheating.
 - Fire control and optics are per-tank properties in data, so all levels (none,
   rangefinder, full computer) run on the same code.
+- No friendly fire at all: `Tank.team_of()`/`is_friendly()`; shells that hit their
+  shooter's team do nothing and `Explosion.detonate()` spares the shooter's team.
 - Shells are simulated (gravity, travel time); hit detection by raycasting from the
   previous to the current position each physics frame, not by fast physics bodies.
   MG bullets are Shells too (`mg_bullet.tres`).
@@ -48,6 +50,21 @@ shows on the minimap. This is what we test first.
   fragments (`ModuleFragmentTarget`) damage them. Standing still `repair_time_s` repairs
   modules, then hp creeps back to `repair_hp_max_fraction`. The player sees own hp/modules
   (`DamagePanel`), never the enemy's; bots stop to repair when they have no target.
+- Infantry squads (`Squad`, `scripts/squad/`; data `SquadData`, `data/squads/`,
+  `TankData.squad`): one unit of 4 soldiers per tank, made by the tank and living in
+  the map beside it. Orders only via `TankCommand.squad_order`/`squad_target`
+  (move / recall); the tank passes them on. Mounted it rides unseen; sent out it gets
+  off behind the tank and walks paths from `TacticalMap.for_scene(scene, tactics)`
+  with infantry costs (`data/squads/tactics_infantry.tres`), at most
+  `max_distance_from_tank_m` (300) from the tank; recalled or left behind it runs back
+  and mounts. Holding still they kneel and watch all round (hedgehog). The leader is the
+  first living soldier; V (`toggle_squad_view`, `SquadCamera`, `PlayerViews` SQUAD
+  mode) looks through his eyes while the squad is off the tank: look and spot only, no
+  control, no turret or guns; binoculars on B. Placeholder soldiers are green capsules. Own team's squads show on the
+  maps. Decided rules for later steps (memory `squad-rules`): AT rounds never knock a
+  tank out, rifles low accuracy, soldiers naturally hard to see, bots use squads.
+  Not yet: spotting, hitboxes/combat, refill, HUD, network (orders and squads are not
+  replicated), bot use, models.
 - Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
   only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
 - Bots: `BotController` (extends `TargetTankController`, so patrols waypoints) with
@@ -180,7 +197,8 @@ shows on the minimap. This is what we test first.
   `data/world/spotting.tres`). Commander view: turret holds its hull-relative
   direction; T lays it on the view. MG: mouse 2 (roof MG in the commander view with the hatch
   open, coaxial otherwise). Binoculars: B. Hatch: H.
-- Big map: M. Network statistics: F3.
+- Big map: M (frees the mouse; left click on the map sends the infantry squad).
+  Recall squad: G. Squad leader's eyes: V (look and spot only). Network statistics: F3.
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 
 ## Checking for errors (run these yourself)

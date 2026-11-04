@@ -18,6 +18,8 @@ const AMMO_ACTIONS: Array[StringName] = [&"select_ammo_1", &"select_ammo_2"]
 
 @export var tank: Tank
 @export var views: PlayerViews
+## Clicks on the big map send the tank's infantry squad.
+@export var big_map: BigMap
 
 var _command: TankCommand = TankCommand.new()
 var _hatch_wanted: bool = false
@@ -25,6 +27,16 @@ var _turret_to_view_requested: bool = false
 var _spot_requested: bool = false
 var _fire_armed: bool = false
 var _ammo_requested: int = -1
+## Squad order waiting for the next physics frame (Squad.ORDER_*).
+var _squad_order: int = 0
+var _squad_target: Vector3 = Vector3.ZERO
+
+
+func _ready() -> void:
+	if big_map != null:
+		big_map.squad_order_requested.connect(func(point: Vector3) -> void:
+			_squad_order = Squad.ORDER_MOVE
+			_squad_target = point)
 ## Last aim point in the hull's local space (used in the commander view).
 var _hull_local_aim: Vector3 = Vector3.ZERO
 
@@ -34,6 +46,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_hatch_wanted = not _hatch_wanted
 	elif event.is_action_pressed("turret_to_view"):
 		_turret_to_view_requested = true
+	elif event.is_action_pressed("squad_recall"):
+		_squad_order = Squad.ORDER_RECALL
 	elif event.is_action_pressed("spot") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_spot_requested = true
 	else:
@@ -63,23 +77,28 @@ func _physics_process(_delta: float) -> void:
 	_update_spot()
 	_command.fire = _wants_fire()
 	_command.fire_mg = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \
-			and Input.is_action_pressed("fire_mg")
+			and Input.is_action_pressed("fire_mg") and views != null and not views.is_squad_view()
 	_command.mg_use_roof = views != null and not views.drives_turret() \
 			and tank.is_commander_exposed()
 	if _command.mg_use_roof:
 		_command.mg_aim_point = views.get_aim_point()
 	_command.ammo_select = _ammo_requested
 	_ammo_requested = -1
+	_command.squad_order = _squad_order
+	_command.squad_target = _squad_target
+	_squad_order = 0
 	tank.set_command(_command)
 
 
-## Spots only from the commander view, and only on something solid (not the sky).
+## Spots only from the commander view or the squad leader's eyes, and only on
+## something solid (not the sky).
 func _update_spot() -> void:
 	_command.spot = false
-	if _spot_requested and views != null \
-			and views.get_mode() == PlayerViews.ViewMode.COMMANDER:
+	if _spot_requested and views != null and (views.get_mode() == PlayerViews.ViewMode.COMMANDER
+			or views.get_mode() == PlayerViews.ViewMode.SQUAD):
 		var point: Vector3 = views.get_aim_point()
-		var eye: Vector3 = views.commander_camera.global_position
+		var eye: Vector3 = views.squad_camera.global_position if views.is_squad_view() \
+				else views.commander_camera.global_position
 		if eye.distance_to(point) < AimRay.RANGE - 1.0:
 			_command.spot = true
 			_command.spot_point = point

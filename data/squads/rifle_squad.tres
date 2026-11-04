@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="SquadData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/squad_data.gd" id="1_squad"]
+[ext_resource type="Resource" path="res://data/squads/tactics_infantry.tres" id="2_tactics"]
+
+[resource]
+script = ExtResource("1_squad")
+display_name = "Rifle squad"
+soldier_count = 4
+run_speed_mps = 4.0
+tactics = ExtResource("2_tactics")
+spacing_m = 4.0
+max_distance_from_tank_m = 300.0
+leash_margin_m = 60.0
+mount_distance_m = 8.0
+dismount_behind_m = 6.0
+uniform_color = Color(0.29, 0.36, 0.2, 1)
+soldier_height_m = 1.8
+soldier_radius_m = 0.3
+kneel_height_share = 0.6
+stance_change_s = 0.5
+eye_height_standing_m = 1.65
+eye_height_kneeling_m = 1.05
+view_fov_deg = 70.0
+binocular_fov_deg = 10.0

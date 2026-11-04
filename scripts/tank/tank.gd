@@ -100,6 +100,8 @@ var _fire_effect: Node3D
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Engine, track, gun and hatch sounds (null when the data has none).
 var _audio: TankAudio
+## The infantry squad riding on this tank (null when the data has none).
+var squad: Squad
 
 @onready var _suspension: Node3D = $Suspension
 @onready var _turret: Node3D = $Visual/Turret
@@ -154,6 +156,12 @@ func _ready() -> void:
 			target.module_id = m.id
 			target.position = m.center
 			add_child(target)
+	if data.squad != null:
+		squad = Squad.new()
+		squad.name = "%sSquad" % name
+		squad.tank = self
+		squad.data = data.squad
+		get_parent().add_child.call_deferred(squad)
 	if data.sounds != null:
 		_audio = TankAudio.new()
 		_audio.name = "Audio"
@@ -201,6 +209,31 @@ func get_audio_bus() -> StringName:
 func set_audio_bus(bus_name: StringName) -> void:
 	if _audio != null:
 		_audio.set_bus(bus_name)
+
+
+## The team something belongs to: a tank, its commander's hitbox, its track targets,
+## or anything with get_team() (squads); -1 for neutral things (MG nests, boards...).
+## There is no friendly fire: shells and fragments never hurt their shooter's team.
+static func team_of(node: Object) -> int:
+	if node == null or not is_instance_valid(node):
+		return -1
+	if node is Tank:
+		return (node as Tank).team
+	if node is CommanderHitbox:
+		var hb := node as CommanderHitbox
+		return hb.tank.team if hb.tank != null else -1
+	if node is ModuleFragmentTarget:
+		var mt := node as ModuleFragmentTarget
+		return mt.tank.team if mt.tank != null else -1
+	if node.has_method("get_team"):
+		return node.get_team()
+	return -1
+
+
+## True if `shooter` and `target` are on the same team (no damage between them).
+static func is_friendly(shooter: Object, target: Object) -> bool:
+	var team: int = team_of(shooter)
+	return team >= 0 and team == team_of(target)
 
 
 func is_enemy_of(other: Tank) -> bool:
@@ -519,6 +552,7 @@ func _physics_process(delta: float) -> void:
 	_update_roof_mg(delta)
 	_update_mg(delta)
 	_update_spotting(delta)
+	_update_squad_order()
 	_update_damage(delta)
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
@@ -591,6 +625,12 @@ func _update_gun(delta: float) -> void:
 ## Time until the commander can spot again (s), 0 when ready.
 func get_spot_cooldown_remaining() -> float:
 	return _spot_cooldown_remaining
+
+
+## Passes the command's squad order on to the squad (it acts on it once).
+func _update_squad_order() -> void:
+	if squad != null and is_instance_valid(squad) and _command.squad_order != Squad.ORDER_NONE:
+		squad.order(_command.squad_order, _command.squad_target)
 
 
 func _update_spotting(delta: float) -> void:

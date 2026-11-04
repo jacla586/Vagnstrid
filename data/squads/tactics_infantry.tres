@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="TacticsData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tactics_data.gd" id="1_tactics"]
+
+[resource]
+script = ExtResource("1_tactics")
+cost_road = 1.0
+cost_open = 1.6
+cost_forest = 0.7
+cost_wet = 1.5
+cost_near_blocked = 1.0
+cost_thick_trees = 0.8
+cost_cover_edge = 0.8
+concealed_factor = 0.5

@@ -29,14 +29,17 @@ static func fragment_hit_chance(shell: ShellData, distance: float) -> float:
 
 
 ## Applies fragments around `point`. Returns the results of every target hit.
+## Targets of `shooter_team` are spared (no friendly fire; -1 = spare nobody).
 static func detonate(world: World3D, tree: SceneTree, point: Vector3, normal: Vector3,
-		shell: ShellData, rng: RandomNumberGenerator) -> Array[HitResult]:
+		shell: ShellData, rng: RandomNumberGenerator, shooter_team: int = -1) -> Array[HitResult]:
 	var results: Array[HitResult] = []
 	if not shell.is_explosive():
 		return results
 	var origin: Vector3 = point + normal.normalized() * SURFACE_OFFSET
 	for target: Node in tree.get_nodes_in_group(TARGET_GROUP):
 		if not target.is_fragment_target_active():
+			continue
+		if shooter_team >= 0 and Tank.team_of(target) == shooter_team:
 			continue
 		var aim: Vector3 = target.get_fragment_aim_point()
 		var distance: float = origin.distance_to(aim)

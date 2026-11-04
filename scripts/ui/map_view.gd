@@ -22,6 +22,8 @@ extends Control
 @export var zone_fill_color: Color = Color(1.0, 0.85, 0.2, 0.12)
 @export var zone_next_color: Color = Color(1.0, 0.85, 0.2, 0.7)
 @export var spawn_color: Color = Color(0.45, 0.85, 1.0, 0.8)
+## Own team's infantry squads (dismounted), and the line to where they are going.
+@export var squad_color: Color = Color(0.55, 1.0, 0.45, 1.0)
 
 var _map_image: MapImageData
 var _map_looked_up: bool = false
@@ -54,6 +56,7 @@ func draw_map(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 				false)
 	_draw_grid(rect, centre, scale_px)
 	_draw_zone(rect, centre, scale_px)
+	_draw_squads(rect, centre, scale_px)
 	if spot_marks != null:
 		for mark: SpotMarks.Mark in spot_marks.get_marks():
 			var p: Vector2 = _to_screen(Vector2(mark.point.x, mark.point.z), rect, centre, scale_px)
@@ -79,6 +82,28 @@ func get_map_world_rect() -> Rect2:
 
 func _to_screen(world: Vector2, rect: Rect2, centre: Vector2, scale_px: float) -> Vector2:
 	return rect.get_center() + (world - centre) * scale_px
+
+
+## Own team's dismounted squads: a dot (and a line to where it's going).
+func _draw_squads(rect: Rect2, centre: Vector2, scale_px: float) -> void:
+	var tank: Tank = get_tank()
+	if tank == null:
+		return
+	for node: Node in get_tree().get_nodes_in_group("squads"):
+		var squad := node as Squad
+		if squad == null or squad.is_mounted() or squad.get_team() != tank.team:
+			continue
+		var p: Vector2 = _to_screen(Vector2(squad.global_position.x, squad.global_position.z),
+				rect, centre, scale_px)
+		var g3: Vector3 = squad.get_goal()
+		var g: Vector2 = _to_screen(Vector2(g3.x, g3.z), rect, centre, scale_px)
+		if g.distance_to(p) > 2.0:
+			var line_color: Color = squad_color
+			line_color.a = 0.5
+			draw_line(p, g, line_color, 1.0, true)
+		if rect.has_point(p):
+			draw_circle(p, 4.0, Color.BLACK)
+			draw_circle(p, 3.0, squad_color)
 
 
 ## King of the Hill (if the scene has one): the open zone filled, or the announced next

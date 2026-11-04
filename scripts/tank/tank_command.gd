@@ -27,3 +27,7 @@ var mg_aim_point: Vector3 = Vector3.ZERO
 var spot: bool = false
 ## World-space point the commander wants to mark as spotted.
 var spot_point: Vector3 = Vector3.ZERO
+## Order for the tank's infantry squad this frame: 0 none, 1 move to squad_target,
+## 2 recall (Squad.ORDER_*).
+var squad_order: int = 0
+var squad_target: Vector3 = Vector3.ZERO

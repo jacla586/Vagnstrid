@@ -132,6 +132,10 @@ extends Resource
 @export var roof_mg: MachineGunData
 
 
+@export_group("Infantry")
+## The squad riding on this tank. Null = none.
+@export var squad: SquadData
+
 @export_group("Sound")
 ## Engine, tracks, gun and hatch sounds. Null = silent tank.
 @export var sounds: TankSoundData

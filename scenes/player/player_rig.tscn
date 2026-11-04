@@ -21,6 +21,7 @@
 [ext_resource type="Script" path="res://scripts/ui/damage_panel.gd" id="23_damage_panel"]
 [ext_resource type="Script" path="res://scripts/audio/hatch_muffle.gd" id="24_hatch_muffle"]
 [ext_resource type="Script" path="res://scripts/ui/score_panel.gd" id="25_score_panel"]
+[ext_resource type="Script" path="res://scripts/camera/squad_camera.gd" id="26_squad_camera"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -31,10 +32,11 @@ shader = ExtResource("9_mask")
 data = ExtResource("18_player_data")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 
-[node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views")]
+[node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views", "big_map")]
 script = ExtResource("2_player")
 tank = NodePath("../Tank")
 views = NodePath("../PlayerViews")
+big_map = NodePath("../HUD/BigMap")
 
 [node name="CommanderCamera" type="Camera3D" parent="." node_paths=PackedStringArray("tank")]
 near = 0.03
@@ -46,15 +48,20 @@ near = 0.03
 script = ExtResource("10_gunner")
 tank = NodePath("../Tank")
 
+[node name="SquadCamera" type="Camera3D" parent="." node_paths=PackedStringArray("tank")]
+script = ExtResource("26_squad_camera")
+tank = NodePath("../Tank")
+
 [node name="OrbitCamera" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
 script = ExtResource("3_camera")
 target = NodePath("../Tank")
 
-[node name="PlayerViews" type="Node" parent="." node_paths=PackedStringArray("commander_camera", "gunner_camera", "debug_camera")]
+[node name="PlayerViews" type="Node" parent="." node_paths=PackedStringArray("commander_camera", "gunner_camera", "debug_camera", "squad_camera")]
 script = ExtResource("7_views")
 commander_camera = NodePath("../CommanderCamera")
 gunner_camera = NodePath("../GunnerCamera")
 debug_camera = NodePath("../OrbitCamera")
+squad_camera = NodePath("../SquadCamera")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
