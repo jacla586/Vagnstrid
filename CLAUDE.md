@@ -82,8 +82,11 @@ shows on the minimap. This is what we test first.
   Tanks go to their spawn at the start; respawns (`RespawnAtStart`, `KothBots`) use the
   current spawn. `KothBots` orders every BotController into the (next) zone. Runs
   offline/host only. HUD: `ScorePanel`; `MapView` draws zone and own spawn.
-  Scenario: `vidingsjo_koth.tscn`. Not yet: networking (clients see nothing, NetGame
-  spawns ignore the zone).
+  Scenario: `vidingsjo_koth.tscn`. Network: the host sends `get_net_state()` to
+  clients (`rpc_koth_state`, 2 Hz and on zone moves/match end; clients run the clock
+  on) and kill bonuses (`rpc_koth_bonus`); NetGame (re)spawns players at the zone
+  spawns, and with KotH the bots fill teams 1 and 0 alternately instead of team 2.
+  Spawns lift the tank 1.5 m (origin is mid-hull) so it doesn't start in the ground.
 - Sound: `SoundSetData` (`data/sounds/*.tres`, random variant, optional `distant` set
   far away) on `TankData.sounds` (`TankSoundData`: engine, tracks, gun, hatch),
   `ShellData` (hit armour/ground, ricochet; explosive shells add `sound_explosion` on every impact) and `MachineGunData.sound_shot` (one per bullet, `GunfireSound`, polyphonic).

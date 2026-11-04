@@ -3,12 +3,14 @@ extends Node
 ## The networked game in a loaded map (added by Net). The map scene is used as it is:
 ## its PlayerRig gives team 0's start, its first enemy tank team 1's start. Both are
 ## removed (and the enemies too, unless bots are on: then they stay on the host as
-## team 2 and are replicated like any tank).
+## team 2 and are replicated like any tank; with King of the Hill they fill teams 1
+## and 0 alternately instead).
 ##
 ## Host: spawns a tank per player (its own in a PlayerRig, remote ones driven by a
 ## RemoteController), replicates them (NetReplicator), respawns knocked-out players,
 ## and forwards events: shells and ricochets, hit results to the shooter, spots to the
-## shooter's team, felled trees.
+## shooter's team, felled trees. With King of the Hill in the map, players spawn at
+## its zone spawns and its state goes to the clients (twice a second and on changes).
 ## Client: puppets for every tank (NetPuppets), its own inside a PlayerRig with turret
 ## prediction; sends its commands (NetInput).
 
@@ -21,6 +23,8 @@ const BOT_TEAM: int = 2
 const FALLBACK_SPAWN_DISTANCE_M: float = 300.0
 ## With bots on, team 1 starts this far beside the first bot (which keeps its place).
 const BOT_SPAWN_OFFSET_M: float = 15.0
+## King of the Hill state to clients this often (s), and at once on zone changes.
+const KOTH_SEND_INTERVAL_S: float = 0.5
 
 ## net_id -> Tank (every replicated tank)
 var tanks: Dictionary = {}
@@ -40,6 +44,8 @@ var _puppets: NetPuppets
 var _input: NetInput
 var _my_rig: Node
 var _map: Node
+var _koth_timer: float = 0.0
+var _koth_hooked: KothMode
 
 
 func _ready() -> void:
@@ -104,10 +110,21 @@ func _take_spawns_and_clean() -> void:
 			node.queue_free()
 	if enemies != null:
 		if NetRole.is_host() and NetSession.instance.bots:
+			# King of the Hill has two sides (south/north): bots fill both, alternating,
+			# instead of being a third team that fights everyone at a shared spawn.
+			var koth: bool = _map.find_children("*", "", true, false).any(
+					func(n: Node) -> bool: return n is KothMode)
+			var bot_count: int = 0
 			for child: Node in enemies.get_children():
 				if child is Tank:
 					_register(child as Tank, 0)
-					(child as Tank).team = BOT_TEAM
+					(child as Tank).team = (1 - bot_count % 2) if koth else BOT_TEAM
+					bot_count += 1
+					# If the mode already put the tanks at their spawns, redo it for the
+					# bot's new team (otherwise the mode does it on its first frame).
+					var mode: KothMode = KothMode.instance
+					if koth and mode != null and mode.has_started():
+						KothMode.place_tank(child as Tank, mode.get_free_spawn((child as Tank).team, child as Tank))
 		else:
 			enemies.queue_free()
 
@@ -139,7 +156,7 @@ func _register(tank: Tank, owner_peer: int) -> int:
 ## Host: creates the tank for a player (the host's own in a PlayerRig).
 func _spawn_player(peer: int) -> void:
 	var team: int = teams.get(peer, 1)
-	var xform: Transform3D = spawns.get(team, spawns[0])
+	var xform: Transform3D = _spawn_for(team, null)
 	var tank: Tank
 	if peer == 1:
 		_my_rig = RIG_SCENE.instantiate()
@@ -159,6 +176,15 @@ func _spawn_player(peer: int) -> void:
 	var net_id: int = _register(tank, peer)
 	for p: int in multiplayer.get_peers():
 		_send_spawn(p, net_id)
+
+
+## Where a player of `team` (re)spawns: the King of the Hill spawn for the current zone
+## if there is one, else the map's start for the team.
+func _spawn_for(team: int, tank: Tank) -> Transform3D:
+	var mode: KothMode = KothMode.instance
+	if mode != null and mode.has_started():
+		return mode.get_free_spawn(team, tank)
+	return spawns.get(team, spawns[0])
 
 
 func _send_spawn(peer: int, net_id: int) -> void:
@@ -243,6 +269,7 @@ func _on_tree_felled(index: int, direction: Vector3, field: NodePath) -> void:
 func _physics_process(delta: float) -> void:
 	if not NetRole.is_host():
 		return
+	_update_koth(delta)
 	for net_id: int in _respawn_timers.keys():
 		_respawn_timers[net_id] -= delta
 		if _respawn_timers[net_id] > 0.0:
@@ -252,13 +279,47 @@ func _physics_process(delta: float) -> void:
 		if not is_instance_valid(tank):
 			continue
 		var team: int = teams.get(owners.get(net_id, 0), tank.team)
-		tank.global_transform = spawns.get(team, spawns[0])
-		tank.linear_velocity = Vector3.ZERO
-		tank.angular_velocity = Vector3.ZERO
+		KothMode.place_tank(tank, _spawn_for(team, tank))
 		tank.repair()
 
 
+## Host: King of the Hill state to every client, regularly and when the zone moves or
+## the match ends; kill bonuses as they happen.
+func _update_koth(delta: float) -> void:
+	var mode: KothMode = KothMode.instance
+	if mode == null:
+		return
+	if mode != _koth_hooked:
+		_koth_hooked = mode
+		mode.zone_moved.connect(func(_c: Vector3) -> void: _koth_timer = 0.0)
+		mode.match_over.connect(func(_w: int) -> void: _send_koth_state(mode))
+		mode.kill_bonus.connect(func(team: int, points: float) -> void:
+			if not multiplayer.get_peers().is_empty():
+				NetSession.instance.rpc("rpc_koth_bonus", team, points))
+	_koth_timer -= delta
+	if _koth_timer <= 0.0:
+		_koth_timer = KOTH_SEND_INTERVAL_S
+		_send_koth_state(mode)
+
+
+func _send_koth_state(mode: KothMode) -> void:
+	if multiplayer.get_peers().is_empty() or not mode.has_started():
+		return
+	NetSession.instance.rpc("rpc_koth_state", mode.get_net_state())
+	NetSession.instance.count_out(160)
+
+
 # --- Client ------------------------------------------------------------------------------
+
+func on_koth_state(state: Dictionary) -> void:
+	if KothMode.instance != null:
+		KothMode.instance.apply_net_state(state)
+
+
+func on_koth_bonus(team: int, points: float) -> void:
+	if KothMode.instance != null:
+		KothMode.instance.kill_bonus.emit(team, points)
+
 
 func on_snapshot(buf: StreamPeerBuffer) -> void:
 	if _puppets != null:

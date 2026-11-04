@@ -283,6 +283,18 @@ func rpc_tree_felled(field: NodePath, index: int, direction: Vector3) -> void:
 		game.on_tree_felled(field, index, direction)
 
 
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_koth_state(state: Dictionary) -> void:
+	if game != null:
+		game.on_koth_state(state)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_koth_bonus(team: int, points: float) -> void:
+	if game != null:
+		game.on_koth_bonus(team, points)
+
+
 ## Counts an RPC's payload for the statistics (approximate: arguments only).
 func count_out(bytes: int) -> void:
 	_out_bytes += bytes

@@ -27,6 +27,9 @@ static var instance: KothMode
 
 ## Below this the terrain counts as sea (m).
 const SEA_LEVEL_LIMIT_M: float = 0.5
+## Spawns put the tank's origin (mid-hull) this far above the ground, so it drops onto
+## its suspension instead of starting inside the terrain (m).
+const SPAWN_LIFT_M: float = 1.5
 ## Steepest ground a spawn may stand on (degrees).
 const SPAWN_MAX_SLOPE_DEG: float = 15.0
 ## Spawn search: step back towards the zone by this much each try (m)...
@@ -71,8 +74,15 @@ func _ready() -> void:
 	assert(data != null, "KothMode needs KothData")
 	_rng.randomize()
 	_center = global_position
-	# Clients show the host's state (sent by the net code); they don't run the match.
+	# Clients show the host's state (apply_net_state); they don't run the match, only
+	# let the clock run on between updates so the countdowns stay smooth.
 	set_physics_process(not NetRole.is_client())
+	set_process(NetRole.is_client())
+
+
+func _process(delta: float) -> void:
+	if not _over:
+		_time += delta
 
 
 func _physics_process(delta: float) -> void:
@@ -183,6 +193,46 @@ func get_winner() -> int:
 	return _winner
 
 
+## True once the first zone is chosen (spawns are valid from then on).
+func has_started() -> bool:
+	return _started
+
+
+# --- Network (host -> clients) ----------------------------------------------------------
+
+## The match state for clients (small: sent twice a second and on changes).
+func get_net_state() -> Dictionary:
+	return {
+		"t": _time, "zi": _zone_index, "open": _zone_open, "zs": _zone_started,
+		"ge": _gap_ends, "b": _budget_left, "c": _center,
+		"ss": _spawns.get(1, global_transform), "sn": _spawns.get(-1, global_transform),
+		"sc": _scores, "over": _over, "w": _winner,
+	}
+
+
+## Client: takes over the host's state.
+func apply_net_state(state: Dictionary) -> void:
+	_started = true
+	_time = state.get("t", _time)
+	_zone_index = state.get("zi", _zone_index)
+	_zone_open = state.get("open", _zone_open)
+	_zone_started = state.get("zs", _zone_started)
+	_gap_ends = state.get("ge", _gap_ends)
+	_budget_left = state.get("b", _budget_left)
+	var center: Vector3 = state.get("c", _center)
+	if center != _center:
+		_center = center
+		zone_moved.emit(_center)
+	_spawns[1] = state.get("ss", global_transform)
+	_spawns[-1] = state.get("sn", global_transform)
+	_scores = (state.get("sc", {}) as Dictionary).duplicate()
+	var over: bool = state.get("over", false)
+	_winner = state.get("w", -1)
+	if over and not _over:
+		_over = true
+		match_over.emit(_winner)
+
+
 ## Where `team` spawns for the current zone, facing it. `slot` spreads several tanks
 ## side by side (0, 1, 2 ... alternate right and left).
 func get_spawn(team: int, slot: int = 0) -> Transform3D:
@@ -194,7 +244,7 @@ func get_spawn(team: int, slot: int = 0) -> Transform3D:
 	var p: Vector3 = xform.origin + xform.basis.x * offset
 	var hit: Dictionary = ground_hit(get_world_3d(), p)
 	if not hit.is_empty():
-		p.y = (hit["position"] as Vector3).y
+		p.y = (hit["position"] as Vector3).y + SPAWN_LIFT_M
 	xform.origin = p
 	return xform
 
@@ -305,14 +355,14 @@ func _find_spawn(side: int) -> Transform3D:
 			var hit: Dictionary = ground_hit(get_world_3d(), p)
 			if hit.is_empty() or not _is_open_ground(hit):
 				continue
-			return _facing_zone((hit["position"] as Vector3) + Vector3.UP * 0.5)
+			return _facing_zone((hit["position"] as Vector3) + Vector3.UP * SPAWN_LIFT_M)
 		distance -= SPAWN_STEP_M
 	push_warning("KothMode: no good spawn %s of the zone; using the minimum distance" %
 			("south" if side > 0 else "north"))
 	var fallback := Vector3(_center.x, _center.y, _center.z + side * data.spawn_min_distance_m)
 	var h: Dictionary = ground_hit(get_world_3d(), fallback)
 	if not h.is_empty():
-		fallback.y = (h["position"] as Vector3).y + 0.5
+		fallback.y = (h["position"] as Vector3).y + SPAWN_LIFT_M
 	return _facing_zone(fallback)
 
 
