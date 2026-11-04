@@ -63,10 +63,24 @@ const ROOF_NORMAL_Y: float = 0.7
 const CHARRED_COLOR: Color = Color(0.08, 0.08, 0.075)
 ## Commander hitbox centre sits this far below his eyes (m).
 const COMMANDER_HITBOX_DROP: float = 0.35
+## The scene's own measures (today's medium tank): geometry from TankData is scaled
+## from these (apply_geometry).
+const BASE_HULL: Vector3 = Vector3(3.2, 1.4, 6.5)
+const BASE_HULL_MESH: Vector3 = Vector3(2.3, 1.2, 6.2)
+const BASE_TRACK_MESH: Vector3 = Vector3(0.5, 1.0, 6.5)
+const BASE_TRACK_X: float = 1.35
+const BASE_TURRET_RADIUS: float = 1.2
+const BASE_TURRET_TOP_SHARE: float = 0.875
+const BASE_TURRET_Z: float = 0.3
+const BASE_CUPOLA: Vector3 = Vector3(-0.5, 0.0, 0.35)
+const BASE_ROOF_MG: Vector3 = Vector3(-0.5, 0.0, -0.05)
+const BASE_PIVOT_SHARE: float = 0.833
 ## Visual only: how far the hatch lid swings open.
 const HATCH_OPEN_ANGLE_DEG: float = 110.0
 
 @export var data: TankData
+## Built in the garage: if set, `data` is built from it (TankBuilder) at start.
+@export var config: TankConfig
 ## Visual only: paint colour for this tank. Alpha 0 keeps the scene's paint.
 @export var paint_color: Color = Color(0.0, 0.0, 0.0, 0.0)
 ## Side this tank fights for. Tanks of other teams are enemies (bots use this).
@@ -127,9 +141,14 @@ var squad: Squad
 
 
 func _ready() -> void:
+	if config != null:
+		var built: TankData = TankBuilder.build(config)
+		if built != null:
+			data = built
 	assert(data != null, "Tank needs a TankData resource")
 	add_to_group("tanks")
 	mass = data.mass_kg
+	apply_geometry()
 	var width_sum: float = 0.0
 	for child: Node in _suspension.get_children():
 		var ray := child as RayCast3D
@@ -171,6 +190,61 @@ func _ready() -> void:
 		_audio.name = "Audio"
 		_audio.tank = self
 		add_child(_audio)
+
+
+## Sizes the hull, tracks, turret and gun from the data (TankData geometry; the scene
+## is today's medium tank, so its own measures are the reference). Shapes and meshes
+## are copied first: they are shared by every tank made from the scene. Suspension rays
+## spread along the hull, the turret sits on its roof, cupola and roof MG move with the
+## turret, the barrel and its muzzle with the gun's length.
+func apply_geometry() -> void:
+	var hull: Vector3 = data.hull_size
+	var s := Vector3(hull.x / BASE_HULL.x, hull.y / BASE_HULL.y, hull.z / BASE_HULL.z)
+	var tr: float = data.turret_radius_m / BASE_TURRET_RADIUS
+	var th: float = data.turret_height_m
+	var box := (_hull_shape.shape as BoxShape3D).duplicate() as BoxShape3D
+	box.size = hull
+	_hull_shape.shape = box
+	var hull_mesh: MeshInstance3D = $Visual/Hull
+	var hm := (hull_mesh.mesh as BoxMesh).duplicate() as BoxMesh
+	hm.size = BASE_HULL_MESH * s
+	hull_mesh.mesh = hm
+	hull_mesh.position = Vector3(0.0, 0.1 * s.y, 0.0)
+	for side: float in [-1.0, 1.0]:
+		var track: MeshInstance3D = $Visual/TrackLeft if side < 0.0 else $Visual/TrackRight
+		var tm := (track.mesh as BoxMesh).duplicate() as BoxMesh
+		tm.size = BASE_TRACK_MESH * Vector3(s.x, s.y, s.z)
+		track.mesh = tm
+		track.position = Vector3(side * BASE_TRACK_X * s.x, -0.2 * s.y, 0.0)
+	var turret_pos := Vector3(0.0, hull.y * 0.5 + th * 0.5, BASE_TURRET_Z * s.z)
+	_turret.position = turret_pos
+	_turret_shape.position = turret_pos
+	var cyl := (_turret_shape.shape as CylinderShape3D).duplicate() as CylinderShape3D
+	cyl.radius = data.turret_radius_m
+	cyl.height = th
+	_turret_shape.shape = cyl
+	var turret_mesh: MeshInstance3D = $Visual/Turret/TurretMesh
+	var cm := (turret_mesh.mesh as CylinderMesh).duplicate() as CylinderMesh
+	cm.bottom_radius = data.turret_radius_m
+	cm.top_radius = data.turret_radius_m * BASE_TURRET_TOP_SHARE
+	cm.height = th
+	turret_mesh.mesh = cm
+	($Visual/Turret/Cupola as Node3D).position = Vector3(BASE_CUPOLA.x * tr, th * 0.5 + 0.15, BASE_CUPOLA.z * tr)
+	_roof_mg.position = Vector3(BASE_ROOF_MG.x * tr, th * 0.5 + 0.35, BASE_ROOF_MG.z * tr)
+	_gun_pivot.position = Vector3(0.0, 0.05, -data.turret_radius_m * BASE_PIVOT_SHARE)
+	var gun: MeshInstance3D = $Visual/Turret/GunPivot/Gun
+	var gm := (gun.mesh as CylinderMesh).duplicate() as CylinderMesh
+	gm.height = data.gun_length_m
+	gm.top_radius = data.barrel_radius_m * 0.875
+	gm.bottom_radius = data.barrel_radius_m * 1.125
+	gun.mesh = gm
+	gun.position = Vector3(0.0, 0.0, -(0.2 + data.gun_length_m * 0.5))
+	_muzzle.position = Vector3(0.0, 0.0, -(0.25 + data.gun_length_m))
+	for child: Node in _suspension.get_children():
+		var ray := child as RayCast3D
+		if ray != null:
+			ray.position = Vector3(signf(ray.position.x) * BASE_TRACK_X * s.x, -hull.y * 0.5,
+					ray.position.z * s.z)
 
 
 ## Boresights the gunner's sight: tilts it so its line of sight crosses the gun's
