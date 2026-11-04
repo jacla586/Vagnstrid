@@ -60,11 +60,18 @@ shows on the minimap. This is what we test first.
   and mounts. Holding still they kneel and watch all round (hedgehog). The leader is the
   first living soldier; V (`toggle_squad_view`, `SquadCamera`, `PlayerViews` SQUAD
   mode) looks through his eyes while the squad is off the tank: look and spot only, no
-  control, no turret or guns; binoculars on B. Placeholder soldiers are green capsules. Own team's squads show on the
-  maps. Decided rules for later steps (memory `squad-rules`): AT rounds never knock a
-  tank out, rifles low accuracy, soldiers naturally hard to see, bots use squads.
-  Not yet: spotting, hitboxes/combat, refill, HUD, network (orders and squads are not
-  replicated), bot use, models.
+  control, no turret or guns; binoculars on B. Spotting like tank crews (sight lines,
+  concealment; all round holding, a cone ahead moving): spotted enemies become team
+  marks (`Tank.report_squad_spot`, also signal `squad_contact`). Soldiers have
+  `SoldierHitbox` areas (layer 3, fragment targets): any hit puts one down; one is
+  "Wilhelm" (10 % scream, 50 m). Holding still they fire rifles (`rifle_bullet.tres`,
+  low accuracy) at exposed commanders and soldiers, and AT rounds (`squad_at.tres`,
+  `ShellData.cannot_knock_out`: never a kill) at tanks within 150 m. Fired on by a
+  tank (hit or `Squad.notify_impact` near miss) they smoke (`SmokeCloud`, a vision
+  blocker) and fall back; losses to rifles: fall back. Mounted they refill one by one;
+  wiped out, a full squad is back after `wipe_cooldown_s`. HUD: `SquadPanel`.
+  Placeholder soldiers are green capsules. Own team's squads show on the maps.
+  Decided rules: memory `squad-rules`. Not yet: network, bot use, models.
 - Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
   only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
 - Bots: `BotController` (extends `TargetTankController`, so patrols waypoints) with

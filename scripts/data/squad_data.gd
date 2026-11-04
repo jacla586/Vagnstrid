@@ -39,3 +39,75 @@ extends Resource
 ## Soldier size (m).
 @export var soldier_height_m: float = 1.8
 @export var soldier_radius_m: float = 0.3
+
+@export_group("Spotting")
+## Sees enemy tanks and soldiers this far (m), all round while holding still...
+@export var view_range_m: float = 400.0
+## ...but only in this cone ahead while on the move (degrees, full width).
+@export var moving_view_cone_deg: float = 140.0
+## Base time to make out an enemy tank in plain view (s); cover, stillness and how
+## much of it shows change it like for tank crews (concealment).
+@export var spot_time_s: float = 2.0
+## Enemy soldiers are small: this many times longer to spot.
+@export var soldier_spot_factor: float = 2.5
+@export var concealment: ConcealmentData
+## An enemy still in sight is marked again for the team this often (s).
+@export var mark_interval_s: float = 8.0
+## How often the squad looks around (s).
+@export var scan_interval_s: float = 0.5
+
+@export_group("Rifles")
+@export var rifle_bullet: ShellData
+## Each soldier fires bursts of this many shots, this often (s), while holding still.
+@export var rifle_burst_shots: int = 3
+@export var rifle_burst_interval_s: float = 2.5
+@export var rifle_shot_gap_s: float = 0.15
+## Fires at exposed commanders and enemy soldiers within this (m)...
+@export var rifle_range_m: float = 300.0
+## ...with this random spread (mrad, radius): low accuracy (about 5-10 % per burst at
+## a commander 200 m off).
+@export var rifle_dispersion_mrad: float = 9.0
+@export var rifle_sound: SoundSetData
+
+@export_group("AT rounds")
+@export var at_round: ShellData
+## Rounds per sortie (refilled on the tank).
+@export var at_rounds: int = 2
+## Fires at enemy tanks within this (m)...
+@export var at_range_m: float = 150.0
+## ...with this spread (mrad): ~70 % at 100 m, ~30 % at 150 m against a tank...
+@export var at_dispersion_mrad: float = 18.0
+## ...this many times wider against a tank moving faster than at_fast_target_kmh.
+@export var at_moving_factor: float = 2.0
+@export var at_fast_target_kmh: float = 15.0
+## Between two AT rounds (s).
+@export var at_interval_s: float = 8.0
+@export var at_sound: SoundSetData
+
+@export_group("Smoke and withdrawal")
+## Smoke grenades per sortie (refilled on the tank).
+@export var smoke_grenades: int = 2
+## A tank shell landing this close to a soldier counts as being fired on (m).
+@export var near_miss_m: float = 15.0
+## Fired on by a tank: smoke this far towards the threat, then fall back this far
+## towards the own tank (m).
+@export var smoke_ahead_m: float = 8.0
+@export var fallback_m: float = 80.0
+## No new smoke or withdrawal within this long of the last (s).
+@export var withdraw_cooldown_s: float = 15.0
+@export var smoke_radius_m: float = 9.0
+@export var smoke_lifetime_s: float = 30.0
+
+@export_group("Losses")
+## Mounted, one missing soldier comes back this often (s); AT rounds and smoke are
+## topped up when the squad is full again.
+@export var refill_time_s: float = 20.0
+## A squad that lost everyone is back on the tank, full, after this long (s).
+@export var wipe_cooldown_s: float = 60.0
+## Fallen soldiers lie where they fell this long (s).
+@export var body_time_s: float = 20.0
+## One soldier per squad is "Wilhelm": when he is hit, this chance of his scream,
+## heard within the sound set's range (50 m).
+@export_range(0.0, 1.0) var scream_chance: float = 0.1
+@export var scream_sound: SoundSetData
+

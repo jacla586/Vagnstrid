@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="ShellData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/shell_data.gd" id="1_shell"]
+[ext_resource type="Resource" path="res://data/sounds/armour_hit.tres" id="2_hit"]
+[ext_resource type="Resource" path="res://data/sounds/he_explosion.tres" id="3_boom"]
+
+[resource]
+script = ExtResource("1_shell")
+display_name = "AT round"
+short_name = "AT"
+muzzle_velocity_mps = 150.0
+mass_kg = 2.5
+caliber_mm = 84.0
+penetration_mm = 90.0
+drag_coefficient = 0.4
+impact_scale = 1.2
+tracer_scale = 1.2
+tracer_color = Color(1, 0.6, 0.2, 1)
+damage_hp = 10.0
+module_damage = 60.0
+module_reach_m = 1.5
+wear_mm = 15.0
+sound_hit_armour = ExtResource("2_hit")
+sound_explosion = ExtResource("3_boom")
+infantry = true
+cannot_knock_out = true

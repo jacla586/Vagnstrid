@@ -7,11 +7,27 @@ extends Node3D
 ## forest cheap, open ground dear), never further than max_distance_from_tank_m from
 ## the tank; recalled (or left behind by its tank) it runs back and mounts.
 ## Lives in the map next to its tank, not under it (the tank moves on).
+##
 ## Holding still the soldiers kneel and watch all round (hedgehog); moving they stand
 ## and face the way they go. The leader is the first living soldier (the player can
 ## look through his eyes, PlayerViews squad view).
+##
+## Spotting: same rules as tank crews (sight lines, cover, stillness), all round when
+## holding, a cone ahead when moving; enemies it makes out become marks for the team
+## (Tank.report_squad_spot), again every mark_interval_s while in sight.
+## Fighting (holding still only): rifle bursts at exposed commanders and enemy soldiers
+## (low accuracy), AT rounds at tanks within at_range_m (they never knock a tank out).
+## Any hit puts a soldier down; one of them is "Wilhelm". Fired on by a tank (a hit, or
+## a shell landing close) it throws smoke and falls back towards its tank; losing a man
+## to rifles it just falls back. Mounted, the missing come back one by one; wiped out,
+## a new squad is ready on the tank after wipe_cooldown_s. No friendly fire.
+## Network: the host runs all this; on clients the squad is a puppet (net_puppet) shown
+## from the host's state.
 
-enum State { MOUNTED, MOVING, HOLDING, RETURNING }
+signal soldier_down(index: int, screamed: bool)
+signal smoke_thrown(at: Vector3)
+
+enum State { MOUNTED, MOVING, HOLDING, RETURNING, WIPED }
 
 ## Orders in TankCommand.squad_order.
 const ORDER_NONE: int = 0
@@ -23,33 +39,69 @@ const WAYPOINT_RADIUS_M: float = 3.0
 const TURN_RATE: float = 4.0
 ## Re-plan the way back to a moving tank this often (s).
 const RETURN_REPLAN_S: float = 3.0
+## Points looked at on an enemy tank (above its origin, m).
+const TANK_LOOK_HEIGHTS: Array[float] = [0.5, 1.9]
+## Loaded at start, not preloaded: shell.gd refers back to Squad (a preload would cycle).
+const SHELL_SCENE_PATH: String = "res://scenes/weapons/shell.tscn"
+## Kneeling soldiers' body height as a share of standing (hitbox).
+const KNEEL_HITBOX_SHARE: float = 0.6
 
 var tank: Tank
 var data: SquadData
+## Client side: shown from the host's state, no logic of its own.
+var net_puppet: bool = false
 
 var _state: State = State.MOUNTED
 var _path: Array[Vector3] = []
 var _goal: Vector3 = Vector3.ZERO
 var _heading: Vector3 = Vector3.FORWARD
 var _soldiers: Array[Node3D] = []
+var _meshes: Array[MeshInstance3D] = []
+var _hitboxes: Array[SoldierHitbox] = []
+var _alive: Array[bool] = []
+var _down_time: Array[float] = []
+var _wilhelm: int = 0
 var _replan_timer: float = 0.0
 var _map: TacticalMap
 var _map_looked_up: bool = false
 ## 0 = standing, 1 = kneeling (eases between).
 var _kneel: float = 0.0
-## Soldiers still alive, in leader order (all of them until there is combat).
-var _alive: Array[bool] = []
+var _clock: float = 0.0
+var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _shell_scene: PackedScene
+# Spotting
+var _scan_timer: float = 0.0
+var _awareness: Dictionary = {}  # target (Tank / SoldierHitbox) -> seconds looked at
+var _spotted: Dictionary = {}  # target -> true
+var _in_sight: Dictionary = {}  # target -> true at the last scan
+var _marked_at: Dictionary = {}  # target -> clock of the last team mark
+# Weapons
+var _burst_timer: Array[float] = []
+var _burst_left: Array[int] = []
+var _shot_timer: Array[float] = []
+var _at_left: int = 0
+var _at_timer: float = 0.0
+var _smoke_left: int = 0
+var _withdraw_timer: float = 0.0
+# Losses
+var _refill_timer: float = 0.0
+var _wipe_timer: float = 0.0
 
 
 func _ready() -> void:
 	add_to_group("squads")
+	_rng.randomize()
+	_shell_scene = load(SHELL_SCENE_PATH)
 	for i: int in data.soldier_count:
-		var soldier := _make_soldier()
-		add_child(soldier)
-		_soldiers.append(soldier)
-		_alive.append(true)
+		_add_soldier(i)
+	_wilhelm = _rng.randi_range(0, data.soldier_count - 1)
+	_at_left = data.at_rounds
+	_smoke_left = data.smoke_grenades
 	visible = false
+	_set_hitboxes_active(false)
 
+
+# --- Queries -----------------------------------------------------------------------
 
 func get_state() -> State:
 	return _state
@@ -59,12 +111,54 @@ func is_mounted() -> bool:
 	return _state == State.MOUNTED
 
 
+## Off the tank and with someone alive (can be seen, ordered, looked through).
+func is_out() -> bool:
+	return _state != State.MOUNTED and _state != State.WIPED
+
+
 func get_team() -> int:
 	return tank.team if is_instance_valid(tank) else -1
 
 
 func get_heading() -> Vector3:
 	return _heading
+
+
+func get_alive_count() -> int:
+	return _alive.count(true)
+
+
+func is_soldier_alive(index: int) -> bool:
+	return _alive[index]
+
+
+## A soldier that can be hit: alive and off the tank.
+func is_soldier_exposed(index: int) -> bool:
+	return is_out() and _alive[index]
+
+
+func get_hitboxes() -> Array[SoldierHitbox]:
+	return _hitboxes
+
+
+func get_at_rounds_left() -> int:
+	return _at_left
+
+
+func get_smoke_left() -> int:
+	return _smoke_left
+
+
+## Seconds until the next soldier is back on the tank (0 when full).
+func get_refill_time_left() -> float:
+	if get_alive_count() >= data.soldier_count or _state != State.MOUNTED:
+		return 0.0
+	return maxf(data.refill_time_s - _refill_timer, 0.0)
+
+
+## Seconds until a wiped-out squad is back (0 otherwise).
+func get_wipe_time_left() -> float:
+	return maxf(data.wipe_cooldown_s - _wipe_timer, 0.0) if _state == State.WIPED else 0.0
 
 
 ## The leader: the first living soldier (null if none).
@@ -79,7 +173,7 @@ func get_leader() -> Node3D:
 func get_leader_eye() -> Vector3:
 	var leader: Node3D = get_leader()
 	var at: Vector3 = leader.global_position if leader != null else global_position
-	return at + Vector3.UP * lerpf(data.eye_height_standing_m, data.eye_height_kneeling_m, _kneel)
+	return at + Vector3.UP * _eye_height()
 
 
 func is_kneeling() -> bool:
@@ -91,13 +185,17 @@ func get_goal() -> Vector3:
 	return _goal if _state == State.MOVING or _state == State.RETURNING else global_position
 
 
+# --- Orders ------------------------------------------------------------------------
+
 ## From the tank, each physics frame its command carries an order.
 func order(kind: int, target: Vector3) -> void:
-	if not is_instance_valid(tank) or tank.is_knocked_out():
+	if net_puppet or not is_instance_valid(tank) or tank.is_knocked_out() or _state == State.WIPED:
 		return
 	match kind:
 		ORDER_MOVE:
 			if _state == State.MOUNTED:
+				if get_alive_count() == 0:
+					return
 				_dismount()
 			_move_to(_clamp_to_tank(target))
 		ORDER_RECALL:
@@ -105,19 +203,32 @@ func order(kind: int, target: Vector3) -> void:
 				_start_return()
 
 
+# --- Frame -------------------------------------------------------------------------
+
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(tank):
 		queue_free()
 		return
-	if _state == State.MOUNTED:
-		global_position = tank.global_position
+	if net_puppet:
+		_place_soldiers(delta)
 		return
+	_clock += delta
+	match _state:
+		State.MOUNTED:
+			global_position = tank.global_position
+			_refill(delta)
+			return
+		State.WIPED:
+			_wipe_timer += delta
+			_update_bodies(delta)
+			if _wipe_timer >= data.wipe_cooldown_s:
+				_restore_full()
+			return
 	if tank.is_knocked_out():
-		# The tank is gone: the squad stays where it is (later: walks back to the spawn).
-		_state = State.HOLDING
+		_state = State.HOLDING   # its tank is gone: the squad stays put
 	var to_tank: float = _flat(tank.global_position - global_position).length()
-	if _state != State.RETURNING and to_tank > data.max_distance_from_tank_m + data.leash_margin_m \
-			and not tank.is_knocked_out():
+	if _state != State.RETURNING and not tank.is_knocked_out() \
+			and to_tank > data.max_distance_from_tank_m + data.leash_margin_m:
 		_start_return()
 	if _state == State.RETURNING:
 		if to_tank <= data.mount_distance_m:
@@ -130,7 +241,17 @@ func _physics_process(delta: float) -> void:
 	if _state == State.MOVING or _state == State.RETURNING:
 		_walk(delta)
 	_place_soldiers(delta)
+	_update_bodies(delta)
+	_withdraw_timer = maxf(_withdraw_timer - delta, 0.0)
+	_scan_timer -= delta
+	if _scan_timer <= 0.0:
+		_scan_timer += data.scan_interval_s
+		_scan(data.scan_interval_s)
+	if _state == State.HOLDING:
+		_fight(delta)
 
+
+# --- Moving, mounting --------------------------------------------------------------
 
 func _dismount() -> void:
 	var back: Vector3 = tank.global_basis.z
@@ -139,13 +260,19 @@ func _dismount() -> void:
 	_heading = -back.normalized()
 	_state = State.HOLDING
 	visible = true
-	_snap_soldiers()
+	for i: int in _soldiers.size():
+		_soldiers[i].visible = _alive[i]
+	_set_hitboxes_active(true)
+	global_position.y = _ground_height(global_position, global_position.y)
+	_place_soldiers(0.0)
 
 
 func _mount() -> void:
 	_state = State.MOUNTED
 	_path.clear()
 	visible = false
+	_set_hitboxes_active(false)
+	_forget_all()
 
 
 func _move_to(target: Vector3) -> void:
@@ -203,15 +330,23 @@ func _walk(delta: float) -> void:
 	global_position = p
 
 
-## Soldiers in a loose wedge behind the squad's point, facing its heading, on the
-## ground; kneeling while the squad holds still.
+func _is_moving() -> bool:
+	return (_state == State.MOVING or _state == State.RETURNING) and not _path.is_empty()
+
+
+## Living soldiers in a loose wedge behind the squad's point, facing its heading, on
+## the ground; kneeling and watching all round while the squad holds still.
 func _place_soldiers(delta: float) -> void:
-	var moving: bool = (_state == State.MOVING or _state == State.RETURNING) and not _path.is_empty()
 	var step: float = delta / maxf(data.stance_change_s, 0.01)
-	_kneel = move_toward(_kneel, 0.0 if moving else 1.0, step)
+	var was_kneeling: bool = is_kneeling()
+	_kneel = move_toward(_kneel, 0.0 if _is_moving() else 1.0, step)
+	if is_kneeling() != was_kneeling or delta == 0.0:
+		_size_hitboxes()
 	var height_scale: float = lerpf(1.0, data.kneel_height_share, _kneel)
 	var side: Vector3 = _heading.cross(Vector3.UP).normalized()
 	for i: int in _soldiers.size():
+		if not _alive[i]:
+			continue   # the fallen stay where they fell
 		var row: int = (i + 1) >> 1
 		var lateral: float = row * (1.0 if i % 2 == 1 else -1.0)
 		var p: Vector3 = global_position - _heading * row * data.spacing_m \
@@ -222,12 +357,13 @@ func _place_soldiers(delta: float) -> void:
 		# Hedgehog: kneeling, each soldier watches his own direction all round.
 		var facing: Vector3 = _heading.rotated(Vector3.UP, TAU * i / maxf(_soldiers.size(), 1) * _kneel)
 		soldier.look_at(p + facing, Vector3.UP)
-		soldier.scale = Vector3(1.0, height_scale, 1.0)
+		_meshes[i].rotation = Vector3.ZERO
+		_meshes[i].scale = Vector3(1.0, height_scale, 1.0)
+		_meshes[i].position = Vector3(0.0, data.soldier_height_m * height_scale * 0.5, 0.0)
 
 
-func _snap_soldiers() -> void:
-	global_position.y = _ground_height(global_position, global_position.y)
-	_place_soldiers(0.0)
+func _eye_height() -> float:
+	return lerpf(data.eye_height_standing_m, data.eye_height_kneeling_m, _kneel)
 
 
 ## Ground (terrain, a bridge deck...) under `p`; tree trunks and tanks don't count.
@@ -249,9 +385,336 @@ func _ground_height(p: Vector3, fallback: float) -> float:
 	return fallback
 
 
-## Placeholder soldier: a capsule in the squad's uniform colour, standing on the ground.
-func _make_soldier() -> Node3D:
+# --- Spotting ----------------------------------------------------------------------
+
+## Enemy tanks and enemy soldiers in range and sight; spotting time as for tank crews
+## (cover, stillness, how much shows), longer for small soldiers.
+func _scan(dt: float) -> void:
+	var eye: Vector3 = get_leader_eye()
+	var seen_now: Dictionary = {}
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var other := node as Tank
+		if other == null or other.is_knocked_out() or other.team == get_team():
+			continue
+		var points: Array = []
+		for h: float in TANK_LOOK_HEIGHTS:
+			points.append([other.global_position + Vector3.UP * h, other])
+		if other.is_commander_exposed():
+			points.append([other.get_commander_hitbox_position(), other.get_commander_hitbox()])
+		_look(other, eye, points, 1.0, dt, seen_now)
+	for node: Node in get_tree().get_nodes_in_group("squads"):
+		var enemy := node as Squad
+		if enemy == null or enemy == self or not enemy.is_out() or enemy.get_team() == get_team():
+			continue
+		for hb: SoldierHitbox in enemy.get_hitboxes():
+			if enemy.is_soldier_exposed(hb.index):
+				_look(hb, eye, [[hb.get_aim_point(), hb]], data.soldier_spot_factor, dt, seen_now)
+	for target: Variant in _awareness.keys():
+		if is_instance_valid(target) and seen_now.has(target):
+			continue
+		_in_sight.erase(target)
+		var left: float = float(_awareness[target]) - dt
+		if not is_instance_valid(target) or left <= 0.0:
+			_awareness.erase(target)
+			_spotted.erase(target)
+		else:
+			_awareness[target] = left
+
+
+## One look at `target` through its `points` ([world point, collider] pairs).
+func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: float,
+		seen_now: Dictionary) -> void:
+	var time_factor: float = 1.0
+	var range_factor: float = 1.0
+	if data.concealment != null:
+		var cover: float = Concealment.cover(get_world_3d(), target, data.concealment)
+		var speed: float = (target as Tank).linear_velocity.length() if target is Tank else 0.0
+		time_factor = Concealment.spot_time_factor(cover, speed, data.concealment)
+		range_factor = Concealment.range_factor(cover, data.concealment)
+	var view_range: float = data.view_range_m * range_factor
+	var seen: int = 0
+	for pair: Array in points:
+		var p: Vector3 = pair[0]
+		if eye.distance_to(p) > view_range or not _in_view_cone(p):
+			continue
+		if Vision.has_line_of_sight(get_world_3d(), eye, p, pair[1], _own_rids()):
+			seen += 1
+	if seen == 0:
+		return
+	seen_now[target] = true
+	_in_sight[target] = true
+	var shown: float = float(seen) / float(points.size())
+	var needed: float = data.spot_time_s * size_factor * time_factor / maxf(shown, 0.2)
+	var aware: float = float(_awareness.get(target, 0.0)) + dt
+	_awareness[target] = aware
+	if aware < needed:
+		return
+	_spotted[target] = true
+	if not _marked_at.has(target) or _clock - float(_marked_at[target]) >= data.mark_interval_s:
+		_marked_at[target] = _clock
+		var enemy: Node3D = target if target is Tank else (target as SoldierHitbox).squad
+		tank.report_squad_spot(enemy, target.global_position)
+
+
+## All round while holding; a cone ahead while on the move.
+func _in_view_cone(p: Vector3) -> bool:
+	if not _is_moving():
+		return true
+	var to_p: Vector3 = _flat(p - global_position)
+	return to_p.length() < 1.0 \
+			or _heading.angle_to(to_p.normalized()) <= deg_to_rad(data.moving_view_cone_deg * 0.5)
+
+
+func _forget_all() -> void:
+	_awareness.clear()
+	_spotted.clear()
+	_in_sight.clear()
+
+
+func _own_rids() -> Array[RID]:
+	var rids: Array[RID] = []
+	for hb: SoldierHitbox in _hitboxes:
+		rids.append(hb.get_rid())
+	return rids
+
+
+## Spotted targets in sight right now (Tank or SoldierHitbox), nearest first.
+func _targets_in_sight() -> Array[Node3D]:
+	var list: Array[Node3D] = []
+	for target: Variant in _in_sight.keys():
+		if is_instance_valid(target) and _spotted.has(target):
+			list.append(target)
+	list.sort_custom(func(a: Node3D, b: Node3D) -> bool:
+		return global_position.distance_to(a.global_position) \
+				< global_position.distance_to(b.global_position))
+	return list
+
+
+# --- Fighting ----------------------------------------------------------------------
+
+func _fight(delta: float) -> void:
+	_at_timer = maxf(_at_timer - delta, 0.0)
+	var targets: Array[Node3D] = _targets_in_sight()
+	if targets.is_empty():
+		return
+	_try_at_round(targets)
+	var rifle_target: Node3D = null
+	var rifle_aim := Vector3.ZERO
+	for target: Node3D in targets:
+		var aim: Vector3 = _rifle_aim(target)
+		if aim != Vector3.INF and global_position.distance_to(aim) <= data.rifle_range_m:
+			rifle_target = target
+			rifle_aim = aim
+			break
+	for i: int in _soldiers.size():
+		if not _alive[i]:
+			continue
+		_burst_timer[i] -= delta
+		if _burst_left[i] > 0:
+			_shot_timer[i] -= delta
+			if _shot_timer[i] <= 0.0 and rifle_target != null:
+				_shot_timer[i] = data.rifle_shot_gap_s
+				_burst_left[i] -= 1
+				_fire(i, data.rifle_bullet, rifle_aim, rifle_target, data.rifle_dispersion_mrad,
+						data.rifle_sound)
+		elif _burst_timer[i] <= 0.0 and rifle_target != null:
+			_burst_left[i] = data.rifle_burst_shots
+			_shot_timer[i] = 0.0
+			_burst_timer[i] = data.rifle_burst_interval_s * _rng.randf_range(0.8, 1.3)
+
+
+## Where rifles aim at `target`: an exposed commander's head or a soldier; INF if the
+## target isn't something rifles can hurt (a tank with its hatch shut).
+func _rifle_aim(target: Node3D) -> Vector3:
+	if target is SoldierHitbox:
+		return (target as SoldierHitbox).get_aim_point()
+	var other := target as Tank
+	if other != null and other.is_commander_exposed():
+		return other.get_commander_hitbox_position()
+	return Vector3.INF
+
+
+func _try_at_round(targets: Array[Node3D]) -> void:
+	if _at_left <= 0 or _at_timer > 0.0 or data.at_round == null:
+		return
+	for target: Node3D in targets:
+		var other := target as Tank
+		if other == null or global_position.distance_to(other.global_position) > data.at_range_m:
+			continue
+		var gunner: int = 1 if _soldiers.size() > 1 and _alive[1] else _first_alive()
+		if gunner < 0:
+			return
+		var spread: float = data.at_dispersion_mrad
+		if other.linear_velocity.length() * 3.6 > data.at_fast_target_kmh:
+			spread *= data.at_moving_factor
+		_fire(gunner, data.at_round, other.global_position + Vector3.UP * 0.6, other, spread,
+				data.at_sound)
+		_at_left -= 1
+		_at_timer = data.at_interval_s
+		return
+
+
+## One round from soldier `i` at `aim` (led for a moving tank), with random spread.
+func _fire(i: int, shell_data: ShellData, aim: Vector3, target: Node3D, spread_mrad: float,
+		sound: SoundSetData) -> void:
+	var from: Vector3 = _soldiers[i].global_position + Vector3.UP * _eye_height()
+	var moving: Tank = target as Tank
+	if moving != null:
+		var flight: float = from.distance_to(aim) / maxf(shell_data.muzzle_velocity_mps, 1.0)
+		aim += moving.linear_velocity * flight
+	var dir: Vector3 = (aim - from).normalized()
+	var side: Vector3 = dir.cross(Vector3.UP).normalized()
+	var up: Vector3 = side.cross(dir).normalized()
+	var r: float = sqrt(_rng.randf()) * spread_mrad * 0.001
+	var a: float = _rng.randf() * TAU
+	dir = (dir + side * cos(a) * r + up * sin(a) * r).normalized()
+	var shell := _shell_scene.instantiate() as Shell
+	get_parent().add_child(shell)
+	shell.launch(shell_data, from, dir * shell_data.muzzle_velocity_mps, _hitboxes[i])
+	SoundFx.play_at(self, sound, from)
+
+
+func _first_alive() -> int:
+	for i: int in _alive.size():
+		if _alive[i]:
+			return i
+	return -1
+
+
+# --- Being hit ---------------------------------------------------------------------
+
+## A shell, bullet or fragment hit soldier `index`: he goes down.
+func soldier_hit(index: int, shell_data: ShellData) -> HitResult:
+	if net_puppet or not is_soldier_exposed(index):
+		return null
+	var screamed: bool = index == _wilhelm and _rng.randf() < data.scream_chance
+	_put_down(index, screamed)
+	var result := HitResult.new()
+	result.note = "SOLDIER DOWN"
+	if get_alive_count() == 0:
+		_wipe()
+	elif shell_data != null and shell_data.infantry:
+		_withdraw(false, Vector3.INF)
+	else:
+		_withdraw(true, Vector3.INF)
+	return result
+
+
+## Soldier `index` falls (host or, from the host's news, a client).
+func _put_down(index: int, screamed: bool) -> void:
+	_alive[index] = false
+	_down_time[index] = 0.0
+	_hitboxes[index].set_active(false)
+	_meshes[index].rotation = Vector3(deg_to_rad(90.0), 0.0, 0.0)
+	_meshes[index].position = Vector3(0.0, data.soldier_radius_m, 0.0)
+	if screamed:
+		SoundFx.play_at(self, data.scream_sound, _soldiers[index].global_position + Vector3.UP)
+	soldier_down.emit(index, screamed)
+
+
+## A tank's shell landed near the squad (`point`): smoke and fall back.
+func on_near_miss(point: Vector3) -> void:
+	if not net_puppet and is_out():
+		_withdraw(true, point)
+
+
+## Shells on the host: tell squads near the impact (not infantry fire, not the
+## shooter's own team: no friendly fire).
+static func notify_impact(tree: SceneTree, point: Vector3, shell_data: ShellData,
+		shooter: Object) -> void:
+	if shell_data.infantry:
+		return
+	for node: Node in tree.get_nodes_in_group("squads"):
+		var squad := node as Squad
+		if squad == null or not squad.is_out() or Tank.is_friendly(shooter, squad):
+			continue
+		if squad.global_position.distance_to(point) > squad.data.near_miss_m + squad.data.spacing_m * 3.0:
+			continue
+		for hb: SoldierHitbox in squad.get_hitboxes():
+			if squad.is_soldier_exposed(hb.index) \
+					and hb.global_position.distance_to(point) <= squad.data.near_miss_m:
+				squad.on_near_miss(point)
+				break
+
+
+## Fall back towards the own tank (fired on by a tank: smoke first, towards the threat).
+func _withdraw(smoke: bool, threat_point: Vector3) -> void:
+	if _withdraw_timer > 0.0 or not is_instance_valid(tank):
+		return
+	_withdraw_timer = data.withdraw_cooldown_s
+	if smoke and _smoke_left > 0:
+		_smoke_left -= 1
+		throw_smoke(global_position + _threat_direction(threat_point) * data.smoke_ahead_m)
+	var back: Vector3 = _flat(tank.global_position - global_position)
+	if back.length() < 1.0:
+		return
+	_move_to(global_position + back.normalized() * minf(data.fallback_m, back.length()))
+
+
+## Towards the nearest enemy tank in sight, else the impact, else away from the own tank.
+func _threat_direction(threat_point: Vector3) -> Vector3:
+	for target: Node3D in _targets_in_sight():
+		if target is Tank:
+			return _flat(target.global_position - global_position).normalized()
+	if threat_point != Vector3.INF and _flat(threat_point - global_position).length() > 1.0:
+		return _flat(threat_point - global_position).normalized()
+	var away: Vector3 = _flat(global_position - tank.global_position)
+	return away.normalized() if away.length() > 1.0 else _heading
+
+
+func throw_smoke(at: Vector3) -> void:
+	var cloud := SmokeCloud.new()
+	cloud.radius_m = data.smoke_radius_m
+	cloud.lifetime_s = data.smoke_lifetime_s
+	get_parent().add_child(cloud)
+	cloud.global_position = Vector3(at.x, _ground_height(at, global_position.y), at.z)
+	smoke_thrown.emit(cloud.global_position)
+
+
+func _wipe() -> void:
+	_state = State.WIPED
+	_wipe_timer = 0.0
+	_path.clear()
+	_forget_all()
+
+
+## Fallen soldiers vanish after body_time_s.
+func _update_bodies(delta: float) -> void:
+	for i: int in _soldiers.size():
+		if not _alive[i] and _soldiers[i].visible:
+			_down_time[i] += delta
+			if _down_time[i] >= data.body_time_s:
+				_soldiers[i].visible = false
+
+
+# --- Refilling ---------------------------------------------------------------------
+
+## On the tank: the missing come back one at a time; full again, ammo and smoke too.
+func _refill(delta: float) -> void:
+	if get_alive_count() >= data.soldier_count:
+		_at_left = data.at_rounds
+		_smoke_left = data.smoke_grenades
+		_refill_timer = 0.0
+		return
+	_refill_timer += delta
+	if _refill_timer >= data.refill_time_s:
+		_refill_timer = 0.0
+		_alive[_alive.find(false)] = true
+
+
+func _restore_full() -> void:
+	for i: int in _alive.size():
+		_alive[i] = true
+	_at_left = data.at_rounds
+	_smoke_left = data.smoke_grenades
+	_mount()
+
+
+# --- Soldiers ----------------------------------------------------------------------
+
+func _add_soldier(i: int) -> void:
 	var root := Node3D.new()
+	root.name = "Soldier%d" % i
 	var mesh := MeshInstance3D.new()
 	var capsule := CapsuleMesh.new()
 	capsule.height = data.soldier_height_m
@@ -263,7 +726,31 @@ func _make_soldier() -> Node3D:
 	mesh.material_override = material
 	mesh.position = Vector3(0.0, data.soldier_height_m * 0.5, 0.0)
 	root.add_child(mesh)
-	return root
+	var hitbox := SoldierHitbox.new()
+	hitbox.squad = self
+	hitbox.index = i
+	root.add_child(hitbox)
+	add_child(root)
+	_soldiers.append(root)
+	_meshes.append(mesh)
+	_hitboxes.append(hitbox)
+	_alive.append(true)
+	_down_time.append(0.0)
+	_burst_timer.append(_rng.randf_range(0.0, data.rifle_burst_interval_s))
+	_burst_left.append(0)
+	_shot_timer.append(0.0)
+	_size_hitboxes()
+
+
+func _size_hitboxes() -> void:
+	var h: float = data.soldier_height_m * (KNEEL_HITBOX_SHARE if is_kneeling() else 1.0)
+	for hb: SoldierHitbox in _hitboxes:
+		hb.set_size(h, data.soldier_radius_m)
+
+
+func _set_hitboxes_active(on: bool) -> void:
+	for i: int in _hitboxes.size():
+		_hitboxes[i].set_active(on and _alive[i])
 
 
 static func _flat(v: Vector3) -> Vector3:

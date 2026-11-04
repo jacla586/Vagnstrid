@@ -91,7 +91,7 @@ func _draw_squads(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 		return
 	for node: Node in get_tree().get_nodes_in_group("squads"):
 		var squad := node as Squad
-		if squad == null or squad.is_mounted() or squad.get_team() != tank.team:
+		if squad == null or not squad.is_out() or squad.get_team() != tank.team:
 			continue
 		var p: Vector2 = _to_screen(Vector2(squad.global_position.x, squad.global_position.z),
 				rect, centre, scale_px)

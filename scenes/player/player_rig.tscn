@@ -22,6 +22,7 @@
 [ext_resource type="Script" path="res://scripts/audio/hatch_muffle.gd" id="24_hatch_muffle"]
 [ext_resource type="Script" path="res://scripts/ui/score_panel.gd" id="25_score_panel"]
 [ext_resource type="Script" path="res://scripts/camera/squad_camera.gd" id="26_squad_camera"]
+[ext_resource type="Script" path="res://scripts/ui/squad_panel.gd" id="27_squad_panel"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -156,4 +157,8 @@ views = NodePath("../../PlayerViews")
 
 [node name="ScorePanel" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
 script = ExtResource("25_score_panel")
+views = NodePath("../../PlayerViews")
+
+[node name="SquadPanel" type="Label" parent="HUD" node_paths=PackedStringArray("views")]
+script = ExtResource("27_squad_panel")
 views = NodePath("../../PlayerViews")

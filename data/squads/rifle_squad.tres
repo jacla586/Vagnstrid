@@ -2,6 +2,12 @@
 
 [ext_resource type="Script" path="res://scripts/data/squad_data.gd" id="1_squad"]
 [ext_resource type="Resource" path="res://data/squads/tactics_infantry.tres" id="2_tactics"]
+[ext_resource type="Resource" path="res://data/world/concealment.tres" id="3_conceal"]
+[ext_resource type="Resource" path="res://data/shells/rifle_bullet.tres" id="4_rifle"]
+[ext_resource type="Resource" path="res://data/shells/squad_at.tres" id="5_at"]
+[ext_resource type="Resource" path="res://data/sounds/rifle_shot.tres" id="6_rifle_snd"]
+[ext_resource type="Resource" path="res://data/sounds/at_launch.tres" id="7_at_snd"]
+[ext_resource type="Resource" path="res://data/sounds/wilhelm.tres" id="8_scream"]
 
 [resource]
 script = ExtResource("1_squad")
@@ -23,3 +29,37 @@ eye_height_standing_m = 1.65
 eye_height_kneeling_m = 1.05
 view_fov_deg = 70.0
 binocular_fov_deg = 10.0
+view_range_m = 400.0
+moving_view_cone_deg = 140.0
+spot_time_s = 2.0
+soldier_spot_factor = 2.5
+concealment = ExtResource("3_conceal")
+mark_interval_s = 8.0
+scan_interval_s = 0.5
+rifle_bullet = ExtResource("4_rifle")
+rifle_burst_shots = 3
+rifle_burst_interval_s = 2.5
+rifle_shot_gap_s = 0.15
+rifle_range_m = 300.0
+rifle_dispersion_mrad = 9.0
+rifle_sound = ExtResource("6_rifle_snd")
+at_round = ExtResource("5_at")
+at_rounds = 2
+at_range_m = 150.0
+at_dispersion_mrad = 18.0
+at_moving_factor = 2.0
+at_fast_target_kmh = 15.0
+at_interval_s = 8.0
+at_sound = ExtResource("7_at_snd")
+smoke_grenades = 2
+near_miss_m = 15.0
+smoke_ahead_m = 8.0
+fallback_m = 80.0
+withdraw_cooldown_s = 15.0
+smoke_radius_m = 9.0
+smoke_lifetime_s = 30.0
+refill_time_s = 20.0
+wipe_cooldown_s = 60.0
+body_time_s = 20.0
+scream_chance = 0.1
+scream_sound = ExtResource("8_scream")

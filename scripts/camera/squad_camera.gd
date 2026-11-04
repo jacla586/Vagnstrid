@@ -36,7 +36,7 @@ func is_binoculars_active() -> bool:
 ## The view is available: the tank has a squad that is off the tank.
 func can_view() -> bool:
 	return tank != null and tank.squad != null and is_instance_valid(tank.squad) \
-			and not tank.squad.is_mounted()
+			and tank.squad.is_out()
 
 
 ## On entering the view: look the way the squad faces.

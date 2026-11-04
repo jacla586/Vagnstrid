@@ -166,6 +166,8 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 		_wear_at(part, face, local_point, shell.wear_mm)
 	elif result.outcome == HitResult.Outcome.PENETRATION:
 		hp -= shell.damage_hp
+		if shell.cannot_knock_out:
+			hp = maxf(hp, 1.0)
 		for m: ModuleData in _modules.values():
 			if m.external or hit.has(m.id):
 				continue
@@ -174,7 +176,7 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 			if _segment_hits_box(m, from, dir, shell.module_reach_m):
 				_damage_module(m.id, shell.module_damage)
 				hit.append(m.id)
-				if m.id == &"ammo":
+				if m.id == &"ammo" and not shell.cannot_knock_out:
 					knocked_out = true
 				elif m.id == &"fuel" and state(&"fuel") != State.OK:
 					fire_left = data.fire_duration_s

@@ -48,8 +48,11 @@ signal hit_taken(direction: Vector3)
 signal module_changed(id: StringName, state: int)
 ## Emitted for every machine-gun bullet fired.
 signal mg_fired(bullet: Shell, roof: bool)
-## Emitted when the commander spots: `point` is the world position he marked.
+## Emitted when the commander spots: `point` is the world position he marked. Also
+## for marks the tank's infantry squad makes (report_squad_spot).
 signal spotted(point: Vector3)
+## Emitted when the tank's squad spots an enemy (a Tank or a Squad) at `at`.
+signal squad_contact(enemy: Node3D, at: Vector3)
 
 const KMH_TO_MS: float = 1.0 / 3.6
 const SHELL_SCENE: PackedScene = preload("res://scenes/weapons/shell.tscn")
@@ -625,6 +628,13 @@ func _update_gun(delta: float) -> void:
 ## Time until the commander can spot again (s), 0 when ready.
 func get_spot_cooldown_remaining() -> float:
 	return _spot_cooldown_remaining
+
+
+## The squad saw `enemy` at `at`: a mark for the team (like a commander's spot) and a
+## contact for the crew (bots use it).
+func report_squad_spot(enemy: Node3D, at: Vector3) -> void:
+	spotted.emit(at)
+	squad_contact.emit(enemy, at)
 
 
 ## Passes the command's squad order on to the squad (it acts on it once).

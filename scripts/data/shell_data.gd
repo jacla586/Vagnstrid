@@ -40,6 +40,12 @@ extends Resource
 ## Hit chance falls linearly to zero at this distance (m). 0 = not explosive.
 @export var fragment_max_radius_m: float = 0.0
 
+@export_group("Infantry")
+## Fired by infantry (rifles, AT rounds). Infantry fire doesn't make squads throw smoke.
+@export var infantry: bool = false
+## Never knocks a tank out (AT rounds): no last structure points, no ammo blow-up.
+@export var cannot_knock_out: bool = false
+
 @export_group("Sound")
 ## Landing on a tank.
 @export var sound_hit_armour: SoundSetData
