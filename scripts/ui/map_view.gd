@@ -24,6 +24,8 @@ extends Control
 @export var spawn_color: Color = Color(0.45, 0.85, 1.0, 0.8)
 ## Own team's infantry squads (dismounted), and the line to where they are going.
 @export var squad_color: Color = Color(0.55, 1.0, 0.45, 1.0)
+## Teammates' tanks (the own tank is drawn bigger in own_color).
+@export var friend_color: Color = Color(0.3, 0.6, 1.0, 1.0)
 
 var _map_image: MapImageData
 var _map_looked_up: bool = false
@@ -57,6 +59,7 @@ func draw_map(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 	_draw_grid(rect, centre, scale_px)
 	_draw_zone(rect, centre, scale_px)
 	_draw_squads(rect, centre, scale_px)
+	_draw_friends(rect, centre, scale_px)
 	if spot_marks != null:
 		for mark: SpotMarks.Mark in spot_marks.get_marks():
 			var p: Vector2 = _to_screen(Vector2(mark.point.x, mark.point.z), rect, centre, scale_px)
@@ -147,16 +150,39 @@ func _draw_grid(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 
 
 ## Arrow along the hull heading, line along the gun.
-func _draw_tank(tank: Tank, at: Vector2) -> void:
+## Teammates' tanks: small arrows with their gun line; knocked-out ones as a dim cross.
+func _draw_friends(rect: Rect2, centre: Vector2, scale_px: float) -> void:
+	var own: Tank = get_tank()
+	if own == null:
+		return
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var t := node as Tank
+		if t == null or t == own or not is_instance_valid(t) or not Tank.is_friendly(own, t):
+			continue
+		var p: Vector2 = _to_screen(Vector2(t.global_position.x, t.global_position.z), rect, centre, scale_px)
+		if not rect.has_point(p):
+			continue
+		if t.is_knocked_out():
+			var dim: Color = friend_color
+			dim.a = 0.45
+			draw_line(p + Vector2(-4, -4), p + Vector2(4, 4), dim, 2.0, true)
+			draw_line(p + Vector2(-4, 4), p + Vector2(4, -4), dim, 2.0, true)
+			continue
+		_draw_tank(t, p, friend_color, 0.7)
+
+
+func _draw_tank(tank: Tank, at: Vector2, color: Color = Color(0, 0, 0, 0), size: float = 1.0) -> void:
+	if color.a == 0.0:
+		color = own_color
 	var fwd3: Vector3 = -tank.global_basis.z
 	var fwd := Vector2(fwd3.x, fwd3.z)
 	fwd = fwd.normalized() if fwd.length() > 0.01 else Vector2.UP
 	var side := Vector2(-fwd.y, fwd.x)
 	var yaw: float = tank.get_turret_global_yaw()
 	var gun := Vector2(-sin(yaw), -cos(yaw))
-	draw_line(at, at + gun * 16.0, own_color, 2.0, true)
+	draw_line(at, at + gun * 16.0 * size, color, 2.0, true)
 	# Slim arrow with a notch at the back, so the heading reads at a glance.
-	var points := PackedVector2Array([at + fwd * 10.0, at - fwd * 6.0 + side * 5.0,
-			at - fwd * 2.5, at - fwd * 6.0 - side * 5.0])
-	draw_colored_polygon(points, own_color)
+	var points := PackedVector2Array([at + fwd * 10.0 * size, at + (-fwd * 6.0 + side * 5.0) * size,
+			at - fwd * 2.5 * size, at + (-fwd * 6.0 - side * 5.0) * size])
+	draw_colored_polygon(points, color)
 	draw_polyline(points + PackedVector2Array([points[0]]), Color.BLACK, 1.0, true)
