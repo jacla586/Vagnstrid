@@ -28,10 +28,18 @@ extends Node3D
 
 signal soldier_down(index: int, screamed: bool)
 signal smoke_thrown(at: Vector3)
+## A radio call to the own tank: RADIO_* kind and, for contacts, where the enemy is.
+## Host/offline makes them; clients get them by RPC (net_radio).
+signal radio(kind: int, at: Vector3)
 ## A round left a soldier's weapon (kind: SHOT_RIFLE / SHOT_AT), for the network.
 signal fired_round(kind: int, from: Vector3, velocity: Vector3)
 
 enum State { MOUNTED, MOVING, HOLDING, RETURNING, WIPED }
+const RADIO_UNDER_ATTACK: int = 0
+const RADIO_RETURNING: int = 1
+const RADIO_IN_POSITION: int = 2
+const RADIO_ARMOUR: int = 3
+const RADIO_INFANTRY: int = 4
 
 ## Orders in TankCommand.squad_order.
 const ORDER_NONE: int = 0
@@ -344,6 +352,8 @@ func _move_to(target: Vector3) -> void:
 
 
 func _start_return() -> void:
+	if _state != State.RETURNING:
+		radio.emit(RADIO_RETURNING, Vector3.ZERO)
 	_state = State.RETURNING
 	_goal = tank.global_position
 	_path = _plan(_goal)
@@ -380,6 +390,7 @@ func _walk(delta: float) -> void:
 	if _path.is_empty():
 		if _state == State.MOVING:
 			_state = State.HOLDING
+			radio.emit(RADIO_IN_POSITION, Vector3.ZERO)
 		return
 	var to_next: Vector3 = _flat(_path[0] - global_position)
 	if to_next.length() <= WAYPOINT_RADIUS_M:
@@ -598,6 +609,8 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 	_awareness[target] = aware
 	if aware < needed:
 		return
+	if not _spotted.has(target):
+		radio.emit(RADIO_ARMOUR if target is Tank else RADIO_INFANTRY, target.global_position)
 	_spotted[target] = true
 	if not _marked_at.has(target) or _clock - float(_marked_at[target]) >= data.mark_interval_s:
 		_marked_at[target] = _clock
@@ -797,6 +810,7 @@ func _withdraw(smoke: bool, threat_point: Vector3) -> void:
 	if _withdraw_timer > 0.0 or not is_instance_valid(tank):
 		return
 	_withdraw_timer = data.withdraw_cooldown_s
+	radio.emit(RADIO_UNDER_ATTACK, Vector3.ZERO)
 	if smoke and _smoke_left > 0:
 		_smoke_left -= 1
 		throw_smoke(global_position + _threat_direction(threat_point) * data.smoke_ahead_m)

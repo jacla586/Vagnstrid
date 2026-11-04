@@ -11,6 +11,8 @@
 [ext_resource type="PackedScene" path="res://assets/models/soldier/soldier.glb" id="9_model"]
 [ext_resource type="AnimationLibrary" path="res://assets/models/soldier/soldier_anims.res" id="10_anims"]
 
+[ext_resource type="Resource" path="res://data/squads/radio_sv.tres" id="90_radio"]
+
 [resource]
 script = ExtResource("1_squad")
 display_name = "Rifle squad"
@@ -76,3 +78,4 @@ anim_hold = &"crouch_idle"
 anim_death = &"death"
 anim_move_speed_mps = 3.2
 anim_blend_s = 0.25
+radio = ExtResource("90_radio")

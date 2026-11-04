@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="RadioData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/radio_data.gd" id="1_radio"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/under_attack.ogg" id="under_attack"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/returning.ogg" id="returning"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/in_position.ogg" id="in_position"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_1.ogg" id="armour_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_2.ogg" id="armour_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_3.ogg" id="armour_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_4.ogg" id="armour_4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_5.ogg" id="armour_5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_6.ogg" id="armour_6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_7.ogg" id="armour_7"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_8.ogg" id="armour_8"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_9.ogg" id="armour_9"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_10.ogg" id="armour_10"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_11.ogg" id="armour_11"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/armour_12.ogg" id="armour_12"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_1.ogg" id="infantry_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_2.ogg" id="infantry_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_3.ogg" id="infantry_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_4.ogg" id="infantry_4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_5.ogg" id="infantry_5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_6.ogg" id="infantry_6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_7.ogg" id="infantry_7"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_8.ogg" id="infantry_8"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_9.ogg" id="infantry_9"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_10.ogg" id="infantry_10"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_11.ogg" id="infantry_11"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_12.ogg" id="infantry_12"]
+
+[resource]
+script = ExtResource("1_radio")
+under_attack = ExtResource("under_attack")
+returning = ExtResource("returning")
+in_position = ExtResource("in_position")
+armour = Array[AudioStream]([ExtResource("armour_1"), ExtResource("armour_2"), ExtResource("armour_3"), ExtResource("armour_4"), ExtResource("armour_5"), ExtResource("armour_6"), ExtResource("armour_7"), ExtResource("armour_8"), ExtResource("armour_9"), ExtResource("armour_10"), ExtResource("armour_11"), ExtResource("armour_12")])
+infantry = Array[AudioStream]([ExtResource("infantry_1"), ExtResource("infantry_2"), ExtResource("infantry_3"), ExtResource("infantry_4"), ExtResource("infantry_5"), ExtResource("infantry_6"), ExtResource("infantry_7"), ExtResource("infantry_8"), ExtResource("infantry_9"), ExtResource("infantry_10"), ExtResource("infantry_11"), ExtResource("infantry_12")])
+volume_db = 4.0

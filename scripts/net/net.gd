@@ -294,6 +294,12 @@ func rpc_squad_order(kind: int, target: Vector3) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 2)
+func rpc_squad_radio(net_id: int, kind: int, at: Vector3) -> void:
+	if game != null:
+		game.on_squad_radio(net_id, kind, at)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
 func rpc_squad_down(net_id: int, index: int, screamed: bool) -> void:
 	if game != null:
 		game.on_squad_down(net_id, index, screamed)

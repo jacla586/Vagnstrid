@@ -130,4 +130,6 @@ extends Resource
 ## heard within the sound set's range (50 m).
 @export_range(0.0, 1.0) var scream_chance: float = 0.1
 @export var scream_sound: SoundSetData
+## Radio calls to the own tank (heard only by its player).
+@export var radio: RadioData
 

@@ -72,6 +72,12 @@ shows on the minimap. This is what we test first.
   tank (hit or `Squad.notify_impact` near miss) they smoke (`SmokeCloud`, a vision
   blocker) and fall back; losses to rifles: fall back. Mounted they refill one by one;
   wiped out, a full squad is back after `wipe_cooldown_s`. HUD: `SquadPanel`.
+  Radio (`Squad.radio` signal, kinds `RADIO_*`: under attack (withdraw), returning, in
+  position, armour/infantry contact): `SquadRadio` in the player rig plays the own
+  squad's calls one at a time on Master (not muffled) with a subtitle; contacts get a
+  clock hour from the tank's hull. Lines and recordings in `RadioData`
+  (`data/squads/radio_sv.tres`, Swedish, `assets/audio/radio/`, made with
+  `tools/audio/make_radio.sh` from Piper TTS); clients get calls by `rpc_squad_radio`.
   Soldiers use `assets/models/soldier/soldier.glb` (CC-BY, KolosStudios, see its
   CREDITS.md; uniform materials repainted green) with animations (jog, crouch, death...)
   from Quaternius' Universal Animation Library (CC0, `assets/models/ual/`), retargeted by
@@ -166,7 +172,11 @@ shows on the minimap. This is what we test first.
   Tanks go to their spawn at the start; respawns (`RespawnAtStart`, `KothBots`) use the
   current spawn. `KothBots` orders every BotController into the (next) zone. Runs
   offline/host only. HUD: `ScorePanel`; `MapView` draws zone and own spawn.
-  Scenario: `vidingsjo_koth.tscn`. Network: the host sends `get_net_state()` to
+  Scenario: `vidingsjo_koth.tscn`. Tanks per team (main menu, `MatchSettings.team_size`,
+  `user://settings.cfg`; offline only): `KothBots._fill_teams` copies a placed bot or
+  removes extras. Per-tank stats (KO, losses, points) in `KothMode.get_stats()` (sent
+  in the net state); `Scoreboard` in the player rig shows them on Tab and at the end
+  (result, Play again / Main menu). Network: the host sends `get_net_state()` to
   clients (`rpc_koth_state`, 2 Hz and on zone moves/match end; clients run the clock
   on) and kill bonuses (`rpc_koth_bonus`); NetGame (re)spawns players at the zone
   spawns, and with KotH the bots fill teams 1 and 0 alternately instead of team 2.
@@ -237,7 +247,7 @@ shows on the minimap. This is what we test first.
   `data/world/spotting.tres`). Commander view: turret holds its hull-relative
   direction; T lays it on the view. MG: mouse 2 (roof MG in the commander view with the hatch
   open, coaxial otherwise). Binoculars: B. Hatch: H.
-- Big map: M (view only). Squad orders map: Q (`SquadMap`, 1 km round the tank with
+- Scoreboard: Tab (King of the Hill). Big map: M (view only). Squad orders map: Q (`SquadMap`, 1 km round the tank with
   the 300 m ring; frees the mouse; left click sends the squad). Recall squad: G. Squad leader's eyes: V (look and spot only). Network statistics: F3.
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 
