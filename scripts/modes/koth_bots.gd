@@ -14,6 +14,9 @@ const HOLD_MIN_S: float = 15.0
 const HOLD_MAX_S: float = 35.0
 ## Speed on the way to the zone.
 const ORDER_THROTTLE: float = 0.7
+## Bots side by side at a spawn leave one after another this far apart (s), so they
+## don't all turn into each other at once.
+const DEPART_INTERVAL_S: float = 2.5
 
 @export var mode: KothMode
 
@@ -21,6 +24,7 @@ var _bots: Array[BotController] = []
 var _hold: Dictionary = {}  # BotController -> seconds left at the current point
 var _respawn: Dictionary = {}  # BotController -> seconds until back at the spawn
 var _ordered_radius: Dictionary = {}  # BotController -> zone radius when last ordered
+var _depart: Dictionary = {}  # BotController -> seconds until it leaves the spawn
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
@@ -41,7 +45,11 @@ func _find_bots() -> void:
 		_bots.append(bot)
 		bot.respawn_delay_s = 0.0   # no repair on the spot: we bring it back at the spawn
 		bot.tank.knocked_out.connect(_on_knocked_out.bind(bot))
-	_order_all()
+	var per_team: Dictionary = {}
+	for bot: BotController in _bots:
+		var n: int = int(per_team.get(bot.tank.team, 0))
+		per_team[bot.tank.team] = n + 1
+		_depart_later(bot, n * DEPART_INTERVAL_S)
 
 
 func _physics_process(delta: float) -> void:
@@ -52,6 +60,13 @@ func _physics_process(delta: float) -> void:
 			_update_respawn(bot, delta)
 			continue
 		if bot.tank.is_knocked_out():
+			continue
+		if _depart.has(bot):
+			_depart[bot] = float(_depart[bot]) - delta
+			if float(_depart[bot]) > 0.0:
+				continue
+			_depart.erase(bot)
+			_order_into_zone(bot)
 			continue
 		var radius: float = mode.get_radius()
 		var shrunk: bool = float(_ordered_radius.get(bot, radius)) > radius / INNER_SHARE
@@ -69,8 +84,15 @@ func _physics_process(delta: float) -> void:
 
 func _order_all() -> void:
 	for bot: BotController in _bots:
-		if is_instance_valid(bot) and is_instance_valid(bot.tank) and not bot.tank.is_knocked_out():
+		if is_instance_valid(bot) and is_instance_valid(bot.tank) and not bot.tank.is_knocked_out() \
+				and not _depart.has(bot):
 			_order_into_zone(bot)
+
+
+## Hold at the spawn for a moment, then go (staggered per team).
+func _depart_later(bot: BotController, delay: float) -> void:
+	bot.order_move([bot.tank.global_position], 0.0)
+	_depart[bot] = delay
 
 
 ## Inside the zone's circle (open or announced).
@@ -81,7 +103,7 @@ func _is_inside(point: Vector3, radius: float) -> bool:
 
 func _order_into_zone(bot: BotController) -> void:
 	var radius: float = mode.get_radius()
-	bot.order_move([_random_point(radius * INNER_SHARE)], ORDER_THROTTLE)
+	bot.order_path(_random_point(radius * INNER_SHARE), ORDER_THROTTLE)
 	_ordered_radius[bot] = radius
 	_hold[bot] = _rng.randf_range(HOLD_MIN_S, HOLD_MAX_S)
 
@@ -91,12 +113,17 @@ func _random_point(radius: float) -> Vector3:
 	var center: Vector3 = mode.get_center()
 	var offset: Vector2 = Vector2.from_angle(_rng.randf() * TAU) * sqrt(_rng.randf()) * radius
 	var point := Vector3(center.x + offset.x, center.y, center.z + offset.y)
-	for i: int in 5:
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+	for i: int in 8:
 		var hit: Dictionary = KothMode.ground_hit(mode.get_world_3d(), point)
-		if not hit.is_empty() and (hit["position"] as Vector3).y > KothMode.SEA_LEVEL_LIMIT_M:
+		var dry: bool = not hit.is_empty() \
+				and (hit["position"] as Vector3).y > KothMode.SEA_LEVEL_LIMIT_M
+		if dry and (map == null or not map.is_blocked(hit["position"])):
 			point.y = (hit["position"] as Vector3).y
 			return point
-		point = point.lerp(Vector3(center.x, point.y, center.z), 0.5)
+		# Try another random point, a bit closer to the centre each time.
+		offset = Vector2.from_angle(_rng.randf() * TAU) * sqrt(_rng.randf()) * radius * (1.0 - i / 8.0)
+		point = Vector3(center.x + offset.x, center.y, center.z + offset.y)
 	return center
 
 
@@ -111,4 +138,4 @@ func _update_respawn(bot: BotController, delta: float) -> void:
 	_respawn.erase(bot)
 	KothMode.place_tank(bot.tank, mode.get_free_spawn(bot.tank.team, bot.tank))
 	bot.tank.repair()
-	_order_into_zone(bot)
+	_depart_later(bot, _rng.randf_range(0.0, DEPART_INTERVAL_S))

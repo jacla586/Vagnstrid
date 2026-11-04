@@ -63,6 +63,16 @@ shows on the minimap. This is what we test first.
 - The player's tank uses `data/tanks/player_medium.tres` (set in `player_rig.tscn`);
   enemies use `test_medium.tres`. Binoculars zoom `binocular_zoom_vs_gunner` times
   the gunner's strongest sight zoom.
+- Bot navigation: `tools/bake_tactical_grid.gd -- <map>` (headless) bakes
+  `data/maps/<map>_tactical.res` (`TacticalGridData`, 8 m cells: height, flags for
+  house/stone, water (widened, not across roads), steep (also 2 m-scale banks),
+  forest, road, wetland, cover, near-obstacle, thick trees; land cover from geodata).
+  Rerun after map changes. `TacticalMap.for_scene()` builds an `AStarGrid2D` (costs
+  in `TacticsData`, `data/bots/tactics_regular.tres`) and `find_path()` straightens
+  the result. `BotController.order_path()` drives such paths (replans when stuck,
+  steps aside when stuck twice in a place, keeps a gap to tanks ahead; KothBots lets
+  bots leave a spawn one by one); without a
+  baked grid it drives straight. Baked so far: vidingsjo. Spawns avoid blocked cells.
 - `BotGroup` moves bots together: column along a route, on the first contact
   (shared to all members) line abreast towards an objective, short halts to fire.
   Bots on an ordered route that get stuck reverse and detour sideways.

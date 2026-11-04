@@ -32,6 +32,10 @@ const SEA_LEVEL_LIMIT_M: float = 0.5
 const SPAWN_LIFT_M: float = 1.5
 ## Steepest ground a spawn may stand on (degrees).
 const SPAWN_MAX_SLOPE_DEG: float = 15.0
+## Slots tried beside a spawn (alternating right and left) for a free, clear one.
+const SPAWN_SLOTS: int = 24
+## A spawn spot needs this much room round it on the tactical grid (m; tanks ~6.5 m long).
+const SPAWN_CLEARANCE_M: float = 5.0
 ## Spawn search: step back towards the zone by this much each try (m)...
 const SPAWN_STEP_M: float = 50.0
 ## ...trying these sideways offsets at each distance (m).
@@ -252,8 +256,10 @@ func get_spawn(team: int, slot: int = 0) -> Transform3D:
 ## The first spawn slot of `team` with no other tank on it (respawns).
 func get_free_spawn(team: int, exclude: Tank = null) -> Transform3D:
 	var clear: float = data.spawn_spacing_m * 0.7
-	for slot: int in 16:
+	for slot: int in SPAWN_SLOTS:
 		var xform: Transform3D = get_spawn(team, slot)
+		if not _spot_clear(xform.origin):
+			continue
 		var taken: bool = false
 		for node: Node in get_tree().get_nodes_in_group("tanks"):
 			var other := node as Tank
@@ -373,7 +379,22 @@ func _is_open_ground(hit: Dictionary) -> bool:
 		return false
 	if (hit["position"] as Vector3).y <= SEA_LEVEL_LIMIT_M:
 		return false
-	return (hit["normal"] as Vector3).angle_to(Vector3.UP) <= deg_to_rad(SPAWN_MAX_SLOPE_DEG)
+	if (hit["normal"] as Vector3).angle_to(Vector3.UP) > deg_to_rad(SPAWN_MAX_SLOPE_DEG):
+		return false
+	return _spot_clear(hit["position"])
+
+
+## No house, stone, water or steep cell on the bots' tactical grid at `p` or round it
+## (always true on maps without a baked grid).
+func _spot_clear(p: Vector3) -> bool:
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+	if map == null:
+		return true
+	var r: float = SPAWN_CLEARANCE_M
+	for d: Vector3 in [Vector3.ZERO, Vector3(r, 0, 0), Vector3(-r, 0, 0), Vector3(0, 0, r), Vector3(0, 0, -r)]:
+		if map.is_blocked(p + d):
+			return false
+	return true
 
 
 func _facing_zone(at: Vector3) -> Transform3D:
@@ -385,14 +406,10 @@ func _facing_zone(at: Vector3) -> Transform3D:
 
 ## Match start: every tank to its team's spawn, so both sides start equally far away.
 func _move_tanks_to_spawns() -> void:
-	var slots: Dictionary = {}  # team -> next slot
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var tank := node as Tank
-		if tank == null:
-			continue
-		var slot: int = int(slots.get(tank.team, 0))
-		slots[tank.team] = slot + 1
-		place_tank(tank, get_spawn(tank.team, slot))
+		if tank != null:
+			place_tank(tank, get_free_spawn(tank.team, tank))
 
 
 ## Moves a tank to `xform` at rest (spawns and respawns).

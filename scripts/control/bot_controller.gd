@@ -33,6 +33,15 @@ const ALERT_TIME_S: float = 10.0
 ## Stuck on an ordered route: try a point this far to the side (and a bit ahead) (m).
 const DETOUR_SIDE_M: float = 25.0
 const DETOUR_AHEAD_M: float = 10.0
+## Getting stuck again within this of the last place counts as the same spot (m).
+const REPEAT_STUCK_RADIUS_M: float = 15.0
+## Keep this gap to a tank ahead on the way (m): slow down from FOLLOW_GAP_M, stop at
+## FOLLOW_STOP_M; after FOLLOW_PASS_S stopped behind it, go round.
+const FOLLOW_GAP_M: float = 15.0
+const FOLLOW_STOP_M: float = 8.0
+const FOLLOW_PASS_S: float = 4.0
+## A tank this far off our heading (degrees) isn't "ahead".
+const FOLLOW_CONE_DEG: float = 40.0
 
 @export var bot_data: BotData
 
@@ -64,6 +73,16 @@ var _order_index: int = 0
 var _order_throttle: float = 0.5
 var _halting: bool = false
 var _detour_side: float = 1.0
+## Goal of the current path order (order_path), for replanning; INF = none.
+var _path_goal: Vector3 = Vector3.INF
+var _path_throttle: float = 0.5
+var _tactical: TacticalMap
+var _tactical_looked_up: bool = false
+## Where the tank last got stuck, and how many times in a row near there.
+var _last_stuck_at: Vector3 = Vector3.INF
+var _stuck_repeats: int = 0
+## Seconds stopped behind another tank (FOLLOW_PASS_S then go round).
+var _yield_time: float = 0.0
 ## Enemies reported by the group: spotted in half the time (the crew knows where to look).
 var _reported: Dictionary = {}
 
@@ -93,6 +112,34 @@ func order_move(points: Array[Vector3], throttle: float) -> void:
 	_orders = points.duplicate()
 	_order_index = 0
 	_order_throttle = throttle
+	_path_goal = Vector3.INF
+
+
+## Drives to `goal` along a path round houses, water and steep ground (the map's
+## tactical grid), then stops. Without a baked grid: straight there, as order_move.
+func order_path(goal: Vector3, throttle: float) -> void:
+	var points: Array[Vector3] = _plan_path(goal)
+	order_move(points, throttle)
+	_path_goal = goal
+	_path_throttle = throttle
+
+
+func _plan_path(goal: Vector3) -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	var map: TacticalMap = _tactical_map()
+	if map != null:
+		for p: Vector3 in map.find_path(tank.global_position, goal):
+			points.append(p)
+	if points.is_empty():
+		points.append(goal)
+	return points
+
+
+func _tactical_map() -> TacticalMap:
+	if not _tactical_looked_up:
+		_tactical_looked_up = true
+		_tactical = TacticalMap.for_scene(get_tree().current_scene)
+	return _tactical
 
 
 func has_orders_left() -> bool:
@@ -413,15 +460,34 @@ func _on_hit_taken(direction: Vector3) -> void:
 func _on_stuck() -> void:
 	if _order_index >= _orders.size():
 		return
-	var to_next: Vector3 = _orders[_order_index] - tank.global_position
-	to_next.y = 0.0
-	if to_next.length() < 0.1:
+	var here: Vector3 = tank.global_position
+	if _last_stuck_at != Vector3.INF and here.distance_to(_last_stuck_at) < REPEAT_STUCK_RADIUS_M:
+		_stuck_repeats += 1
+	else:
+		_stuck_repeats = 0
+	_last_stuck_at = here
+	if _path_goal != Vector3.INF and _tactical_map() != null:
+		# On a planned path: plan again from here (after backing off). Stuck again at
+		# the same place (another tank, something the grid doesn't know): step aside
+		# first, then plan from there.
+		var goal: Vector3 = _path_goal
+		var detour: Array[Vector3] = []
+		if _stuck_repeats > 0:
+			detour.append(_detour_point(_orders[_order_index]))
+		_orders = detour + _plan_path(goal)
+		_order_index = 0
 		return
-	var forward: Vector3 = to_next.normalized()
+	_orders.insert(_order_index, _detour_point(_orders[_order_index]))
+
+
+## A point beside the way to `next` (alternating left and right each time).
+func _detour_point(next: Vector3) -> Vector3:
+	var to_next: Vector3 = next - tank.global_position
+	to_next.y = 0.0
+	var forward: Vector3 = to_next.normalized() if to_next.length() > 0.1 else -tank.global_basis.z
 	var side: Vector3 = forward.cross(Vector3.UP) * _detour_side
 	_detour_side = -_detour_side
-	_orders.insert(_order_index, tank.global_position + side * DETOUR_SIDE_M
-			+ forward * DETOUR_AHEAD_M)
+	return tank.global_position + side * DETOUR_SIDE_M + forward * DETOUR_AHEAD_M
 
 
 ## One frame along the ordered route (with the base class' pivot turns and unsticking).
@@ -435,7 +501,37 @@ func _order_step(delta: float) -> void:
 	if _steer_towards(_orders[_order_index], _order_throttle):
 		_order_index += 1
 		return
+	_keep_gap(delta)
 	_update_stuck(delta)
+
+
+## Slows down behind a tank ahead on the way (no ramming teammates on a shared path);
+## stopped behind it too long, steps round it.
+func _keep_gap(delta: float) -> void:
+	var forward: Vector3 = -tank.global_basis.z
+	forward.y = 0.0
+	var nearest: float = INF
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var other := node as Tank
+		if other == null or other == tank or other.is_knocked_out():
+			continue
+		var to_other: Vector3 = other.global_position - tank.global_position
+		to_other.y = 0.0
+		var d: float = to_other.length()
+		if d < FOLLOW_GAP_M and d > 0.1 \
+				and forward.angle_to(to_other) < deg_to_rad(FOLLOW_CONE_DEG):
+			nearest = minf(nearest, d)
+	if nearest == INF:
+		_yield_time = 0.0
+		return
+	_command.throttle *= clampf((nearest - FOLLOW_STOP_M) / (FOLLOW_GAP_M - FOLLOW_STOP_M), 0.0, 1.0)
+	if _command.throttle > 0.05:
+		_yield_time = 0.0
+		return
+	_yield_time += delta
+	if _yield_time >= FOLLOW_PASS_S:
+		_yield_time = 0.0
+		_orders.insert(_order_index, _detour_point(_orders[_order_index]))
 
 
 func _update_hatch(delta: float) -> void:
