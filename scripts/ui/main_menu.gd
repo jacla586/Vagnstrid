@@ -43,7 +43,7 @@ func _ready() -> void:
 		_map.add_item(_maps[i].get_file().get_basename(), i)
 		if _maps[i] == NetSession.DEFAULT_MAP:
 			_map.select(i)
-	box.add_child(_label("Tank (single player)"))
+	box.add_child(_label("Tank"))
 	_tank = OptionButton.new()
 	box.add_child(_tank)
 	_fill_tanks()

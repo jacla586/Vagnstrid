@@ -8,6 +8,7 @@ extends RefCounted
 ## per config, so every machine builds the same tank from the same few ids.
 
 const CATALOGUE_PATH: String = "res://data/builder/catalogue.tres"
+const SPEC_PREFIX: String = "cfg:"
 
 static var _catalogue: BuilderCatalogue
 static var _cache: Dictionary = {}  # TankConfig.key() -> TankData
@@ -83,6 +84,26 @@ static func build(config: TankConfig) -> TankData:
 	d.cost = chassis.cost + gun.cost + pack.cost + (r.camo_cost if config.camo else 0)
 	_cache[key] = d
 	return d
+
+
+## What the network sends so every machine makes the same tank: "cfg:<key>" for a
+## built tank, else the TankData's resource path.
+static func spec_of(tank: Tank) -> String:
+	if tank.config != null and build(tank.config) != null:
+		return SPEC_PREFIX + tank.config.key()
+	return tank.data.resource_path
+
+
+## Sets up `tank` (before it enters the tree) from a spec made by spec_of().
+static func apply_spec(tank: Tank, spec: String, fallback_path: String) -> void:
+	if spec.begins_with(SPEC_PREFIX):
+		var cfg: TankConfig = TankConfig.from_key(spec.trim_prefix(SPEC_PREFIX))
+		if build(cfg) != null:
+			tank.config = cfg
+			tank.data = build(cfg)
+			return
+	tank.config = null
+	tank.data = load(spec) if spec != "" and ResourceLoader.exists(spec) else load(fallback_path)
 
 
 static func find_gun(chassis: ChassisData, id: StringName) -> GunData:

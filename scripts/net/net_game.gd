@@ -41,6 +41,8 @@ var _next_id: int = 1
 ## [field path, index, direction] of every felled tree, for late joiners
 var _felled: Array = []
 var _respawn_timers: Dictionary = {}
+## peer -> TankConfig the player chose in the garage (missing = PLAYER_DATA)
+var _configs: Dictionary = {}
 var _replicator: NetReplicator
 var _puppets: NetPuppets
 var _input: NetInput
@@ -176,11 +178,13 @@ func _spawn_player(peer: int) -> void:
 	if peer == 1:
 		_my_rig = RIG_SCENE.instantiate()
 		tank = _my_rig.get_node("Tank")
+		tank.config = TankConfigs.get_selected()
 		tank.team = team
 		_map.add_child(_my_rig)
 	else:
 		tank = TANK_SCENE.instantiate()
 		tank.data = load(PLAYER_DATA)
+		tank.config = _configs.get(peer)
 		tank.team = team
 		var rc := RemoteController.new()
 		rc.name = "RemoteController"
@@ -204,11 +208,14 @@ func _spawn_for(team: int, tank: Tank) -> Transform3D:
 
 func _send_spawn(peer: int, net_id: int) -> void:
 	var tank: Tank = tanks[net_id]
-	NetSession.instance.rpc_id(peer, "rpc_spawn_tank", net_id, owners[net_id], tank.team, tank.data.resource_path,
+	NetSession.instance.rpc_id(peer, "rpc_spawn_tank", net_id, owners[net_id], tank.team, TankBuilder.spec_of(tank),
 			tank.global_transform)
 
 
-func on_client_hello(peer: int, _player_name: String) -> void:
+func on_client_hello(peer: int, _player_name: String, config_key: String) -> void:
+	var cfg: TankConfig = TankConfig.from_key(config_key)
+	if cfg != null and TankBuilder.build(cfg) != null:
+		_configs[peer] = cfg
 	# Teams alternate between 0 and 1 as players join.
 	var counts: Array[int] = [0, 0]
 	for p: int in teams:
@@ -227,6 +234,7 @@ func on_client_ready(peer: int) -> void:
 
 func on_client_left(peer: int) -> void:
 	teams.erase(peer)
+	_configs.erase(peer)
 	for net_id: int in owners.keys():
 		if owners[net_id] == peer:
 			var tank: Tank = tanks[net_id]
@@ -418,6 +426,7 @@ func on_spawn_tank(net_id: int, owner_peer: int, team: int, data_path: String, x
 	if owner_peer == NetSession.instance.my_id():
 		_my_rig = RIG_SCENE.instantiate()
 		tank = _my_rig.get_node("Tank")
+		TankBuilder.apply_spec(tank, data_path, PLAYER_DATA)
 		tank.set_net_puppet(true)
 		tank.team = team
 		tank.net_id = net_id
@@ -427,7 +436,7 @@ func on_spawn_tank(net_id: int, owner_peer: int, team: int, data_path: String, x
 		tank = TANK_SCENE.instantiate()
 		if data_path == "":
 			push_warning("spawn without data path for net_id %d" % net_id)
-		tank.data = load(data_path) if data_path != "" else load(PLAYER_DATA)
+		TankBuilder.apply_spec(tank, data_path, PLAYER_DATA)
 		tank.team = team
 		tank.net_id = net_id
 		tank.set_net_puppet(false)

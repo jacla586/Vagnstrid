@@ -187,7 +187,8 @@ func _on_peer_disconnected(id: int) -> void:
 func _on_connected() -> void:
 	_set_peer_timeout(1)
 	_set_status("connected, loading map ...")
-	rpc_id(1, "rpc_hello", player_name)
+	var cfg: TankConfig = TankConfigs.get_selected()
+	rpc_id(1, "rpc_hello", player_name, cfg.key() if cfg != null else "")
 
 
 func _on_failed(reason: String) -> void:
@@ -229,11 +230,11 @@ func _on_packet(id: int, packet: PackedByteArray) -> void:
 # --- RPCs (all reliable; the game logic is in NetGame) --------------------------------
 
 @rpc("any_peer", "call_remote", "reliable", 2)
-func rpc_hello(name_: String) -> void:
+func rpc_hello(name_: String, config_key: String) -> void:
 	if NetRole.is_host():
 		rpc_id(multiplayer.get_remote_sender_id(), "rpc_welcome", map_path, bots)
 		if game != null:
-			game.on_client_hello(multiplayer.get_remote_sender_id(), name_)
+			game.on_client_hello(multiplayer.get_remote_sender_id(), name_, config_key)
 
 
 @rpc("authority", "call_remote", "reliable", 2)

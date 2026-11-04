@@ -24,6 +24,18 @@ static func from_dict(d: Dictionary) -> TankConfig:
 	return c
 
 
-## A short key for caching built TankData.
+static func from_key(k: String) -> TankConfig:
+	var parts: PackedStringArray = k.split("/")
+	if parts.size() != 4:
+		return null
+	var c := TankConfig.new()
+	c.chassis = StringName(parts[0])
+	c.gun = StringName(parts[1])
+	c.armour = StringName(parts[2])
+	c.camo = parts[3] == "true"
+	return c
+
+
+## A short key for caching built TankData (and the network's tank spec).
 func key() -> String:
 	return "%s/%s/%s/%s" % [chassis, gun, armour, camo]
