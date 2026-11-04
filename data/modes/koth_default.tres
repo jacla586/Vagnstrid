@@ -6,10 +6,10 @@
 [ext_resource type="Resource" path="res://data/configs/light_hunter.tres" id="c1"]
 [ext_resource type="Resource" path="res://data/configs/medium_standard.tres" id="c2"]
 [ext_resource type="Resource" path="res://data/configs/medium_long.tres" id="c3"]
-[ext_resource type="Resource" path="res://data/configs/heavy_88.tres" id="c4"]
-[ext_resource type="Resource" path="res://data/configs/heavy_105.tres" id="c5"]
-[ext_resource type="Resource" path="res://data/configs/td_105.tres" id="c6"]
-[ext_resource type="Resource" path="res://data/configs/td_120.tres" id="c7"]
+[ext_resource type="Resource" path="res://data/configs/medium_h_75l.tres" id="c4"]
+[ext_resource type="Resource" path="res://data/configs/medium_h_88.tres" id="c5"]
+[ext_resource type="Resource" path="res://data/configs/heavy_88.tres" id="c6"]
+[ext_resource type="Resource" path="res://data/configs/heavy_152.tres" id="c7"]
 
 [resource]
 script = ExtResource("1_koth")

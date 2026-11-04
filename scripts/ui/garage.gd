@@ -152,7 +152,7 @@ func _build_stats() -> Control:
 		grid.add_child(bar)
 		_bars.append(bar)
 		var value := _label("")
-		value.custom_minimum_size = Vector2(90, 0)
+		value.custom_minimum_size = Vector2(120, 0)
 		grid.add_child(value)
 		_values.append(value)
 	return grid
@@ -267,9 +267,18 @@ func _on_parts_changed(chassis_changed: bool) -> void:
 		var def: Array = _stat_defs[i]
 		var v: float = (def[1] as Callable).call(d)
 		_bars[i].value = v / maxf(_max[i], 0.001)
-		_values[i].text = (def[3] as String) % v + " " + def[2]
+		_values[i].text = (def[3] as String) % v + " " + def[2] + _effective_note(d, String(def[0]), v)
 	_cost.text = "Cost: %d" % d.cost
 	_show_preview(d)
+
+
+## Sloped plates: the effective thickness straight on, e.g. " (90)".
+func _effective_note(d: TankData, stat: String, mm: float) -> String:
+	var slopes: Array = TankModel.SLOPES.get(d.model_style, [])
+	var index: int = ["Hull front", "Hull side", "Turret front"].find(stat)
+	if slopes.is_empty() or index < 0 or float(slopes[index]) < 1.0:
+		return ""
+	return " (%d)" % roundi(mm / cos(deg_to_rad(float(slopes[index]))))
 
 
 func _show_preview(d: TankData) -> void:

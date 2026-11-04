@@ -83,7 +83,7 @@ shows on the minimap. This is what we test first.
   from Quaternius' Universal Animation Library (CC0, `assets/models/ual/`), retargeted by
   direction matching with `tools/bake_soldier_animations.gd` into
   `assets/models/soldier/soldier_anims.res` (rerun if a model changes). Own team's
-  squads show on the maps.
+  squads show on the maps, as do teammates' tanks (`MapView._draw_friends`).
   Network: clients send squad orders by reliable RPC (`rpc_squad_order`); the host
   sends all squads in a 10 Hz unreliable packet (`PACKET_SQUADS`, `Squad.write_net_state`,
   31 B + 4 B per soldier offset) and soldier-down/smoke/shot events by RPC; client
@@ -105,10 +105,26 @@ shows on the minimap. This is what we test first.
   (layer 5: bushes, tree crowns, laser-tree crowns) around a target, and standing
   still, make it slower and shorter-ranged to spot; moving fast makes it easier.
   Bots also spot faster the more of 4 hull points (+ exposed commander) they see.
+- Tank models (`scripts/tank/model/`): `TankModel.build(data)` makes the look AND the
+  armour shapes from `TankData.model_style` (chassis: light = BT-like, sloped = T-34-like,
+  boxy = Pz IV-like, heavy = KV-like; only loose visual inspiration), the geometry
+  fields, `turret_variant` (gun, e.g. box_turret for the 152 mm), `muzzle_brake` and
+  `armour_look` (heavy package: skirts/appliqué). `MeshKit` builds flat-shaded convex
+  solids (blocks cut by plate planes, cylinders, extruded track profiles) with named
+  point groups -> one `ConvexPolygonShape3D` per group (several hull and turret shapes;
+  turret shapes follow the turret, `Tank._sync_turret_shapes`). So slopes are real: the
+  hit normal gives the angle (plate mm in ArmourData are true thickness; faces: roof only
+  when the normal is within ~20° of vertical, `ROOF_NORMAL_Y`). Ricochet angle per
+  chassis (`ArmourData.ricochet_angle_deg`: light 63, sloped 66, others 70) so angling
+  can bounce shells. `model_style` "" keeps the scene's plain boxes (player_medium,
+  test_medium). Paint replaces the PAINT material per surface. Pictures without the game:
+  `godot --path . --script res://tools/render_tank_models.gd -- <dir> [preset...]`
+  (needs a window; `renders/` is git-ignored).
 - Tank builder / garage: `TankConfig` (only part ids: chassis, gun, armour package,
   camouflage) -> `TankBuilder.build()` -> `TankData` (cached per `key()`), from the
-  catalogue `data/builder/catalogue.tres` (`ChassisData` light/medium/heavy/tank
-  destroyer, each with its `GunData` 37-120 mm and `ArmourPackageData`; coefficients in
+  catalogue `data/builder/catalogue.tres` (`ChassisData` light, medium (T-34-like),
+  medium_h (Pz IV-like), heavy (KV-like); the tank destroyer is gone; each with its
+  `GunData` 37-152 mm and `ArmourPackageData`; coefficients in
   `BuilderRules`: speed and acceleration from kW/t, turn rate from mass, traverse from
   gun mass, hp per tonne, camouflage). The chassis' `base` TankData supplies the rest.
   Medium + 75 mm = today's tank. `Tank.apply_geometry()` sizes hull, tracks, turret,
@@ -117,7 +133,8 @@ shows on the minimap. This is what we test first.
   (`TankData.camo_spot_factor`) slows bot and squad spotting; spot points scale with the
   hull (`Tank.get_spot_points`). Garage `scenes/menu/garage.tscn` (from the main menu,
   which also picks the tank); `TankConfigs` keeps presets (`data/configs/`), own configs
-  (`user://configs/`) and the choice (`user://garage.cfg`). The player rig's tank
+  (`user://configs/`) and the choice (`user://garage.cfg`); it shows effective armour
+  for sloped plates (`TankModel.SLOPES`). The player rig's tank
   (`use_player_config`) uses the choice offline; online the client sends its config key
   in `rpc_hello` and spawns carry a spec (`TankBuilder.spec_of`/`apply_spec`: "cfg:<key>"
   or a TankData path). KotH gives placed bot tanks random `KothData.bot_configs`

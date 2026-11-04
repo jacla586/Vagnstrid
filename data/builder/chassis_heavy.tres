@@ -7,33 +7,35 @@
 [ext_resource type="Script" path="res://scripts/data/armour_package_data.gd" id="5_pack_script"]
 [ext_resource type="Resource" path="res://data/builder/gun_75l.tres" id="g0"]
 [ext_resource type="Resource" path="res://data/builder/gun_88.tres" id="g1"]
-[ext_resource type="Resource" path="res://data/builder/gun_105.tres" id="g2"]
+[ext_resource type="Resource" path="res://data/builder/gun_152.tres" id="g2"]
 [ext_resource type="Resource" path="res://data/builder/armour_light.tres" id="p0"]
 [ext_resource type="Resource" path="res://data/builder/armour_standard.tres" id="p1"]
 [ext_resource type="Resource" path="res://data/builder/armour_heavy.tres" id="p2"]
 
 [sub_resource type="Resource" id="Armour_heavy"]
 script = ExtResource("2_armour")
-hull_front_mm = 140.0
+hull_front_mm = 100.0
 hull_side_mm = 90.0
-hull_rear_mm = 50.0
+hull_rear_mm = 60.0
 hull_roof_mm = 30.0
-turret_front_mm = 160.0
-turret_side_mm = 100.0
-turret_rear_mm = 60.0
-turret_roof_mm = 30.0
+turret_front_mm = 110.0
+turret_side_mm = 90.0
+turret_rear_mm = 75.0
+turret_roof_mm = 35.0
+ricochet_angle_deg = 70.0
 
 [resource]
 script = ExtResource("1_chassis")
 id = &"heavy"
-display_name = "Heavy"
+display_name = "Heavy (KV-style)"
 kind = 2
+model_style = &"heavy"
 base = ExtResource("3_base")
-hull_size = Vector3(3.6, 1.6, 7.2)
-turret_radius_m = 1.5
-turret_height_m = 0.95
+hull_size = Vector3(3.6, 1.65, 7.0)
+turret_radius_m = 1.4
+turret_height_m = 1.0
 engine_kw = 560.0
-base_mass_kg = 56000.0
+base_mass_kg = 54000.0
 armour = SubResource("Armour_heavy")
 guns = Array[ExtResource("4_gun_script")]([ExtResource("g0"), ExtResource("g1"), ExtResource("g2")])
 armour_packages = Array[ExtResource("5_pack_script")]([ExtResource("p0"), ExtResource("p1"), ExtResource("p2")])

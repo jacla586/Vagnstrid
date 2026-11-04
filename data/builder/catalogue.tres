@@ -5,8 +5,8 @@
 [ext_resource type="Resource" path="res://data/builder/builder_rules.tres" id="3_rules"]
 [ext_resource type="Resource" path="res://data/builder/chassis_light.tres" id="c0"]
 [ext_resource type="Resource" path="res://data/builder/chassis_medium.tres" id="c1"]
-[ext_resource type="Resource" path="res://data/builder/chassis_heavy.tres" id="c2"]
-[ext_resource type="Resource" path="res://data/builder/chassis_tank_destroyer.tres" id="c3"]
+[ext_resource type="Resource" path="res://data/builder/chassis_medium_h.tres" id="c2"]
+[ext_resource type="Resource" path="res://data/builder/chassis_heavy.tres" id="c3"]
 
 [resource]
 script = ExtResource("1_cat")

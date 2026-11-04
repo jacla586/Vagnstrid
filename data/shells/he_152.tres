@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="ShellData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/shell_data.gd" id="1_shell"]
+[ext_resource type="Resource" path="res://data/sounds/armour_hit.tres" id="2_hit"]
+[ext_resource type="Resource" path="res://data/sounds/he_explosion.tres" id="3_boom"]
+
+[resource]
+script = ExtResource("1_shell")
+display_name = "HE 152 mm"
+short_name = "HE"
+muzzle_velocity_mps = 330.0
+mass_kg = 40.0
+caliber_mm = 152.0
+penetration_mm = 50.0
+drag_coefficient = 0.3
+impact_scale = 6.0
+tracer_scale = 2.0
+damage_hp = 80.0
+module_damage = 100.0
+module_reach_m = 2.5
+wear_mm = 15.0
+fragment_module_damage = 50.0
+tracer_color = Color(1, 0.85, 0.3, 1)
+fragment_lethal_radius_m = 9.0
+fragment_max_radius_m = 36.0
+sound_hit_armour = ExtResource("2_hit")
+sound_explosion = ExtResource("3_boom")

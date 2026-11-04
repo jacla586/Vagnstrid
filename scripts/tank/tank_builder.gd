@@ -76,6 +76,10 @@ static func build(config: TankConfig) -> TankData:
 	d.turret_radius_m = maxf(chassis.turret_radius_m, gun.min_turret_radius_m) * pack.size_factor
 	d.turret_height_m = chassis.turret_height_m * pack.size_factor
 	d.gun_length_m = gun.gun_length_m
+	d.model_style = chassis.model_style
+	d.turret_variant = gun.turret_variant
+	d.muzzle_brake = gun.muzzle_brake
+	d.armour_look = pack.id
 	d.barrel_radius_m = gun.barrel_radius_m
 	d.layout = _scaled_layout(chassis.base.layout, d.hull_size / base_hull,
 			d.turret_radius_m / maxf(chassis.base.turret_radius_m, 0.01))

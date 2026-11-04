@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="TankConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tank_config.gd" id="1_cfg"]
+
+[resource]
+script = ExtResource("1_cfg")
+display_name = "Heavy 152"
+chassis = &"heavy"
+gun = &"gun_152"
+armour = &"heavy"
+camo = false

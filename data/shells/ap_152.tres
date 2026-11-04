@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="ShellData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/shell_data.gd" id="1_shell"]
+[ext_resource type="Resource" path="res://data/sounds/armour_hit.tres" id="2_hit"]
+[ext_resource type="Resource" path="res://data/sounds/ground_hit.tres" id="3_ground"]
+[ext_resource type="Resource" path="res://data/sounds/ricochet.tres" id="4_ric"]
+
+[resource]
+script = ExtResource("1_shell")
+display_name = "AP 152 mm"
+short_name = "AP"
+muzzle_velocity_mps = 330.0
+mass_kg = 40.0
+caliber_mm = 152.0
+penetration_mm = 130.0
+drag_coefficient = 0.3
+impact_scale = 2.4
+tracer_scale = 2.0
+damage_hp = 120.0
+module_damage = 120.0
+module_reach_m = 3.5
+wear_mm = 30.0
+tracer_color = Color(1, 0.55, 0.15, 1)
+sound_hit_armour = ExtResource("2_hit")
+sound_hit_ground = ExtResource("3_ground")
+sound_ricochet = ExtResource("4_ric")

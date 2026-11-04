@@ -59,7 +59,7 @@ const SHELL_SCENE: PackedScene = preload("res://scenes/weapons/shell.tscn")
 const MUZZLE_FLASH_SCENE: PackedScene = preload("res://scenes/effects/muzzle_flash.tscn")
 const BURNING_SCENE: PackedScene = preload("res://scenes/effects/burning.tscn")
 ## Normals steeper than this (Y in local space) count as roof/belly.
-const ROOF_NORMAL_Y: float = 0.7
+const ROOF_NORMAL_Y: float = 0.94
 const CHARRED_COLOR: Color = Color(0.08, 0.08, 0.075)
 ## Commander hitbox centre sits this far below his eyes (m).
 const COMMANDER_HITBOX_DROP: float = 0.35
@@ -142,6 +142,8 @@ var squad: Squad
 		$Visual/Turret/Cupola/CommanderHitbox/Shape
 @onready var _hull_shape: CollisionShape3D = $HullShape
 @onready var _turret_shape: CollisionShape3D = $TurretShape
+## Every collision shape that belongs to the turret (one unless a TankModel adds more).
+var _turret_shapes: Array[CollisionShape3D] = []
 @onready var _coax_muzzle: Marker3D = $Visual/Turret/GunPivot/CoaxMuzzle
 @onready var _roof_mg: Node3D = $Visual/Turret/RoofMG
 @onready var _roof_mg_pitch: Node3D = $Visual/Turret/RoofMG/Pitch
@@ -208,6 +210,9 @@ func _ready() -> void:
 ## spread along the hull, the turret sits on its roof, cupola and roof MG move with the
 ## turret, the barrel and its muzzle with the gun's length.
 func apply_geometry() -> void:
+	if TankModel.has_model(data):
+		_apply_model()
+		return
 	# Looked up here (not the @onready fields) so a preview can size a tank out of the tree.
 	var hull_shape: CollisionShape3D = $HullShape
 	var turret_shape: CollisionShape3D = $TurretShape
@@ -265,6 +270,76 @@ func apply_geometry() -> void:
 					ray.position.z * s.z)
 
 
+## A TankModel look: its meshes, part positions and convex armour shapes (several per
+## part: hull plates, track runs, skirts; turret body, bin...). Turret shapes follow the
+## turret (_sync_turret_shapes). Works out of the tree too (garage preview).
+func _apply_model() -> void:
+	var m: Dictionary = TankModel.build(data)
+	var hull_shape: CollisionShape3D = $HullShape
+	var turret_shape: CollisionShape3D = $TurretShape
+	var turret: Node3D = $Visual/Turret
+	var gun_pivot: Node3D = $Visual/Turret/GunPivot
+	var hull_shapes: Array[PackedVector3Array] = m["hull_shapes"]
+	var turret_shapes: Array[PackedVector3Array] = m["turret_shapes"]
+	for child: Node in get_children():
+		if child is CollisionShape3D and child != hull_shape and child != turret_shape:
+			remove_child(child)
+			child.free()
+	_set_convex(hull_shape, hull_shapes[0])
+	for i: int in range(1, hull_shapes.size()):
+		var cs := CollisionShape3D.new()
+		cs.name = "HullShape%d" % (i + 1)
+		_set_convex(cs, hull_shapes[i])
+		add_child(cs)
+	turret.position = m["turret_pos"]
+	_set_convex(turret_shape, turret_shapes[0])
+	turret_shape.transform = Transform3D(Basis(), turret.position)
+	_turret_shapes = [turret_shape]
+	for i: int in range(1, turret_shapes.size()):
+		var cs := CollisionShape3D.new()
+		cs.name = "TurretShape%d" % (i + 1)
+		_set_convex(cs, turret_shapes[i])
+		cs.transform = turret_shape.transform
+		add_child(cs)
+		_turret_shapes.append(cs)
+	var hull_mesh: MeshInstance3D = $Visual/Hull
+	hull_mesh.mesh = m["hull"]
+	hull_mesh.position = Vector3.ZERO
+	($Visual/TrackLeft as Node3D).visible = false
+	($Visual/TrackRight as Node3D).visible = false
+	var turret_mesh: MeshInstance3D = $Visual/Turret/TurretMesh
+	turret_mesh.mesh = m["turret"]
+	turret_mesh.position = Vector3.ZERO
+	($Visual/Turret/Cupola as Node3D).position = m["cupola"]
+	($Visual/Turret/RoofMG as Node3D).position = m["roof_mg"]
+	gun_pivot.position = m["gun_pivot"]
+	var mantlet: MeshInstance3D = $Visual/Turret/GunPivot/Mantlet
+	mantlet.mesh = m["mantlet"]
+	mantlet.position = Vector3.ZERO
+	var gun: MeshInstance3D = $Visual/Turret/GunPivot/Gun
+	gun.mesh = m["gun"]
+	gun.transform = Transform3D.IDENTITY
+	($Visual/Turret/GunPivot/Muzzle as Node3D).position = Vector3(0.0, 0.0, m["muzzle_z"])
+	var track_x: float = m["track_x"]
+	for child: Node in ($Suspension as Node3D).get_children():
+		var ray := child as RayCast3D
+		if ray != null:
+			ray.position = Vector3(signf(ray.position.x) * track_x, -data.hull_size.y * 0.5,
+					ray.position.z * data.hull_size.z / BASE_HULL.z)
+
+
+static func _set_convex(cs: CollisionShape3D, points: PackedVector3Array) -> void:
+	var shape := ConvexPolygonShape3D.new()
+	shape.points = points
+	cs.shape = shape
+
+
+## Turret armour shapes turn with the turret (plain round turrets don't mind).
+func _sync_turret_shapes() -> void:
+	for cs: CollisionShape3D in _turret_shapes:
+		cs.transform = _turret.transform
+
+
 ## Boresights the gunner's sight: tilts it so its line of sight crosses the gun's
 ## bore at the zeroing range. Both markers live in GunPivot space.
 func _align_gunner_sight() -> void:
@@ -303,8 +378,7 @@ func get_display_label() -> String:
 
 
 func get_hull_half_extents() -> Vector3:
-	var box := _hull_shape.shape as BoxShape3D
-	return box.size * 0.5 if box != null else Vector3.ONE
+	return data.hull_size * 0.5
 
 
 ## Takes `fraction` of the horizontal speed away (e.g. felling a tree). Physics
@@ -459,7 +533,8 @@ func on_shell_hit(shell_data: ShellData, point: Vector3, normal: Vector3,
 		return null
 	var part: String = "hull"
 	var frame: Node3D = self
-	if _shape_node(shape) == _turret_shape:
+	var hit_node: Node = _shape_node(shape)
+	if hit_node == _turret_shape or _turret_shapes.has(hit_node):
 		part = "turret"
 		frame = _turret
 	var to_part: Basis = frame.global_basis.orthonormalized().inverse()
@@ -580,13 +655,15 @@ func _setup_paint() -> void:
 func _apply_paint(charred: bool) -> void:
 	var hull_mesh: Mesh = ($Visual/Hull as MeshInstance3D).mesh
 	var paint: Material = hull_mesh.surface_get_material(0) if hull_mesh != null else null
+	var model_paint: Material = MeshKit.material(MeshKit.Mat.PAINT)
 	for mesh_instance: MeshInstance3D in _visual.find_children("*", "MeshInstance3D", true, false):
-		if charred:
-			mesh_instance.material_override = _charred_material
-		elif mesh_instance.mesh != null and mesh_instance.mesh.surface_get_material(0) == paint:
-			mesh_instance.material_override = _paint_override
-		else:
-			mesh_instance.material_override = null
+		mesh_instance.material_override = _charred_material if charred else null
+		if mesh_instance.mesh == null:
+			continue
+		for i: int in mesh_instance.mesh.get_surface_count():
+			var m: Material = mesh_instance.mesh.surface_get_material(i)
+			var painted: bool = not charred and _paint_override != null and (m == paint or m == model_paint)
+			mesh_instance.set_surface_override_material(i, _paint_override if painted else null)
 
 
 ## Speed along the hull's forward axis (m/s), negative when reversing.
@@ -652,6 +729,7 @@ func get_ammo_index() -> int:
 
 
 func _physics_process(delta: float) -> void:
+	_sync_turret_shapes()
 	if net_puppet:
 		_puppet_process(delta)
 		return

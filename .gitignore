@@ -1,3 +1,6 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Tank model pictures (tools/render_tank_models.gd)
+/renders/

@@ -141,6 +141,15 @@ extends Resource
 @export var gun_length_m: float = 3.6
 @export var barrel_radius_m: float = 0.08
 
+## Look and armour shapes (TankModel): "" = the scene's plain boxes, else a style
+## (light, sloped, boxy, heavy) set by the builder from the chassis.
+@export var model_style: StringName = &""
+## From the gun: a turret variant (e.g. box_turret) and a muzzle brake.
+@export var turret_variant: StringName = &""
+@export var muzzle_brake: bool = false
+## From the armour package: its id (heavy adds skirts/appliqué plates).
+@export var armour_look: StringName = &"standard"
+
 @export_group("Camouflage")
 ## Enemies take this many times longer to spot the tank (1 = no camouflage).
 @export var camo_spot_factor: float = 1.0

@@ -20,3 +20,4 @@ barrel_radius_m = 0.1
 min_turret_radius_m = 1.3
 fire_sound = ExtResource("5_snd")
 cost = 95
+muzzle_brake = true

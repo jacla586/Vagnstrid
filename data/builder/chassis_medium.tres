@@ -14,26 +14,28 @@
 
 [sub_resource type="Resource" id="Armour_medium"]
 script = ExtResource("2_armour")
-hull_front_mm = 80.0
-hull_side_mm = 45.0
-hull_rear_mm = 30.0
-hull_roof_mm = 15.0
-turret_front_mm = 90.0
-turret_side_mm = 50.0
-turret_rear_mm = 40.0
+hull_front_mm = 45.0
+hull_side_mm = 35.0
+hull_rear_mm = 40.0
+hull_roof_mm = 20.0
+turret_front_mm = 70.0
+turret_side_mm = 52.0
+turret_rear_mm = 45.0
 turret_roof_mm = 20.0
+ricochet_angle_deg = 66.0
 
 [resource]
 script = ExtResource("1_chassis")
 id = &"medium"
-display_name = "Medium"
+display_name = "Medium (T-34-style)"
 kind = 1
+model_style = &"sloped"
 base = ExtResource("3_base")
-hull_size = Vector3(3.2, 1.4, 6.5)
-turret_radius_m = 1.2
-turret_height_m = 0.8
+hull_size = Vector3(3.1, 1.45, 6.2)
+turret_radius_m = 1.15
+turret_height_m = 0.75
 engine_kw = 400.0
-base_mass_kg = 28500.0
+base_mass_kg = 27500.0
 armour = SubResource("Armour_medium")
 guns = Array[ExtResource("4_gun_script")]([ExtResource("g0"), ExtResource("g1"), ExtResource("g2")])
 armour_packages = Array[ExtResource("5_pack_script")]([ExtResource("p0"), ExtResource("p1"), ExtResource("p2")])

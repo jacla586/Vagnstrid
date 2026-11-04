@@ -17,4 +17,7 @@ extends Resource
 ## A gun this big needs at least this turret radius (m).
 @export var min_turret_radius_m: float = 1.0
 @export var fire_sound: SoundSetData
+## Looks: a muzzle brake, and a turret variant the gun needs (e.g. box_turret).
+@export var muzzle_brake: bool = false
+@export var turret_variant: StringName = &""
 @export var cost: int = 50

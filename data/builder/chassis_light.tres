@@ -13,23 +13,25 @@
 
 [sub_resource type="Resource" id="Armour_light"]
 script = ExtResource("2_armour")
-hull_front_mm = 30.0
-hull_side_mm = 20.0
-hull_rear_mm = 15.0
+hull_front_mm = 25.0
+hull_side_mm = 15.0
+hull_rear_mm = 13.0
 hull_roof_mm = 10.0
-turret_front_mm = 35.0
-turret_side_mm = 20.0
+turret_front_mm = 25.0
+turret_side_mm = 15.0
 turret_rear_mm = 15.0
 turret_roof_mm = 10.0
+ricochet_angle_deg = 63.0
 
 [resource]
 script = ExtResource("1_chassis")
 id = &"light"
-display_name = "Light"
+display_name = "Light (BT-style)"
 kind = 0
+model_style = &"light"
 base = ExtResource("3_base")
-hull_size = Vector3(2.8, 1.2, 5.2)
-turret_radius_m = 0.95
+hull_size = Vector3(2.7, 1.25, 5.6)
+turret_radius_m = 0.9
 turret_height_m = 0.65
 engine_kw = 300.0
 base_mass_kg = 13000.0

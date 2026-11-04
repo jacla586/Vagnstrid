@@ -9,6 +9,8 @@ enum Kind { LIGHT, MEDIUM, HEAVY, TANK_DESTROYER }
 @export var id: StringName = &"medium"
 @export var display_name: String = "Medium"
 @export var kind: Kind = Kind.MEDIUM
+## TankModel style: light, sloped, boxy or heavy.
+@export var model_style: StringName = &"sloped"
 ## Everything not set by the builder (optics, suspension, MGs, squad, sounds...).
 @export var base: TankData
 
