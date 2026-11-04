@@ -73,8 +73,11 @@ shows on the minimap. This is what we test first.
   blocker) and fall back; losses to rifles: fall back. Mounted they refill one by one;
   wiped out, a full squad is back after `wipe_cooldown_s`. HUD: `SquadPanel`.
   Soldiers use `assets/models/soldier/soldier.glb` (CC-BY, KolosStudios, see its
-  CREDITS.md; uniform materials repainted green, one standing pose: kneeling squashes
-  it). Own team's squads show on the maps.
+  CREDITS.md; uniform materials repainted green) with animations (jog, crouch, death...)
+  from Quaternius' Universal Animation Library (CC0, `assets/models/ual/`), retargeted by
+  direction matching with `tools/bake_soldier_animations.gd` into
+  `assets/models/soldier/soldier_anims.res` (rerun if a model changes). Own team's
+  squads show on the maps.
   Network: clients send squad orders by reliable RPC (`rpc_squad_order`); the host
   sends all squads in a 10 Hz unreliable packet (`PACKET_SQUADS`, `Squad.write_net_state`,
   31 B + 4 B per soldier offset) and soldier-down/smoke/shot events by RPC; client
@@ -83,7 +86,7 @@ shows on the minimap. This is what we test first.
   when the tank stops (look ahead / towards an alert / the enemy, `find_position`
   with infantry costs), recall it when hurt, left behind or driving on; squad
   contacts reach the crew and (KothBots) its team. Decided rules: memory
-  `squad-rules`. Later: real animations (Quaternius UAL retarget).
+  `squad-rules`.
 - Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
   only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
 - Bots: `BotController` (extends `TargetTankController`, so patrols waypoints) with

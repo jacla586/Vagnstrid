@@ -69,7 +69,7 @@ const STANDING_SPEED: float = 0.4
 ## Puppets slide to the host's position this fast (1/s).
 const NET_FOLLOW_RATE: float = 10.0
 ## Kneeling soldiers' body height as a share of standing (hitbox).
-const KNEEL_HITBOX_SHARE: float = 0.6
+const KNEEL_HITBOX_SHARE: float = 0.55
 
 var tank: Tank
 var data: SquadData
@@ -85,6 +85,13 @@ var _soldiers: Array[Node3D] = []
 var _meshes: Array[Node3D] = []
 ## The body's height above the feet when standing (capsules sit on their middle).
 var _body_offset: float = 0.0
+## Per soldier: his model's AnimationPlayer (null for capsules) and what it plays.
+var _players: Array[AnimationPlayer] = []
+## Per soldier: where he stood last frame (world), for his real speed (soldiers are
+## children of the squad node, so they ride along when its point moves).
+var _last_pos: Array[Vector3] = []
+var _playing: Array[StringName] = []
+const ANIM_LIBRARY: StringName = &"squad"
 var _hitboxes: Array[SoldierHitbox] = []
 var _alive: Array[bool] = []
 var _down_time: Array[float] = []
@@ -407,14 +414,16 @@ func _move_soldiers(delta: float) -> void:
 			continue   # the fallen stay where they fell
 		var target: Vector3 = _place_of(i, moving_squad, side)
 		var soldier: Node3D = _soldiers[i]
-		var pos: Vector3 = soldier.global_position
+		var pos: Vector3 = _last_pos[i]
 		var to: Vector3 = _flat(target - pos)
 		var step: float = minf(to.length(), data.run_speed_mps * CATCH_UP_FACTOR * _pace[i] * delta)
-		var walking: bool = delta > 0.0 and step / delta > STANDING_SPEED
 		if step > 0.001:
 			pos += to.normalized() * step
 		pos.y = _ground_height(pos, global_position.y)
+		var speed: float = _flat(pos - _last_pos[i]).length() / delta if delta > 0.0 else 0.0
+		var walking: bool = speed > STANDING_SPEED
 		soldier.global_position = pos
+		_last_pos[i] = pos
 		var facing: Vector3 = to.normalized() if walking else _flat(pos - global_position)
 		if facing.length() < 0.1:
 			facing = _heading
@@ -424,7 +433,12 @@ func _move_soldiers(delta: float) -> void:
 				delta / maxf(data.stance_change_s, 0.01))
 		if (_kneel[i] >= 0.5) != was:
 			_size_hitbox(i)
-		var height_scale: float = lerpf(1.0, data.kneel_height_share, _kneel[i])
+		if _players[i] != null:
+			_animate(i, data.anim_move if walking else data.anim_hold,
+					speed / maxf(data.anim_move_speed_mps, 0.1) if walking else 1.0)
+		# Animated soldiers crouch by themselves; placeholders are squashed.
+		var height_scale: float = 1.0 if _players[i] != null \
+				else lerpf(1.0, data.kneel_height_share, _kneel[i])
 		_meshes[i].rotation = Vector3(0.0, _body_yaw(), 0.0)
 		_meshes[i].scale = _body_scale() * Vector3(1.0, height_scale, 1.0)
 		_meshes[i].position = Vector3(0.0, _body_offset * height_scale, 0.0)
@@ -450,6 +464,7 @@ func _snap_soldiers() -> void:
 			var p: Vector3 = _place_of(i, true, side)
 			p.y = _ground_height(p, global_position.y)
 			_soldiers[i].global_position = p
+			_last_pos[i] = p
 			_kneel[i] = 0.0
 			_size_hitbox(i)
 	_move_soldiers(0.0)
@@ -740,8 +755,11 @@ func _put_down(index: int, screamed: bool) -> void:
 	_alive[index] = false
 	_down_time[index] = 0.0
 	_hitboxes[index].set_active(false)
-	_meshes[index].rotation = Vector3(deg_to_rad(90.0), _body_yaw(), 0.0)
-	_meshes[index].position = Vector3(0.0, data.soldier_radius_m, 0.0)
+	if _players[index] != null:
+		_animate(index, data.anim_death, 1.0)
+	else:
+		_meshes[index].rotation = Vector3(deg_to_rad(90.0), _body_yaw(), 0.0)
+		_meshes[index].position = Vector3(0.0, data.soldier_radius_m, 0.0)
 	if screamed:
 		SoundFx.play_at(self, data.scream_sound, _soldiers[index].global_position + Vector3.UP)
 	soldier_down.emit(index, screamed)
@@ -940,6 +958,15 @@ func _add_soldier(i: int) -> void:
 	var mesh: Node3D = _make_body()
 	mesh.position = Vector3(0.0, _body_offset, 0.0)
 	root.add_child(mesh)
+	var player: AnimationPlayer = null
+	if data.model != null and data.model_animations != null:
+		var found: Array[Node] = mesh.find_children("*", "AnimationPlayer", true, false)
+		if not found.is_empty():
+			player = found[0]
+			player.add_animation_library(ANIM_LIBRARY, data.model_animations)
+	_players.append(player)
+	_last_pos.append(Vector3.ZERO)
+	_playing.append(&"")
 	var hitbox := SoldierHitbox.new()
 	hitbox.squad = self
 	hitbox.index = i
@@ -990,12 +1017,23 @@ func _make_body() -> Node3D:
 				paint.albedo_color = shades[mini(k, shades.size() - 1)]
 				mi.set_surface_override_material(s, paint)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	if data.model_animation != &"":
+	if data.model_animation != &"" and data.model_animations == null:
 		for node: Node in body.find_children("*", "AnimationPlayer", true, false):
 			var player := node as AnimationPlayer
 			if player.has_animation(data.model_animation):
 				player.play(data.model_animation)
 	return body
+
+
+## Plays `anim` (from the squad library) on soldier `i`, blending, unless it already is.
+func _animate(i: int, anim: StringName, speed: float) -> void:
+	var player: AnimationPlayer = _players[i]
+	var full := StringName("%s/%s" % [ANIM_LIBRARY, anim])
+	if _playing[i] != anim:
+		_playing[i] = anim
+		if player.has_animation(full):
+			player.play(full, data.anim_blend_s)
+	player.speed_scale = clampf(speed, 0.5, 2.0)
 
 
 func _body_scale() -> Vector3:

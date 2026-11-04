@@ -42,8 +42,18 @@ extends Resource
 @export var model_yaw_deg: float = 180.0
 ## Model materials repainted in the uniform colour (lighter and darker shades).
 @export var uniform_materials: PackedStringArray = PackedStringArray()
-## Its pose animation, if any (played once to set the pose).
+## Its pose animation, if any (played once to set the pose; without model_animations).
 @export var model_animation: StringName = &""
+## Animations for the model (tools/bake_soldier_animations.gd). With them soldiers run,
+## crouch and fall instead of being squashed or tipped over.
+@export var model_animations: AnimationLibrary
+@export var anim_move: StringName = &"jog"
+@export var anim_hold: StringName = &"crouch_idle"
+@export var anim_death: StringName = &"death"
+## The move animation looks right at this speed; faster soldiers play it faster (m/s).
+@export var anim_move_speed_mps: float = 3.2
+## Blend between animations (s).
+@export var anim_blend_s: float = 0.25
 ## Uniform colour: green or brown, naturally hard to see.
 @export var uniform_color: Color = Color(0.29, 0.36, 0.2)
 ## Soldier size (m).

@@ -9,6 +9,7 @@
 [ext_resource type="Resource" path="res://data/sounds/at_launch.tres" id="7_at_snd"]
 [ext_resource type="Resource" path="res://data/sounds/wilhelm.tres" id="8_scream"]
 [ext_resource type="PackedScene" path="res://assets/models/soldier/soldier.glb" id="9_model"]
+[ext_resource type="AnimationLibrary" path="res://assets/models/soldier/soldier_anims.res" id="10_anims"]
 
 [resource]
 script = ExtResource("1_squad")
@@ -27,7 +28,7 @@ soldier_radius_m = 0.3
 kneel_height_share = 0.6
 stance_change_s = 0.5
 eye_height_standing_m = 1.65
-eye_height_kneeling_m = 1.05
+eye_height_kneeling_m = 0.9
 view_fov_deg = 70.0
 binocular_fov_deg = 10.0
 view_range_m = 400.0
@@ -69,3 +70,9 @@ model_scale = 0.065
 model_yaw_deg = 180.0
 uniform_materials = PackedStringArray("Material.003", "Material.002")
 model_animation = &"Armature|Standing"
+model_animations = ExtResource("10_anims")
+anim_move = &"jog"
+anim_hold = &"crouch_idle"
+anim_death = &"death"
+anim_move_speed_mps = 3.2
+anim_blend_s = 0.25
