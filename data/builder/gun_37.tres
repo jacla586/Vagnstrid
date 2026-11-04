@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="GunData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/gun_data.gd" id="1_gun"]
+[ext_resource type="Script" path="res://scripts/data/shell_data.gd" id="2_shell"]
+[ext_resource type="Resource" path="res://data/shells/ap_37.tres" id="3_ap"]
+[ext_resource type="Resource" path="res://data/shells/he_37.tres" id="4_he"]
+[ext_resource type="Resource" path="res://data/sounds/cannon_fire_small.tres" id="5_snd"]
+
+[resource]
+script = ExtResource("1_gun")
+id = &"gun_37"
+display_name = "37 mm"
+caliber_mm = 37.0
+ammo = Array[ExtResource("2_shell")]([ExtResource("3_ap"), ExtResource("4_he")])
+reload_time_s = 2.5
+recoil_impulse_ns = 9000.0
+mass_kg = 300.0
+gun_length_m = 2.2
+barrel_radius_m = 0.045
+min_turret_radius_m = 0.8
+fire_sound = ExtResource("5_snd")
+cost = 20

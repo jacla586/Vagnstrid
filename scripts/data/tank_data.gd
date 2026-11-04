@@ -132,6 +132,21 @@ extends Resource
 @export var roof_mg: MachineGunData
 
 
+@export_group("Geometry")
+## Hull with tracks: width, height, length (m). Today's medium tank by default.
+@export var hull_size: Vector3 = Vector3(3.2, 1.4, 6.5)
+@export var turret_radius_m: float = 1.2
+@export var turret_height_m: float = 0.8
+## Barrel length from the gun pivot and its outer radius (m).
+@export var gun_length_m: float = 3.6
+@export var barrel_radius_m: float = 0.08
+
+@export_group("Camouflage")
+## Enemies take this many times longer to spot the tank (1 = no camouflage).
+@export var camo_spot_factor: float = 1.0
+## Builder bookkeeping: what the tank cost in the garage (0 = not built).
+@export var cost: int = 0
+
 @export_group("Infantry")
 ## The squad riding on this tank. Null = none.
 @export var squad: SquadData

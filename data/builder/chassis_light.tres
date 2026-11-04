@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="ChassisData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/chassis_data.gd" id="1_chassis"]
+[ext_resource type="Script" path="res://scripts/data/armour_data.gd" id="2_armour"]
+[ext_resource type="Resource" path="res://data/tanks/player_medium.tres" id="3_base"]
+[ext_resource type="Script" path="res://scripts/data/gun_data.gd" id="4_gun_script"]
+[ext_resource type="Script" path="res://scripts/data/armour_package_data.gd" id="5_pack_script"]
+[ext_resource type="Resource" path="res://data/builder/gun_37.tres" id="g0"]
+[ext_resource type="Resource" path="res://data/builder/gun_57.tres" id="g1"]
+[ext_resource type="Resource" path="res://data/builder/armour_light.tres" id="p0"]
+[ext_resource type="Resource" path="res://data/builder/armour_standard.tres" id="p1"]
+[ext_resource type="Resource" path="res://data/builder/armour_heavy.tres" id="p2"]
+
+[sub_resource type="Resource" id="Armour_light"]
+script = ExtResource("2_armour")
+hull_front_mm = 30.0
+hull_side_mm = 20.0
+hull_rear_mm = 15.0
+hull_roof_mm = 10.0
+turret_front_mm = 35.0
+turret_side_mm = 20.0
+turret_rear_mm = 15.0
+turret_roof_mm = 10.0
+
+[resource]
+script = ExtResource("1_chassis")
+id = &"light"
+display_name = "Light"
+kind = 0
+base = ExtResource("3_base")
+hull_size = Vector3(2.8, 1.2, 5.2)
+turret_radius_m = 0.95
+turret_height_m = 0.65
+engine_kw = 300.0
+base_mass_kg = 13000.0
+armour = SubResource("Armour_light")
+guns = Array[ExtResource("4_gun_script")]([ExtResource("g0"), ExtResource("g1")])
+armour_packages = Array[ExtResource("5_pack_script")]([ExtResource("p0"), ExtResource("p1"), ExtResource("p2")])
+cost = 100

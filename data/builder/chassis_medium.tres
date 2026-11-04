@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="ChassisData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/chassis_data.gd" id="1_chassis"]
+[ext_resource type="Script" path="res://scripts/data/armour_data.gd" id="2_armour"]
+[ext_resource type="Resource" path="res://data/tanks/player_medium.tres" id="3_base"]
+[ext_resource type="Script" path="res://scripts/data/gun_data.gd" id="4_gun_script"]
+[ext_resource type="Script" path="res://scripts/data/armour_package_data.gd" id="5_pack_script"]
+[ext_resource type="Resource" path="res://data/builder/gun_57.tres" id="g0"]
+[ext_resource type="Resource" path="res://data/builder/gun_75.tres" id="g1"]
+[ext_resource type="Resource" path="res://data/builder/gun_75l.tres" id="g2"]
+[ext_resource type="Resource" path="res://data/builder/armour_light.tres" id="p0"]
+[ext_resource type="Resource" path="res://data/builder/armour_standard.tres" id="p1"]
+[ext_resource type="Resource" path="res://data/builder/armour_heavy.tres" id="p2"]
+
+[sub_resource type="Resource" id="Armour_medium"]
+script = ExtResource("2_armour")
+hull_front_mm = 80.0
+hull_side_mm = 45.0
+hull_rear_mm = 30.0
+hull_roof_mm = 15.0
+turret_front_mm = 90.0
+turret_side_mm = 50.0
+turret_rear_mm = 40.0
+turret_roof_mm = 20.0
+
+[resource]
+script = ExtResource("1_chassis")
+id = &"medium"
+display_name = "Medium"
+kind = 1
+base = ExtResource("3_base")
+hull_size = Vector3(3.2, 1.4, 6.5)
+turret_radius_m = 1.2
+turret_height_m = 0.8
+engine_kw = 400.0
+base_mass_kg = 28500.0
+armour = SubResource("Armour_medium")
+guns = Array[ExtResource("4_gun_script")]([ExtResource("g0"), ExtResource("g1"), ExtResource("g2")])
+armour_packages = Array[ExtResource("5_pack_script")]([ExtResource("p0"), ExtResource("p1"), ExtResource("p2")])
+cost = 160

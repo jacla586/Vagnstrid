@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ArmourPackageData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/armour_package_data.gd" id="1_pack"]
+
+[resource]
+script = ExtResource("1_pack")
+id = &"light"
+display_name = "Light armour"
+front_factor = 0.8
+side_factor = 0.8
+rear_factor = 0.85
+roof_factor = 0.9
+mass_fraction = -0.08
+size_factor = 0.98
+cost = 0
