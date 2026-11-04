@@ -49,3 +49,16 @@ extends Resource
 ## Penalty per 100 m of driving to the spot.
 @export var w_travel: float = 0.5
 
+@export_group("Bounding")
+## Closer than this to the objective's edge (or after contact), pairs move up in turns:
+## one watches from a position while the other drives to the next one (m).
+@export var bound_start_m: float = 300.0
+## Each move goes at most this far forward (m).
+@export var bound_length_m: float = 200.0
+## The watcher goes anyway after this long (s): keep moving.
+@export var overwatch_max_s: float = 15.0
+## A bot without a partner halts this long between its own moves (s).
+@export var solo_halt_s: float = 5.0
+## Contact this recent switches to bounding even far from the objective (s).
+@export var bound_after_contact_s: float = 30.0
+

@@ -80,7 +80,12 @@ shows on the minimap. This is what we test first.
   scores candidate spots for cover, hull down (grid heights towards the threat), sight
   lines from the commander's eye and spacing from teammates (weights in TacticsData);
   KothBots uses it with `BotController.get_threat_direction()` (own knowledge only;
-  default: the enemy's side of the zone). Without a baked grid bots drive
+  default: the enemy's side of the zone). Bounding (in KothBots, not BotGroup, so
+  Hackerstad is unchanged): near the zone or after contact a team's bots pair up and
+  move in turns (one watches, one drives to the next `find_position` spot that must
+  get closer; the watcher goes anyway after `overwatch_max_s`, a move is never cut
+  short). Long drives go by a random flank point (teammates prefer different flanks)
+  so routes vary. Without a baked grid bots drive
   straight. Baked so far: vidingsjo. Spawns avoid blocked cells.
 - `BotGroup` moves bots together: column along a route, on the first contact
   (shared to all members) line abreast towards an objective, short halts to fire.

@@ -129,8 +129,15 @@ func order_move(points: Array[Vector3], throttle: float) -> void:
 ## Drives to `goal` along a path round houses, water and steep ground (the map's
 ## tactical grid), then stops. Without a baked grid: straight there, as order_move.
 ## `urgent` = no scouting stops on the way (the zone is closing, back from a respawn...).
-func order_path(goal: Vector3, throttle: float, urgent: bool = false) -> void:
-	var points: Array[Vector3] = _plan_path(goal)
+## `via` = go by this point first (a flank, so not every bot takes the same way).
+func order_path(goal: Vector3, throttle: float, urgent: bool = false,
+		via: Vector3 = Vector3.INF) -> void:
+	var points: Array[Vector3] = []
+	if via != Vector3.INF and _tactical_map() != null and not _tactical_map().is_blocked(via):
+		points = _plan_path(via, tank.global_position)
+		points.append_array(_plan_path(goal, via))
+	else:
+		points = _plan_path(goal)
 	order_move(points, throttle)
 	_path_goal = goal
 	_path_throttle = throttle
@@ -168,6 +175,11 @@ func get_threat_direction() -> Vector3:
 	return dir.normalized() if dir.length() > 0.1 else Vector3.ZERO
 
 
+## Seconds since the crew last had contact (an enemy seen, reported, or a hit).
+func get_time_since_contact() -> float:
+	return _since_contact
+
+
 func is_scouting() -> bool:
 	return _scout_wait > 0.0
 
@@ -177,11 +189,13 @@ func _tactics() -> TacticsData:
 			else TacticalMap.DEFAULT_TACTICS
 
 
-func _plan_path(goal: Vector3) -> Array[Vector3]:
+func _plan_path(goal: Vector3, from: Vector3 = Vector3.INF) -> Array[Vector3]:
 	var points: Array[Vector3] = []
 	var map: TacticalMap = _tactical_map()
+	if from == Vector3.INF:
+		from = tank.global_position
 	if map != null:
-		for p: Vector3 in map.find_path(tank.global_position, goal, _avoid_cells):
+		for p: Vector3 in map.find_path(from, goal, _avoid_cells):
 			points.append(p)
 	if points.is_empty():
 		points.append(goal)

@@ -157,9 +157,13 @@ func scout_points(from: Vector3, path: PackedVector3Array, tactics: TacticsData)
 ## scores cover, hull-down ground (from the grid's heights), sight lines from the
 ## commander's eye, spacing from `friends` and the drive from `from`. Weights in
 ## `tactics`. Returns `center` (on the ground) if no candidate is drivable.
+## With `min_progress` > 0 only spots at least that much closer (flat) to `progress_to`
+## than `from` count (a bound must get somewhere).
 func find_position(world: World3D, center: Vector3, radius: float, threat_dir: Vector3,
 		look_at: Vector3, look_spread: float, from: Vector3, friends: PackedVector3Array,
-		tactics: TacticsData, rng: RandomNumberGenerator, exclude: Array[RID] = []) -> Vector3:
+		tactics: TacticsData, rng: RandomNumberGenerator, exclude: Array[RID] = [],
+		progress_to: Vector3 = Vector3.ZERO, min_progress: float = 0.0) -> Vector3:
+	var start_dist: float = Vector2(progress_to.x - from.x, progress_to.z - from.z).length()
 	var threat := Vector3(threat_dir.x, 0.0, threat_dir.z)
 	threat = threat.normalized() if threat.length() > 0.01 else Vector3.FORWARD
 	var side: Vector3 = threat.cross(Vector3.UP)
@@ -176,6 +180,9 @@ func find_position(world: World3D, center: Vector3, radius: float, threat_dir: V
 		if not grid.has_cell(c) or grid.flags[grid.index_of(c)] & TacticalGridData.BLOCKED:
 			continue
 		p.y = grid.heights[grid.index_of(c)]
+		if min_progress > 0.0 and start_dist - Vector2(progress_to.x - p.x,
+				progress_to.z - p.z).length() < min_progress:
+			continue
 		var score: float = _position_score(world, p, threat, looks, from, friends, tactics, exclude)
 		if score > best_score:
 			best_score = score

@@ -6,6 +6,13 @@ extends Node
 ## moves or shrinks past them. Knocked-out bots come back at their team's current spawn
 ## after KothData.bot_respawn_delay_s, instead of being repaired where they died.
 ## Bots still spot and fight by their own rules on the way. Host/offline only.
+##
+## Bounding: near the zone (TacticsData.bound_start_m from its edge) or after contact,
+## the bots of a team pair up and move in turns: one holds and watches while the other
+## drives to the next good position (find_position) at most bound_length_m ahead, then
+## they swap (the watcher goes anyway after overwatch_max_s). A bot without a partner
+## alternates a short halt and a move. Not while hurrying (between zones, just
+## respawned). Inside the zone the usual spot-and-hold orders take over.
 
 ## Points are picked within this share of the radius, so bots end up well inside.
 const INNER_SHARE: float = 0.6
@@ -22,6 +29,20 @@ const HURRY_BEFORE_CLOSE_S: float = 60.0
 ## Positions in the zone watch this share of the radius out from the centre, towards
 ## the enemy: the zone's far edge, where they come in.
 const LOOK_SHARE: float = 0.8
+## Bounding roles.
+const MOVER: int = 1
+const WATCHER: int = 2
+## A bound must bring the tank at least this share of bound_length_m closer to the zone.
+const BOUND_MIN_PROGRESS: float = 0.4
+## A bot in the zone only starts bounding again this far outside its inner part (m).
+const BOUND_REENTER_M: float = 40.0
+## Long drives (further than this, m) go by a flank point: left, centre or right of the
+## straight line, FLANK_OFFSET_MIN/MAX_M aside, FLANK_ALONG of the way. Teammates
+## prefer different flanks, so the team doesn't all use one way the enemy can watch.
+const FLANK_MIN_DRIVE_M: float = 400.0
+const FLANK_OFFSET_MIN_M: float = 150.0
+const FLANK_OFFSET_MAX_M: float = 250.0
+const FLANK_ALONG: float = 0.4
 
 @export var mode: KothMode
 
@@ -32,6 +53,11 @@ var _ordered_radius: Dictionary = {}  # BotController -> zone radius when last o
 var _depart: Dictionary = {}  # BotController -> seconds until it leaves the spawn
 var _goals: Dictionary = {}  # BotController -> where it was last sent
 var _respawned: Dictionary = {}  # BotController -> true until its first order after a respawn
+## Bounding: role per bot (MOVER/WATCHER), its partner (or null), seconds in the role.
+var _role: Dictionary = {}
+var _partner: Dictionary = {}
+var _role_time: Dictionary = {}
+var _flank: Dictionary = {}  # BotController -> -1 left, 0 centre, 1 right (last long drive)
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
@@ -60,6 +86,7 @@ func _find_bots() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_update_bounding(delta)
 	for bot: BotController in _bots:
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
 			continue
@@ -75,6 +102,8 @@ func _physics_process(delta: float) -> void:
 			_depart.erase(bot)
 			_order_into_zone(bot)
 			continue
+		if _role.has(bot):
+			continue   # moving up in turns (_update_bounding)
 		var radius: float = mode.get_radius()
 		var shrunk: bool = float(_ordered_radius.get(bot, radius)) > radius / INNER_SHARE
 		if bot.has_orders_left():
@@ -102,6 +131,126 @@ func _depart_later(bot: BotController, delay: float) -> void:
 	_depart[bot] = delay
 
 
+# --- Bounding ------------------------------------------------------------------------
+
+func _update_bounding(delta: float) -> void:
+	var teams: Dictionary = {}  # team -> bots that should bound
+	for bot: BotController in _bots:
+		if _wants_bounding(bot):
+			if not teams.has(bot.tank.team):
+				teams[bot.tank.team] = []
+			(teams[bot.tank.team] as Array).append(bot)
+		elif _role.has(bot):
+			_leave_bounding(bot)
+	for team: int in teams:
+		var group: Array = teams[team]
+		group.sort_custom(func(a: BotController, b: BotController) -> bool:
+				return a.get_instance_id() < b.get_instance_id())
+		var i: int = 0
+		while i < group.size():
+			var a: BotController = group[i]
+			var b: BotController = group[i + 1] if i + 1 < group.size() else null
+			_step_pair(a, b, delta)
+			i += 2
+
+
+func _wants_bounding(bot: BotController) -> bool:
+	if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.is_knocked_out():
+		return false
+	if _respawn.has(bot) or _depart.has(bot) or _respawned.has(bot) or _hurry():
+		return false
+	var c: Vector3 = mode.get_center()
+	var to_edge: float = Vector2(bot.tank.global_position.x - c.x,
+			bot.tank.global_position.z - c.z).length() - mode.get_radius() * INNER_SHARE
+	if to_edge <= 0.0:
+		return false   # in the zone: the usual spot-and-hold orders
+	if not _role.has(bot) and to_edge < BOUND_REENTER_M:
+		return false   # just outside (e.g. the zone shrank past it): no flip-flopping
+	var t: TacticsData = _tactics_of(bot)
+	return to_edge < t.bound_start_m or bot.get_time_since_contact() < t.bound_after_contact_s
+
+
+## One pair (b may be null: a bot on its own) moving up in turns.
+func _step_pair(a: BotController, b: BotController, delta: float) -> void:
+	if _partner.get(a, a) != b or not _role.has(a) or (b != null and not _role.has(b)):
+		# New pair (or partner changed): a moves first, b watches.
+		_partner[a] = b
+		_start_move(a)
+		if b != null:
+			_partner[b] = a
+			_start_watch(b)
+	for bot: BotController in [a, b]:
+		if bot != null:
+			_role_time[bot] = float(_role_time.get(bot, 0.0)) + delta
+	var t: TacticsData = _tactics_of(a)
+	if b == null:
+		# Alone: move, then a short halt, then move again.
+		if int(_role[a]) == MOVER and not a.has_orders_left():
+			_start_watch(a)
+		elif int(_role[a]) == WATCHER and float(_role_time[a]) >= t.solo_halt_s:
+			_start_move(a)
+		return
+	# Each bot: move to its spot, then watch. A watcher goes when its partner has
+	# arrived (and starts watching), or after overwatch_max_s even if the partner is
+	# still on its way: a move is never cut short.
+	for pair: Array in [[a, b], [b, a]]:
+		var bot: BotController = pair[0]
+		var other: BotController = pair[1]
+		if int(_role[bot]) == MOVER and not bot.has_orders_left():
+			_start_watch(bot)
+			if int(_role[other]) == WATCHER and float(_role_time[other]) > 0.0:
+				_start_move(other)
+	for bot: BotController in [a, b]:
+		if int(_role[bot]) == WATCHER and float(_role_time[bot]) >= t.overwatch_max_s:
+			_start_move(bot)
+
+
+func _start_move(bot: BotController) -> void:
+	_role[bot] = MOVER
+	_role_time[bot] = 0.0
+	var goal: Vector3 = _bound_spot(bot)
+	_goals[bot] = goal
+	bot.order_path(goal, ORDER_THROTTLE, true)
+
+
+func _start_watch(bot: BotController) -> void:
+	_role[bot] = WATCHER
+	_role_time[bot] = 0.0
+	bot.order_move([bot.tank.global_position], 0.0)
+
+
+func _leave_bounding(bot: BotController) -> void:
+	var partner: Variant = _partner.get(bot)
+	_role.erase(bot)
+	_partner.erase(bot)
+	_role_time.erase(bot)
+	if partner != null and is_instance_valid(partner) and _partner.get(partner) == bot:
+		_partner[partner] = null   # re-paired on the next update
+	if is_instance_valid(bot) and is_instance_valid(bot.tank) and not bot.tank.is_knocked_out():
+		_order_into_zone(bot)
+
+
+## The next position for a bound: a good spot (cover, hull down, sight towards the
+## enemy) about bound_length_m towards the zone, or in the zone if that is closer.
+func _bound_spot(bot: BotController) -> Vector3:
+	var t: TacticsData = _tactics_of(bot)
+	var c: Vector3 = mode.get_center()
+	var p: Vector3 = bot.tank.global_position
+	var to_zone := Vector3(c.x - p.x, 0.0, c.z - p.z)
+	var inner: float = mode.get_radius() * INNER_SHARE
+	if to_zone.length() - inner <= t.bound_length_m:
+		return _choose_spot(bot, inner)
+	var leg_center: Vector3 = p + to_zone.normalized() * t.bound_length_m * 0.8
+	var spot: Vector3 = _choose_spot(bot, t.bound_length_m * 0.35, leg_center,
+			t.bound_length_m * BOUND_MIN_PROGRESS)
+	return spot
+
+
+func _tactics_of(bot: BotController) -> TacticsData:
+	return bot.bot_data.tactics if bot.bot_data != null and bot.bot_data.tactics != null \
+			else TacticalMap.DEFAULT_TACTICS
+
+
 ## No time for scouting stops: racing to the next zone, or the open one closes soon.
 func _hurry() -> bool:
 	if not mode.is_zone_open():
@@ -121,18 +270,52 @@ func _order_into_zone(bot: BotController) -> void:
 	_respawned.erase(bot)
 	var goal: Vector3 = _choose_spot(bot, radius * INNER_SHARE)
 	_goals[bot] = goal
-	bot.order_path(goal, ORDER_THROTTLE, urgent)
+	bot.order_path(goal, ORDER_THROTTLE, urgent, _flank_point(bot, goal))
 	_ordered_radius[bot] = radius
 	_hold[bot] = _rng.randf_range(HOLD_MIN_S, HOLD_MAX_S)
 
 
+## A point to drive by on a long way to `goal` (a random flank, preferring one no
+## teammate took), or INF for a straight path.
+func _flank_point(bot: BotController, goal: Vector3) -> Vector3:
+	var from: Vector3 = bot.tank.global_position
+	var line := Vector3(goal.x - from.x, 0.0, goal.z - from.z)
+	if line.length() < FLANK_MIN_DRIVE_M:
+		return Vector3.INF
+	var taken: Array[int] = []
+	for other: BotController in _bots:
+		if other != bot and is_instance_valid(other) and is_instance_valid(other.tank) \
+				and other.tank.team == bot.tank.team and _flank.has(other):
+			taken.append(int(_flank[other]))
+	var choices: Array[int] = []
+	for f: int in [-1, 0, 1]:
+		if not taken.has(f):
+			choices.append(f)
+	if choices.is_empty():
+		choices = [-1, 0, 1]
+	var flank: int = choices[_rng.randi_range(0, choices.size() - 1)]
+	_flank[bot] = flank
+	if flank == 0:
+		return Vector3.INF
+	var side: Vector3 = line.normalized().cross(Vector3.UP) * float(flank)
+	var via: Vector3 = from + line * FLANK_ALONG \
+			+ side * _rng.randf_range(FLANK_OFFSET_MIN_M, FLANK_OFFSET_MAX_M)
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+	if map != null and map.is_blocked(via):
+		return Vector3.INF
+	return via
+
+
 ## A good spot in the zone (cover, hull down, sight towards the enemy, apart from
 ## teammates) with the tactical grid; a random point without one.
-func _choose_spot(bot: BotController, radius: float) -> Vector3:
+## `min_progress` > 0: the spot must be at least that much closer to the zone.
+func _choose_spot(bot: BotController, radius: float, around: Vector3 = Vector3.INF,
+		min_progress: float = 0.0) -> Vector3:
 	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
 	if map == null:
 		return _random_point(radius)
-	var center: Vector3 = mode.get_center()
+	var zone_center: Vector3 = mode.get_center()
+	var center: Vector3 = zone_center if around == Vector3.INF else around
 	var threat: Vector3 = bot.get_threat_direction()
 	if threat == Vector3.ZERO:
 		# Nothing known: the enemy comes from its own side of the zone.
@@ -148,11 +331,11 @@ func _choose_spot(bot: BotController, radius: float) -> Vector3:
 				friends.append(_goals[other])
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		exclude.append((node as Tank).get_rid())
-	var look_at: Vector3 = center + threat * mode.get_radius() * LOOK_SHARE
-	var tactics: TacticsData = bot.bot_data.tactics if bot.bot_data != null and bot.bot_data.tactics != null \
-			else TacticalMap.DEFAULT_TACTICS
+	var look_at: Vector3 = zone_center + threat * mode.get_radius() * LOOK_SHARE
+	var tactics: TacticsData = _tactics_of(bot)
 	return map.find_position(mode.get_world_3d(), center, radius, threat, look_at,
-			mode.get_radius() * 1.5, bot.tank.global_position, friends, tactics, _rng, exclude)
+			mode.get_radius() * 1.5, bot.tank.global_position, friends, tactics, _rng, exclude,
+			zone_center, min_progress)
 
 
 ## Random point inside `radius` of the zone centre, on land, at ground height.
