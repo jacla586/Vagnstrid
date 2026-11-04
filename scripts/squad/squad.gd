@@ -64,7 +64,10 @@ var _path: Array[Vector3] = []
 var _goal: Vector3 = Vector3.ZERO
 var _heading: Vector3 = Vector3.FORWARD
 var _soldiers: Array[Node3D] = []
-var _meshes: Array[MeshInstance3D] = []
+## Each soldier's visible body (model or capsule), scaled when kneeling.
+var _meshes: Array[Node3D] = []
+## The body's height above the feet when standing (capsules sit on their middle).
+var _body_offset: float = 0.0
 var _hitboxes: Array[SoldierHitbox] = []
 var _alive: Array[bool] = []
 var _down_time: Array[float] = []
@@ -381,9 +384,9 @@ func _place_soldiers(delta: float) -> void:
 		# Hedgehog: kneeling, each soldier watches his own direction all round.
 		var facing: Vector3 = _heading.rotated(Vector3.UP, TAU * i / maxf(_soldiers.size(), 1) * _kneel)
 		soldier.look_at(p + facing, Vector3.UP)
-		_meshes[i].rotation = Vector3.ZERO
-		_meshes[i].scale = Vector3(1.0, height_scale, 1.0)
-		_meshes[i].position = Vector3(0.0, data.soldier_height_m * height_scale * 0.5, 0.0)
+		_meshes[i].rotation = Vector3(0.0, _body_yaw(), 0.0)
+		_meshes[i].scale = _body_scale() * Vector3(1.0, height_scale, 1.0)
+		_meshes[i].position = Vector3(0.0, _body_offset * height_scale, 0.0)
 
 
 func _eye_height() -> float:
@@ -631,7 +634,7 @@ func _put_down(index: int, screamed: bool) -> void:
 	_alive[index] = false
 	_down_time[index] = 0.0
 	_hitboxes[index].set_active(false)
-	_meshes[index].rotation = Vector3(deg_to_rad(90.0), 0.0, 0.0)
+	_meshes[index].rotation = Vector3(deg_to_rad(90.0), _body_yaw(), 0.0)
 	_meshes[index].position = Vector3(0.0, data.soldier_radius_m, 0.0)
 	if screamed:
 		SoundFx.play_at(self, data.scream_sound, _soldiers[index].global_position + Vector3.UP)
@@ -814,16 +817,8 @@ func net_show_shot(kind: int, from: Vector3, velocity: Vector3) -> void:
 func _add_soldier(i: int) -> void:
 	var root := Node3D.new()
 	root.name = "Soldier%d" % i
-	var mesh := MeshInstance3D.new()
-	var capsule := CapsuleMesh.new()
-	capsule.height = data.soldier_height_m
-	capsule.radius = data.soldier_radius_m
-	mesh.mesh = capsule
-	var material := StandardMaterial3D.new()
-	material.albedo_color = data.uniform_color
-	material.roughness = 0.9
-	mesh.material_override = material
-	mesh.position = Vector3(0.0, data.soldier_height_m * 0.5, 0.0)
+	var mesh: Node3D = _make_body()
+	mesh.position = Vector3(0.0, _body_offset, 0.0)
 	root.add_child(mesh)
 	var hitbox := SoldierHitbox.new()
 	hitbox.squad = self
@@ -839,6 +834,51 @@ func _add_soldier(i: int) -> void:
 	_burst_left.append(0)
 	_shot_timer.append(0.0)
 	_size_hitboxes()
+
+
+## The soldier model in the uniform colour, or a capsule without a model.
+func _make_body() -> Node3D:
+	if data.model == null:
+		_body_offset = data.soldier_height_m * 0.5
+		var mesh := MeshInstance3D.new()
+		var capsule := CapsuleMesh.new()
+		capsule.height = data.soldier_height_m
+		capsule.radius = data.soldier_radius_m
+		mesh.mesh = capsule
+		var material := StandardMaterial3D.new()
+		material.albedo_color = data.uniform_color
+		material.roughness = 0.9
+		mesh.material_override = material
+		return mesh
+	_body_offset = 0.0
+	var body: Node3D = data.model.instantiate()
+	body.scale = _body_scale()
+	body.rotation = Vector3(0.0, _body_yaw(), 0.0)
+	var shades: Array[Color] = [data.uniform_color.lightened(0.12), data.uniform_color.darkened(0.15)]
+	for node: Node in body.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		for s: int in mi.mesh.get_surface_count():
+			var mat: Material = mi.mesh.surface_get_material(s)
+			var k: int = data.uniform_materials.find(mat.resource_name if mat != null else "")
+			if k >= 0 and mat is StandardMaterial3D:
+				var paint := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
+				paint.albedo_color = shades[mini(k, shades.size() - 1)]
+				mi.set_surface_override_material(s, paint)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	if data.model_animation != &"":
+		for node: Node in body.find_children("*", "AnimationPlayer", true, false):
+			var player := node as AnimationPlayer
+			if player.has_animation(data.model_animation):
+				player.play(data.model_animation)
+	return body
+
+
+func _body_scale() -> Vector3:
+	return Vector3.ONE * (data.model_scale if data.model != null else 1.0)
+
+
+func _body_yaw() -> float:
+	return deg_to_rad(data.model_yaw_deg) if data.model != null else 0.0
 
 
 func _size_hitboxes() -> void:

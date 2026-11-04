@@ -34,6 +34,16 @@ extends Resource
 ## Field of view through the leader's eyes, and through his binoculars (degrees).
 @export var view_fov_deg: float = 70.0
 @export var binocular_fov_deg: float = 10.0
+## Soldier model (glTF scene). Null = placeholder capsules.
+@export var model: PackedScene
+## Scale and turn (degrees) to make the model soldier_height_m tall, feet at the
+## origin, facing -Z.
+@export var model_scale: float = 0.065
+@export var model_yaw_deg: float = 180.0
+## Model materials repainted in the uniform colour (lighter and darker shades).
+@export var uniform_materials: PackedStringArray = PackedStringArray()
+## Its pose animation, if any (played once to set the pose).
+@export var model_animation: StringName = &""
 ## Uniform colour: green or brown, naturally hard to see.
 @export var uniform_color: Color = Color(0.29, 0.36, 0.2)
 ## Soldier size (m).

@@ -8,6 +8,7 @@
 [ext_resource type="Resource" path="res://data/sounds/rifle_shot.tres" id="6_rifle_snd"]
 [ext_resource type="Resource" path="res://data/sounds/at_launch.tres" id="7_at_snd"]
 [ext_resource type="Resource" path="res://data/sounds/wilhelm.tres" id="8_scream"]
+[ext_resource type="PackedScene" path="res://assets/models/soldier/soldier.glb" id="9_model"]
 
 [resource]
 script = ExtResource("1_squad")
@@ -63,3 +64,8 @@ wipe_cooldown_s = 60.0
 body_time_s = 20.0
 scream_chance = 0.1
 scream_sound = ExtResource("8_scream")
+model = ExtResource("9_model")
+model_scale = 0.065
+model_yaw_deg = 180.0
+uniform_materials = PackedStringArray("Material.003", "Material.002")
+model_animation = &"Armature|Standing"
