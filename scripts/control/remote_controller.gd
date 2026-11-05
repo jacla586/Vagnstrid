@@ -5,6 +5,9 @@ extends Node
 ## arrives for STALE_S, the tank stops and holds fire.
 
 const STALE_S: float = 0.5
+## One-shot actions the client sends by reliable RPC (rpc_tank_action).
+const ACTION_SMOKE: int = 1
+const ACTION_ABANDON: int = 2
 
 @export var tank: Tank
 
@@ -14,6 +17,14 @@ var _wanted_ammo: int = -1
 var _spot_seq: int = -1
 var _spot_pending: bool = false
 var _age: float = 999.0
+var _smoke_pending: bool = false
+var _abandon_pending: bool = false
+
+
+func request_action(kind: int) -> void:
+	match kind:
+		ACTION_SMOKE: _smoke_pending = true
+		ACTION_ABANDON: _abandon_pending = true
 
 
 func receive(buf: StreamPeerBuffer) -> void:
@@ -44,4 +55,8 @@ func _physics_process(delta: float) -> void:
 	c.spot = _spot_pending
 	c.spot_point = _received.spot_point
 	_spot_pending = false
+	c.smoke = _smoke_pending
+	c.abandon = _abandon_pending
+	_smoke_pending = false
+	_abandon_pending = false
 	tank.set_command(c)

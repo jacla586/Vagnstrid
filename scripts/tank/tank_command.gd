@@ -31,3 +31,8 @@ var spot_point: Vector3 = Vector3.ZERO
 ## 2 recall (Squad.ORDER_*).
 var squad_order: int = 0
 var squad_target: Vector3 = Vector3.ZERO
+## True = fire a smoke salvo this frame (ignored with none left; TankData.smoke_*).
+var smoke: bool = false
+## True = the crew abandons the tank (stuck for good): it counts as knocked out and
+## respawns like one.
+var abandon: bool = false

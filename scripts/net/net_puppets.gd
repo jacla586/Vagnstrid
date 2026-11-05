@@ -56,7 +56,9 @@ func receive(buf: StreamPeerBuffer) -> void:
 				tank.net_set_status(s)
 
 
-func _process(_delta: float) -> void:
+## In the physics step: physics interpolation then draws the puppets smoothly between
+## steps (and their shapes are where shells look for them).
+func _physics_process(_delta: float) -> void:
 	if _clock_offset == INF:
 		return
 	var render_t: float = Time.get_ticks_msec() / 1000.0 - _clock_offset - INTERP_DELAY_S

@@ -4,6 +4,8 @@ extends Control
 ## picture of the tank (hull forward = up) with the turret turned as it is on the hull
 ## and every module in its place, coloured green OK, yellow damaged, red destroyed;
 ## under it a structure bar and FIRE / REPAIRING 12 s / "stand still to repair".
+## An arrow in the middle shows where the player looks (commander's view, or the
+## gunner's sight), like the cone on the minimap.
 ## Enemy hp is never shown. Hidden in the debug view.
 
 @export var views: PlayerViews
@@ -21,6 +23,9 @@ extends Control
 @export var bar_back_color: Color = Color(0.0, 0.0, 0.0, 0.5)
 @export var bar_color: Color = Color(0.85, 0.85, 0.8, 0.9)
 @export var text_color: Color = Color(0.9, 0.9, 0.85, 1.0)
+@export var look_arrow_color: Color = Color(1.0, 1.0, 0.8, 0.95)
+## The look arrow's length (px).
+@export var look_arrow_px: float = 34.0
 
 var _time: float = 0.0
 
@@ -121,6 +126,31 @@ func _draw_icon(tank: Tank) -> void:
 		var color: Color = _state_color(tank, m.id)
 		draw_colored_polygon(corners, Color(color, module_fill_alpha))
 		draw_polyline(corners + PackedVector2Array([corners[0]]), color, 1.5, true)
+	_draw_look_arrow(tank, centre)
+
+
+## Where the player looks, in the hull's frame (forward = up), from the icon's middle:
+## a slim arrow with a notch, outlined so it reads over the modules.
+func _draw_look_arrow(tank: Tank, at: Vector2) -> void:
+	var camera: Camera3D = views.get_view_camera() if views != null else null
+	if camera == null and views != null:
+		camera = views.commander_camera
+	if camera == null:
+		return
+	var look3: Vector3 = tank.global_basis.orthonormalized().inverse() * -camera.global_basis.z
+	var fwd := Vector2(look3.x, look3.z)
+	if fwd.length() < 0.05:
+		return
+	fwd = fwd.normalized()
+	var side := Vector2(-fwd.y, fwd.x)
+	var l: float = look_arrow_px
+	var tip: Vector2 = at + fwd * l * 0.6
+	var points := PackedVector2Array([tip, tip - fwd * l * 0.32 + side * l * 0.18,
+			tip - fwd * l * 0.24, tip - fwd * l * 0.32 - side * l * 0.18])
+	draw_line(at - fwd * l * 0.4, tip - fwd * l * 0.25, Color(0, 0, 0, 0.8), 4.0, true)
+	draw_line(at - fwd * l * 0.4, tip - fwd * l * 0.25, look_arrow_color, 2.0, true)
+	draw_colored_polygon(points, look_arrow_color)
+	draw_polyline(points + PackedVector2Array([points[0]]), Color(0, 0, 0, 0.8), 1.0, true)
 
 
 func _draw_module(box: Rect2, color: Color) -> void:

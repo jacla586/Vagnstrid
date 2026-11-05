@@ -4,8 +4,8 @@
 
 [resource]
 script = ExtResource("1_cfg")
-display_name = "Light hunter"
-chassis = &"light"
-gun = &"gun_57"
-armour = &"standard"
+display_name = "KV-2"
+chassis = &"heavy"
+gun = &"gun_152"
+armour = &"heavy"
 camo = false

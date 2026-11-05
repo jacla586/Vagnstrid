@@ -31,6 +31,10 @@ func setup(mesh: Mesh, visual: Basis, direction: Vector3, data: TreeData,
 	add_child(instance)
 
 
+func _ready() -> void:
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # moved in _process
+
+
 func _process(delta: float) -> void:
 	_time = minf(_time + delta, _fall_time)
 	var t: float = _time / _fall_time

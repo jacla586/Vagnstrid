@@ -20,9 +20,10 @@ extends Resource
 @export var reference_mass_kg: float = 29500.0
 @export var reference_turn_rate_deg: float = 30.0
 @export var turn_mass_exponent: float = 0.4
-## Pitch rocking (TankData.pitch_rock_lever_m) grows with mass: the chassis' value at
-## the reference mass times (mass / reference) ^ this.
-@export var rock_mass_exponent: float = 1.0
+## Pitch rocking (TankData.pitch_rock_lever_m and _kick_lever_m) grows with mass: the
+## chassis' value at the reference mass times (mass / reference) ^ this. Longer hulls
+## pitch less for the same push, so this only has to make up for that and a bit more.
+@export var rock_mass_exponent: float = 0.35
 
 @export_group("Turret")
 ## Traverse at the reference gun mass (degrees/s); heavier guns traverse slower.

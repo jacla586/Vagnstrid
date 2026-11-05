@@ -54,6 +54,7 @@ func launch(data: ShellData, start_position: Vector3, velocity: Vector3,
 		_exclude.append(shooter.get_rid())
 	global_position = start_position
 	_orient()
+	reset_physics_interpolation()   # starts at the muzzle, not where it was made
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.albedo_color = data.tracer_color
@@ -145,13 +146,14 @@ func _on_hit(hit: Dictionary) -> void:
 func _report_near_misses() -> void:
 	for key: Variant in _near.keys():
 		if is_instance_valid(key) and not _hit_tanks.has(key):
-			(key as Tank).shell_threat.emit(_near[key], false)
+			(key as Tank).report_near_miss(_near[key])
 	_near.clear()
 
 
 ## Tells the shooter what a hit did. Null results (nothing of note) aren't reported.
 func _report(result: HitResult) -> void:
 	if result != null and is_instance_valid(_shooter) and _shooter.has_method("report_shot"):
+		result.bullet = _data.caliber_mm < Tank.THREAT_MIN_CALIBER_MM
 		_shooter.report_shot(result)
 
 

@@ -6,6 +6,7 @@
 
 [resource]
 script = ExtResource("1_shell")
+breaks_tracks = true
 display_name = "HE 57 mm"
 short_name = "HE"
 muzzle_velocity_mps = 520.0

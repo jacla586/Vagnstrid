@@ -46,8 +46,13 @@ shows on the minimap. This is what we test first.
   engine, fuel, tracks, turret ring, ammo in the turret rear). A penetration takes
   `ShellData.damage_hp` and damages modules on the shell's path (`module_reach_m`); ammo =
   knocked out, fuel = fire. Hits that don't penetrate wear their plate cell (`ArmourData`
-  wear settings, `ShellData.wear_mm`). Tracks are external: any shell landing on them and HE
-  fragments (`ModuleFragmentTarget`) damage them. Standing still `repair_time_s` repairs
+  wear settings, `ShellData.wear_mm`). Tracks are external: a gun round landing on one breaks
+  it if `ShellData.breaks_tracks` (HE, AT rounds), else damages it; HE fragments
+  (`ModuleFragmentTarget`) damage them. Effects (`TankDamage.speed_factor/turn_factor/
+  traverse_factor`, shares in TankData): engine damaged 50 % speed, destroyed stopped; fire
+  stands the tank still, a haze for the player (`FireHaze`), bots see
+  `fire_view_range_factor`; ring 50 % / 10 % traverse; damaged track 80 % speed and 55 % turn
+  rate, destroyed = immobilised. Standing still `repair_time_s` repairs
   modules, then hp creeps back to `repair_hp_max_fraction`. The player sees own hp/modules
   (`DamagePanel`: a see-through top-down tank icon bottom left with the turret turned and
   modules green/yellow/red), never the enemy's; bots stop to repair when they have no target.
@@ -60,7 +65,8 @@ shows on the minimap. This is what we test first.
   `max_distance_from_tank_m` (300) from the tank; recalled or left behind it runs back
   and mounts. Soldiers move one by one: a loose place each on the move (own pace,
   drift; no steeper than `SquadData.max_climb_deg` (45°) uphill and a knee-high wall ray,
-  so they go round houses: `Squad._step` turns off to the side), and when holding each his own spot 4-9 m round the squad's point (covered if
+  so they go round houses: `Squad._step` turns off to the side; probed only every
+  `PROBE_TICKS` ticks via `_probed_step`, walking the checked stretch in between), and when holding each his own spot 4-9 m round the squad's point (covered if
   possible), facing out and kneeling once still. The leader is the
   first living soldier; V (`toggle_squad_view`, `SquadCamera`, `PlayerViews` SQUAD
   mode) looks through his eyes while the squad is off the tank: look and spot only, no
@@ -101,8 +107,9 @@ shows on the minimap. This is what we test first.
   31 B + 4 B per soldier offset) and soldier-down/smoke/shot events by RPC; client
   squads are puppets.
   Bots: see and MG enemy squads (no tank target); use their own squad via the command
-  when the tank stops (look ahead / towards an alert / the enemy, `find_position`
-  with infantry costs), recall it when hurt, left behind or driving on; squad
+  only after standing `SQUAD_MIN_STAND_S` near a fight (known enemy within 600 m, alert, or
+  `fight_focus`, the zone, within 450 m), not within 45 s of a recall (towards the fight,
+  `find_position` with infantry costs), recall it when hurt, left behind or driving on; squad
   contacts reach the crew and (KothBots) its team. Decided rules: memory
   `squad-rules`.
 - Hits and wrecks: a gun round (>= 20 mm) on a tank emits `Tank.struck(outcome, dir)`
@@ -111,16 +118,35 @@ shows on the minimap. This is what we test first.
   view (`shake` on the cameras) and plays `data/sounds/ping.tres` on a ricochet
   (`tools/audio/make_ping.py`); `PlayerController` cancels held driving keys until pressed
   again. Reversing steers like a car (steering flipped in PlayerController). Acceleration and
-  braking pitch the hull (`TankData.pitch_rock_lever_m`, builder scales it with mass).
+  braking pitch the hull by design only (track forces act at the centre of mass' height):
+  the effort as a share of the tank's own limit times `pitch_rock_accel` ×
+  `pitch_rock_lever_m`, plus a kick while the effort changes (`pitch_rock_kick_*`); the
+  builder scales with mass (`rock_mass_exponent`). Physics interpolation is on: cameras
+  read `*_interpolated` poses and are themselves excluded, anything moved in `_process`
+  sets its mode OFF, teleports call `reset_physics_interpolation()`, puppets move in
+  `_physics_process`.
   Knocked-out tanks leave a static charred wreck (`Tank.leave_wreck`, group `wrecks`, from
   `KothMode.place_tank` / a puppet's respawn jump) for the whole match.
   The host lists wrecks (`Tank.wreck_left`) and sends them to late joiners (`rpc_wreck`:
   a throw-away `wreck_only` tank of the same spec makes the copy, `make_wreck_here`).
+- Smoke: `TankCommand.smoke` (key X; bots when pulling back, `BotData.smoke_on_relocate_chance`)
+  fires a salvo, `TankData.smoke_salvos` (3) per life: `smoke_clouds_per_salvo` `SmokeCloud`s
+  ahead of the turret. Clients send it (and abandon) by `rpc_tank_action`; the host sends the
+  clouds by `rpc_tank_smoke`. Squads have one grenade.
+- Abandon: `TankCommand.abandon` (Esc menu `EscMenu`; bots after `BotData.abandon_stuck_s`
+  trying to drive without getting `abandon_stuck_m` away): a knock-out nobody scores.
+  `Tank.repair()` (respawn) puts everything back as at the first spawn, squad included
+  (`Squad.restore_on_tank`).
+- Crew shouts: `TankData.crew_voice` (`CrewVoiceData`) "Vi är träffade!" on `Tank.struck`,
+  "Närträff!" on `Tank.near_missed` (clients by `rpc_near_miss`), played by `SquadRadio`.
+  MG/rifle results are `HitResult.bullet`: no hit text for the shooter.
 - Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
   only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
 - Bots: `BotController` (extends `TargetTankController`, so patrols waypoints) with
   crew skill in `BotData` (`data/bots/*.tres`). Spots only via `Vision` from its own
   commander's eye (hatch open: all round, far, fast; closed: periscope sector),
+  scans staggered per bot, tanks beyond `BotData.look_every_2nd/4th_beyond_m` (400/800 m)
+  looked at every 2nd/4th scan (not the target), cover cached per target (`Concealment`),
   stops to fire with range/laying errors that shrink per shot, MGs exposed
   commanders, closes the hatch when hit or an enemy is close. `Tank.team` decides
   enemies. `RespawnAtStart` brings a knocked-out tank back (test bench).
@@ -152,7 +178,8 @@ shows on the minimap. This is what we test first.
   test_medium). Paint replaces the PAINT material per surface. Pictures without the game:
   `godot --path . --script res://tools/render_tank_models.gd -- <dir> [preset...]`
   (needs a window; `renders/` is git-ignored).
-- Tank builder / garage: `TankConfig` (only part ids: chassis, gun, armour package,
+- Four presets only, `data/configs/1_bt7 .. 4_kv2.tres` (main menu, `KothData.bot_configs`;
+  default T-34). Tank builder / garage: `TankConfig` (only part ids: chassis, gun, armour package,
   camouflage) -> `TankBuilder.build()` -> `TankData` (cached per `key()`), from the
   catalogue `data/builder/catalogue.tres` (`ChassisData` light, medium (T-34-like),
   medium_h (Pz IV-like), heavy (KV-like); the tank destroyer is gone; each with its
@@ -226,8 +253,11 @@ shows on the minimap. This is what we test first.
   `score_to_win` wins (`zone_count` 0 = no zone limit). Never
   contested: each team scores per own tank in the zone (capped), the team with most
   tanks there gets a multiplier, an in-zone knock-out from inside the zone gives a
-  bonus. Each zone moves the spawns (`get_spawn`/`get_free_spawn`): `south_team` south
-  of it, other teams north, `spawn_distance_m` away (closer if off-map/water/house).
+  bonus. Each zone moves the spawns (`get_spawn`/`get_free_spawn`): first zone `south_team`
+  south, others north; later on an axis through the zone from each team's side, away
+  from the other team's centre of mass (`_choose_spawn_axis`), turned if needed to stay
+  `spawn_enemy_clear_m` from enemies, `spawn_distance_m` away (closer if
+  off-map/water/house). Slots are rows of 12, checked for slope, trees and tanks.
   Tanks go to their spawn at the start; respawns (`RespawnAtStart`, `KothBots`) use the
   current spawn. `KothBots` orders every BotController into the (next) zone. Runs
   offline/host only. HUD: `ScorePanel`; `MapView` draws zone and own spawn.
@@ -281,6 +311,7 @@ shows on the minimap. This is what we test first.
   rerun it on a scene that has been edited. Buildings get collision via
   `scripts/world/mesh_collision.gd`. Laser trees (`scripts/world/tree_field.gd`,
   `@tool`, MultiMesh per 250 m chunk, per-instance colour, models and species from the info file) follow the `BreakableTree` rules without nodes:
+  tank pushes look up trees in an 8 m grid (`TREE_CELL_M`), never whole chunks;
   `FieldTreePhysics` makes one static body (trunks, layer 1) and one area (crowns,
   layer 5) per chunk in the PhysicsServer3D, with TreeField as collider; `TreePush`
   is a copy of BreakableTree's push rule (keep them in step); felled trees animate
@@ -312,6 +343,7 @@ shows on the minimap. This is what we test first.
   open, coaxial otherwise). Binoculars: B. Hatch: H.
 - Scoreboard: Tab (King of the Hill). Big map: M (view only). Squad orders map: Q (`SquadMap`, 1 km round the tank with
   the 300 m ring; frees the mouse; left click sends the squad). Recall squad: G. Squad leader's eyes: V (look and spot only). Network statistics: F3.
+- Smoke: X. Esc: frees the mouse and opens `EscMenu` (resume, abandon tank, main menu).
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 
 ## Checking for errors (run these yourself)

@@ -1,7 +1,7 @@
 class_name WeaponStatus
 extends Label
-## Bottom-left gun status: "AP – LOADED" or "HE – RELOADING 3.4 s". Hidden in the
-## debug view.
+## Bottom-left gun status: "AP – LOADED" or "HE – RELOADING 3.4 s", and the smoke
+## salvos left ("SMOKE 2 (X)"). Hidden in the debug view.
 
 @export var views: PlayerViews
 @export var font_size: int = 22
@@ -25,9 +25,10 @@ func _process(_delta: float) -> void:
 	var tank: Tank = views.get_tank()
 	var shell: ShellData = tank.get_loaded_shell()
 	var prefix: String = (shell.short_name + " – ") if shell != null else ""
+	var smoke: String = "    SMOKE %d" % tank.get_smoke_left() if tank.data.smoke_salvos > 0 else ""
 	if tank.is_loaded():
-		text = prefix + "LOADED"
+		text = prefix + "LOADED" + smoke
 		add_theme_color_override("font_color", loaded_color)
 	else:
-		text = prefix + "RELOADING %.1f s" % tank.get_reload_remaining()
+		text = prefix + "RELOADING %.1f s" % tank.get_reload_remaining() + smoke
 		add_theme_color_override("font_color", reloading_color)

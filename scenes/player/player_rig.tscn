@@ -28,6 +28,8 @@
 [ext_resource type="Script" path="res://scripts/ui/squad_radio.gd" id="30_squad_radio"]
 [ext_resource type="Script" path="res://scripts/control/hit_reaction.gd" id="31_hit_reaction"]
 [ext_resource type="Resource" path="res://data/sounds/ping.tres" id="32_ping"]
+[ext_resource type="Script" path="res://scripts/ui/esc_menu.gd" id="33_esc_menu"]
+[ext_resource type="Script" path="res://scripts/ui/fire_haze.gd" id="34_fire_haze"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -39,11 +41,12 @@ data = ExtResource("18_player_data")
 use_player_config = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 
-[node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views", "squad_map")]
+[node name="PlayerController" type="Node" parent="." node_paths=PackedStringArray("tank", "views", "squad_map", "esc_menu")]
 script = ExtResource("2_player")
 tank = NodePath("../Tank")
 views = NodePath("../PlayerViews")
 squad_map = NodePath("../HUD/SquadMap")
+esc_menu = NodePath("../HUD/EscMenu")
 
 [node name="CommanderCamera" type="Camera3D" parent="." node_paths=PackedStringArray("tank")]
 near = 0.03
@@ -81,6 +84,16 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("8_overlay")
+views = NodePath("../../PlayerViews")
+
+[node name="FireHaze" type="ColorRect" parent="HUD" node_paths=PackedStringArray("views")]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("34_fire_haze")
 views = NodePath("../../PlayerViews")
 
 [node name="Crosshair" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
@@ -198,3 +211,14 @@ spot_marks = NodePath("../../SpotMarks")
 big_map = NodePath("../BigMap")
 grid_step_m = 100.0
 font_size = 20
+
+[node name="EscMenu" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("33_esc_menu")
+views = NodePath("../../PlayerViews")

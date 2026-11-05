@@ -12,7 +12,12 @@ extends Node3D
 ## every team scores for each of its own tanks inside (horizontal distance, capped),
 ## the team with most tanks there gets the majority multiplier, and an in-zone
 ## knock-out from inside the zone gives a bonus (both paid from the zone's budget).
-## Each new spot moves the spawns: the south team south of it, the others north.
+## Each new spot moves the spawns, on opposite sides of it: for the first zone the
+## south team south, the others north; after that each team on the side where it is
+## now, away from the enemy (the spawn axis runs from the other team's centre of mass
+## through the zone), turned if needed so no spawn lands near enemy tanks
+## (spawn_enemy_clear_m). So a zone moving onto the battlefield doesn't put one team's
+## spawn among the enemy.
 ## First to score_to_win wins (or the best score after zone_count zones, if set).
 
 ## Emitted when a new zone spot is chosen (announced; it may not be open yet).
@@ -32,14 +37,19 @@ const SEA_LEVEL_LIMIT_M: float = 0.5
 const SPAWN_LIFT_M: float = 1.5
 ## Steepest ground a spawn may stand on (degrees).
 const SPAWN_MAX_SLOPE_DEG: float = 15.0
-## Slots tried beside a spawn (alternating right and left) for a free, clear one.
-const SPAWN_SLOTS: int = 24
+## Slots tried at a spawn for a free, clear one: rows of SPAWN_ROW_SLOTS side by side
+## (alternating right and left), the rows behind each other.
+const SPAWN_ROW_SLOTS: int = 12
+const SPAWN_SLOTS: int = 60
 ## A spawn spot needs this much room round it on the tactical grid (m; tanks ~6.5 m long).
 const SPAWN_CLEARANCE_M: float = 5.0
+## Room a spawn slot needs above the ground (m), starting this high (terrain bumps).
+const SPAWN_BOX_M: Vector3 = Vector3(8.0, 3.0, 8.0)
+const SPAWN_BOX_CLEARANCE_M: float = 0.7
 ## Spawn search: step back towards the zone by this much each try (m)...
 const SPAWN_STEP_M: float = 50.0
-## ...trying these sideways offsets at each distance (m).
-const SPAWN_SIDE_OFFSETS: Array[float] = [0.0, 80.0, -80.0, 160.0, -160.0, 240.0, -240.0]
+## ...trying the spawn axis turned by these angles at each distance (degrees).
+const SPAWN_TURNS_DEG: Array[float] = [0.0, 10.0, -10.0, 20.0, -20.0, 35.0, -35.0, 50.0, -50.0, 70.0, -70.0]
 
 @export var data: KothData
 ## Without Marker3D children: zones open at random within this of the node (x, z; m).
@@ -65,7 +75,9 @@ var _gap_ends: float = 0.0
 var _budget_left: float = 0.0
 var _center: Vector3 = Vector3.ZERO
 var _last_spot: int = -1
-var _spawns: Dictionary = {}  # side (+1 south, -1 north) -> Transform3D
+var _spawns: Dictionary = {}  # side (+1 south team, -1 the others) -> Transform3D
+## The south team's side of the zone (flat unit vector); the others spawn opposite.
+var _spawn_axis: Vector3 = Vector3(0.0, 0.0, 1.0)
 var _started: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
@@ -258,14 +270,16 @@ func apply_net_state(state: Dictionary) -> void:
 
 
 ## Where `team` spawns for the current zone, facing it. `slot` spreads several tanks
-## side by side (0, 1, 2 ... alternate right and left).
+## side by side (0, 1, 2 ... alternate right and left), row after row backwards.
 func get_spawn(team: int, slot: int = 0) -> Transform3D:
 	var side: int = _side_of(team)
 	var xform: Transform3D = _spawns.get(side, global_transform)
 	if slot == 0:
 		return xform
-	var offset: float = ceilf(slot / 2.0) * data.spawn_spacing_m * (1.0 if slot % 2 == 1 else -1.0)
-	var p: Vector3 = xform.origin + xform.basis.x * offset
+	var column: int = slot % SPAWN_ROW_SLOTS
+	var row: int = slot / SPAWN_ROW_SLOTS
+	var offset: float = ceilf(column / 2.0) * data.spawn_spacing_m * (1.0 if column % 2 == 1 else -1.0)
+	var p: Vector3 = xform.origin + xform.basis.x * offset + xform.basis.z * row * data.spawn_spacing_m * 2.0
 	var hit: Dictionary = ground_hit(get_world_3d(), p)
 	if not hit.is_empty():
 		p.y = (hit["position"] as Vector3).y + SPAWN_LIFT_M
@@ -273,26 +287,58 @@ func get_spawn(team: int, slot: int = 0) -> Transform3D:
 	return xform
 
 
-## The first spawn slot of `team` with no other tank on it (respawns).
+## The first spawn slot of `team` that is fit to stand on (respawns): nothing but
+## ground there (a tree or wreck would leave the tank hanging at an angle), not too
+## steep, no other tank on it.
 func get_free_spawn(team: int, exclude: Tank = null) -> Transform3D:
-	var clear: float = data.spawn_spacing_m * 0.7
+	var unfit: Array[Transform3D] = []
 	for slot: int in SPAWN_SLOTS:
 		var xform: Transform3D = get_spawn(team, slot)
-		if not _spot_clear(xform.origin):
+		if _slot_taken(xform.origin, exclude):
 			continue
-		var taken: bool = false
-		for node: Node in get_tree().get_nodes_in_group("tanks"):
-			var other := node as Tank
-			if other != null and other != exclude \
-					and other.global_position.distance_to(xform.origin) < clear:
-				taken = true
-				break
-		if not taken:
+		if _spot_clear(xform.origin) and _slot_fit(xform.origin, exclude):
 			return xform
-	return get_spawn(team)
+		unfit.append(xform)
+	# Nothing good: any free slot beats a tank dropped on top of another.
+	return unfit[0] if not unfit.is_empty() else get_spawn(team, SPAWN_SLOTS)
 
 
-## +1 = south of the zone, -1 = north.
+func _slot_taken(at: Vector3, exclude: Tank) -> bool:
+	var clear: float = data.spawn_spacing_m * 0.7
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var other := node as Tank
+		if other != null and other != exclude and other.global_position.distance_to(at) < clear:
+			return true
+	return false
+
+
+## Flat enough, and a tank-sized box over the ground there touches nothing solid.
+func _slot_fit(at: Vector3, exclude: Tank) -> bool:
+	var hit: Dictionary = ground_hit(get_world_3d(), at)
+	if hit.is_empty() or not (hit["collider"] is Terrain3D) \
+			or (hit["normal"] as Vector3).angle_to(Vector3.UP) > deg_to_rad(SPAWN_MAX_SLOPE_DEG):
+		return false
+	var box := BoxShape3D.new()
+	box.size = SPAWN_BOX_M
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = box
+	query.collision_mask = 1
+	query.transform = Transform3D(Basis(), (hit["position"] as Vector3) + Vector3.UP * (SPAWN_BOX_M.y * 0.5 + SPAWN_BOX_CLEARANCE_M))
+	if exclude != null:
+		query.exclude = [exclude.get_rid()]
+	for h: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 8):
+		if not (h["collider"] is Terrain3D):
+			return false
+	return true
+
+
+## The way from the zone to `team`'s spawn (flat unit vector); the enemy comes from
+## the opposite side.
+func get_spawn_direction(team: int) -> Vector3:
+	return _spawn_axis * float(_side_of(team))
+
+
+## +1 = the south team's side of the zone (the spawn axis), -1 = the others'.
 func _side_of(team: int) -> int:
 	return 1 if team == data.south_team else -1
 
@@ -360,36 +406,93 @@ func _choose_zone() -> void:
 	var hit: Dictionary = ground_hit(get_world_3d(), _center)
 	if not hit.is_empty():
 		_center.y = (hit["position"] as Vector3).y
+	_spawn_axis = _choose_spawn_axis()
 	_spawns[1] = _find_spawn(1)
 	_spawns[-1] = _find_spawn(-1)
 	zone_moved.emit(_center)
 
 
-## A spawn on open, dry, fairly flat terrain inside the map, `side` of the zone
-## (+1 south = +z), as far as spawn_distance_m, facing the zone.
+## Which way from the zone the south team spawns. First zone: south. Later: each team
+## wants the side away from the other's centre of mass; the axis is the best fit for
+## both. If both teams stand on the same side of the new zone that says nothing, so the
+## axis follows the line from the other team to the south team instead.
+func _choose_spawn_axis() -> Vector3:
+	if _time <= 0.0:
+		return Vector3(0.0, 0.0, 1.0)   # match start: tanks aren't placed yet
+	var south: Vector3 = _team_centre(1)
+	var north: Vector3 = _team_centre(-1)
+	if south == Vector3.INF or north == Vector3.INF:
+		return _spawn_axis
+	var away_from_north: Vector3 = _flat_dir(_center, north)   # south team's wish
+	var away_from_south: Vector3 = _flat_dir(_center, south)   # the others' wish
+	var axis: Vector3 = away_from_north - away_from_south
+	if axis.length() < 0.5:
+		axis = Vector3(south.x - north.x, 0.0, south.z - north.z)
+	return axis.normalized() if axis.length() > 0.01 else _spawn_axis
+
+
+## Mean position of the side's tanks still fighting (INF if none).
+func _team_centre(side: int) -> Vector3:
+	var sum := Vector3.ZERO
+	var n: int = 0
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var tank := node as Tank
+		if tank == null or tank.is_knocked_out() or _side_of(tank.team) != side:
+			continue
+		sum += tank.global_position
+		n += 1
+	return sum / n if n > 0 else Vector3.INF
+
+
+## Flat unit vector from `enemy` through `centre` (ZERO when they coincide).
+static func _flat_dir(centre: Vector3, enemy: Vector3) -> Vector3:
+	var d := Vector3(centre.x - enemy.x, 0.0, centre.z - enemy.z)
+	return d.normalized() if d.length() > 1.0 else Vector3.ZERO
+
+
+## A spawn on open, dry, fairly flat terrain inside the map, along the spawn axis on
+## `side` of the zone (+1 south team), as far as spawn_distance_m, facing the zone.
+## Tries the axis turned a little, then closer distances; first only spots clear of
+## enemy tanks (spawn_enemy_clear_m), then any.
 func _find_spawn(side: int) -> Transform3D:
 	var map_rect: Rect2 = Rect2()
 	var map_image: MapImageData = MapImageData.find_for_scene(get_tree().current_scene)
 	if map_image != null:
 		map_rect = map_image.world_rect.grow(-50.0)
-	var distance: float = data.spawn_distance_m
-	while distance >= data.spawn_min_distance_m:
-		for side_offset: float in SPAWN_SIDE_OFFSETS:
-			var p := Vector3(_center.x + side_offset, 0.0, _center.z + side * distance)
-			if map_rect.has_area() and not map_rect.has_point(Vector2(p.x, p.z)):
-				continue
-			var hit: Dictionary = ground_hit(get_world_3d(), p)
-			if hit.is_empty() or not _is_open_ground(hit):
-				continue
-			return _facing_zone((hit["position"] as Vector3) + Vector3.UP * SPAWN_LIFT_M)
-		distance -= SPAWN_STEP_M
-	push_warning("KothMode: no good spawn %s of the zone; using the minimum distance" %
-			("south" if side > 0 else "north"))
-	var fallback := Vector3(_center.x, _center.y, _center.z + side * data.spawn_min_distance_m)
+	var dir: Vector3 = _spawn_axis * float(side)
+	var enemies: Array[Vector3] = []
+	if _time > 0.0:   # at match start the tanks aren't placed yet
+		for node: Node in get_tree().get_nodes_in_group("tanks"):
+			var tank := node as Tank
+			if tank != null and not tank.is_knocked_out() and _side_of(tank.team) != side:
+				enemies.append(tank.global_position)
+	for need_clear: bool in [true, false]:
+		var distance: float = data.spawn_distance_m
+		while distance >= data.spawn_min_distance_m:
+			for turn: float in SPAWN_TURNS_DEG:
+				var p: Vector3 = _center + dir.rotated(Vector3.UP, deg_to_rad(turn)) * distance
+				if map_rect.has_area() and not map_rect.has_point(Vector2(p.x, p.z)):
+					continue
+				if need_clear and _near_any(p, enemies, data.spawn_enemy_clear_m):
+					continue
+				var hit: Dictionary = ground_hit(get_world_3d(), p)
+				if hit.is_empty() or not _is_open_ground(hit):
+					continue
+				return _facing_zone((hit["position"] as Vector3) + Vector3.UP * SPAWN_LIFT_M)
+			distance -= SPAWN_STEP_M
+	push_warning("KothMode: no good spawn on side %d of the zone; using the minimum distance" % side)
+	var fallback: Vector3 = _center + dir * data.spawn_min_distance_m
 	var h: Dictionary = ground_hit(get_world_3d(), fallback)
 	if not h.is_empty():
 		fallback.y = (h["position"] as Vector3).y + SPAWN_LIFT_M
 	return _facing_zone(fallback)
+
+
+static func _near_any(p: Vector3, points: Array[Vector3], radius: float) -> bool:
+	for q: Vector3 in points:
+		if Vector2(p.x - q.x, p.z - q.z).length() < radius:
+			return true
+	return false
 
 
 ## Terrain (not a house, bridge or tank), above the sea, not too steep.
@@ -438,6 +541,7 @@ static func place_tank(tank: Tank, xform: Transform3D) -> void:
 	tank.global_transform = xform
 	tank.linear_velocity = Vector3.ZERO
 	tank.angular_velocity = Vector3.ZERO
+	tank.reset_physics_interpolation()   # a jump to the spawn, not a glide
 
 
 # --- Scoring --------------------------------------------------------------------------

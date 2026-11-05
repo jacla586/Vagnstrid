@@ -10,6 +10,8 @@
 [ext_resource type="Resource" uid="uid://ctytvhtiilqu" path="res://data/tanks/layout_medium.tres" id="20_layout"]
 [ext_resource type="Resource" path="res://data/sounds/tank_medium.tres" id="80_snd0"]
 [ext_resource type="Resource" path="res://data/squads/rifle_squad.tres" id="81_squad"]
+[ext_resource type="Resource" path="res://data/tanks/crew_voice_sv.tres" id="82_crew"]
+[ext_resource type="Resource" path="res://data/sounds/at_launch.tres" id="83_smoke"]
 
 [sub_resource type="Resource" id="Resource_armour"]
 script = ExtResource("3_armour")
@@ -24,6 +26,8 @@ ricochet_angle_deg = 65.0
 [resource]
 script = ExtResource("1_data")
 display_name = "Player Medium"
+pitch_rock_lever_m = 3.33
+pitch_rock_kick_lever_m = 3.33
 gunner_sight_fov_deg = PackedFloat32Array(24, 12)
 armour = SubResource("Resource_armour")
 layout = ExtResource("20_layout")
@@ -32,3 +36,5 @@ coax_mg = ExtResource("6_coax")
 roof_mg = ExtResource("7_roof")
 squad = ExtResource("81_squad")
 sounds = ExtResource("80_snd0")
+crew_voice = ExtResource("82_crew")
+smoke_sound = ExtResource("83_smoke")

@@ -20,6 +20,7 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
 func _ready() -> void:
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # moved in _process
 	_rng.randomize()
 	_area = Area3D.new()
 	_area.collision_layer = Vision.LAYER_VISION_BLOCKER

@@ -40,6 +40,9 @@ extends Resource
 ## Hit chance falls linearly to zero at this distance (m). 0 = not explosive.
 @export var fragment_max_radius_m: float = 0.0
 
+## Landing on a track breaks it (HE, AT rounds); other rounds only damage it.
+@export var breaks_tracks: bool = false
+
 @export_group("Infantry")
 ## Fired by infantry (rifles, AT rounds). Infantry fire doesn't make squads throw smoke.
 @export var infantry: bool = false

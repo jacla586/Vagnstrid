@@ -101,4 +101,4 @@ func _process(delta: float) -> void:
 
 func _update_transform() -> void:
 	global_transform = Transform3D(Basis.from_euler(Vector3(_pitch, _yaw, 0.0))
-			* Basis.from_euler(shake), tank.get_commander_eye_position())
+			* Basis.from_euler(shake), tank.get_commander_eye_position_interpolated())

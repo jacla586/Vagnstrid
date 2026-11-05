@@ -6,8 +6,30 @@ extends RefCounted
 ## bushes and tree crowns in hand-made maps, laser-tree crowns in real maps.
 
 
+## Cover is the same whoever looks, so it is kept per target for this many physics frames
+## (every bot and squad looking at a target in the same scan shares one shape query).
+const CACHE_FRAMES: int = 12
+## The cache is emptied when it grows past this (freed targets leave stale entries).
+const CACHE_MAX_ENTRIES: int = 1024
+
+static var _cache: Dictionary = {}  # target instance id -> [physics frame, data, cover]
+
+
 ## 0 = in the open, 1 = full cover.
 static func cover(world: World3D, target: Node3D, data: ConcealmentData) -> float:
+	var id: int = target.get_instance_id()
+	var frame: int = Engine.get_physics_frames()
+	var cached: Array = _cache.get(id, [])
+	if not cached.is_empty() and cached[1] == data and frame - int(cached[0]) < CACHE_FRAMES:
+		return float(cached[2])
+	if _cache.size() > CACHE_MAX_ENTRIES:
+		_cache.clear()
+	var value: float = _query_cover(world, target, data)
+	_cache[id] = [frame, data, value]
+	return value
+
+
+static func _query_cover(world: World3D, target: Node3D, data: ConcealmentData) -> float:
 	var box := BoxShape3D.new()
 	box.size = data.cover_box_size
 	var query := PhysicsShapeQueryParameters3D.new()

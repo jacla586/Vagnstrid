@@ -17,6 +17,7 @@ var _light_energy: float = 0.0
 
 
 func _ready() -> void:
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # moved in _process
 	if _mesh != null and _mesh.material_override is StandardMaterial3D:
 		# Own copy so fading one effect doesn't fade all of them.
 		_material = _mesh.material_override.duplicate()

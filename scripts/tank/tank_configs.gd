@@ -6,6 +6,8 @@ extends RefCounted
 const PRESET_DIR: String = "res://data/configs/"
 const SAVE_DIR: String = "user://configs/"
 const SETTINGS_PATH: String = "user://garage.cfg"
+## Driven when the player hasn't chosen a tank (or the chosen one is gone).
+const DEFAULT_PRESET: String = "res://data/configs/2_t34.tres"
 
 static var _selected: TankConfig
 static var _selected_loaded: bool = false
@@ -54,15 +56,17 @@ static func remove(cfg: TankConfig) -> void:
 		select(null)
 
 
-## The config the player drives (null = the map's own tank).
+## The config the player drives (DEFAULT_PRESET unless one is chosen).
 static func get_selected() -> TankConfig:
 	if not _selected_loaded:
 		_selected_loaded = true
 		var settings := ConfigFile.new()
+		var path: String = ""
 		if settings.load(SETTINGS_PATH) == OK:
-			var path: String = settings.get_value("garage", "selected", "")
-			if path != "" and ResourceLoader.exists(path):
-				_selected = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REPLACE) as TankConfig
+			path = settings.get_value("garage", "selected", "")
+		if path == "" or not ResourceLoader.exists(path):
+			path = DEFAULT_PRESET
+		_selected = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REPLACE) as TankConfig
 	return _selected
 
 
@@ -73,6 +77,8 @@ static func select(cfg: TankConfig) -> void:
 	settings.load(SETTINGS_PATH)
 	settings.set_value("garage", "selected", cfg.resource_path if cfg != null else "")
 	settings.save(SETTINGS_PATH)
+	if cfg == null:
+		_selected_loaded = false   # back to the default preset
 
 
 static func _load_dir(dir: String) -> Array[TankConfig]:

@@ -58,6 +58,9 @@ const TURN_RATE: float = 4.0
 const RETURN_REPLAN_S: float = 3.0
 ## Points looked at on an enemy tank (above its origin, m).
 const TANK_LOOK_HEIGHTS: Array[float] = [0.5, 1.9]
+## Targets farther than the view range plus this (m) can't be seen at all, so their
+## cover and sight lines aren't checked.
+const VIEW_RANGE_MARGIN_M: float = 5.0
 ## Loaded at start, not preloaded: shell.gd refers back to Squad (a preload would cycle).
 const SHELL_SCENE_PATH: String = "res://scenes/weapons/shell.tscn"
 const LAUNCH_FLASH_SCENE: PackedScene = preload("res://scenes/effects/muzzle_flash.tscn")
@@ -96,6 +99,12 @@ const WALL_CHECK_HEIGHT_M: float = 0.8
 const WALL_CHECK_AHEAD_M: float = 0.3
 ## Walking, the ground is looked for from this high above the feet (below bridge decks).
 const GROUND_PROBE_UP_M: float = 1.5
+## Walking checks walls and ground only every few ticks: one probe covers this many
+## ticks' worth of walking and the ticks after it move along the checked stretch
+## (fewer rays; the stretch is a few dozen cm).
+const PROBE_TICKS: int = 4
+## A new probe comes early when the way the walker wants to go turns more than this.
+const PROBE_KEEP_DEG: float = 20.0
 
 var tank: Tank
 var data: SquadData
@@ -141,6 +150,11 @@ var _pace: Array[float] = []
 ## Per soldier (and the squad's point, last): which way he went round something last
 ## (1 = left, -1 = right).
 var _detour_side: Array[float] = [1.0]
+## Per soldier (and the squad's point, last), like _detour_side: the end of the stretch
+## checked by the last probe (INF = none), the way he wanted to go then, ticks left.
+var _probe_end: Array[Vector3] = [Vector3.INF]
+var _probe_dir: Array[Vector3] = [Vector3.ZERO]
+var _probe_ticks: Array[int] = [0]
 var _blocked_time: float = 0.0
 var _drift: Array[Vector3] = []
 var _drift_target: Array[Vector3] = []
@@ -192,10 +206,14 @@ func _ready() -> void:
 	for i: int in data.soldier_count:
 		_add_soldier(i)
 	_wilhelm = _rng.randi_range(0, data.soldier_count - 1)
+	# Squads look round at different ticks: all at once makes one very slow frame.
+	_scan_timer = _rng.randf() * data.scan_interval_s
 	_at_left = data.at_rounds
 	_smoke_left = data.smoke_grenades
 	visible = false
 	_set_hitboxes_active(false)
+	if not net_puppet:
+		_tactical_map()   # built now (half a second), not mid-match at the first order
 
 
 # --- Queries -----------------------------------------------------------------------
@@ -273,7 +291,8 @@ func get_leader() -> Node3D:
 ## The leader's eyes (world): lower when kneeling.
 func get_leader_eye() -> Vector3:
 	var leader: Node3D = get_leader()
-	var at: Vector3 = leader.global_position if leader != null else global_position
+	var at: Vector3 = leader.get_global_transform_interpolated().origin if leader != null \
+			else global_position
 	return at + Vector3.UP * _eye_height()
 
 
@@ -444,8 +463,9 @@ func _walk(delta: float) -> void:
 		return
 	var dir: Vector3 = to_next.normalized()
 	_heading = _heading.slerp(dir, minf(delta * TURN_RATE, 1.0)).normalized()
-	var p: Vector3 = _step(global_position, dir, minf(data.run_speed_mps * delta, to_next.length()),
-			_detour_side.size() - 1)
+	var stride: float = data.run_speed_mps * delta
+	var p: Vector3 = _probed_step(global_position, dir, minf(stride, to_next.length()),
+			minf(stride * PROBE_TICKS, to_next.length()), _detour_side.size() - 1)
 	if p == global_position and delta > 0.0:
 		_blocked_time += delta
 		if _blocked_time >= BLOCKED_REPLAN_S:
@@ -454,6 +474,37 @@ func _walk(delta: float) -> void:
 	else:
 		_blocked_time = 0.0
 	global_position = p
+
+
+## This tick's `step` (m) from `from` towards `dir`, along a stretch checked by _step at
+## most every PROBE_TICKS ticks. A probe checks `reach` (m, >= step) ahead. A new probe
+## comes when the stretch is used up, the wanted way turns, or `from` is no longer on
+## it (the walker was moved or his place came closer). `who`: index in _detour_side.
+func _probed_step(from: Vector3, dir: Vector3, step: float, reach: float, who: int) -> Vector3:
+	var end: Vector3 = _probe_end[who]
+	var left: float = _flat(end - from).length() if end != Vector3.INF else 0.0
+	var fresh: bool = end == Vector3.INF or _probe_ticks[who] <= 0 or left <= 0.001 \
+			or left > reach + 0.05 or dir.dot(_probe_dir[who]) < cos(deg_to_rad(PROBE_KEEP_DEG))
+	if fresh:
+		end = _step(from, dir, reach, who)
+		left = _flat(end - from).length()
+		if left <= 0.001:
+			_probe_end[who] = Vector3.INF
+			return from   # blocked every way
+		_probe_end[who] = end
+		_probe_dir[who] = dir
+		# A little random, so soldiers and squads don't all probe on the same tick.
+		_probe_ticks[who] = PROBE_TICKS + _rng.randi_range(-1, 1)
+	_probe_ticks[who] -= 1
+	if left <= step:
+		_probe_end[who] = Vector3.INF
+		return end
+	return from.lerp(end, step / left)
+
+
+## Forgets the probed stretches (after the squad or its soldiers were put somewhere).
+func _clear_probes() -> void:
+	_probe_end.fill(Vector3.INF)
 
 
 ## One step of `length` from `from` along `dir` on the ground, no steeper uphill than
@@ -534,14 +585,17 @@ func _move_soldiers(delta: float) -> void:
 		var soldier: Node3D = _soldiers[i]
 		var pos: Vector3 = _last_pos[i]
 		var to: Vector3 = _flat(target - pos)
-		var step: float = minf(to.length(), data.run_speed_mps * CATCH_UP_FACTOR * _pace[i] * delta)
+		var stride: float = data.run_speed_mps * CATCH_UP_FACTOR * _pace[i] * delta
+		var step: float = minf(to.length(), stride)
 		if net_puppet:
 			# The host already kept them off roofs: just follow its positions.
 			if step > 0.001:
 				pos += to.normalized() * step
 			pos.y = _ground_height(pos, global_position.y)
 		elif step > 0.001:
-			pos = _step(pos, to.normalized(), step, i)
+			# The probe reaches a full stretch ahead even when his place is close: places
+			# move with the squad, so he keeps walking that way.
+			pos = _probed_step(pos, to.normalized(), step, stride * PROBE_TICKS, i)
 		var speed: float = _flat(pos - _last_pos[i]).length() / delta if delta > 0.0 else 0.0
 		var walking: bool = speed > STANDING_SPEED
 		soldier.global_position = pos
@@ -584,6 +638,7 @@ func _place_of(i: int, moving_squad: bool, side: Vector3) -> Vector3:
 
 ## Everyone straight to his place (getting off the tank).
 func _snap_soldiers() -> void:
+	_clear_probes()
 	var side: Vector3 = _heading.cross(Vector3.UP).normalized()
 	for i: int in _soldiers.size():
 		if _alive[i]:
@@ -697,6 +752,8 @@ func _scan(dt: float) -> void:
 ## One look at `target` through its `points` ([world point, collider] pairs).
 func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: float,
 		seen_now: Dictionary) -> void:
+	if eye.distance_to(target.global_position) > data.view_range_m + VIEW_RANGE_MARGIN_M:
+		return   # cover only ever shortens the range
 	var time_factor: float = 1.0
 	var range_factor: float = 1.0
 	if data.concealment != null:
@@ -1062,11 +1119,13 @@ func _wipe() -> void:
 	_forget_all()
 
 
-## Fallen soldiers vanish after body_time_s.
+## Fallen soldiers stay where they fell (the squad's point moves on) while they drop,
+## then vanish after body_time_s.
 func _update_bodies(delta: float) -> void:
 	for i: int in _soldiers.size():
 		if not _alive[i] and _soldiers[i].visible:
 			_down_time[i] += delta
+			_soldiers[i].global_position = _last_pos[i]
 			if _down_time[i] >= data.body_time_s:
 				_soldiers[i].visible = false
 
@@ -1084,6 +1143,20 @@ func _refill(delta: float) -> void:
 	if _refill_timer >= data.refill_time_s:
 		_refill_timer = 0.0
 		_alive[_alive.find(false)] = true
+
+
+## The tank respawned: the squad is full and on it again, wherever it was.
+func restore_on_tank() -> void:
+	if net_puppet:
+		return
+	_cancel_at_aim()
+	_path.clear()
+	_withdraw_timer = 0.0
+	_refill_timer = 0.0
+	_wipe_timer = 0.0
+	for i: int in _soldiers.size():
+		_soldiers[i].visible = false
+	_restore_full()
 
 
 func _restore_full() -> void:
@@ -1225,6 +1298,9 @@ func _add_soldier(i: int) -> void:
 	_spot.append(Vector3.ZERO)
 	_pace.append(_rng.randf_range(0.9, 1.1))
 	_detour_side.insert(_detour_side.size() - 1, 1.0 if _rng.randf() < 0.5 else -1.0)
+	_probe_end.insert(_probe_end.size() - 1, Vector3.INF)
+	_probe_dir.insert(_probe_dir.size() - 1, Vector3.ZERO)
+	_probe_ticks.insert(_probe_ticks.size() - 1, 0)
 	_drift.append(Vector3.ZERO)
 	_drift_target.append(Vector3.ZERO)
 	_burst_timer.append(_rng.randf_range(0.0, data.rifle_burst_interval_s))

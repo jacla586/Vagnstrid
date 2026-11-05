@@ -93,5 +93,5 @@ func _apply() -> void:
 	if not levels.is_empty():
 		_zoom_index = clampi(_zoom_index, 0, levels.size() - 1)
 		fov = levels[_zoom_index]
-	var sight: Transform3D = tank.get_gunner_sight_transform()
+	var sight: Transform3D = tank.get_gunner_sight_transform_interpolated()
 	global_transform = Transform3D(sight.basis * Basis.from_euler(shake), sight.origin)

@@ -4,6 +4,8 @@ extends Label
 ## over the headset (not muffled by the hatch, not positional) and shows them as a
 ## subtitle. Contacts get a clock direction from the own tank's hull. A call of the same
 ## kind (and clock hour) isn't repeated within RadioData.repeat_cooldown_s.
+## The own crew's shouts (TankData.crew_voice: "Vi är träffade!" when a gun round hits,
+## "Närträff!" when one lands close) go first in the same queue.
 
 @export var views: PlayerViews
 @export var color: Color = Color(0.75, 1.0, 0.7, 1.0)
@@ -11,7 +13,8 @@ extends Label
 
 var _player: AudioStreamPlayer
 var _squad: Squad
-var _queue: Array = []          # [stream, text]
+var _tank: Tank
+var _queue: Array = []          # [stream, text, volume_db]
 var _last: Dictionary = {}      # call key -> time it was last played
 var _time: float = 0.0
 var _subtitle_left: float = 0.0
@@ -36,6 +39,16 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	var tank: Tank = views.get_tank() if views != null else null
+	if tank != _tank:
+		if _tank != null and is_instance_valid(_tank):
+			if _tank.struck.is_connected(_on_struck):
+				_tank.struck.disconnect(_on_struck)
+			if _tank.near_missed.is_connected(_on_near_miss):
+				_tank.near_missed.disconnect(_on_near_miss)
+		_tank = tank
+		if _tank != null:
+			_tank.struck.connect(_on_struck)
+			_tank.near_missed.connect(_on_near_miss)
 	var squad: Squad = tank.squad if tank != null and is_instance_valid(tank.squad) else null
 	if squad != _squad:
 		if _squad != null and is_instance_valid(_squad) and _squad.radio.is_connected(_on_radio):
@@ -46,10 +59,10 @@ func _process(delta: float) -> void:
 	if not _player.playing and not _queue.is_empty():
 		var next: Array = _queue.pop_front()
 		_player.stream = next[0]
-		_player.volume_db = _squad.data.radio.volume_db if _squad != null and _squad.data.radio != null else 0.0
+		_player.volume_db = float(next[2])
 		if _player.stream != null:
 			_player.play()
-		text = "Grupp: " + String(next[1])
+		text = String(next[1])
 		var length: float = (next[0] as AudioStream).get_length() if next[0] != null else 2.0
 		_subtitle_left = length + (_squad.data.radio.subtitle_extra_s if _squad != null and _squad.data.radio != null else 1.5)
 	_subtitle_left -= delta
@@ -87,18 +100,41 @@ func _on_radio(kind: int, at: Vector3) -> void:
 			key += "/%d" % hour
 		_:
 			return
+	var entry: Array = [stream, "Grupp: " + line, r.volume_db]
 	if kind == Squad.RADIO_AT_FIRE:
 		# Urgent and always said: first in the queue, no repeat limit.
-		_queue.push_front([stream, line])
+		_queue.push_front(entry)
 		while _queue.size() > r.max_queue:
 			_queue.pop_back()
 		return
 	if _time - float(_last.get(key, -INF)) < r.repeat_cooldown_s:
 		return
 	_last[key] = _time
-	_queue.append([stream, line])
+	_queue.append(entry)
 	while _queue.size() > r.max_queue:
 		_queue.pop_front()
+
+
+func _on_struck(_outcome: int, _direction: Vector3) -> void:
+	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
+	if v != null:
+		_crew_call("hit", v.hit, v.hit_text, v)
+
+
+func _on_near_miss(_direction: Vector3) -> void:
+	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
+	if v != null:
+		_crew_call("near", v.near_miss, v.near_miss_text, v)
+
+
+## A crew shout: urgent, so it goes first; the same one not again within its cooldown.
+func _crew_call(key: String, stream: AudioStream, line: String, v: CrewVoiceData) -> void:
+	if _time - float(_last.get("crew/" + key, -INF)) < v.repeat_cooldown_s:
+		return
+	_last["crew/" + key] = _time
+	_queue.push_front([stream, "Besättning: " + line, v.volume_db])
+	while _queue.size() > 3:
+		_queue.pop_back()
 
 
 ## Clock hour (1..12, 12 = straight ahead) of `point` seen from the tank's hull.

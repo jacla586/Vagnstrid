@@ -41,7 +41,7 @@ func _process(delta: float) -> void:
 	if target == null:
 		return
 	var weight: float = 1.0 - exp(-follow_sharpness * delta)
-	_pivot = _pivot.lerp(target.global_position + Vector3.UP * pivot_height, weight)
+	_pivot = _pivot.lerp(target.get_global_transform_interpolated().origin + Vector3.UP * pivot_height, weight)
 	_update_transform()
 
 

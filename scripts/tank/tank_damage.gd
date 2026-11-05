@@ -11,7 +11,10 @@ extends RefCounted
 ## Repair: standing still for repair_time_s (no shots, no hits, no fire) repairs every
 ## module (a module with its own repair time, e.g. a thrown track, takes that long);
 ## after that structure hp creeps back up to repair_hp_max_fraction.
-## A destroyed track can immobilise the tank (TankData.broken_track_immobilises).
+## A destroyed track can immobilise the tank (TankData.broken_track_immobilises); a
+## damaged one slows it and makes it turn worse. A burning tank stands still. A damaged
+## engine halves the speed, a destroyed one stops the tank; the turret ring slows the
+## traverse (damaged / destroyed shares in TankData).
 
 enum State { OK, DAMAGED, DESTROYED }
 
@@ -129,11 +132,27 @@ func is_immobilised() -> bool:
 
 # --- Effects read by Tank -------------------------------------------------------
 
+## Top speed share: engine (damaged = data share, destroyed = 0), fire (the crew
+## fights it standing still), a damaged track.
 func speed_factor() -> float:
+	if is_burning() and data.fire_immobilises:
+		return 0.0
+	var f: float = 1.0
 	match state(&"engine"):
-		State.DAMAGED: return data.engine_damaged_speed_factor
+		State.DAMAGED: f = data.engine_damaged_speed_factor
 		State.DESTROYED: return 0.0
-	return 1.0
+	if has_damaged_track():
+		f *= data.track_damaged_speed_factor
+	return f
+
+
+## Turn rate share: a damaged track turns worse.
+func turn_factor() -> float:
+	return data.track_damaged_turn_factor if has_damaged_track() else 1.0
+
+
+func has_damaged_track() -> bool:
+	return state(&"track_left") == State.DAMAGED or state(&"track_right") == State.DAMAGED
 
 
 ## Drive force factor for one side (-1 = left, 1 = right): a destroyed track gives none.
@@ -194,10 +213,16 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 		return false
 	repair_time = 0.0
 	var hit: Array[StringName] = []
-	# External modules (tracks) take any shell that lands in them.
+	# External modules (tracks) take any gun round that lands in them: HE (and AT
+	# rounds) break a track, other rounds damage it (bullets do nothing).
 	for m: ModuleData in _modules.values():
-		if m.external and m.frame == &"hull" and _in_box(m, hull_from, 0.15):
-			_damage_module(m.id, maxf(shell.module_damage, shell.damage_hp))
+		if m.external and m.frame == &"hull" and _in_box(m, hull_from, 0.15) \
+				and maxf(shell.module_damage, shell.damage_hp) > 0.0:
+			var left: float = _module_hp[m.id]
+			if shell.breaks_tracks:
+				_damage_module(m.id, left)
+			else:
+				_damage_module(m.id, maxf(left - m.hp * m.damaged_below * 0.5, 0.0))
 			hit.append(m.id)
 	if result.outcome == HitResult.Outcome.NO_PENETRATION:
 		_wear_at(part, face, local_point, shell.wear_mm)

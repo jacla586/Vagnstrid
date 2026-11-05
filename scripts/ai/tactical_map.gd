@@ -11,6 +11,8 @@ const DEFAULT_TACTICS: TacticsData = preload("res://data/bots/tactics_regular.tr
 const SNAP_RADIUS_CELLS: int = 8
 ## Straightening looks at most this many path cells ahead.
 const SMOOTH_LOOKAHEAD: int = 48
+## How far round an unreachable goal to look for a reachable cell (cells).
+const COMPONENT_SEARCH_CELLS: int = 40
 ## Commander's eye above the ground with the hatch open (m).
 const EYE_HEIGHT_M: float = 3.0
 ## What a position must see: points this high above the ground (a tank's hull, m).
@@ -33,6 +35,8 @@ static var _cache: Dictionary = {}  # "grid id/tactics id" -> TacticalMap
 var grid: TacticalGridData
 var _astar: AStarGrid2D
 var _weights: PackedFloat32Array
+## Per cell: which connected area of open cells it belongs to (-1 = closed).
+var _components: PackedInt32Array
 ## 1 = open cell right beside forest or bushes (a tree line).
 var _edge: PackedByteArray
 
@@ -76,6 +80,7 @@ func _init(data: TacticalGridData, tactics: TacticsData) -> void:
 				w = minf(w, tactics.cost_cover_edge)
 			_weights[i] = w
 			_astar.set_point_weight_scale(c, w)
+	_label_components()
 
 
 ## Open, drivable cells with forest or bushes in a neighbouring cell.
@@ -265,6 +270,12 @@ func _find_path(from: Vector3, to: Vector3) -> PackedVector3Array:
 	var goal: Vector2i = _snap(grid.cell_of(to))
 	if start.x < 0 or goal.x < 0:
 		return PackedVector3Array()
+	# A goal in a pocket the start can't reach would make A* search the whole map before
+	# giving up: head for the nearest cell that can be reached instead.
+	if _components[grid.index_of(start)] != _components[grid.index_of(goal)]:
+		var reachable: Vector2i = _nearest_in_component(goal, _components[grid.index_of(start)])
+		if reachable.x >= 0:
+			goal = reachable
 	var cells: Array[Vector2i] = _astar.get_id_path(start, goal, true)
 	if cells.is_empty():
 		return PackedVector3Array()
@@ -285,6 +296,49 @@ func _find_path(from: Vector3, to: Vector3) -> PackedVector3Array:
 			else:
 				result.append(to)
 	return result
+
+
+## Numbers the areas of open cells that connect (4-neighbours: paths can't cut corners).
+func _label_components() -> void:
+	_components.resize(grid.width * grid.height)
+	_components.fill(-1)
+	var stack := PackedInt32Array()
+	var label: int = 0
+	var w: int = grid.width
+	for first: int in _components.size():
+		if _components[first] >= 0 or is_inf(_weights[first]):
+			continue
+		_components[first] = label
+		stack.append(first)
+		while not stack.is_empty():
+			var i: int = stack[stack.size() - 1]
+			stack.resize(stack.size() - 1)
+			var x: int = i % w
+			for n: int in [i - w, i + w, i - 1 if x > 0 else -1, i + 1 if x < w - 1 else -1]:
+				if n >= 0 and n < _components.size() and _components[n] < 0 and not is_inf(_weights[n]):
+					_components[n] = label
+					stack.append(n)
+		label += 1
+
+
+## The nearest cell of `component` within COMPONENT_SEARCH_CELLS of `cell`, else (-1, -1).
+func _nearest_in_component(cell: Vector2i, component: int) -> Vector2i:
+	for r: int in range(1, COMPONENT_SEARCH_CELLS + 1):
+		var best := Vector2i(-1, -1)
+		var best_d: float = INF
+		for dz: int in range(-r, r + 1):
+			for dx: int in range(-r, r + 1):
+				if maxi(absi(dx), absi(dz)) != r:
+					continue
+				var c := cell + Vector2i(dx, dz)
+				if grid.has_cell(c) and _components[grid.index_of(c)] == component:
+					var d: float = Vector2(dx, dz).length()
+					if d < best_d:
+						best_d = d
+						best = c
+		if best.x >= 0:
+			return best
+	return Vector2i(-1, -1)
 
 
 ## The cell itself if open, else the nearest open cell within SNAP_RADIUS_CELLS, else

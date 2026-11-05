@@ -300,6 +300,7 @@ func _physics_process(delta: float) -> void:
 			continue
 		if bot.tank.is_knocked_out():
 			continue
+		bot.fight_focus = mode.get_center()   # the squad looks out near the zone
 		if _depart.has(bot):
 			_depart[bot] = float(_depart[bot]) - delta
 			if float(_depart[bot]) > 0.0:
@@ -647,7 +648,7 @@ func _choose_spot(bot: BotController, radius: float, around: Vector3 = Vector3.I
 	var threat: Vector3 = bot.get_threat_direction()
 	if threat == Vector3.ZERO:
 		# Nothing known: the enemy comes from its own side of the zone.
-		threat = Vector3.FORWARD if bot.tank.team == mode.data.south_team else Vector3.BACK
+		threat = -mode.get_spawn_direction(bot.tank.team)
 	var friends := PackedVector3Array()
 	var exclude: Array[RID] = []
 	for other: BotController in _bots:

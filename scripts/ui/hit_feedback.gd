@@ -1,7 +1,8 @@
 class_name HitFeedback
 extends Label
-## Shows what the player's last shot did ("PENETRATION – hull side ..."), centred
-## below the crosshair for a few seconds. Simple stand-in for an X-ray hit view.
+## Shows what the player's last main-gun shot did ("PENETRATION – hull side ..."),
+## centred below the crosshair for a few seconds. Simple stand-in for an X-ray hit view.
+## MG bullets show nothing.
 
 @export var views: PlayerViews
 @export var font_size: int = 22
@@ -39,6 +40,8 @@ func _process(delta: float) -> void:
 
 
 func show_result(result: HitResult) -> void:
+	if result != null and result.bullet:
+		return   # MG fire: no hit text (it would find targets in smoke and bushes)
 	text = "HIT" if result == null else result.describe()
 	if result != null and result.outcome == HitResult.Outcome.COMMANDER_HIT \
 			and result.target == _tank:

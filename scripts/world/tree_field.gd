@@ -27,6 +27,9 @@ const PUSH_REACH_M: float = 0.65
 ## A shell hit belongs to the nearest trunk within this distance of its axis (m).
 const SHELL_HIT_SEARCH_M: float = 1.0
 const SNAP_MIN_CALIBER_MM: float = 20.0
+## Cell size of the lookup grid for trees near a point (m). Small, so a tank only looks at
+## the few trees around it instead of every tree in its chunk (thousands, every tick).
+const TREE_CELL_M: float = 8.0
 
 @export_file("*.json") var info_path: String = ""
 @export_file("*.bin") var data_path: String = ""
@@ -43,7 +46,6 @@ const SNAP_MIN_CALIBER_MM: float = 20.0
 @export var visibility_end_m: float = 1500.0
 @export var cast_shadows: bool = true
 
-var _chunk_size: float = 250.0
 var _meshes: Array[Mesh] = []
 ## FieldTreeData per type (several types can share a species).
 var _type_data: Array[FieldTreeData] = []
@@ -52,8 +54,8 @@ var _chunk_type: PackedByteArray = PackedByteArray()
 var _chunk_centre: PackedVector3Array = PackedVector3Array()
 var _chunk_first: PackedInt32Array = PackedInt32Array()
 var _chunk_count: PackedInt32Array = PackedInt32Array()
-## Chunk indices per grid cell Vector2i (several chunks per cell, one per type).
-var _chunk_grid: Dictionary = {}
+## Tree indices per TREE_CELL_M grid cell (Vector2i -> PackedInt32Array), for nearby lookups.
+var _tree_grid: Dictionary = {}
 ## Per tree: foot position relative to its chunk centre, size, type, chunk, felled.
 var _position: PackedVector3Array = PackedVector3Array()
 var _height: PackedFloat32Array = PackedFloat32Array()
@@ -76,7 +78,6 @@ func _ready() -> void:
 	var info: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(info_path))
 	var floats: PackedFloat32Array = FileAccess.get_file_as_bytes(data_path).to_float32_array()
 	var per_tree: int = int(info.floats_per_tree)
-	_chunk_size = float(info.get("chunk_m", 250.0))
 	_meshes.clear()
 	_type_data.clear()
 	if info.has("models"):
@@ -97,6 +98,7 @@ func _ready() -> void:
 		push_error("TreeField: need one FieldTreeData per tree type")
 		return
 	_read_trees(floats, per_tree)
+	_build_tree_grid()
 	_build_physics()
 	# Only trees with trunks can be pushed over (bushes are just sight blockers).
 	set_physics_process(_type_data.any(func(d: FieldTreeData) -> bool: return d.has_trunk))
@@ -185,7 +187,6 @@ func _build_chunks(chunks: Array, floats: PackedFloat32Array, per_tree: int) -> 
 	_chunk_centre.clear()
 	_chunk_first.clear()
 	_chunk_count.clear()
-	_chunk_grid.clear()
 	for chunk: Array in chunks:
 		var type: int = int(chunk[0])
 		var first: int = int(chunk[3])
@@ -206,16 +207,11 @@ func _build_chunks(chunks: Array, floats: PackedFloat32Array, per_tree: int) -> 
 		instance.cast_shadow = (GeometryInstance3D.SHADOW_CASTING_SETTING_ON if cast_shadows
 				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 		add_child(instance, false, Node.INTERNAL_MODE_BACK)
-		var index: int = _multimeshes.size()
 		_multimeshes.append(multimesh)
 		_chunk_type.append(type)
 		_chunk_centre.append(centre)
 		_chunk_first.append(first)
 		_chunk_count.append(count)
-		var cell: Vector2i = _cell_of(centre)
-		var list: PackedInt32Array = _chunk_grid.get(cell, PackedInt32Array())
-		list.append(index)
-		_chunk_grid[cell] = list
 
 
 ## Unpacks size and position of every tree from the MultiMesh transforms.
@@ -259,60 +255,66 @@ func _check_tank(tank: Tank, delta: float) -> void:
 	var reach: float = Vector2(half.x, half.z).length() + PUSH_REACH_M + 0.5
 	var to_tank: Transform3D = tank.global_transform.affine_inverse()
 	var centre: Vector3 = to_local(tank.global_position)
-	for c: int in _chunks_near(centre, reach):
-		var chunk_centre: Vector3 = _chunk_centre[c]
-		for i: int in range(_chunk_first[c], _chunk_first[c] + _chunk_count[c]):
-			if _felled[i] != 0:
-				continue
-			var p: Vector3 = chunk_centre + _position[i]
-			if Vector2(p.x - centre.x, p.z - centre.z).length_squared() > reach * reach:
-				continue
-			var tree_global: Vector3 = to_global(p)
-			var local: Vector3 = to_tank * tree_global
-			var dx: float = maxf(absf(local.x) - half.x, 0.0)
-			var dz: float = maxf(absf(local.z) - half.z, 0.0)
-			if sqrt(dx * dx + dz * dz) - _trunk_diameter[i] * 0.5 > PUSH_REACH_M:
-				continue
-			var key: String = "%d:%d" % [tank.get_instance_id(), i]
-			var direction: Vector3 = TreePush.push_direction(tank, tree_global,
-					_trunk_diameter[i], delta, _push_time, key)
-			if direction != Vector3.ZERO:
-				fell_tree(i, direction)
+	for i: int in _trees_near(centre, reach):
+		if _felled[i] != 0:
+			continue
+		var p: Vector3 = _chunk_centre[_chunk_of[i]] + _position[i]
+		if Vector2(p.x - centre.x, p.z - centre.z).length_squared() > reach * reach:
+			continue
+		var tree_global: Vector3 = to_global(p)
+		var local: Vector3 = to_tank * tree_global
+		var dx: float = maxf(absf(local.x) - half.x, 0.0)
+		var dz: float = maxf(absf(local.z) - half.z, 0.0)
+		if sqrt(dx * dx + dz * dz) - _trunk_diameter[i] * 0.5 > PUSH_REACH_M:
+			continue
+		var key: String = "%d:%d" % [tank.get_instance_id(), i]
+		var direction: Vector3 = TreePush.push_direction(tank, tree_global,
+				_trunk_diameter[i], delta, _push_time, key)
+		if direction != Vector3.ZERO:
+			fell_tree(i, direction)
 
 
 ## Standing tree whose trunk axis is nearest to `point` (TreeField space), or -1.
 func _nearest_standing_tree(point: Vector3) -> int:
 	var best: int = -1
 	var best_distance: float = INF
-	for c: int in _chunks_near(point, SHELL_HIT_SEARCH_M + 1.0):
-		var chunk_centre: Vector3 = _chunk_centre[c]
-		for i: int in range(_chunk_first[c], _chunk_first[c] + _chunk_count[c]):
-			if _felled[i] != 0:
-				continue
-			var p: Vector3 = chunk_centre + _position[i]
-			var distance: float = Vector2(p.x - point.x, p.z - point.z).length() \
-					- _trunk_diameter[i] * 0.5
-			if distance < best_distance:
-				best = i
-				best_distance = distance
+	for i: int in _trees_near(point, SHELL_HIT_SEARCH_M + 1.0):
+		if _felled[i] != 0:
+			continue
+		var p: Vector3 = _chunk_centre[_chunk_of[i]] + _position[i]
+		var distance: float = Vector2(p.x - point.x, p.z - point.z).length() \
+				- _trunk_diameter[i] * 0.5
+		if distance < best_distance:
+			best = i
+			best_distance = distance
 	return best if best_distance <= SHELL_HIT_SEARCH_M else -1
 
 
-## Chunks whose cell lies within `radius` of `point` (TreeField space).
-func _chunks_near(point: Vector3, radius: float) -> PackedInt32Array:
+## Trees whose grid cell lies within `radius` of `point` (TreeField space).
+func _trees_near(point: Vector3, radius: float) -> PackedInt32Array:
 	var result := PackedInt32Array()
 	var low: Vector2i = _cell_of(point - Vector3(radius, 0.0, radius))
 	var high: Vector2i = _cell_of(point + Vector3(radius, 0.0, radius))
 	for x: int in range(low.x, high.x + 1):
 		for z: int in range(low.y, high.y + 1):
 			var cell := Vector2i(x, z)
-			if _chunk_grid.has(cell):
-				result.append_array(_chunk_grid[cell])
+			if _tree_grid.has(cell):
+				result.append_array(_tree_grid[cell])
 	return result
 
 
+## Puts every tree in its TREE_CELL_M cell (after _read_trees).
+func _build_tree_grid() -> void:
+	_tree_grid.clear()
+	for i: int in _position.size():
+		var cell: Vector2i = _cell_of(_chunk_centre[_chunk_of[i]] + _position[i])
+		var list: PackedInt32Array = _tree_grid.get(cell, PackedInt32Array())
+		list.append(i)
+		_tree_grid[cell] = list
+
+
 func _cell_of(point: Vector3) -> Vector2i:
-	return Vector2i(floori(point.x / _chunk_size), floori(point.z / _chunk_size))
+	return Vector2i(floori(point.x / TREE_CELL_M), floori(point.z / TREE_CELL_M))
 
 
 ## Turns an imported model (glb) into one mesh: all MeshInstance3D parts are merged with

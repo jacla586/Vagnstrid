@@ -47,7 +47,11 @@ extends Resource
 @export var spawn_distance_m: float = 800.0
 ## ...or closer, down to this, if the ideal spot is off the map, in water or in a house.
 @export var spawn_min_distance_m: float = 400.0
-## This team spawns south of the zone; every other team north.
+## Spawns stay at least this far from enemy tanks (m) when the ground allows: the axis
+## is turned, then brought closer, before giving up on it.
+@export var spawn_enemy_clear_m: float = 350.0
+## This team spawns south of the zone (first zone; later on its own side, see KothMode);
+## every other team on the other side.
 @export var south_team: int = 0
 ## Tanks of one team spawn this far apart, side by side (m).
 @export var spawn_spacing_m: float = 15.0

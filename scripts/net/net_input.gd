@@ -18,11 +18,17 @@ func _physics_process(_delta: float) -> void:
 	if tank == null or not is_instance_valid(tank):
 		return
 	var c: TankCommand = tank.get_command()
+	if tank.is_knocked_out():
+		_wanted_ammo = -1   # the respawned tank starts with its first ammo
 	if c.ammo_select >= 0:
 		_wanted_ammo = c.ammo_select
 	if c.spot:
 		_spot_seq = (_spot_seq + 1) & 255
 		_spot_point = c.spot_point
+	if c.smoke:
+		NetSession.instance.rpc_id(1, "rpc_tank_action", RemoteController.ACTION_SMOKE)
+	if c.abandon:
+		NetSession.instance.rpc_id(1, "rpc_tank_action", RemoteController.ACTION_ABANDON)
 	if c.squad_order != 0:
 		# Squad orders are rare and must not get lost: reliable, not in the stream.
 		NetSession.instance.rpc_id(1, "rpc_squad_order", c.squad_order, c.squad_target)

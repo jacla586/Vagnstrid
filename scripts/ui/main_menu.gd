@@ -55,7 +55,7 @@ func _ready() -> void:
 	box.add_child(_tank)
 	_fill_tanks()
 	_tank.item_selected.connect(func(i: int) -> void:
-		TankConfigs.select(_tank_configs[i - 1] if i > 0 else null))
+		TankConfigs.select(_tank_configs[i]))
 	_button(box, "Garage", func() -> void: get_tree().change_scene_to_file(GARAGE_SCENE))
 	box.add_child(_label("Tanks per team, King of the Hill (5 = 5 vs 5, bots fill empty places; 0 = map default)"))
 	_team_size = SpinBox.new()
@@ -82,18 +82,17 @@ func _ready() -> void:
 			_status.text = t)
 
 
-## The tank list: the map's own tank first, then saved configs and presets.
+## The tank list: the four presets, then the player's own garage configs.
 func _fill_tanks() -> void:
-	_tank_configs = TankConfigs.all()
+	_tank_configs = TankConfigs.presets()
+	_tank_configs.append_array(TankConfigs.saved())
 	_tank.clear()
-	_tank.add_item("Map default")
 	var chosen: TankConfig = TankConfigs.get_selected()
-	_tank.select(0)
 	for i: int in _tank_configs.size():
 		var c: TankConfig = _tank_configs[i]
-		_tank.add_item(c.display_name + ("  (preset)" if TankConfigs.is_preset(c) else ""))
+		_tank.add_item(c.display_name)
 		if chosen != null and c.resource_path == chosen.resource_path:
-			_tank.select(i + 1)
+			_tank.select(i)
 
 
 func _field(box: Container, caption: String, value: String) -> LineEdit:

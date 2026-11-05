@@ -4,8 +4,8 @@
 
 [resource]
 script = ExtResource("1_cfg")
-display_name = "Heavy 88"
-chassis = &"heavy"
-gun = &"gun_88"
+display_name = "BT-7"
+chassis = &"light"
+gun = &"gun_37"
 armour = &"standard"
 camo = false

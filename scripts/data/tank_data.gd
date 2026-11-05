@@ -42,10 +42,19 @@ extends Resource
 @export var suspension_frequency_hz: float = 1.5
 ## 1.0 = critically damped (no bounce), lower = bouncier.
 @export var suspension_damping_ratio: float = 0.6
-## Speeding up lifts the nose, braking dips it: the hull is pitched as by a force of
-## mass × acceleration this far above the tracks (m). Bigger = more rocking, so jerky
-## driving spoils the aim. The builder scales it with mass (heavier rocks more).
+## Speeding up lifts the nose, braking dips it. Full throttle or full braking pitch the
+## hull as by a force of mass × pitch_rock_accel this far above the tracks (m), the
+## same for speeding up and braking (the share of the tank's own limit counts, not
+## m/s²). Bigger = more rocking, so jerky driving spoils the aim. The builder scales
+## it with mass (heavier rocks a little more).
 @export var pitch_rock_lever_m: float = 3.0
+## Extra pitch while the acceleration changes (driving off, starting to brake, coming
+## to a halt): a kick that dies away over pitch_rock_kick_time_s, so the hull bobs
+## instead of just leaning (m, like pitch_rock_lever_m).
+@export var pitch_rock_kick_lever_m: float = 3.0
+@export var pitch_rock_kick_time_s: float = 0.5
+## The acceleration the rocking acts as at full throttle / full braking (m/s²).
+@export var pitch_rock_accel: float = 2.0
 ## A gun round hitting the hull jolts it: the shell's momentum times this.
 @export var hit_jolt_factor: float = 4.0
 
@@ -119,12 +128,21 @@ extends Resource
 ## A hit fuel tank burns this long (s), taking fire_hp_per_s. No repairs while burning.
 @export var fire_duration_s: float = 10.0
 @export var fire_hp_per_s: float = 3.0
+## While the fuel burns the crew fights the fire: the tank stands still...
+@export var fire_immobilises: bool = true
+## ...and the smoke cuts the view: bots see this share of their range, the player gets
+## a smoke haze over the view (ViewOverlay).
+@export var fire_view_range_factor: float = 0.35
 ## Top speed with a damaged engine, as a share of normal (destroyed = 0).
 @export var engine_damaged_speed_factor: float = 0.5
 ## Turret traverse with a damaged turret ring, as a share of normal.
 @export var ring_damaged_traverse_factor: float = 0.5
 ## ...and with a destroyed one (0 = jammed).
-@export var ring_destroyed_traverse_factor: float = 0.5
+@export var ring_destroyed_traverse_factor: float = 0.1
+## A damaged track (AP hits; HE breaks it, ShellData.breaks_tracks): top speed and turn
+## rate as a share of normal.
+@export var track_damaged_speed_factor: float = 0.8
+@export var track_damaged_turn_factor: float = 0.55
 ## A destroyed track stops the tank altogether (thrown track: no pivoting on the other
 ## one) until it is repaired.
 @export var broken_track_immobilises: bool = true
@@ -143,6 +161,20 @@ extends Resource
 ## Uses traverse_speed_deg from its data.
 @export var roof_mg: MachineGunData
 
+
+@export_group("Smoke")
+## Smoke salvos per life (back to full on respawn). A salvo lays a screen of
+## smoke_clouds_per_salvo clouds smoke_distance_m ahead of the turret, spread over
+## smoke_spread_deg.
+@export var smoke_salvos: int = 3
+@export var smoke_clouds_per_salvo: int = 3
+@export var smoke_distance_m: float = 30.0
+@export var smoke_spread_deg: float = 50.0
+@export var smoke_radius_m: float = 10.0
+@export var smoke_height_m: float = 8.0
+@export var smoke_lifetime_s: float = 45.0
+## Played at the turret when a salvo goes off. Null = silent.
+@export var smoke_sound: SoundSetData
 
 @export_group("Geometry")
 ## Hull with tracks: width, height, length (m). Today's medium tank by default.
@@ -175,6 +207,8 @@ extends Resource
 @export_group("Sound")
 ## Engine, tracks, gun and hatch sounds. Null = silent tank.
 @export var sounds: TankSoundData
+## The crew's shouts to the player (hit, near miss). Null = quiet crew.
+@export var crew_voice: CrewVoiceData
 
 
 ## Vertical field of view through the binoculars (degrees).

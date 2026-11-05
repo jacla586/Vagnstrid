@@ -4,6 +4,9 @@ extends RefCounted
 
 enum Outcome { HIT, PENETRATION, NO_PENETRATION, RICOCHET, COMMANDER_HIT }
 
+## Came from an MG or rifle bullet (under Tank.THREAT_MIN_CALIBER_MM): the shooter
+## isn't told (no hit text for MG fire, so it can't sweep smoke to find targets).
+var bullet: bool = false
 var outcome: Outcome = Outcome.HIT
 ## Zone hit, e.g. "hull" + "side".
 var part: String = ""

@@ -164,6 +164,13 @@ func _register(tank: Tank, owner_peer: int) -> int:
 		var owner_id: int = int(owners.get(net_id, 0))
 		if owner_id > 1 and multiplayer.get_peers().has(owner_id):
 			NetSession.instance.rpc_id(owner_id, "rpc_struck", outcome, direction))
+	tank.near_missed.connect(func(direction: Vector3) -> void:
+		var owner_id: int = int(owners.get(net_id, 0))
+		if owner_id > 1 and multiplayer.get_peers().has(owner_id):
+			NetSession.instance.rpc_id(owner_id, "rpc_near_miss", direction))
+	tank.smoke_launched.connect(func(points: PackedVector3Array) -> void:
+		if not multiplayer.get_peers().is_empty():
+			NetSession.instance.rpc("rpc_tank_smoke", net_id, points))
 	if tank.squad != null:
 		var squad: Squad = tank.squad
 		squad.soldier_down.connect(func(index: int, screamed: bool) -> void:
@@ -212,6 +219,7 @@ func _spawn_player(peer: int) -> void:
 		tank.add_child(rc)
 		_map.add_child(tank)
 	tank.global_transform = xform
+	tank.reset_physics_interpolation()
 	var net_id: int = _register(tank, peer)
 	for p: int in multiplayer.get_peers():
 		_send_spawn(p, net_id)
@@ -321,7 +329,7 @@ func _on_fired(shell: Shell, tank: Tank) -> void:
 
 func _on_shot_landed(result: HitResult, tank: Tank) -> void:
 	var owner_peer: int = owners.get(tank.net_id, 0)
-	if owner_peer > 1 and result != null:
+	if owner_peer > 1 and result != null and not result.bullet:
 		var text: String = result.describe()
 		if result.outcome == HitResult.Outcome.COMMANDER_HIT and result.target == tank:
 			text = "OWN COMMANDER HIT"
@@ -414,6 +422,13 @@ func _send_squads() -> void:
 
 
 ## Host: a client sent its squad (via its own tank).
+func on_tank_action(peer: int, kind: int) -> void:
+	var tank: Tank = tank_of_peer(peer)
+	var rc := tank.get_node_or_null("RemoteController") as RemoteController if tank != null else null
+	if rc != null:
+		rc.request_action(kind)
+
+
 func on_squad_order(peer: int, kind: int, target: Vector3) -> void:
 	var tank: Tank = tank_of_peer(peer)
 	if tank != null and tank.squad != null and is_instance_valid(tank.squad):
@@ -509,6 +524,7 @@ func on_spawn_tank(net_id: int, owner_peer: int, team: int, data_path: String, x
 		tank.set_net_puppet(false)
 		_map.add_child(tank)
 	tank.global_transform = xform
+	tank.reset_physics_interpolation()
 	tanks[net_id] = tank
 	owners[net_id] = owner_peer
 	_puppets.register(tank)
@@ -551,6 +567,20 @@ func on_shot_result(text: String, outcome: int) -> void:
 	var fb: HitFeedback = _my_rig.get_node_or_null("HUD/HitFeedback") as HitFeedback if _my_rig != null else null
 	if fb != null:
 		fb.show_text(text, outcome)
+
+
+## Client: a tank (any) fired smoke.
+func on_tank_smoke(net_id: int, points: PackedVector3Array) -> void:
+	var tank: Tank = tanks.get(net_id)
+	if is_instance_valid(tank):
+		tank.net_show_smoke(points)
+
+
+## Client: a gun round landed close to the own tank (the crew shouts).
+func on_near_miss(direction: Vector3) -> void:
+	var tank: Tank = _my_rig.get_node_or_null("Tank") as Tank if _my_rig != null else null
+	if tank != null:
+		tank.net_near_miss(direction)
 
 
 ## Client: a gun round hit the own tank (shake, ping, driving keys cancelled).

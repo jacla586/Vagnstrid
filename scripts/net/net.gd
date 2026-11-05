@@ -299,6 +299,25 @@ func rpc_tree_felled(field: NodePath, index: int, direction: Vector3) -> void:
 		game.on_tree_felled(field, index, direction)
 
 
+## Client -> host: a one-shot tank action (RemoteController.ACTION_*: smoke, abandon).
+@rpc("any_peer", "call_remote", "reliable", 2)
+func rpc_tank_action(kind: int) -> void:
+	if NetRole.is_host() and game != null:
+		game.on_tank_action(multiplayer.get_remote_sender_id(), kind)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_tank_smoke(net_id: int, points: PackedVector3Array) -> void:
+	if game != null:
+		game.on_tank_smoke(net_id, points)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_near_miss(direction: Vector3) -> void:
+	if game != null:
+		game.on_near_miss(direction)
+
+
 @rpc("any_peer", "call_remote", "reliable", 2)
 func rpc_squad_order(kind: int, target: Vector3) -> void:
 	if NetRole.is_host() and game != null:

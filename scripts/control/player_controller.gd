@@ -22,6 +22,8 @@ const DRIVE_ACTIONS: Array[StringName] = [&"move_forward", &"move_backward", &"t
 @export var views: PlayerViews
 ## Clicks on the squad orders map send the tank's infantry squad.
 @export var squad_map: SquadMap
+## Its "abandon tank" button bails the crew out (TankCommand.abandon).
+@export var esc_menu: EscMenu
 
 var _command: TankCommand = TankCommand.new()
 var _hatch_wanted: bool = false
@@ -29,6 +31,8 @@ var _turret_to_view_requested: bool = false
 var _spot_requested: bool = false
 var _fire_armed: bool = false
 var _ammo_requested: int = -1
+var _smoke_requested: bool = false
+var _abandon_requested: bool = false
 ## Squad order waiting for the next physics frame (Squad.ORDER_*).
 var _squad_order: int = 0
 var _squad_target: Vector3 = Vector3.ZERO
@@ -42,6 +46,8 @@ func _ready() -> void:
 		squad_map.squad_order_requested.connect(func(point: Vector3) -> void:
 			_squad_order = Squad.ORDER_MOVE
 			_squad_target = point)
+	if esc_menu != null:
+		esc_menu.abandon_requested.connect(func() -> void: _abandon_requested = true)
 ## Last aim point in the hull's local space (used in the commander view).
 var _hull_local_aim: Vector3 = Vector3.ZERO
 
@@ -53,6 +59,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_turret_to_view_requested = true
 	elif event.is_action_pressed("squad_recall"):
 		_squad_order = Squad.ORDER_RECALL
+	elif event.is_action_pressed("smoke"):
+		_smoke_requested = true
 	elif event.is_action_pressed("spot") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_spot_requested = true
 	else:
@@ -70,8 +78,9 @@ func _physics_process(_delta: float) -> void:
 	# Reversing steers like a car: the key turns the rear that way.
 	if _command.throttle < 0.0:
 		_command.steering = -_command.steering
-	# A wounded commander drops back inside; he doesn't pop up again on recovery.
-	if tank.is_commander_wounded():
+	# A wounded commander drops back inside; he doesn't pop up again on recovery. Nor
+	# does a new tank start with the hatch open.
+	if tank.is_commander_wounded() or tank.is_knocked_out():
 		_hatch_wanted = false
 	_command.hatch_open = _hatch_wanted
 	if views != null and (views.drives_turret() or _turret_to_view_requested):
@@ -96,6 +105,10 @@ func _physics_process(_delta: float) -> void:
 	_command.squad_order = _squad_order
 	_command.squad_target = _squad_target
 	_squad_order = 0
+	_command.smoke = _smoke_requested
+	_command.abandon = _abandon_requested
+	_smoke_requested = false
+	_abandon_requested = false
 	tank.set_command(_command)
 
 

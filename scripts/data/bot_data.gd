@@ -9,6 +9,11 @@ extends Resource
 @export_group("Spotting")
 ## How often the commander looks around (s).
 @export var scan_interval_s: float = 0.25
+## Tanks farther away than these ranges (m) are looked at only every 2nd / 4th scan (the
+## time in between still counts towards spotting): fewer sight lines, same rules. The
+## current target is looked at every scan.
+@export var look_every_2nd_beyond_m: float = 400.0
+@export var look_every_4th_beyond_m: float = 800.0
 ## Farthest the commander spots a tank with the hatch open / closed (m).
 @export var view_range_open_m: float = 1200.0
 @export var view_range_closed_m: float = 700.0
@@ -52,6 +57,14 @@ extends Resource
 ## Without a destroyed module or thrown track, the crew only stops to repair below
 ## this share of structure hp; lighter damage mends while it holds a position anyway.
 @export var repair_stop_hp_fraction: float = 0.4
+
+@export_group("Stuck and smoke")
+## Trying to drive but not this far from where it was (m) for abandon_stuck_s (s): the
+## crew abandons the tank (hung on a rock) and it respawns, like a player can.
+@export var abandon_stuck_m: float = 8.0
+@export var abandon_stuck_s: float = 60.0
+## Pulling back after hits: chance to fire a smoke salvo first (while any are left).
+@export var smoke_on_relocate_chance: float = 0.6
 
 @export_group("Machine gun")
 ## Fires MGs at an exposed commander within this range (m).

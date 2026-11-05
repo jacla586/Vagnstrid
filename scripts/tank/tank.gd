@@ -32,6 +32,11 @@ extends RigidBody3D
 ## the gun). Bullets are Shells like the main gun's, with the MG data's spread.
 ## Spotting: the command's spot marks spot_point (emits `spotted`), then waits the
 ## data's spot cooldown.
+## Smoke: the command's smoke fires a salvo (TankData.smoke_*: a screen ahead of the
+## turret), smoke_salvos per life. Abandon: the crew bails out (stuck for good): the tank
+## counts as knocked out (no one scores it) and respawns like one.
+## Respawn (repair): everything as at the first spawn: damage, commander, gun, smoke,
+## the squad back on the tank.
 
 ## Emitted after a shot leaves the barrel.
 signal fired(shell: Shell)
@@ -63,6 +68,11 @@ signal mg_fired(bullet: Shell, roof: bool)
 signal spotted(point: Vector3)
 ## Emitted when the tank's squad spots an enemy (a Tank or a Squad) at `at`.
 signal squad_contact(enemy: Node3D, at: Vector3)
+## A gun round passed or landed within NEAR_MISS_M without hitting (the crew shouts).
+## Host/offline from the shell, network clients for their own tank (net_near_miss).
+signal near_missed(direction: Vector3)
+## A smoke salvo went off: the clouds' ground points (the host sends them to clients).
+signal smoke_launched(points: PackedVector3Array)
 
 ## Rounds of at least this calibre count as a threat to bots (shell_threat); MG and
 ## rifle bullets don't (mm).
@@ -82,7 +92,7 @@ const MAX_WRECKS: int = 150
 const WRECK_JUMP_M: float = 20.0
 ## ...also this long after it was repaired (s).
 const WRECK_PENDING_S: float = 2.0
-## The acceleration that rocks the hull is smoothed this fast (1/s).
+## The drive effort that rocks the hull is smoothed this fast (1/s).
 const ROCK_SMOOTHING: float = 12.0
 ## Commander hitbox centre sits this far below his eyes (m).
 const COMMANDER_HITBOX_DROP: float = 0.35
@@ -108,7 +118,7 @@ const HATCH_OPEN_ANGLE_DEG: float = 110.0
 ## Built in the garage: if set, `data` is built from it (TankBuilder) at start.
 @export var config: TankConfig
 ## The player's tank: offline, it is built from the config chosen in the garage
-## (TankConfigs.get_selected(); none chosen = `data` as set).
+## (TankConfigs.get_selected(): the T-34-like preset unless another is chosen).
 @export var use_player_config: bool = false
 ## Name on the scoreboard (set for network players; empty = made up from the tank).
 var display_label: String = ""
@@ -135,8 +145,10 @@ var wreck_only: bool = false
 ## to wait for the jump (s).
 var _wreck_pending_xform: Transform3D
 var _wreck_pending_s: float = 0.0
-## Smoothed drive acceleration that pitches the hull (m/s²).
-var _rock_accel: float = 0.0
+## Smoothed drive effort that pitches the hull (-1 full braking .. 1 full throttle), and
+## a slow copy of it: the difference is the kick while the effort changes.
+var _rock: float = 0.0
+var _rock_slow: float = 0.0
 var _commander_wound_remaining: float = 0.0
 var _idle_command: TankCommand = TankCommand.new()
 var _burning: Node3D
@@ -146,6 +158,7 @@ var _look_team: int = -1
 var _charred_material: StandardMaterial3D
 var _mg_shot_timer: float = 0.0
 var _spot_cooldown_remaining: float = 0.0
+var _smoke_left: int = 0
 var _damage: TankDamage
 ## Network id (0 = not replicated). Set by the net code.
 var net_id: int = 0
@@ -204,6 +217,9 @@ func _ready() -> void:
 			continue
 		ray.add_exception(self)
 		ray.target_position = Vector3(0.0, -data.suspension_rest_length, 0.0)
+		# Cast once per step by _apply_suspension (force_raycast_update), and not at all on
+		# puppets: left enabled, every ray would be cast a second time by the engine.
+		ray.enabled = false
 		width_sum += absf(ray.position.x)
 		if ray.position.x < 0.0:
 			_left_rays.append(ray)
@@ -215,6 +231,7 @@ func _ready() -> void:
 	_align_gunner_sight()
 	_setup_paint()
 	_rng.randomize()
+	_smoke_left = data.smoke_salvos
 	_roof_mg.visible = data.roof_mg != null
 	_damage = TankDamage.new(data)
 	_damage.module_changed.connect(func(id: StringName, st: TankDamage.State) -> void:
@@ -413,6 +430,7 @@ func set_command(command: TankCommand) -> void:
 ## Throttle commanded this frame (-1..1).
 func get_throttle() -> float:
 	return _command.throttle
+
 
 
 ## Half size of the hull's collision box (m): x = half width, z = half length.
@@ -680,6 +698,22 @@ func repair() -> void:
 		_wreck_pending_s = WRECK_PENDING_S
 	_knocked_out = false
 	_damage.reset()
+	# As at the first spawn: the commander unhurt and inside, gun loaded with the first
+	# ammo, full smoke, no cooldowns; the squad full and on the tank.
+	_commander_wound_remaining = 0.0
+	_hatch_progress = 0.0
+	_update_hatch(0.0)
+	_update_commander_hitbox()
+	_reload_remaining = 0.0
+	_ammo_index = 0
+	_spot_cooldown_remaining = 0.0
+	_smoke_left = data.smoke_salvos
+	_mg_shot_timer = 0.0
+	_since_fired = 999.0
+	_rock = 0.0
+	_rock_slow = 0.0
+	if squad != null and is_instance_valid(squad) and not net_puppet:
+		squad.restore_on_tank()
 	_set_fire_effect(false)
 	if _burning != null:
 		_burning.queue_free()
@@ -730,6 +764,7 @@ func _make_wreck(at: Transform3D) -> void:
 	var root: Node = get_tree().current_scene if get_tree().current_scene != null else get_parent()
 	root.add_child(wreck)
 	wreck.global_transform = at
+	wreck.reset_physics_interpolation()
 	for mi: MeshInstance3D in _visual.find_children("*", "MeshInstance3D", true, false):
 		if mi.mesh == null or not mi.is_visible_in_tree():
 			continue
@@ -874,6 +909,17 @@ func get_gunner_sight_transform() -> Transform3D:
 	return _gunner_sight.global_transform
 
 
+## The same as shown on screen this frame (physics interpolation): cameras use these,
+## so the view moves as smoothly as the hull is drawn.
+func get_gunner_sight_transform_interpolated() -> Transform3D:
+	return _gunner_sight.get_global_transform_interpolated()
+
+
+func get_commander_eye_position_interpolated() -> Vector3:
+	return _head_closed.get_global_transform_interpolated().origin.lerp(
+			_head_open.get_global_transform_interpolated().origin, smoothstep(0.0, 1.0, _hatch_progress))
+
+
 func is_loaded() -> bool:
 	return _reload_remaining <= 0.0
 
@@ -911,8 +957,11 @@ func _physics_process(delta: float) -> void:
 	_update_roof_mg(delta)
 	_update_mg(delta)
 	_update_spotting(delta)
+	_update_smoke()
 	_update_squad_order()
 	_update_damage(delta)
+	if _command.abandon and not _knocked_out:
+		_knock_out()   # the crew bails out: a loss, but nobody's kill
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -1006,6 +1055,65 @@ func _update_spotting(delta: float) -> void:
 		spotted.emit(_command.spot_point)
 
 
+## Smoke salvos left this life.
+func get_smoke_left() -> int:
+	return _smoke_left
+
+
+func _update_smoke() -> void:
+	if not _command.smoke or _smoke_left <= 0 or data.smoke_clouds_per_salvo <= 0:
+		return
+	_smoke_left -= 1
+	var points := PackedVector3Array()
+	var forward: Vector3 = -_turret.global_basis.z
+	forward.y = 0.0
+	forward = forward.normalized() if forward.length() > 0.01 else Vector3.FORWARD
+	var n: int = data.smoke_clouds_per_salvo
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	for i: int in n:
+		var share: float = float(i) / float(n - 1) - 0.5 if n > 1 else 0.0
+		var dir: Vector3 = forward.rotated(Vector3.UP, deg_to_rad(data.smoke_spread_deg) * share)
+		var p: Vector3 = global_position + dir * data.smoke_distance_m
+		var query := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 60.0, p + Vector3.DOWN * 60.0, 1)
+		query.exclude = [get_rid()]
+		var hit: Dictionary = space.intersect_ray(query)
+		points.append(hit["position"] if not hit.is_empty() else Vector3(p.x, global_position.y - 1.0, p.z))
+	show_smoke(points)
+	smoke_launched.emit(points)
+
+
+## Lays smoke clouds at `points` (ground). Also on network clients from the host.
+func show_smoke(points: PackedVector3Array) -> void:
+	var root: Node = get_parent()
+	for p: Vector3 in points:
+		var cloud := SmokeCloud.new()
+		cloud.radius_m = data.smoke_radius_m
+		cloud.height_m = data.smoke_height_m
+		cloud.lifetime_s = data.smoke_lifetime_s
+		root.add_child(cloud)
+		cloud.global_position = p
+	if data.smoke_sound != null:
+		SoundFx.play_at(self, data.smoke_sound, _turret.global_position)
+
+
+## Network client: the host's tank fired smoke (the own tank counts its salvos down).
+func net_show_smoke(points: PackedVector3Array) -> void:
+	if net_predict:
+		_smoke_left = maxi(_smoke_left - 1, 0)
+	show_smoke(points)
+
+
+## A gun round passed or landed close without hitting (Shell, host/offline).
+func report_near_miss(direction: Vector3) -> void:
+	shell_threat.emit(direction, false)
+	near_missed.emit(direction)
+
+
+## Network client, own tank: the host says a round landed close.
+func net_near_miss(direction: Vector3) -> void:
+	near_missed.emit(direction)
+
+
 ## Swings the roof MG towards the command's MG aim point while it's in use.
 func _update_roof_mg(delta: float) -> void:
 	if not _command.mg_use_roof or not can_use_roof_mg():
@@ -1095,6 +1203,8 @@ func net_set_pose(xform: Transform3D, turret_yaw: float, gun_pitch: float, hatch
 		elif _wreck_pending_s > 0.0:
 			_wreck_pending_s = 0.0
 			_make_wreck(_wreck_pending_xform)
+		global_transform = xform
+		reset_physics_interpolation()   # a jump, not a glide across the map
 	global_transform = xform
 	_net_velocity = velocity
 	if net_predict and not _knocked_out:
@@ -1256,13 +1366,17 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	var drive_force: float = mass * clampf(accel - gravity_along, -traction_limit, traction_limit)
 	# Speeding up lifts the nose, braking dips it; the hull rocks on its springs, and
 	# the gun with it (no stabiliser), so jerky driving spoils the aim.
+	# The share of the tank's own limit counts, so driving off rocks as much as stopping.
 	var driving: bool = _damage.speed_factor() > 0.0 and not _damage.is_immobilised()
-	_rock_accel = lerpf(_rock_accel, accel if driving else 0.0, 1.0 - exp(-ROCK_SMOOTHING * delta))
-	apply_torque(global_basis.x * mass * _rock_accel * data.pitch_rock_lever_m)
+	var effort: float = clampf(accel / maxf(accel_limit, 0.01), -1.0, 1.0) if driving else 0.0
+	_rock = lerpf(_rock, effort, 1.0 - exp(-ROCK_SMOOTHING * delta))
+	_rock_slow = lerpf(_rock_slow, _rock, 1.0 - exp(-delta / maxf(data.pitch_rock_kick_time_s, 0.01)))
+	apply_torque(global_basis.x * mass * data.pitch_rock_accel
+			* (_rock * data.pitch_rock_lever_m + (_rock - _rock_slow) * data.pitch_rock_kick_lever_m))
 
 	# Yaw: chase the target turn rate. Positive yaw (around +Y) turns left.
 	var steering: float = clampf(_command.steering, -1.0, 1.0)
-	var target_yaw_rate: float = -steering * deg_to_rad(data.max_turn_rate_deg)
+	var target_yaw_rate: float = -steering * deg_to_rad(data.max_turn_rate_deg) * _damage.turn_factor()
 	var yaw_rate: float = angular_velocity.dot(up)
 	var turn_limit: float = deg_to_rad(data.turn_acceleration_deg)
 	var yaw_accel: float = clampf((target_yaw_rate - yaw_rate) / delta, -turn_limit, turn_limit)
@@ -1284,11 +1398,15 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 		left_force = hold_force
 	if _damage.track_factor(1) <= 0.0 or _damage.is_immobilised():
 		right_force = hold_force
-	_apply_track_force(left_force, forward, left_points, left_normals)
-	_apply_track_force(right_force, forward, right_points, right_normals)
+	var com_global: Vector3 = global_position + state.center_of_mass
+	_apply_track_force(left_force, forward, up, com_global, left_points, left_normals)
+	_apply_track_force(right_force, forward, up, com_global, right_points, right_normals)
 
 
-func _apply_track_force(force: float, forward: Vector3,
+## Track forces act at the wheels' places along and across the hull but at the centre
+## of mass' height: they turn the tank but don't pitch it. The pitch from driving and
+## braking is the designed rocking alone (pitch_rock_*), the same for every chassis.
+func _apply_track_force(force: float, forward: Vector3, up: Vector3, com_global: Vector3,
 		points: Array[Vector3], normals: Array[Vector3]) -> void:
 	if points.is_empty():
 		return
@@ -1296,4 +1414,5 @@ func _apply_track_force(force: float, forward: Vector3,
 	for i: int in points.size():
 		var normal: Vector3 = normals[i]
 		var direction: Vector3 = (forward - normal * forward.dot(normal)).normalized()
-		apply_force(direction * per_wheel, points[i] - global_position)
+		var at: Vector3 = points[i] + up * (com_global - points[i]).dot(up)
+		apply_force(direction * per_wheel, at - global_position)

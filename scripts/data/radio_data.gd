@@ -7,9 +7,9 @@ extends Resource
 @export var under_attack: AudioStream
 @export var under_attack_text: String = "Vi är under anfall!"
 @export var returning: AudioStream
-@export var returning_text: String = "Återvänder till vagnen."
+@export var returning_text: String = "Återvänder till vagnen!"
 @export var in_position: AudioStream
-@export var in_position_text: String = "I position."
+@export var in_position_text: String = "I position!"
 ## An AT round is about to be fired (comes before the queue).
 @export var at_fire: AudioStream
 @export var at_fire_text: String = "Skott kommer! Klart bakåt!"

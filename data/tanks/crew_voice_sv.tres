@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="CrewVoiceData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/crew_voice_data.gd" id="1_crew"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_hit.ogg" id="2_hit"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_near_miss.ogg" id="3_near"]
+
+[resource]
+script = ExtResource("1_crew")
+hit = ExtResource("2_hit")
+near_miss = ExtResource("3_near")

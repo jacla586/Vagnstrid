@@ -1,4 +1,5 @@
 """OSM -> geometrier i SWEREF 99 TM (EPSG:3006)."""
+import json
 from pathlib import Path
 import os
 ROOT = Path(__file__).resolve().parent.parent
@@ -63,6 +64,13 @@ def build(osm_path):
         for m in r['members']:
             if m[0] == 'way' and not ways.get(m[1], {}).get('tags'):
                 used_in_rel.add(m[1])
+
+    # <projekt>/broar_bort.json: OSM-vägar (id) som inte ska bli broar, t.ex. långa spänger
+    # mitt i skogen som stänger vägen för vagnarna. Vägen blir kvar som vanlig väg på marken.
+    bort = WORK.parent / 'broar_bort.json'
+    if bort.exists():
+        for wid in json.loads(bort.read_text()):
+            ways.get(wid, ways.get(str(wid), {})).get('tags', {}).pop('bridge', None)
 
     for wid, w in ways.items():
         t = w['tags']

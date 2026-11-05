@@ -133,7 +133,7 @@ extends Resource
 
 @export_group("Smoke and withdrawal")
 ## Smoke grenades per sortie (refilled on the tank).
-@export var smoke_grenades: int = 2
+@export var smoke_grenades: int = 1
 ## A tank shell landing this close to a soldier counts as being fired on (m).
 @export var near_miss_m: float = 15.0
 ## Fired on by a tank: smoke this far towards the threat, then fall back this far
@@ -151,8 +151,9 @@ extends Resource
 @export var refill_time_s: float = 20.0
 ## A squad that lost everyone is back on the tank, full, after this long (s).
 @export var wipe_cooldown_s: float = 60.0
-## Fallen soldiers lie where they fell this long (s).
-@export var body_time_s: float = 20.0
+## Fallen soldiers drop where they fell and are gone after this long (s): long enough
+## for the death animation, no bodies lying about.
+@export var body_time_s: float = 3.0
 ## One soldier per squad is "Wilhelm": when he is hit, this chance of his scream,
 ## heard within the sound set's range (100 m, even with the hatch shut).
 @export_range(0.0, 1.0) var scream_chance: float = 0.1

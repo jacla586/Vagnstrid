@@ -19,6 +19,11 @@ var _mode_before_debug: ViewMode = ViewMode.COMMANDER
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# The cameras are placed every frame (_process) from the hull's interpolated pose:
+	# physics interpolation must leave them alone.
+	for camera: Camera3D in [commander_camera, gunner_camera, debug_camera, squad_camera]:
+		if camera != null:
+			camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_apply_view()
 
 
