@@ -10,6 +10,9 @@ extends Resource
 @export var returning_text: String = "Återvänder till vagnen."
 @export var in_position: AudioStream
 @export var in_position_text: String = "I position."
+## An AT round is about to be fired (comes before the queue).
+@export var at_fire: AudioStream
+@export var at_fire_text: String = "Skott kommer! Klart bakåt!"
 ## Twelve recordings each, one per clock hour (1..12).
 @export var armour: Array[AudioStream] = []
 @export var armour_text: String = "Pansar, klockan %s!"

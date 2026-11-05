@@ -16,3 +16,7 @@ extends Resource
 @export_range(0.0, 1.0) var damaged_below: float = 0.75
 ## Outside the armour (tracks): hit by shells that don't penetrate and by HE fragments.
 @export var external: bool = false
+## Own repair time when broken (s, standing still), rolled between min and max each time
+## it breaks (tracks: putting a thrown track back on). 0 = the tank's repair_time_s.
+@export var repair_time_min_s: float = 0.0
+@export var repair_time_max_s: float = 0.0

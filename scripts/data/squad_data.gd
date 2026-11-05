@@ -58,20 +58,19 @@ extends Resource
 @export var uniform_color: Color = Color(0.29, 0.36, 0.2)
 ## Enemy camouflage blotches per metre (TeamLook).
 @export var camo_pattern_per_m: float = 3.5
-## UN-blue helmet for friends: bone it sits on, size and offset in that bone's space
-## (model units).
-@export var helmet_bone: StringName = &"head"
-@export var helmet_radius: float = 3.3
-@export var helmet_offset: Vector3 = Vector3(0.0, 1.5, 0.15)
-## Dome height as a share of its radius (> 1 = taller than a half sphere).
-@export var helmet_height_share: float = 1.3
+## Model materials painted UN blue on friends (the helmet; its material is shared with
+## a few other bits) and left as they are on enemies.
+@export var friend_blue_materials: PackedStringArray = PackedStringArray()
 ## Soldier size (m).
 @export var soldier_height_m: float = 1.8
 @export var soldier_radius_m: float = 0.3
 
 @export_group("Spotting")
 ## Sees enemy tanks and soldiers this far (m), all round while holding still...
-@export var view_range_m: float = 400.0
+@export var view_range_m: float = 500.0
+## Soldiers see through vegetation (bush and tree crowns): entry k is how far they see
+## through k + 1 layers (m). [500, 300] = one layer to 500 m, two to 300 m.
+@export var see_through_ranges_m: PackedFloat32Array = PackedFloat32Array([500.0, 300.0])
 ## ...but only in this cone ahead while on the move (degrees, full width).
 @export var moving_view_cone_deg: float = 140.0
 ## Base time to make out an enemy tank in plain view (s); cover, stillness and how
@@ -102,7 +101,8 @@ extends Resource
 @export var at_round: ShellData
 ## Rounds per sortie (refilled on the tank).
 @export var at_rounds: int = 2
-## Fires at enemy tanks within this (m)...
+## Fires at enemy tanks within this (m), aimed at the track facing the squad (a hit
+## throws it: the tank stands until it is repaired)...
 @export var at_range_m: float = 150.0
 ## ...with this spread (mrad): ~70 % at 100 m, ~30 % at 150 m against a tank...
 @export var at_dispersion_mrad: float = 18.0
@@ -111,6 +111,21 @@ extends Resource
 @export var at_fast_target_kmh: float = 15.0
 ## Between two AT rounds (s).
 @export var at_interval_s: float = 8.0
+## The gunner stands, turns to the tank, calls "Skott kommer! Klart bakåt!" on the
+## radio and fires this long after (s)...
+@export var at_aim_time_s: float = 3.0
+## ...then keeps the launcher on his shoulder this long (s).
+@export var at_hold_after_s: float = 1.5
+## Animation while aiming the launcher (from model_animations).
+@export var anim_at_aim: StringName = &"aim"
+## The launcher: a plain tube on the right shoulder, its middle at this point in the
+## soldier's space (m, forward = -Z), and its size and colour.
+@export var at_launcher_offset: Vector3 = Vector3(0.13, 1.64, -0.1)
+@export var at_launcher_length_m: float = 1.1
+@export var at_launcher_radius_m: float = 0.06
+@export var at_launcher_color: Color = Color(0.25, 0.3, 0.2)
+## Model meshes of the rifle, hidden while he holds the launcher (find_children pattern).
+@export var rifle_mesh_pattern: String = "M4*"
 @export var at_sound: SoundSetData
 
 @export_group("Smoke and withdrawal")
@@ -136,7 +151,7 @@ extends Resource
 ## Fallen soldiers lie where they fell this long (s).
 @export var body_time_s: float = 20.0
 ## One soldier per squad is "Wilhelm": when he is hit, this chance of his scream,
-## heard within the sound set's range (50 m).
+## heard within the sound set's range (100 m, even with the hatch shut).
 @export_range(0.0, 1.0) var scream_chance: float = 0.1
 @export var scream_sound: SoundSetData
 ## Radio calls to the own tank (heard only by its player).

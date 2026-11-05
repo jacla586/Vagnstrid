@@ -49,7 +49,8 @@ shows on the minimap. This is what we test first.
   wear settings, `ShellData.wear_mm`). Tracks are external: any shell landing on them and HE
   fragments (`ModuleFragmentTarget`) damage them. Standing still `repair_time_s` repairs
   modules, then hp creeps back to `repair_hp_max_fraction`. The player sees own hp/modules
-  (`DamagePanel`), never the enemy's; bots stop to repair when they have no target.
+  (`DamagePanel`: a see-through top-down tank icon bottom left with the turret turned and
+  modules green/yellow/red), never the enemy's; bots stop to repair when they have no target.
 - Infantry squads (`Squad`, `scripts/squad/`; data `SquadData`, `data/squads/`,
   `TankData.squad`): one unit of 4 soldiers per tank, made by the tank and living in
   the map beside it. Orders only via `TankCommand.squad_order`/`squad_target`
@@ -66,18 +67,28 @@ shows on the minimap. This is what we test first.
   concealment; all round holding, a cone ahead moving): spotted enemies become team
   marks (`Tank.report_squad_spot`, also signal `squad_contact`). Soldiers have
   `SoldierHitbox` areas (layer 3, fragment targets): any hit puts one down; one is
-  "Wilhelm" (10 % scream, 50 m). Holding still they fire rifles (`rifle_bullet.tres`,
+  "Wilhelm" (10 % scream, 100 m, on Master so the hatch doesn't muffle it:
+  `SoundSetData.bus`). Holding still they fire rifles (`rifle_bullet.tres`,
   low accuracy) at exposed commanders and soldiers, and AT rounds (`squad_at.tres`,
-  `ShellData.cannot_knock_out`: never a kill) at tanks within 150 m. Fired on by a
+  `ShellData.cannot_knock_out`: never a kill) at tanks within 150 m, aimed at the track
+  facing them (shots allow for drop). The AT gunner stands, turns to the tank, swaps
+  his rifle for a plain launcher tube (`SquadData.at_launcher_*`, "aim" animation),
+  radios "Skott kommer! Klart bakåt!" (`RADIO_AT_FIRE`, first in the queue) and fires
+  `at_aim_time_s` (3 s) later with a back blast; clients see it via `rpc_squad_aim`. A destroyed track immobilises the tank
+  (`TankData.broken_track_immobilises`) until repaired; tracks take
+  `ModuleData.repair_time_min_s..max_s` (30-45 s) standing still, other modules
+  `TankData.repair_time_s`. Soldiers see through vegetation crowns
+  (`Vision.has_line_of_sight_through`, `SquadData.see_through_ranges_m`: one layer to
+  500 m, two to 300 m). Fired on by a
   tank (hit or `Squad.notify_impact` near miss) they smoke (`SmokeCloud`, a vision
-  blocker) and fall back; losses to rifles: fall back. Mounted they refill one by one;
+  blocker) and fall back; losses to rifles: fall back. Mounted they refill one by one (one a minute);
   wiped out, a full squad is back after `wipe_cooldown_s`. HUD: `SquadPanel`.
   Radio (`Squad.radio` signal, kinds `RADIO_*`: under attack (withdraw), returning, in
-  position, armour/infantry contact): `SquadRadio` in the player rig plays the own
+  position, armour/infantry contact, AT round coming): `SquadRadio` in the player rig plays the own
   squad's calls one at a time on Master (not muffled) with a subtitle; contacts get a
   clock hour from the tank's hull. Lines and recordings in `RadioData`
   (`data/squads/radio_sv.tres`, Swedish, `assets/audio/radio/`, made with
-  `tools/audio/make_radio.sh` from Piper TTS); clients get calls by `rpc_squad_radio`.
+  `tools/audio/make_radio.sh` from Piper TTS; a 4th argument makes only matching calls); clients get calls by `rpc_squad_radio`.
   Soldiers use `assets/models/soldier/soldier.glb` (CC-BY, KolosStudios, see its
   CREDITS.md; uniform materials repainted green) with animations (jog, crouch, death...)
   from Quaternius' Universal Animation Library (CC0, `assets/models/ual/`), retargeted by
@@ -109,8 +120,9 @@ shows on the minimap. This is what we test first.
   player (`TeamLook.viewer_team`, set by PlayerViews from the own tank), tanks and soldiers
   of the same team show UN blue (blue bands round hull and turret and a roof panel =
   `MeshKit.Mat.MARK`; plain box tanks get a turret band, `Tank._add_plain_marks`; soldiers
-  a blue helmet on the head bone, `SquadData.helmet_*`), every other team is camouflaged
-  (`assets/shaders/camo.gdshader`, model-space blotches, on paint, markings and uniforms).
+  get their helmet material painted blue, `SquadData.friend_blue_materials`), every other
+  team is camouflaged (`assets/shaders/camo.gdshader`, an M90-like splinter pattern in
+  model space, on paint, markings and uniforms).
   Each machine decides for itself, nothing is sent; tanks/squads repaint when
   `TeamLook.version` or their team changes. `Tank.paint_color` is no longer used.
 - Tank models (`scripts/tank/model/`): `TankModel.build(data)` makes the look AND the
@@ -260,7 +272,8 @@ shows on the minimap. This is what we test first.
   `scenes/maps/<map>.tscn` from above (needs a window, not `--headless`; add
   `--disable-vsync`) into `assets/maps/<map>/map_image.png` + `data/maps/<map>_map.tres`
   (`MapImageData`). The HUD finds it from the Terrain3D data directory name. Rerun
-  after map changes. Spot marks live in `SpotMarks` (player rig), drawn by `MapView`.
+  after map changes. Spot marks live in `SpotMarks` (player rig), drawn by `MapView`. The own tank shows
+  as a hull arrow plus a cone for where the player looks (`PlayerViews.get_view_camera`).
 - Vegetation that matters for gameplay is real scenes (`tree.tscn`, `bush.tscn`),
   placed with the `Scatter` tool node, not the Terrain3D instancer (no collision).
 

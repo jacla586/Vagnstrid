@@ -27,3 +27,50 @@ static func has_line_of_sight(world: World3D, from: Vector3, to: Vector3,
 	query.exclude = exclude
 	var hit: Dictionary = world.direct_space_state.intersect_ray(query)
 	return not hit.is_empty() and hit["collider"] == target
+
+
+## Like has_line_of_sight, but the ray may pass through up to `max_blockers` vision
+## blockers (bush or canopy crowns, each crown one layer). Terrain, hulls and
+## trunks still block. Used by infantry, who see through a little vegetation.
+static func has_line_of_sight_through(world: World3D, from: Vector3, to: Vector3,
+		target: CollisionObject3D, max_blockers: int, exclude: Array[RID] = []) -> bool:
+	var space: PhysicsDirectSpaceState3D = world.direct_space_state
+	var dir: Vector3 = (to - from).normalized()
+	var end: Vector3 = to + dir * 0.5
+	# Solid things (and other hitboxes) first: the target must be the first of them.
+	var query := PhysicsRayQueryParameters3D.create(from, end, SHOT_MASK)
+	query.collide_with_areas = true
+	query.exclude = exclude
+	var hit: Dictionary = space.intersect_ray(query)
+	if hit.is_empty() or hit["collider"] != target:
+		return false
+	if max_blockers < 0:
+		return true
+	# Then count the crowns on the way to it. A ray starting inside a crown doesn't see
+	# that crown, so each step starts just past the last entry point.
+	var stop: float = from.distance_to(hit["position"] as Vector3)
+	var crowns := PhysicsRayQueryParameters3D.create(from, hit["position"], LAYER_VISION_BLOCKER)
+	crowns.collide_with_areas = true
+	crowns.collide_with_bodies = false
+	crowns.exclude = exclude
+	var count: int = 0
+	var start: Vector3 = from
+	var last_rid := RID()
+	var last_shape: int = -1
+	for i: int in max_blockers * 2 + 4:
+		crowns.from = start
+		var c: Dictionary = space.intersect_ray(crowns)
+		if c.is_empty():
+			return true
+		var p: Vector3 = c["position"]
+		# The same crown again (its far side): not a new layer.
+		if c["rid"] != last_rid or int(c["shape"]) != last_shape:
+			count += 1
+			if count > max_blockers:
+				return false
+		last_rid = c["rid"]
+		last_shape = int(c["shape"])
+		start = p + dir * 0.05
+		if from.distance_to(start) >= stop:
+			return true
+	return false

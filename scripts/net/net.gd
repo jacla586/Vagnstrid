@@ -312,6 +312,12 @@ func rpc_squad_smoke(net_id: int, at: Vector3) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 2)
+func rpc_squad_aim(net_id: int, index: int, point: Vector3) -> void:
+	if game != null:
+		game.on_squad_aim(net_id, index, point)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
 func rpc_squad_shot(net_id: int, kind: int, from: Vector3, velocity: Vector3) -> void:
 	if game != null:
 		game.on_squad_shot(net_id, kind, from, velocity)

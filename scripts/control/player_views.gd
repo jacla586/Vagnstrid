@@ -106,6 +106,15 @@ func get_tank() -> Tank:
 	return commander_camera.tank
 
 
+## The camera the player looks through from the tank (commander or gunner); null in
+## the debug and squad views.
+func get_view_camera() -> Camera3D:
+	match _mode:
+		ViewMode.COMMANDER: return commander_camera
+		ViewMode.GUNNER: return gunner_camera
+	return null
+
+
 func get_tank_data() -> TankData:
 	return commander_camera.tank.data
 

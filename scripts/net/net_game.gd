@@ -166,6 +166,9 @@ func _register(tank: Tank, owner_peer: int) -> int:
 			var owner_id: int = int(owners.get(net_id, 0))
 			if owner_id > 1 and multiplayer.get_peers().has(owner_id):
 				NetSession.instance.rpc_id(owner_id, "rpc_squad_radio", net_id, kind, at))
+		squad.at_aiming.connect(func(index: int, point: Vector3) -> void:
+			if not multiplayer.get_peers().is_empty():
+				NetSession.instance.rpc("rpc_squad_aim", net_id, index, point))
 		squad.fired_round.connect(func(kind: int, from: Vector3, velocity: Vector3) -> void:
 			if not multiplayer.get_peers().is_empty():
 				NetSession.instance.rpc("rpc_squad_shot", net_id, kind, from, velocity)
@@ -411,6 +414,12 @@ func on_squad_smoke(net_id: int, at: Vector3) -> void:
 	var squad: Squad = _squad_of(net_id)
 	if squad != null:
 		squad.throw_smoke(at)
+
+
+func on_squad_aim(net_id: int, index: int, point: Vector3) -> void:
+	var squad: Squad = _squad_of(net_id)
+	if squad != null:
+		squad.net_at_aiming(index, point)
 
 
 func on_squad_shot(net_id: int, kind: int, from: Vector3, velocity: Vector3) -> void:

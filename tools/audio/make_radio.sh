@@ -1,13 +1,15 @@
 #!/bin/bash
 # Makes the squad radio calls (Swedish) with Piper TTS and a radio filter:
-#   make_radio.sh <piper binary> <voice .onnx> <project>/assets/audio/radio
+#   make_radio.sh <piper binary> <voice .onnx> <project>/assets/audio/radio [only]
+# [only]: a name pattern (e.g. at_fire) to make just those calls.
 # Voice used: sv_SE-nst-medium (rhasspy/piper-voices on Hugging Face; trained by KBLab
 # on the NST Swedish dataset, CC0). Piper: pip install piper-tts (in a venv).
 set -e
-PIPER=$1; VOICE=$2; O=$3; mkdir -p "$O"
+PIPER=$1; VOICE=$2; O=$3; ONLY=${4:-*}; mkdir -p "$O"
 T=$(mktemp -d)
 NUM=(x ett två tre fyra fem sex sju åtta nio tio elva tolv)
 say() { # name text length_scale
+  [[ "$1" == $ONLY ]] || return 0
   echo "$2" | "$PIPER" -m "$VOICE" --length-scale "${3:-0.85}" -f "$T/raw.wav" 2>/dev/null
   # Radio: narrow band, squashed and slightly overdriven, a hiss bed, a squelch
   # burst before and after.
@@ -28,6 +30,7 @@ say() { # name text length_scale
 say under_attack "Vi är under anfall!" 0.8
 say returning "Återvänder till vagnen." 0.9
 say in_position "I position." 0.9
+say at_fire "Skott kommer! Klart bakåt!" 0.8
 for h in $(seq 1 12); do
   say "infantry_$h" "Fientliga skyttar, klockan ${NUM[$h]}!" 0.8
   say "armour_$h" "Pansar, klockan ${NUM[$h]}!" 0.8

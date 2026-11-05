@@ -9,7 +9,9 @@ extends RefCounted
 ## No penetration: wears the hit cell of the plate (ArmourData wear settings).
 ## External modules (tracks) are damaged by any shell landing in them and by HE fragments.
 ## Repair: standing still for repair_time_s (no shots, no hits, no fire) repairs every
-## module; after that structure hp creeps back up to repair_hp_max_fraction.
+## module (a module with its own repair time, e.g. a thrown track, takes that long);
+## after that structure hp creeps back up to repair_hp_max_fraction.
+## A destroyed track can immobilise the tank (TankData.broken_track_immobilises).
 
 enum State { OK, DAMAGED, DESTROYED }
 
@@ -27,10 +29,17 @@ var _module_hp: Dictionary = {}
 var _modules: Dictionary = {}
 ## "part:face:side:i:j" -> worn mm
 var _wear: Dictionary = {}
+## id -> standing-still time its repair needs (s), rolled when it broke
+var _repair_needed: Dictionary = {}
+## Client puppets: repair time left and total from the host (s); total < 0 = not set.
+var _net_repair_left: float = 0.0
+var _net_repair_total: float = -1.0
+var _rng := RandomNumberGenerator.new()
 
 
 func _init(tank_data: TankData) -> void:
 	data = tank_data
+	_rng.randomize()
 	if data.layout != null:
 		for m: ModuleData in data.layout.modules:
 			_modules[m.id] = m
@@ -43,6 +52,8 @@ func reset() -> void:
 	fire_left = 0.0
 	repair_time = 0.0
 	_wear.clear()
+	_repair_needed.clear()
+	_net_repair_total = -1.0
 	for id: StringName in _modules:
 		_module_hp[id] = (_modules[id] as ModuleData).hp
 
@@ -85,9 +96,35 @@ func needs_repair() -> bool:
 	return hp < data.structure_hp * data.repair_hp_max_fraction - 0.01
 
 
+## Standing-still time the current repair needs in all (s): the slowest broken module,
+## or the tank's repair_time_s when only hp is low.
+func repair_total() -> float:
+	if _net_repair_total >= 0.0:
+		return _net_repair_total
+	var total: float = 0.0
+	for id: StringName in _modules:
+		if state(id) != State.OK:
+			total = maxf(total, float(_repair_needed.get(id, data.repair_time_s)))
+	return total if total > 0.0 else data.repair_time_s
+
+
+## Seconds of standing still left until the modules are repaired.
+func repair_time_left() -> float:
+	if _net_repair_total >= 0.0:
+		return _net_repair_left
+	return maxf(repair_total() - repair_time, 0.0)
+
+
 ## 0..1 towards the module repair (1 = modules repaired, hp may still be creeping up).
 func repair_progress() -> float:
-	return clampf(repair_time / maxf(data.repair_time_s, 0.001), 0.0, 1.0)
+	var total: float = repair_total()
+	return clampf(1.0 - repair_time_left() / maxf(total, 0.001), 0.0, 1.0)
+
+
+## A destroyed track holds the tank in place (if the data says so).
+func is_immobilised() -> bool:
+	return data.broken_track_immobilises \
+			and (state(&"track_left") == State.DESTROYED or state(&"track_right") == State.DESTROYED)
 
 
 # --- Effects read by Tank -------------------------------------------------------
@@ -208,6 +245,11 @@ func _damage_module(id: StringName, amount: float) -> void:
 	_module_hp[id] = maxf(float(_module_hp[id]) - amount, 0.0)
 	var after: State = state(id)
 	if after != before:
+		var m: ModuleData = _modules[id]
+		var needed: float = data.repair_time_s
+		if after == State.DESTROYED and m.repair_time_max_s > 0.0:
+			needed = _rng.randf_range(m.repair_time_min_s, maxf(m.repair_time_max_s, m.repair_time_min_s))
+		_repair_needed[id] = maxf(float(_repair_needed.get(id, 0.0)), needed)
 		module_changed.emit(id, after)
 
 
@@ -246,10 +288,13 @@ func _segment_hits_box(m: ModuleData, from: Vector3, dir: Vector3, reach: float)
 # --- Network (client puppets) --------------------------------------------------------
 
 ## Mirrors the host's state for the own tank's HUD. states in TankNetState.MODULES order.
-func set_net(hp_frac: float, states: PackedInt32Array, burning: bool, repair_t: float) -> void:
+func set_net(hp_frac: float, states: PackedInt32Array, burning: bool, repair_left: float,
+		repair_total_s: float) -> void:
 	hp = hp_frac * data.structure_hp
 	fire_left = 1.0 if burning else 0.0
-	repair_time = repair_t
+	_net_repair_left = repair_left
+	_net_repair_total = maxf(repair_total_s, 0.0)
+	repair_time = maxf(repair_total_s - repair_left, 0.0)
 	for i: int in TankNetState.MODULES.size():
 		var id: StringName = TankNetState.MODULES[i]
 		if not _modules.has(id) or i >= states.size():
@@ -287,13 +332,18 @@ func tick(delta: float, still: bool) -> void:
 	if not needs_repair():
 		return
 	repair_time += delta
-	if repair_time < data.repair_time_s:
-		return
+	var all_ok: bool = true
 	for id: StringName in _modules:
-		var before: State = state(id)
+		if state(id) == State.OK:
+			continue
+		if repair_time < float(_repair_needed.get(id, data.repair_time_s)):
+			all_ok = false
+			continue
 		_module_hp[id] = (_modules[id] as ModuleData).hp
-		if before != State.OK:
-			module_changed.emit(id, State.OK)
+		_repair_needed.erase(id)
+		module_changed.emit(id, State.OK)
+	if not all_ok or repair_time < data.repair_time_s:
+		return
 	var cap: float = data.structure_hp * data.repair_hp_max_fraction
 	if hp < cap:
 		hp = minf(hp + data.repair_hp_per_s * delta, cap)

@@ -33,6 +33,9 @@ signal smoke_thrown(at: Vector3)
 signal radio(kind: int, at: Vector3)
 ## A round left a soldier's weapon (kind: SHOT_RIFLE / SHOT_AT), for the network.
 signal fired_round(kind: int, from: Vector3, velocity: Vector3)
+## Soldier `index` shoulders the AT launcher and aims at `point` (index -1: nobody
+## aims any more), for the network.
+signal at_aiming(index: int, point: Vector3)
 
 enum State { MOUNTED, MOVING, HOLDING, RETURNING, WIPED }
 const RADIO_UNDER_ATTACK: int = 0
@@ -40,6 +43,8 @@ const RADIO_RETURNING: int = 1
 const RADIO_IN_POSITION: int = 2
 const RADIO_ARMOUR: int = 3
 const RADIO_INFANTRY: int = 4
+## "Skott kommer! Klart bakåt!": an AT round is about to be fired.
+const RADIO_AT_FIRE: int = 5
 
 ## Orders in TankCommand.squad_order.
 const ORDER_NONE: int = 0
@@ -55,6 +60,7 @@ const RETURN_REPLAN_S: float = 3.0
 const TANK_LOOK_HEIGHTS: Array[float] = [0.5, 1.9]
 ## Loaded at start, not preloaded: shell.gd refers back to Squad (a preload would cycle).
 const SHELL_SCENE_PATH: String = "res://scenes/weapons/shell.tscn"
+const LAUNCH_FLASH_SCENE: PackedScene = preload("res://scenes/effects/muzzle_flash.tscn")
 const SHOT_RIFLE: int = 0
 const SHOT_AT: int = 1
 ## Bytes in one squad's network state before the soldiers (write_net_state), and per
@@ -96,9 +102,10 @@ var _body_offset: float = 0.0
 ## Per soldier: his model's AnimationPlayer (null for capsules) and what it plays.
 var _players: Array[AnimationPlayer] = []
 ## Team look: [mesh instance, surface (-1 = whole mesh), friendly material] per uniform
-## surface; the helmets; and the TeamLook state they were last set for.
+## surface; [mesh instance, surface] painted blue on friends (helmets); and the TeamLook
+## state they were last set for.
 var _uniform_surfaces: Array = []
-var _helmets: Array[Node3D] = []
+var _blue_surfaces: Array = []
 var _look_version: int = -1
 var _look_team: int = -2
 ## Per soldier: where he stood last frame (world), for his real speed (soldiers are
@@ -140,6 +147,16 @@ var _burst_left: Array[int] = []
 var _shot_timer: Array[float] = []
 var _at_left: int = 0
 var _at_timer: float = 0.0
+## The AT gunner while he aims (-1 = none), his target and the time left to the shot.
+var _at_gunner: int = -1
+var _at_target: Tank
+var _at_aim_left: float = 0.0
+## Per soldier: where he aims the launcher (INF = he doesn't), how long he still holds
+## it after the shot, his launcher and his rifle meshes (hidden while he has the tube).
+var _aim_point: Array[Vector3] = []
+var _launcher_hold: Array[float] = []
+var _launchers: Array[Node3D] = []
+var _rifles: Array = []
 var _smoke_left: int = 0
 var _withdraw_timer: float = 0.0
 # Losses
@@ -324,6 +341,7 @@ func _physics_process(delta: float) -> void:
 	if _scan_timer <= 0.0:
 		_scan_timer += data.scan_interval_s
 		_scan(data.scan_interval_s)
+	_update_at_aim(delta)
 	if _state == State.HOLDING:
 		_fight(delta)
 
@@ -346,6 +364,10 @@ func _dismount() -> void:
 
 
 func _mount() -> void:
+	_cancel_at_aim()
+	for i: int in _aim_point.size():
+		_launcher_hold[i] = 0.0
+		_set_aim(i, Vector3.INF)
 	_state = State.MOUNTED
 	_path.clear()
 	visible = false
@@ -443,18 +465,22 @@ func _move_soldiers(delta: float) -> void:
 		var walking: bool = speed > STANDING_SPEED
 		soldier.global_position = pos
 		_last_pos[i] = pos
+		var aiming: bool = _aim_point[i] != Vector3.INF and not walking
 		var facing: Vector3 = to.normalized() if walking else _flat(pos - global_position)
+		if aiming:
+			facing = _flat(_aim_point[i] - pos)
 		if facing.length() < 0.1:
 			facing = _heading
 		soldier.look_at(pos + facing.normalized(), Vector3.UP)
 		var was: bool = _kneel[i] >= 0.5
-		_kneel[i] = move_toward(_kneel[i], 0.0 if walking else 1.0,
+		_kneel[i] = move_toward(_kneel[i], 0.0 if walking or aiming else 1.0,
 				delta / maxf(data.stance_change_s, 0.01))
 		if (_kneel[i] >= 0.5) != was:
 			_size_hitbox(i)
 		if _players[i] != null:
-			_animate(i, data.anim_move if walking else data.anim_hold,
-					speed / maxf(data.anim_move_speed_mps, 0.1) if walking else 1.0)
+			var anim: StringName = data.anim_move if walking \
+					else (data.anim_at_aim if aiming else data.anim_hold)
+			_animate(i, anim, speed / maxf(data.anim_move_speed_mps, 0.1) if walking else 1.0)
 		# Animated soldiers crouch by themselves; placeholders are squashed.
 		var height_scale: float = 1.0 if _players[i] != null \
 				else lerpf(1.0, data.kneel_height_share, _kneel[i])
@@ -605,7 +631,8 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 		var p: Vector3 = pair[0]
 		if eye.distance_to(p) > view_range or not _in_view_cone(p):
 			continue
-		if Vision.has_line_of_sight(get_world_3d(), eye, p, pair[1], _own_rids()):
+		if Vision.has_line_of_sight_through(get_world_3d(), eye, p, pair[1],
+				_layers_seen_through(eye.distance_to(p)), _own_rids()):
 			seen += 1
 	if seen == 0:
 		return
@@ -624,6 +651,15 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 		_marked_at[target] = _clock
 		var enemy: Node3D = target if target is Tank else (target as SoldierHitbox).squad
 		tank.report_squad_spot(enemy, target.global_position)
+
+
+## How many vegetation layers the soldiers see through at `distance` (m).
+func _layers_seen_through(distance: float) -> int:
+	var layers: int = 0
+	for k: int in data.see_through_ranges_m.size():
+		if distance <= data.see_through_ranges_m[k]:
+			layers = k + 1
+	return layers
 
 
 ## All round while holding; a cone ahead while on the move.
@@ -677,7 +713,7 @@ func _fight(delta: float) -> void:
 			rifle_aim = aim
 			break
 	for i: int in _soldiers.size():
-		if not _alive[i]:
+		if not _alive[i] or i == _at_gunner or _launcher_hold[i] > 0.0:
 			continue
 		_burst_timer[i] -= delta
 		if _burst_left[i] > 0:
@@ -704,8 +740,10 @@ func _rifle_aim(target: Node3D) -> Vector3:
 	return Vector3.INF
 
 
+## Picks a tank for an AT round: the gunner stands up, shoulders the launcher, calls
+## "Skott kommer! Klart bakåt!" and fires at_aim_time_s later (_update_at_aim).
 func _try_at_round(targets: Array[Node3D]) -> void:
-	if _at_left <= 0 or _at_timer > 0.0 or data.at_round == null:
+	if _at_left <= 0 or _at_timer > 0.0 or data.at_round == null or _at_gunner >= 0:
 		return
 	for target: Node3D in targets:
 		var other := target as Tank
@@ -714,14 +752,93 @@ func _try_at_round(targets: Array[Node3D]) -> void:
 		var gunner: int = 1 if _soldiers.size() > 1 and _alive[1] else _first_alive()
 		if gunner < 0:
 			return
-		var spread: float = data.at_dispersion_mrad
-		if other.linear_velocity.length() * 3.6 > data.at_fast_target_kmh:
-			spread *= data.at_moving_factor
-		_fire(gunner, data.at_round, other.global_position + Vector3.UP * 0.6, other, spread,
-				data.at_sound)
-		_at_left -= 1
-		_at_timer = data.at_interval_s
+		_at_gunner = gunner
+		_at_target = other
+		_at_aim_left = data.at_aim_time_s
+		_set_aim(gunner, other.global_position)
+		radio.emit(RADIO_AT_FIRE, other.global_position)
 		return
+
+
+## The gunner follows his target and fires when the aim time is up; he gives up (the
+## round kept) if he falls, the squad moves or the target is gone or out of sight.
+func _update_at_aim(delta: float) -> void:
+	for i: int in _launcher_hold.size():
+		if _launcher_hold[i] > 0.0:
+			_launcher_hold[i] -= delta
+			if _launcher_hold[i] <= 0.0 and i != _at_gunner:
+				_set_aim(i, Vector3.INF)
+	if _at_gunner < 0:
+		return
+	var i: int = _at_gunner
+	var other: Tank = _at_target
+	if _state != State.HOLDING or not _alive[i] or not is_instance_valid(other) or other.is_knocked_out() \
+			or not _in_sight.has(other) \
+			or global_position.distance_to(other.global_position) > data.at_range_m * 1.1:
+		_cancel_at_aim()
+		return
+	_set_aim(i, other.global_position)
+	_at_aim_left -= delta
+	if _at_aim_left > 0.0:
+		return
+	var spread: float = data.at_dispersion_mrad
+	if other.linear_velocity.length() * 3.6 > data.at_fast_target_kmh:
+		spread *= data.at_moving_factor
+	_fire(i, data.at_round, _at_aim(other, _soldiers[i].global_position), other, spread,
+			data.at_sound)
+	_at_left -= 1
+	_at_timer = data.at_interval_s
+	_at_gunner = -1
+	_at_target = null
+	_launcher_hold[i] = data.at_hold_after_s
+
+
+func _cancel_at_aim() -> void:
+	if _at_gunner >= 0:
+		_set_aim(_at_gunner, Vector3.INF)
+	_at_gunner = -1
+	_at_target = null
+
+
+## Soldier `i` aims the launcher at `point` (INF: puts it away).
+func _set_aim(i: int, point: Vector3) -> void:
+	var was: bool = _aim_point[i] != Vector3.INF
+	_aim_point[i] = point
+	var on: bool = point != Vector3.INF
+	_launchers[i].visible = on
+	for rifle: Node3D in _rifles[i]:
+		rifle.visible = not on
+	if on != was and not net_puppet:
+		at_aiming.emit(i if on else -1, point if on else Vector3.ZERO)
+
+
+## Back blast and muzzle flash at both ends of soldier `i`'s launcher.
+func _launcher_blast(i: int) -> void:
+	var tube: Node3D = _launchers[i]
+	if not tube.is_inside_tree():
+		return
+	var half: float = data.at_launcher_length_m * 0.5
+	for end: float in [-half, half]:
+		var flash: Node3D = LAUNCH_FLASH_SCENE.instantiate()
+		get_parent().add_child(flash)
+		flash.global_position = tube.to_global(Vector3(0.0, end, 0.0))
+		flash.scale = Vector3.ONE * (0.6 if end < 0.0 else 0.4)
+
+
+## AT rounds go for the tracks: the middle of the track on the side facing the
+## shooter (a thrown track holds the tank for its repair). Without a track module,
+## the hull.
+func _at_aim(other: Tank, from: Vector3) -> Vector3:
+	var best := Vector3.INF
+	if other.data.layout != null:
+		for m: ModuleData in other.data.layout.modules:
+			if m.frame != &"hull" or not (m.id == &"track_left" or m.id == &"track_right"):
+				continue
+			var outer: Vector3 = m.center + Vector3(signf(m.center.x) * m.size.x * 0.5, 0.0, 0.0)
+			var p: Vector3 = other.to_global(outer)
+			if best == Vector3.INF or from.distance_to(p) < from.distance_to(best):
+				best = p
+	return best if best != Vector3.INF else other.global_position + Vector3.UP * 0.6
 
 
 ## One round from soldier `i` at `aim` (led for a moving tank), with random spread.
@@ -729,12 +846,17 @@ func _fire(i: int, shell_data: ShellData, aim: Vector3, target: Node3D, spread_m
 		sound: SoundSetData) -> void:
 	var from: Vector3 = _soldiers[i].global_position + Vector3.UP \
 			* lerpf(data.eye_height_standing_m, data.eye_height_kneeling_m, _kneel[i])
+	if shell_data == data.at_round and _launchers[i].visible and _launchers[i].is_inside_tree():
+		from = _launchers[i].to_global(Vector3(0.0, data.at_launcher_length_m * 0.5, 0.0))
+		_launcher_blast(i)
 	var moving: Tank = target as Tank
 	if moving != null:
 		var flight: float = from.distance_to(aim) / maxf(shell_data.muzzle_velocity_mps, 1.0)
 		aim += moving.linear_velocity * flight
 	var dir: Vector3 = (aim - from).normalized()
 	var side: Vector3 = dir.cross(Vector3.UP).normalized()
+	# Held a little high for the drop over the range (soldiers know their weapons).
+	dir = dir.rotated(side, Ballistics.superelevation_for_range(shell_data, _flat(aim - from).length()))
 	var up: Vector3 = side.cross(dir).normalized()
 	var r: float = sqrt(_rng.randf()) * spread_mrad * 0.001
 	var a: float = _rng.randf() * TAU
@@ -776,6 +898,10 @@ func soldier_hit(index: int, shell_data: ShellData) -> HitResult:
 ## Soldier `index` falls (host or, from the host's news, a client).
 func _put_down(index: int, screamed: bool) -> void:
 	_alive[index] = false
+	if index == _at_gunner:
+		_cancel_at_aim()
+	_launcher_hold[index] = 0.0
+	_set_aim(index, Vector3.INF)
 	_down_time[index] = 0.0
 	_hitboxes[index].set_active(false)
 	if _players[index] != null:
@@ -965,8 +1091,21 @@ func net_soldier_down(index: int, screamed: bool) -> void:
 		SoundFx.play_at(self, data.scream_sound, _soldiers[index].global_position + Vector3.UP)
 
 
+## Client: the host's soldier `index` aims the launcher at `point` (-1: nobody).
+func net_at_aiming(index: int, point: Vector3) -> void:
+	for i: int in _aim_point.size():
+		if i != index and _aim_point[i] != Vector3.INF:
+			_set_aim(i, Vector3.INF)
+	if index >= 0 and index < _aim_point.size() and _alive[index]:
+		_set_aim(index, point)
+
+
 ## Client: a round the host's squad fired, shown here without effect.
 func net_show_shot(kind: int, from: Vector3, velocity: Vector3) -> void:
+	if kind == SHOT_AT:
+		for i: int in _aim_point.size():
+			if _aim_point[i] != Vector3.INF:
+				_launcher_blast(i)
 	var shell_data: ShellData = data.at_round if kind == SHOT_AT else data.rifle_bullet
 	var shell := _shell_scene.instantiate() as Shell
 	get_parent().add_child(shell)
@@ -1008,8 +1147,40 @@ func _add_soldier(i: int) -> void:
 	_drift_target.append(Vector3.ZERO)
 	_burst_timer.append(_rng.randf_range(0.0, data.rifle_burst_interval_s))
 	_burst_left.append(0)
+	_aim_point.append(Vector3.INF)
+	_launcher_hold.append(0.0)
+	_launchers.append(_make_launcher(root))
+	var rifles: Array[Node3D] = []
+	if data.rifle_mesh_pattern != "":
+		for node: Node in mesh.find_children(data.rifle_mesh_pattern, "MeshInstance3D", true, false):
+			rifles.append(node as Node3D)
+	_rifles.append(rifles)
 	_shot_timer.append(0.0)
 	_size_hitbox(i)
+
+
+## The AT launcher: a plain tube on the right shoulder (hidden until he aims).
+func _make_launcher(root: Node3D) -> Node3D:
+	var tube := MeshInstance3D.new()
+	tube.name = "Launcher"
+	var cylinder := CylinderMesh.new()
+	cylinder.top_radius = data.at_launcher_radius_m
+	cylinder.bottom_radius = data.at_launcher_radius_m
+	cylinder.height = data.at_launcher_length_m
+	cylinder.radial_segments = 10
+	cylinder.rings = 1
+	var material := StandardMaterial3D.new()
+	material.albedo_color = data.at_launcher_color
+	material.roughness = 0.8
+	cylinder.material = material
+	tube.mesh = cylinder
+	# The cylinder runs along its Y: tipped forward so +Y points along -Z (the
+	# soldier's forward): +Y is the muzzle, -Y the back blast end.
+	tube.rotation = Vector3(-PI * 0.5, 0.0, 0.0)
+	tube.position = data.at_launcher_offset
+	tube.visible = false
+	root.add_child(tube)
+	return tube
 
 
 ## Friend or foe as seen by this machine's player (TeamLook): friends wear the
@@ -1027,34 +1198,10 @@ func _apply_look() -> void:
 			mi.material_override = entry[2] if friend else camo
 		else:
 			mi.set_surface_override_material(entry[1], entry[2] if friend else camo)
-	for helmet: Node3D in _helmets:
-		if is_instance_valid(helmet):
-			helmet.visible = friend
-
-
-## A UN-blue helmet on the model's head bone (hidden on enemies, see _apply_look).
-func _add_helmet(body: Node3D) -> void:
-	var skeletons: Array[Node] = body.find_children("*", "Skeleton3D", true, false)
-	if skeletons.is_empty() or data.helmet_bone == &"":
-		return
-	var skeleton: Skeleton3D = skeletons[0]
-	if skeleton.find_bone(data.helmet_bone) < 0:
-		return
-	var attach := BoneAttachment3D.new()
-	attach.bone_name = data.helmet_bone
-	skeleton.add_child(attach)
-	var helmet := MeshInstance3D.new()
-	var dome := SphereMesh.new()
-	dome.is_hemisphere = true
-	dome.radius = data.helmet_radius
-	dome.height = data.helmet_radius * data.helmet_height_share
-	dome.radial_segments = 12
-	dome.rings = 4
-	dome.material = TeamLook.blue()
-	helmet.mesh = dome
-	helmet.position = data.helmet_offset
-	attach.add_child(helmet)
-	_helmets.append(helmet)
+	for entry: Array in _blue_surfaces:
+		var mi: MeshInstance3D = entry[0]
+		if is_instance_valid(mi):
+			mi.set_surface_override_material(entry[1], TeamLook.blue() if friend else null)
 
 
 ## The soldier model in the uniform colour, or a capsule without a model.
@@ -1087,8 +1234,9 @@ func _make_body() -> Node3D:
 				paint.albedo_color = shades[mini(k, shades.size() - 1)]
 				mi.set_surface_override_material(s, paint)
 				_uniform_surfaces.append([mi, s, paint])
+			elif data.friend_blue_materials.has(mat.resource_name if mat != null else ""):
+				_blue_surfaces.append([mi, s])
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	_add_helmet(body)
 	if data.model_animation != &"" and data.model_animations == null:
 		for node: Node in body.find_children("*", "AnimationPlayer", true, false):
 			var player := node as AnimationPlayer

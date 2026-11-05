@@ -26,6 +26,10 @@ extends Control
 @export var squad_color: Color = Color(0.55, 1.0, 0.45, 1.0)
 ## Teammates' tanks (the own tank is drawn bigger in own_color).
 @export var friend_color: Color = Color(0.3, 0.6, 1.0, 1.0)
+## Own tank: the way the player is looking (commander or gunner view), a cone as wide
+## as the view.
+@export var view_cone_color: Color = Color(1.0, 1.0, 0.85, 0.22)
+@export var view_cone_length_px: float = 46.0
 
 var _map_image: MapImageData
 var _map_looked_up: bool = false
@@ -74,7 +78,8 @@ func draw_map(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 		var own := Vector2(tank.global_position.x, tank.global_position.z)
 		var p: Vector2 = _to_screen(own, rect, centre, scale_px)
 		if rect.has_point(p):
-			_draw_tank(tank, p)
+			_draw_view_cone(p)
+			_draw_tank(tank, p, Color(0, 0, 0, 0), 1.0, false)
 	draw_rect(rect, border_color, false, 2.0)
 
 
@@ -149,7 +154,6 @@ func _draw_grid(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 		z += grid_step_m
 
 
-## Arrow along the hull heading, line along the gun.
 ## Teammates' tanks: small arrows with their gun line; knocked-out ones as a dim cross.
 func _draw_friends(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 	var own: Tank = get_tank()
@@ -171,16 +175,42 @@ func _draw_friends(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 		_draw_tank(t, p, friend_color, 0.7)
 
 
-func _draw_tank(tank: Tank, at: Vector2, color: Color = Color(0, 0, 0, 0), size: float = 1.0) -> void:
+## The own player's view direction from the tank at `at`: a faint cone (none in the
+## debug and squad views).
+func _draw_view_cone(at: Vector2) -> void:
+	var camera: Camera3D = views.get_view_camera() if views != null else null
+	if camera == null:
+		return
+	var look3: Vector3 = -camera.global_basis.z
+	var look := Vector2(look3.x, look3.z)
+	if look.length() < 0.05:
+		return
+	var yaw: float = look.angle()
+	var aspect: float = get_viewport_rect().size.aspect()
+	var half: float = clampf(atan(tan(deg_to_rad(camera.fov) * 0.5) * aspect), deg_to_rad(2.0), deg_to_rad(80.0))
+	var points := PackedVector2Array([at])
+	for k: int in 9:
+		var a: float = yaw - half + 2.0 * half * k / 8.0
+		points.append(at + Vector2(cos(a), sin(a)) * view_cone_length_px)
+	draw_colored_polygon(points, view_cone_color)
+	var edge := Color(view_cone_color, minf(view_cone_color.a * 3.0, 1.0))
+	draw_line(at, points[1], edge, 1.0, true)
+	draw_line(at, points[points.size() - 1], edge, 1.0, true)
+
+
+## Arrow along the hull heading (and a line along the gun unless `gun_line` is off).
+func _draw_tank(tank: Tank, at: Vector2, color: Color = Color(0, 0, 0, 0), size: float = 1.0,
+		gun_line: bool = true) -> void:
 	if color.a == 0.0:
 		color = own_color
 	var fwd3: Vector3 = -tank.global_basis.z
 	var fwd := Vector2(fwd3.x, fwd3.z)
 	fwd = fwd.normalized() if fwd.length() > 0.01 else Vector2.UP
 	var side := Vector2(-fwd.y, fwd.x)
-	var yaw: float = tank.get_turret_global_yaw()
-	var gun := Vector2(-sin(yaw), -cos(yaw))
-	draw_line(at, at + gun * 16.0 * size, color, 2.0, true)
+	if gun_line:
+		var yaw: float = tank.get_turret_global_yaw()
+		var gun := Vector2(-sin(yaw), -cos(yaw))
+		draw_line(at, at + gun * 16.0 * size, color, 2.0, true)
 	# Slim arrow with a notch at the back, so the heading reads at a glance.
 	var points := PackedVector2Array([at + fwd * 10.0 * size, at + (-fwd * 6.0 + side * 5.0) * size,
 			at - fwd * 2.5 * size, at + (-fwd * 6.0 - side * 5.0) * size])

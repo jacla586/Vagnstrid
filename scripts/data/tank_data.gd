@@ -89,7 +89,7 @@ extends Resource
 
 @export_group("Crew")
 ## How long a hit commander stays wounded (s): hatch locked shut meanwhile.
-@export var commander_wound_time_s: float = 20.0
+@export var commander_wound_time_s: float = 90.0
 ## Time between two spots by the commander (s).
 @export var spot_cooldown_s: float = 5.0
 
@@ -101,7 +101,8 @@ extends Resource
 @export var structure_hp: float = 100.0
 ## Where the modules (engine, tracks, turret ring, fuel, ammo) sit.
 @export var layout: ModuleLayoutData
-## Standing still this long (s, no shots, no hits) repairs all modules.
+## Standing still this long (s, no shots, no hits) repairs all modules (unless a
+## module has its own repair time, ModuleData.repair_time_min_s/max_s).
 @export var repair_time_s: float = 25.0
 ## Slower than this counts as standing still (km/h).
 @export var repair_max_speed_kmh: float = 1.0
@@ -116,6 +117,9 @@ extends Resource
 @export var engine_damaged_speed_factor: float = 0.5
 ## Turret traverse with a damaged turret ring, as a share of normal (destroyed = 0).
 @export var ring_damaged_traverse_factor: float = 0.4
+## A destroyed track stops the tank altogether (thrown track: no pivoting on the other
+## one) until it is repaired.
+@export var broken_track_immobilises: bool = true
 
 @export_group("Armament")
 ## Main-gun ammunition types, in selection-key order (1, 2, ...). The first is

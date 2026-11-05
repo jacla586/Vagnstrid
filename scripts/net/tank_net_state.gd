@@ -31,7 +31,9 @@ var hp_fraction: float = 1.0
 var module_states: PackedInt32Array = PackedInt32Array()
 var reload_s: float = 0.0
 var ammo_index: int = 0
-var repair_s: float = 0.0
+## Own tank: standing-still time left of the repair, and its total (s).
+var repair_left_s: float = 0.0
+var repair_total_s: float = 0.0
 var spot_cooldown_s: float = 0.0
 var wound_s: float = 0.0
 
@@ -59,7 +61,8 @@ func write(buf: StreamPeerBuffer) -> void:
 			bits |= (module_states[i] if i < module_states.size() else 0) << (2 * i)
 		buf.put_u16(bits)
 		buf.put_u8(_tenths(reload_s)); buf.put_u8(ammo_index)
-		buf.put_u8(_tenths(repair_s)); buf.put_u8(_tenths(spot_cooldown_s)); buf.put_u8(ceili(clampf(wound_s, 0.0, 255.0)))
+		buf.put_u16(clampi(roundi(repair_left_s * 10.0), 0, 65535)); buf.put_u8(ceili(clampf(repair_total_s, 0.0, 255.0)))
+		buf.put_u8(_tenths(spot_cooldown_s)); buf.put_u8(ceili(clampf(wound_s, 0.0, 255.0)))
 
 
 static func read(buf: StreamPeerBuffer) -> TankNetState:
@@ -82,7 +85,8 @@ static func read(buf: StreamPeerBuffer) -> TankNetState:
 			s.module_states.append((bits >> (2 * i)) & 3)
 		s.reload_s = buf.get_u8() / 10.0
 		s.ammo_index = buf.get_u8()
-		s.repair_s = buf.get_u8() / 10.0
+		s.repair_left_s = buf.get_u16() / 10.0
+		s.repair_total_s = buf.get_u8()
 		s.spot_cooldown_s = buf.get_u8() / 10.0
 		s.wound_s = buf.get_u8()
 	return s

@@ -512,7 +512,12 @@ func get_repair_progress() -> float:
 
 
 func get_repair_time_left() -> float:
-	return maxf(data.repair_time_s - _damage.repair_time, 0.0)
+	return _damage.repair_time_left()
+
+
+## A thrown track holds the tank until it is repaired.
+func is_immobilised() -> bool:
+	return _damage.is_immobilised()
 
 
 func is_commander_wounded() -> bool:
@@ -635,8 +640,9 @@ func _set_fire_effect(on: bool) -> void:
 
 func _update_damage(delta: float) -> void:
 	_since_fired += delta
+	# Held by a thrown track, the crew repairs whatever the driver does with the pedals.
 	var still: bool = absf(get_forward_speed()) < data.repair_max_speed_kmh * KMH_TO_MS \
-			and absf(_command.throttle) < 0.05 and _since_fired > 1.0
+			and (absf(_command.throttle) < 0.05 or _damage.is_immobilised()) and _since_fired > 1.0
 	_damage.tick(delta, still)
 	_set_fire_effect(_damage.is_burning() and not _knocked_out)
 	if _damage.knocked_out and not _knocked_out:
@@ -702,6 +708,11 @@ func get_forward_speed() -> float:
 
 
 ## Turret angle relative to the hull (radians, positive = left).
+## The turret's place on the hull (hull space).
+func get_turret_local_position() -> Vector3:
+	return _turret.position
+
+
 func get_turret_yaw() -> float:
 	return _turret.rotation.y
 
@@ -942,7 +953,8 @@ func get_net_state(for_owner: bool) -> TankNetState:
 			s.module_states.append(_damage.state(id))
 		s.reload_s = _reload_remaining
 		s.ammo_index = _ammo_index
-		s.repair_s = _damage.repair_time
+		s.repair_left_s = _damage.repair_time_left()
+		s.repair_total_s = _damage.repair_total()
 		s.spot_cooldown_s = _spot_cooldown_remaining
 		s.wound_s = _commander_wound_remaining
 	return s
@@ -989,7 +1001,8 @@ func net_set_status(s: TankNetState) -> void:
 		_spot_cooldown_remaining = s.spot_cooldown_s
 		if wounded:
 			_commander_wound_remaining = s.wound_s
-		_damage.set_net(s.hp_fraction, s.module_states, s.has(TankNetState.FLAG_BURNING), s.repair_s)
+		_damage.set_net(s.hp_fraction, s.module_states, s.has(TankNetState.FLAG_BURNING),
+				s.repair_left_s, s.repair_total_s)
 	else:
 		_damage.set_net_burning(s.has(TankNetState.FLAG_BURNING))
 	_set_fire_effect(_damage.is_burning() and not _knocked_out)
@@ -1124,9 +1137,9 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 			-traction_limit, traction_limit)
 	var left_force: float = drive_force * 0.5 - track_split
 	var right_force: float = drive_force * 0.5 + track_split
-	if _damage.track_factor(-1) <= 0.0:
+	if _damage.track_factor(-1) <= 0.0 or _damage.is_immobilised():
 		left_force = hold_force
-	if _damage.track_factor(1) <= 0.0:
+	if _damage.track_factor(1) <= 0.0 or _damage.is_immobilised():
 		right_force = hold_force
 	_apply_track_force(left_force, forward, left_points, left_normals)
 	_apply_track_force(right_force, forward, right_points, right_normals)

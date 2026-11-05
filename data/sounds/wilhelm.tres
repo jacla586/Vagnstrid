@@ -10,6 +10,7 @@
 script = ExtResource("1_script")
 streams = Array[AudioStream]([ExtResource("2_s"), ExtResource("3_s"), ExtResource("4_s"), ExtResource("5_s")])
 volume_db = 6.0
-unit_size_m = 8.0
-max_distance_m = 50.0
+unit_size_m = 16.0
+max_distance_m = 100.0
+bus = &"Master"
 pitch_variance = 0.04

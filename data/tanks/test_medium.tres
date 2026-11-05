@@ -17,6 +17,8 @@ script = ExtResource("3_armour")
 
 [resource]
 script = ExtResource("1_data")
+commander_wound_time_s = 90.0
+broken_track_immobilises = true
 display_name = "Test Medium"
 gunner_sight_fov_deg = PackedFloat32Array(24, 12)
 armour = SubResource("Resource_armour")

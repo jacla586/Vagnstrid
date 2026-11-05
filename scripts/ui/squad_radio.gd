@@ -75,6 +75,9 @@ func _on_radio(kind: int, at: Vector3) -> void:
 		Squad.RADIO_IN_POSITION:
 			stream = r.in_position
 			line = r.in_position_text
+		Squad.RADIO_AT_FIRE:
+			stream = r.at_fire
+			line = r.at_fire_text
 		Squad.RADIO_ARMOUR, Squad.RADIO_INFANTRY:
 			var hour: int = clock_hour(tank.global_transform, at)
 			var list: Array[AudioStream] = r.armour if kind == Squad.RADIO_ARMOUR else r.infantry
@@ -84,6 +87,12 @@ func _on_radio(kind: int, at: Vector3) -> void:
 			key += "/%d" % hour
 		_:
 			return
+	if kind == Squad.RADIO_AT_FIRE:
+		# Urgent and always said: first in the queue, no repeat limit.
+		_queue.push_front([stream, line])
+		while _queue.size() > r.max_queue:
+			_queue.pop_back()
+		return
 	if _time - float(_last.get(key, -INF)) < r.repeat_cooldown_s:
 		return
 	_last[key] = _time

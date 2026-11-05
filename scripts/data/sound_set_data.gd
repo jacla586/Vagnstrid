@@ -18,6 +18,9 @@ extends Resource
 ## Heard further away than distant_from_m, this set plays instead (a dull boom).
 @export var distant: SoundSetData
 @export var distant_from_m: float = 600.0
+## Audio bus for one-shots of this set ("" = the caller's, usually the muffled World).
+## "Master" is heard clearly even with the own hatch shut.
+@export var bus: StringName = &""
 
 
 ## A random variant, or null if the set is empty.

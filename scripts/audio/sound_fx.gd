@@ -34,7 +34,7 @@ static func play_at(context: Node, sounds: SoundSetData, at: Vector3,
 	fx.stream = stream
 	chosen.apply_to(fx, AUDIO)
 	fx.pitch_scale = chosen.random_pitch(_rng)
-	fx.bus = bus_name
+	fx.bus = chosen.bus if chosen.bus != &"" else bus_name
 	fx._delay = distance / maxf(AUDIO.speed_of_sound_mps, 1.0)
 	context.get_tree().root.add_child(fx)
 	fx.global_position = at
