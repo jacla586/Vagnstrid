@@ -84,6 +84,18 @@ const STANDING_SPEED: float = 0.4
 const NET_FOLLOW_RATE: float = 10.0
 ## Kneeling soldiers' body height as a share of standing (hitbox).
 const KNEEL_HITBOX_SHARE: float = 0.55
+## Blocked ahead (too steep: a wall, a roof's edge), a soldier tries these turns off
+## his way, towards his last good side first (degrees).
+const DETOUR_ANGLES_DEG: Array[float] = [35.0, 70.0, 105.0]
+## Slack on top of the climb limit for uneven ground within one step (m).
+const CLIMB_SLACK_M: float = 0.05
+## The squad's point re-plans its path after being blocked this long (s).
+const BLOCKED_REPLAN_S: float = 1.5
+## Walls are looked for this high above the feet, this far beyond each step (m).
+const WALL_CHECK_HEIGHT_M: float = 0.8
+const WALL_CHECK_AHEAD_M: float = 0.3
+## Walking, the ground is looked for from this high above the feet (below bridge decks).
+const GROUND_PROBE_UP_M: float = 1.5
 
 var tank: Tank
 var data: SquadData
@@ -126,6 +138,10 @@ var _kneel: Array[float] = []
 ## drift on the move (and its target).
 var _spot: Array[Vector3] = []
 var _pace: Array[float] = []
+## Per soldier (and the squad's point, last): which way he went round something last
+## (1 = left, -1 = right).
+var _detour_side: Array[float] = [1.0]
+var _blocked_time: float = 0.0
 var _drift: Array[Vector3] = []
 var _drift_target: Array[Vector3] = []
 var _drift_timer: float = 0.0
@@ -428,9 +444,70 @@ func _walk(delta: float) -> void:
 		return
 	var dir: Vector3 = to_next.normalized()
 	_heading = _heading.slerp(dir, minf(delta * TURN_RATE, 1.0)).normalized()
-	var p: Vector3 = global_position + dir * minf(data.run_speed_mps * delta, to_next.length())
-	p.y = _ground_height(p, global_position.y)
+	var p: Vector3 = _step(global_position, dir, minf(data.run_speed_mps * delta, to_next.length()),
+			_detour_side.size() - 1)
+	if p == global_position and delta > 0.0:
+		_blocked_time += delta
+		if _blocked_time >= BLOCKED_REPLAN_S:
+			_blocked_time = 0.0
+			_path = _plan(_path[_path.size() - 1])
+	else:
+		_blocked_time = 0.0
 	global_position = p
+
+
+## One step of `length` from `from` along `dir` on the ground, no steeper uphill than
+## SquadData.max_climb_deg. Blocked straight ahead, it tries turning off to the side
+## that worked last (going round a house corner), then the other. Returns `from` if
+## every way is blocked. `who`: index in _detour_side.
+func _step(from: Vector3, dir: Vector3, length: float, who: int) -> Vector3:
+	if length <= 0.0001:
+		return from
+	var climb: float = tan(deg_to_rad(data.max_climb_deg))
+	var p: Vector3 = _try_step(from, dir, length, climb)
+	if p != Vector3.INF:
+		return p
+	var side: float = _detour_side[who]
+	for angle: float in DETOUR_ANGLES_DEG:
+		for s: float in [side, -side]:
+			p = _try_step(from, dir.rotated(Vector3.UP, deg_to_rad(angle) * s), length, climb)
+			if p != Vector3.INF:
+				_detour_side[who] = s
+				return p
+	return from
+
+
+## Where a step lands, or Vector3.INF if a wall stands in the way (ray at knee height)
+## or the ground rises steeper than `climb` (rise per metre). Ground is looked for from
+## head height down, so bridge decks overhead don't count.
+func _try_step(from: Vector3, dir: Vector3, length: float, climb: float) -> Vector3:
+	var knee := Vector3.UP * WALL_CHECK_HEIGHT_M
+	if _solid_between(from + knee, from + knee + dir * (length + WALL_CHECK_AHEAD_M)):
+		return Vector3.INF
+	var p: Vector3 = from + dir * length
+	p.y = _ground_height(p, from.y, GROUND_PROBE_UP_M)
+	if p.y - from.y > length * climb + CLIMB_SLACK_M:
+		return Vector3.INF
+	return p
+
+
+## Something solid (a house wall, a stone, the ground) between two points; trees and
+## tanks don't count.
+func _solid_between(a: Vector3, b: Vector3) -> bool:
+	var query := PhysicsRayQueryParameters3D.create(a, b)
+	query.collision_mask = 1
+	var exclude: Array[RID] = []
+	for i: int in 4:
+		query.exclude = exclude
+		var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+		if hit.is_empty():
+			return false
+		var collider: Object = hit["collider"]
+		if collider is TreeField or collider is Tank:
+			exclude.append(hit["rid"])
+			continue
+		return true
+	return false
 
 
 func _is_moving() -> bool:
@@ -458,9 +535,13 @@ func _move_soldiers(delta: float) -> void:
 		var pos: Vector3 = _last_pos[i]
 		var to: Vector3 = _flat(target - pos)
 		var step: float = minf(to.length(), data.run_speed_mps * CATCH_UP_FACTOR * _pace[i] * delta)
-		if step > 0.001:
-			pos += to.normalized() * step
-		pos.y = _ground_height(pos, global_position.y)
+		if net_puppet:
+			# The host already kept them off roofs: just follow its positions.
+			if step > 0.001:
+				pos += to.normalized() * step
+			pos.y = _ground_height(pos, global_position.y)
+		elif step > 0.001:
+			pos = _step(pos, to.normalized(), step, i)
 		var speed: float = _flat(pos - _last_pos[i]).length() / delta if delta > 0.0 else 0.0
 		var walking: bool = speed > STANDING_SPEED
 		soldier.global_position = pos
@@ -559,8 +640,8 @@ func _eye_height() -> float:
 
 
 ## Ground (terrain, a bridge deck...) under `p`; tree trunks and tanks don't count.
-func _ground_height(p: Vector3, fallback: float) -> float:
-	var query := PhysicsRayQueryParameters3D.create(Vector3(p.x, p.y + 30.0, p.z),
+func _ground_height(p: Vector3, fallback: float, probe_up: float = 30.0) -> float:
+	var query := PhysicsRayQueryParameters3D.create(Vector3(p.x, p.y + probe_up, p.z),
 			Vector3(p.x, p.y - 60.0, p.z))
 	query.collision_mask = 1
 	var exclude: Array[RID] = []
@@ -1143,6 +1224,7 @@ func _add_soldier(i: int) -> void:
 	_kneel.append(0.0)
 	_spot.append(Vector3.ZERO)
 	_pace.append(_rng.randf_range(0.9, 1.1))
+	_detour_side.insert(_detour_side.size() - 1, 1.0 if _rng.randf() < 0.5 else -1.0)
 	_drift.append(Vector3.ZERO)
 	_drift_target.append(Vector3.ZERO)
 	_burst_timer.append(_rng.randf_range(0.0, data.rifle_burst_interval_s))

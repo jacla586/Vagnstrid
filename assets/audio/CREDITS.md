@@ -27,6 +27,7 @@ required, but we list the authors anyway. Files were cut, looped, mixed to mono 
 | hatch/hatch_open.ogg | [718445](https://freesound.org/s/718445/) – Metal_Hatch_Small_Open_03 – Rudmer_Rotteveel |
 | hatch/hatch_close.ogg | [488221](https://freesound.org/s/488221/) – Opening and closing a small metal hatch – Irolan |
 | voice/wilhelm_1–4.ogg | [813303](https://freesound.org/s/813303/)–[813306](https://freesound.org/s/813306/) – Wilhelm Scream Alternative 1–4 – qubodup (imitations, not the Warner Bros original) |
+| impact/ping.ogg | Made for this project (CC0): synthesised with `tools/audio/make_ping.py` |
 | impact/kenney/*.ogg | [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds) 1.0 – Kenney (CC0, `License.txt` alongside): `impactPlate_heavy`, `impactMetal_heavy`, `impactMetal_light`, `impactSoft_heavy` (mixed to mono, normalised) |
 
 ## Squad radio (`radio/`)

@@ -434,6 +434,7 @@ func _move_tanks_to_spawns() -> void:
 
 ## Moves a tank to `xform` at rest (spawns and respawns).
 static func place_tank(tank: Tank, xform: Transform3D) -> void:
+	tank.leave_wreck()   # a knocked-out tank leaves its wreck where it burnt out
 	tank.global_transform = xform
 	tank.linear_velocity = Vector3.ZERO
 	tank.angular_velocity = Vector3.ZERO
@@ -507,6 +508,7 @@ func get_stats() -> Array:
 		if not is_instance_valid(tank):
 			continue   # removed (extra bots, players who left)
 		row[0] = tank.get_display_label()
+		row[1] = tank.team   # NetGame sorts the map's bots into teams after they are counted
 		row[4] = roundi(float(row[4]))
 		out.append(row)
 	out.sort_custom(func(a: Array, b: Array) -> bool: return int(a[4]) > int(b[4]))

@@ -40,6 +40,8 @@ var spawns: Dictionary = {}
 var _next_id: int = 1
 ## [field path, index, direction] of every felled tree, for late joiners
 var _felled: Array = []
+## [tank spec, transform, turret yaw, gun pitch] of every wreck, for late joiners
+var _wrecks: Array = []
 var _respawn_timers: Dictionary = {}
 ## peer -> TankConfig the player chose in the garage (missing = PLAYER_DATA)
 var _configs: Dictionary = {}
@@ -154,6 +156,14 @@ func _register(tank: Tank, owner_peer: int) -> int:
 	tank.fired.connect(_on_fired.bind(tank))
 	tank.shot_landed.connect(_on_shot_landed.bind(tank))
 	tank.spotted.connect(_on_spotted.bind(tank))
+	tank.wreck_left.connect(func(at: Transform3D, yaw: float, pitch: float) -> void:
+		_wrecks.append([TankBuilder.spec_of(tank), at, yaw, pitch])
+		if _wrecks.size() > Tank.MAX_WRECKS:
+			_wrecks.pop_front())
+	tank.struck.connect(func(outcome: int, direction: Vector3) -> void:
+		var owner_id: int = int(owners.get(net_id, 0))
+		if owner_id > 1 and multiplayer.get_peers().has(owner_id):
+			NetSession.instance.rpc_id(owner_id, "rpc_struck", outcome, direction))
 	if tank.squad != null:
 		var squad: Squad = tank.squad
 		squad.soldier_down.connect(func(index: int, screamed: bool) -> void:
@@ -236,10 +246,17 @@ func on_client_hello(peer: int, player_name: String, config_key: String) -> void
 
 
 func on_client_ready(peer: int) -> void:
+	# A team filled up with bots: one leaves to make room for the player.
+	if KothBots.instance != null:
+		var bot_tank: Tank = KothBots.instance.make_room(int(teams.get(peer, 1)))
+		if bot_tank != null:
+			remove_tank(bot_tank)
 	for net_id: int in tanks:
 		_send_spawn(peer, net_id)
 	for f: Array in _felled:
 		NetSession.instance.rpc_id(peer, "rpc_tree_felled", f[0], f[1], f[2])
+	for w: Array in _wrecks:
+		NetSession.instance.rpc_id(peer, "rpc_wreck", w[0], w[1], w[2], w[3])
 	_spawn_player(peer)
 
 
@@ -253,8 +270,34 @@ func on_client_left(peer: int) -> void:
 			tanks.erase(net_id)
 			owners.erase(net_id)
 			if is_instance_valid(tank):
+				tank.leave_wreck()
 				tank.queue_free()
 			NetSession.instance.rpc("rpc_despawn_tank", net_id)
+	# Bots take the empty place again.
+	if KothBots.instance != null:
+		KothBots.instance.refill.call_deferred()
+
+
+## Host: a bot tank KothBots added during the match: replicate it like the rest.
+func add_bot_tank(tank: Tank) -> void:
+	var net_id: int = _register(tank, 0)
+	for p: int in multiplayer.get_peers():
+		_send_spawn(p, net_id)
+
+
+## Host: takes a tank (a bot making room, or an extra bot) out of the game everywhere;
+## a knocked-out one leaves its wreck.
+func remove_tank(tank: Tank) -> void:
+	var net_id: int = tank.net_id
+	tanks.erase(net_id)
+	owners.erase(net_id)
+	_respawn_timers.erase(net_id)
+	tank.leave_wreck()
+	if tank.squad != null and is_instance_valid(tank.squad):
+		tank.squad.queue_free()
+	tank.queue_free()
+	if not multiplayer.get_peers().is_empty():
+		NetSession.instance.rpc("rpc_despawn_tank", net_id)
 
 
 func on_command(peer: int, buf: StreamPeerBuffer) -> void:
@@ -472,6 +515,18 @@ func on_spawn_tank(net_id: int, owner_peer: int, team: int, data_path: String, x
 	print_verbose("net: tanks now %s" % [tanks.keys()])
 
 
+## Client (joined late): a wreck left before we came. Built from a throw-away tank of the
+## same kind, so it looks like the ones made here.
+func on_wreck(spec: String, at: Transform3D, turret_yaw: float, gun_pitch: float) -> void:
+	var tank: Tank = TANK_SCENE.instantiate()
+	TankBuilder.apply_spec(tank, spec, PLAYER_DATA)
+	tank.wreck_only = true
+	tank.set_net_puppet(false)
+	_map.add_child(tank)
+	tank.global_transform = at
+	tank.make_wreck_here(turret_yaw, gun_pitch)
+
+
 func on_despawn_tank(net_id: int) -> void:
 	print_verbose("net: despawn tank %d" % net_id)
 	var tank: Tank = tanks.get(net_id)
@@ -480,6 +535,9 @@ func on_despawn_tank(net_id: int) -> void:
 	if _puppets != null:
 		_puppets.unregister(net_id)
 	if is_instance_valid(tank):
+		tank.leave_wreck()
+		if tank.squad != null and is_instance_valid(tank.squad):
+			tank.squad.queue_free()
 		tank.queue_free()
 
 
@@ -493,6 +551,13 @@ func on_shot_result(text: String, outcome: int) -> void:
 	var fb: HitFeedback = _my_rig.get_node_or_null("HUD/HitFeedback") as HitFeedback if _my_rig != null else null
 	if fb != null:
 		fb.show_text(text, outcome)
+
+
+## Client: a gun round hit the own tank (shake, ping, driving keys cancelled).
+func on_struck(outcome: int, direction: Vector3) -> void:
+	var tank: Tank = _my_rig.get_node_or_null("Tank") as Tank if _my_rig != null else null
+	if tank != null:
+		tank.net_struck(outcome, direction)
 
 
 func on_team_spot(point: Vector3) -> void:

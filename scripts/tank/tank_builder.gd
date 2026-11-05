@@ -47,6 +47,8 @@ static func build(config: TankConfig) -> TankData:
 	d.max_reverse_speed_kmh = d.max_forward_speed_kmh * r.reverse_share
 	d.acceleration = clampf(r.reference_acceleration * ratio, r.min_acceleration, r.max_acceleration)
 	d.max_turn_rate_deg = r.reference_turn_rate_deg * pow(r.reference_mass_kg / mass, r.turn_mass_exponent)
+	d.pitch_rock_lever_m = chassis.base.pitch_rock_lever_m \
+			* pow(mass / r.reference_mass_kg, r.rock_mass_exponent)
 	d.turret_traverse_speed_deg = clampf(
 			r.reference_traverse_deg * pow(r.reference_gun_mass_kg / gun.mass_kg, r.traverse_exponent),
 			r.min_traverse_deg, r.max_traverse_deg)

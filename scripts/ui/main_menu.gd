@@ -13,7 +13,7 @@ var _ip: LineEdit
 var _status: Label
 var _maps: PackedStringArray = []
 var _tank: OptionButton
-var _team_size: OptionButton
+var _team_size: SpinBox
 var _tank_configs: Array[TankConfig] = []
 
 
@@ -57,14 +57,16 @@ func _ready() -> void:
 	_tank.item_selected.connect(func(i: int) -> void:
 		TankConfigs.select(_tank_configs[i - 1] if i > 0 else null))
 	_button(box, "Garage", func() -> void: get_tree().change_scene_to_file(GARAGE_SCENE))
-	box.add_child(_label("Tanks per team (King of the Hill, single player)"))
-	_team_size = OptionButton.new()
-	_team_size.add_item("Map default")
-	for n: int in range(1, MatchSettings.MAX_TEAM_SIZE + 1):
-		_team_size.add_item("%d (you + %d bots vs %d bots)" % [n, n - 1, n])
+	box.add_child(_label("Tanks per team, King of the Hill (5 = 5 vs 5, bots fill empty places; 0 = map default)"))
+	_team_size = SpinBox.new()
+	_team_size.min_value = 0
+	_team_size.max_value = MatchSettings.MAX_TEAM_SIZE
+	_team_size.step = 1
+	_team_size.rounded = true
+	_team_size.update_on_text_changed = true
 	MatchSettings.load_settings()
-	_team_size.select(MatchSettings.team_size)
-	_team_size.item_selected.connect(func(i: int) -> void: MatchSettings.set_team_size(i))
+	_team_size.value = MatchSettings.team_size
+	_team_size.value_changed.connect(func(v: float) -> void: MatchSettings.set_team_size(roundi(v)))
 	box.add_child(_team_size)
 	_bots = CheckBox.new()
 	_bots.text = "Bots (host)"

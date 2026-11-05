@@ -26,6 +26,8 @@
 [ext_resource type="Script" path="res://scripts/ui/squad_map.gd" id="28_squad_map"]
 [ext_resource type="Script" path="res://scripts/ui/scoreboard.gd" id="29_scoreboard"]
 [ext_resource type="Script" path="res://scripts/ui/squad_radio.gd" id="30_squad_radio"]
+[ext_resource type="Script" path="res://scripts/control/hit_reaction.gd" id="31_hit_reaction"]
+[ext_resource type="Resource" path="res://data/sounds/ping.tres" id="32_ping"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -125,6 +127,11 @@ views = NodePath("../../PlayerViews")
 [node name="HatchMuffle" type="Node" parent="." node_paths=PackedStringArray("tank")]
 script = ExtResource("24_hatch_muffle")
 tank = NodePath("../Tank")
+
+[node name="HitReaction" type="Node" parent="." node_paths=PackedStringArray("views")]
+script = ExtResource("31_hit_reaction")
+views = NodePath("../PlayerViews")
+ping_sound = ExtResource("32_ping")
 
 [node name="SpotMarks" type="Node" parent="." node_paths=PackedStringArray("views")]
 script = ExtResource("21_spot_marks")

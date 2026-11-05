@@ -59,7 +59,8 @@ shows on the minimap. This is what we test first.
   with infantry costs (`data/squads/tactics_infantry.tres`), at most
   `max_distance_from_tank_m` (300) from the tank; recalled or left behind it runs back
   and mounts. Soldiers move one by one: a loose place each on the move (own pace,
-  drift), and when holding each his own spot 4-9 m round the squad's point (covered if
+  drift; no steeper than `SquadData.max_climb_deg` (45°) uphill and a knee-high wall ray,
+  so they go round houses: `Squad._step` turns off to the side), and when holding each his own spot 4-9 m round the squad's point (covered if
   possible), facing out and kneeling once still. The leader is the
   first living soldier; V (`toggle_squad_view`, `SquadCamera`, `PlayerViews` SQUAD
   mode) looks through his eyes while the squad is off the tank: look and spot only, no
@@ -104,6 +105,17 @@ shows on the minimap. This is what we test first.
   with infantry costs), recall it when hurt, left behind or driving on; squad
   contacts reach the crew and (KothBots) its team. Decided rules: memory
   `squad-rules`.
+- Hits and wrecks: a gun round (>= 20 mm) on a tank emits `Tank.struck(outcome, dir)`
+  (clients get it for their own tank by `rpc_struck`) and jolts the hull
+  (`TankData.hit_jolt_factor`); `HitReaction` in the player rig shakes the commander/gunner
+  view (`shake` on the cameras) and plays `data/sounds/ping.tres` on a ricochet
+  (`tools/audio/make_ping.py`); `PlayerController` cancels held driving keys until pressed
+  again. Reversing steers like a car (steering flipped in PlayerController). Acceleration and
+  braking pitch the hull (`TankData.pitch_rock_lever_m`, builder scales it with mass).
+  Knocked-out tanks leave a static charred wreck (`Tank.leave_wreck`, group `wrecks`, from
+  `KothMode.place_tank` / a puppet's respawn jump) for the whole match.
+  The host lists wrecks (`Tank.wreck_left`) and sends them to late joiners (`rpc_wreck`:
+  a throw-away `wreck_only` tank of the same spec makes the copy, `make_wreck_here`).
 - Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
   only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
 - Bots: `BotController` (extends `TargetTankController`, so patrols waypoints) with
@@ -219,9 +231,12 @@ shows on the minimap. This is what we test first.
   Tanks go to their spawn at the start; respawns (`RespawnAtStart`, `KothBots`) use the
   current spawn. `KothBots` orders every BotController into the (next) zone. Runs
   offline/host only. HUD: `ScorePanel`; `MapView` draws zone and own spawn.
-  Scenario: `vidingsjo_koth.tscn`. Tanks per team (main menu, `MatchSettings.team_size`,
-  `user://settings.cfg`; offline only): `KothBots._fill_teams` copies a placed bot or
-  removes extras. Per-tank stats (KO, losses, points) in `KothMode.get_stats()` (sent
+  Scenario: `vidingsjo_koth.tscn`. Tanks per team (main menu number, `MatchSettings.team_size`,
+  `user://settings.cfg`; offline and hosting with bots): `KothBots._fill_teams` adds copies
+  of a placed bot or removes extras; on the host a joining player replaces a bot of his team
+  (`KothBots.make_room`, `NetGame.remove_tank`) and a leaving one is replaced
+  (`KothBots.refill`, `NetGame.add_bot_tank`). Bots mark enemies they see for the team
+  through `TankCommand.spot` (`BotData.spot_remark_s`); SpotMarks shows teammates' spots. Per-tank stats (KO, losses, points) in `KothMode.get_stats()` (sent
   in the net state); `Scoreboard` in the player rig shows them on Tab and at the end
   (result, Play again / Main menu). Network: the host sends `get_net_state()` to
   clients (`rpc_koth_state`, 2 Hz and on zone moves/match end; clients run the clock

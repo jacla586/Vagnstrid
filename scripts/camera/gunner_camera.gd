@@ -16,6 +16,8 @@ const MIN_AIM_DISTANCE: float = 500.0
 var _target_yaw: float = 0.0
 var _target_pitch: float = 0.0
 var _zoom_index: int = 0
+## Extra pitch, yaw and roll (radians) while the view shakes from a hit (HitReaction).
+var shake: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
@@ -91,4 +93,5 @@ func _apply() -> void:
 	if not levels.is_empty():
 		_zoom_index = clampi(_zoom_index, 0, levels.size() - 1)
 		fov = levels[_zoom_index]
-	global_transform = tank.get_gunner_sight_transform()
+	var sight: Transform3D = tank.get_gunner_sight_transform()
+	global_transform = Transform3D(sight.basis * Basis.from_euler(shake), sight.origin)

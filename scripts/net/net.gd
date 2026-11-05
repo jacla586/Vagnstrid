@@ -276,6 +276,18 @@ func rpc_shot_result(text: String, outcome: int) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 2)
+func rpc_struck(outcome: int, direction: Vector3) -> void:
+	if game != null:
+		game.on_struck(outcome, direction)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_wreck(spec: String, at: Transform3D, turret_yaw: float, gun_pitch: float) -> void:
+	if game != null:
+		game.on_wreck(spec, at, turret_yaw, gun_pitch)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
 func rpc_team_spot(point: Vector3) -> void:
 	if game != null:
 		game.on_team_spot(point)

@@ -42,6 +42,12 @@ extends Resource
 @export var suspension_frequency_hz: float = 1.5
 ## 1.0 = critically damped (no bounce), lower = bouncier.
 @export var suspension_damping_ratio: float = 0.6
+## Speeding up lifts the nose, braking dips it: the hull is pitched as by a force of
+## mass × acceleration this far above the tracks (m). Bigger = more rocking, so jerky
+## driving spoils the aim. The builder scales it with mass (heavier rocks more).
+@export var pitch_rock_lever_m: float = 3.0
+## A gun round hitting the hull jolts it: the shell's momentum times this.
+@export var hit_jolt_factor: float = 4.0
 
 @export_group("Turret")
 ## How fast the turret turns relative to the hull (degrees/s).
@@ -115,8 +121,10 @@ extends Resource
 @export var fire_hp_per_s: float = 3.0
 ## Top speed with a damaged engine, as a share of normal (destroyed = 0).
 @export var engine_damaged_speed_factor: float = 0.5
-## Turret traverse with a damaged turret ring, as a share of normal (destroyed = 0).
-@export var ring_damaged_traverse_factor: float = 0.4
+## Turret traverse with a damaged turret ring, as a share of normal.
+@export var ring_damaged_traverse_factor: float = 0.5
+## ...and with a destroyed one (0 = jammed).
+@export var ring_destroyed_traverse_factor: float = 0.5
 ## A destroyed track stops the tank altogether (thrown track: no pivoting on the other
 ## one) until it is repaired.
 @export var broken_track_immobilises: bool = true

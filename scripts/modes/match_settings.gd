@@ -3,9 +3,10 @@ extends RefCounted
 ## Match options picked in the main menu (kept in user://settings.cfg).
 
 const SETTINGS_PATH: String = "user://settings.cfg"
-const MAX_TEAM_SIZE: int = 10
+const MAX_TEAM_SIZE: int = 32
 
-## Tanks per team in King of the Hill, players included; 0 = as the map places them.
+## Tanks per team in King of the Hill, players included (bots fill the rest; offline and
+## when hosting with bots); 0 = as the map places them.
 static var team_size: int = 0
 static var _loaded: bool = false
 

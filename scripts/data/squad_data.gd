@@ -9,7 +9,10 @@ extends Resource
 
 @export_group("Movement")
 ## Running speed on open ground (m/s).
-@export var run_speed_mps: float = 4.0
+@export var run_speed_mps: float = 4.8
+## Steepest ground a soldier walks up (degrees). Walls and roofs are far steeper, so
+## soldiers go round houses instead of over them.
+@export var max_climb_deg: float = 45.0
 ## Path costs for walking (forest and bushes cheap, open ground dear).
 @export var tactics: TacticsData
 ## Soldiers keep about this far apart in their wedge (m).

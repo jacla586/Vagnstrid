@@ -67,6 +67,7 @@ const FOLLOW_CONE_DEG: float = 40.0
 
 var _awareness: Dictionary = {}  # Tank -> seconds looked at while (partly) in sight
 var _spotted: Dictionary = {}  # Tank -> true once spotted (until forgotten)
+var _marked_at: Dictionary = {}  # Tank -> _clock when last marked for the team
 var _cover: Dictionary = {}  # Tank -> cover at the last look
 var _unseen_time: Dictionary = {}  # Tank -> seconds since last seen
 var _hull_visible: Dictionary = {}  # Tank -> hull seen in the last scan
@@ -279,6 +280,34 @@ func has_orders_left() -> bool:
 	return _order_index < _orders.size()
 
 
+## Marks a spotted enemy in sight for the team, through the command like a player's
+## spot (same cooldown): the target first, else whoever was marked longest ago.
+func _update_team_spot() -> void:
+	_command.spot = false
+	if tank.get_spot_cooldown_remaining() > 0.0:
+		return
+	var best: Tank = null
+	var best_age: float = bot_data.spot_remark_s
+	for key: Variant in _spotted.keys():
+		var other := key as Tank
+		if other == null or not is_instance_valid(other) or other.is_knocked_out() \
+				or float(_unseen_time.get(other, 0.0)) > 0.0:
+			continue
+		var age: float = _clock - float(_marked_at.get(other, -INF))
+		if age < bot_data.spot_remark_s:
+			continue
+		if other == _target:
+			best = other
+			break
+		if age > best_age:
+			best_age = age
+			best = other
+	if best != null:
+		_marked_at[best] = _clock
+		_command.spot = true
+		_command.spot_point = best.global_position
+
+
 ## Radio report from the group: look towards `at`; `enemy` (if known) is spotted faster.
 func share_contact(enemy: Tank, at: Vector3) -> void:
 	if enemy != null:
@@ -330,6 +359,7 @@ func _physics_process(delta: float) -> void:
 		_look_ahead_or_at_threat()
 	_command.squad_order = Squad.ORDER_NONE
 	_update_squad(delta)
+	_update_team_spot()
 	if _scoot != Scoot.NONE:
 		_update_scoot(delta)
 		_update_hatch(delta)

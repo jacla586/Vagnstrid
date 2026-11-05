@@ -18,6 +18,8 @@ var _target_yaw: float = 0.0
 var _target_pitch: float = 0.0
 var _yaw: float = 0.0
 var _pitch: float = 0.0
+## Extra pitch, yaw and roll (radians) while the view shakes from a hit (HitReaction).
+var shake: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
@@ -98,5 +100,5 @@ func _process(delta: float) -> void:
 
 
 func _update_transform() -> void:
-	global_transform = Transform3D(Basis.from_euler(Vector3(_pitch, _yaw, 0.0)),
-			tank.get_commander_eye_position())
+	global_transform = Transform3D(Basis.from_euler(Vector3(_pitch, _yaw, 0.0))
+			* Basis.from_euler(shake), tank.get_commander_eye_position())

@@ -39,6 +39,12 @@ signal fired(shell: Shell)
 signal shot_landed(result: HitResult)
 ## Emitted when this tank is knocked out.
 signal knocked_out
+## A gun round (THREAT_MIN_CALIBER_MM or more) hit this tank: HitResult.Outcome and the
+## shell's direction. Also on network clients for their own tank (net_struck).
+signal struck(outcome: int, direction: Vector3)
+## This tank left a wreck at `at` (turret and gun as given): the host keeps a list for
+## players who join later.
+signal wreck_left(at: Transform3D, turret_yaw: float, gun_pitch: float)
 ## Emitted when the exposed commander is hit.
 signal commander_wounded
 ## Emitted when a shell or bullet hits the tank, penetrating or not. `direction` is
@@ -70,6 +76,14 @@ const BURNING_SCENE: PackedScene = preload("res://scenes/effects/burning.tscn")
 ## Normals steeper than this (Y in local space) count as roof/belly.
 const ROOF_NORMAL_Y: float = 0.94
 const CHARRED_COLOR: Color = Color(0.08, 0.08, 0.075)
+## Wrecks left on the map (group "wrecks"); beyond this many the oldest goes.
+const MAX_WRECKS: int = 150
+## A knocked-out puppet that jumps this far has respawned (m)...
+const WRECK_JUMP_M: float = 20.0
+## ...also this long after it was repaired (s).
+const WRECK_PENDING_S: float = 2.0
+## The acceleration that rocks the hull is smoothed this fast (1/s).
+const ROCK_SMOOTHING: float = 12.0
 ## Commander hitbox centre sits this far below his eyes (m).
 const COMMANDER_HITBOX_DROP: float = 0.35
 ## The scene's own measures (today's medium tank): geometry from TankData is scaled
@@ -113,6 +127,16 @@ var _reload_remaining: float = 0.0
 ## Index into data.ammo of the shell in the breech (or being loaded).
 var _ammo_index: int = 0
 var _knocked_out: bool = false
+## A wreck has been left for the current knock-out (leave_wreck).
+var _wreck_left: bool = false
+## Only built to leave a wreck (a late joiner's copy, make_wreck_here): no squad, no sound.
+var wreck_only: bool = false
+## Puppet: repaired but not yet jumped to the spawn: where the wreck goes, and how long
+## to wait for the jump (s).
+var _wreck_pending_xform: Transform3D
+var _wreck_pending_s: float = 0.0
+## Smoothed drive acceleration that pitches the hull (m/s²).
+var _rock_accel: float = 0.0
 var _commander_wound_remaining: float = 0.0
 var _idle_command: TankCommand = TankCommand.new()
 var _burning: Node3D
@@ -202,14 +226,14 @@ func _ready() -> void:
 			target.module_id = m.id
 			target.position = m.center
 			add_child(target)
-	if data.squad != null:
+	if data.squad != null and not wreck_only:
 		squad = Squad.new()
 		squad.name = "%sSquad" % name
 		squad.tank = self
 		squad.data = data.squad
 		squad.net_puppet = net_puppet
 		get_parent().add_child.call_deferred(squad)
-	if data.sounds != null:
+	if data.sounds != null and not wreck_only:
 		_audio = TankAudio.new()
 		_audio.name = "Audio"
 		_audio.tank = self
@@ -613,6 +637,9 @@ func on_shell_hit(shell_data: ShellData, point: Vector3, normal: Vector3,
 	hit_taken.emit(velocity.normalized())
 	if shell_data.caliber_mm >= THREAT_MIN_CALIBER_MM:
 		shell_threat.emit(velocity.normalized(), true)
+		struck.emit(result.outcome, velocity.normalized())
+		# The blow jolts the hull (and the gun with it), more where it lands off-centre.
+		apply_impulse(velocity * shell_data.mass_kg * data.hit_jolt_factor, point - global_position)
 	var dir: Vector3 = velocity.normalized()
 	var hull_basis: Basis = global_basis.orthonormalized().inverse()
 	var turret_basis: Basis = _turret.global_basis.orthonormalized().inverse()
@@ -643,8 +670,14 @@ func report_shot(result: HitResult) -> void:
 	shot_landed.emit(result)
 
 
-## Undoes a knock-out (test bench respawn).
+## Undoes a knock-out (respawn, or on the spot on the test bench). A tank moved to a
+## spawn has already left its wreck (KothMode.place_tank). A puppet hears of the repair
+## before it sees the jump (it shows poses a little late): it leaves the wreck where it
+## is now if the jump follows soon.
 func repair() -> void:
+	if net_puppet and _knocked_out and not _wreck_left:
+		_wreck_pending_xform = global_transform
+		_wreck_pending_s = WRECK_PENDING_S
 	_knocked_out = false
 	_damage.reset()
 	_set_fire_effect(false)
@@ -656,11 +689,66 @@ func repair() -> void:
 
 func _knock_out() -> void:
 	_knocked_out = true
+	_wreck_left = false
 	_burning = BURNING_SCENE.instantiate()
 	add_child(_burning)
 	_burning.position = _turret.position
 	_apply_paint(true)
 	knocked_out.emit()
+
+
+## Leaves a burnt-out copy of the tank where it stands, for the rest of the match: solid
+## for shells, tanks and sight, but without any logic. Called before a knocked-out
+## tank is moved to its spawn (KothMode.place_tank, repair, a puppet's jump); once per
+## knock-out.
+func leave_wreck() -> void:
+	if not _knocked_out or _wreck_left or not is_inside_tree():
+		return
+	_wreck_left = true
+	_make_wreck(global_transform)
+	wreck_left.emit(global_transform, _turret.rotation.y, _gun_pivot.rotation.x)
+
+
+## A wreck_only tank (in the tree, placed): turns turret and gun, leaves its wreck and
+## goes. For players who join after the wreck was made.
+func make_wreck_here(turret_yaw: float, gun_pitch: float) -> void:
+	_turret.rotation.y = turret_yaw
+	_gun_pivot.rotation.x = gun_pitch
+	_sync_turret_shapes()
+	_make_wreck(global_transform)
+	remove_from_group("tanks")
+	queue_free()
+
+
+func _make_wreck(at: Transform3D) -> void:
+	var to_tank: Transform3D = global_transform.affine_inverse()
+	var wreck := StaticBody3D.new()
+	wreck.name = "Wreck"
+	wreck.collision_layer = 1
+	wreck.collision_mask = 0
+	wreck.add_to_group(&"wrecks")
+	var root: Node = get_tree().current_scene if get_tree().current_scene != null else get_parent()
+	root.add_child(wreck)
+	wreck.global_transform = at
+	for mi: MeshInstance3D in _visual.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh == null or not mi.is_visible_in_tree():
+			continue
+		var copy := MeshInstance3D.new()
+		copy.mesh = mi.mesh
+		copy.material_override = _charred_material
+		wreck.add_child(copy)
+		copy.transform = to_tank * mi.global_transform
+	for child: Node in get_children():
+		var cs := child as CollisionShape3D
+		if cs == null or cs.disabled or cs.shape == null:
+			continue
+		var shape := CollisionShape3D.new()
+		shape.shape = cs.shape.duplicate()
+		wreck.add_child(shape)
+		shape.transform = to_tank * cs.global_transform
+	var wrecks: Array[Node] = get_tree().get_nodes_in_group(&"wrecks")
+	if wrecks.size() > MAX_WRECKS:
+		wrecks[0].queue_free()
 
 
 ## Smoke and flames while the fuel tank burns (the knock-out has its own).
@@ -1000,6 +1088,13 @@ func get_net_state(for_owner: bool) -> TankNetState:
 ## Puppet: pose interpolated by the net code, every frame.
 func net_set_pose(xform: Transform3D, turret_yaw: float, gun_pitch: float, hatch: float,
 		roof_yaw: float, roof_pitch: float, velocity: Vector3) -> void:
+	if xform.origin.distance_to(global_position) > WRECK_JUMP_M:
+		# Respawned on the host: the wreck stays where it burnt out.
+		if _knocked_out:
+			leave_wreck()
+		elif _wreck_pending_s > 0.0:
+			_wreck_pending_s = 0.0
+			_make_wreck(_wreck_pending_xform)
 	global_transform = xform
 	_net_velocity = velocity
 	if net_predict and not _knocked_out:
@@ -1065,7 +1160,13 @@ func net_show_shell(shell_index: int, from: Vector3, velocity: Vector3, flash: b
 		SoundFx.play_at(self, shell_data.sound_ricochet, from)
 
 
+## Network client, own tank: the host says a gun round hit it (see struck).
+func net_struck(outcome: int, direction: Vector3) -> void:
+	struck.emit(outcome, direction)
+
+
 func _puppet_process(delta: float) -> void:
+	_wreck_pending_s = maxf(_wreck_pending_s - delta, 0.0)
 	if net_predict and not _knocked_out:
 		_update_turret(delta)
 		_update_hatch(delta)
@@ -1153,6 +1254,11 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	var traction_limit: float = maxf(state.total_gravity.length()
 			* sin(deg_to_rad(data.max_climb_deg)), accel_limit)
 	var drive_force: float = mass * clampf(accel - gravity_along, -traction_limit, traction_limit)
+	# Speeding up lifts the nose, braking dips it; the hull rocks on its springs, and
+	# the gun with it (no stabiliser), so jerky driving spoils the aim.
+	var driving: bool = _damage.speed_factor() > 0.0 and not _damage.is_immobilised()
+	_rock_accel = lerpf(_rock_accel, accel if driving else 0.0, 1.0 - exp(-ROCK_SMOOTHING * delta))
+	apply_torque(global_basis.x * mass * _rock_accel * data.pitch_rock_lever_m)
 
 	# Yaw: chase the target turn rate. Positive yaw (around +Y) turns left.
 	var steering: float = clampf(_command.steering, -1.0, 1.0)

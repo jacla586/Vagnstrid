@@ -62,6 +62,8 @@ const FLANK_ALONG: float = 0.4
 
 @export var mode: KothMode
 
+static var instance: KothBots
+
 var _bots: Array[BotController] = []
 var _hold: Dictionary = {}  # BotController -> seconds left at the current point
 var _respawn: Dictionary = {}  # BotController -> seconds until back at the spawn
@@ -78,6 +80,14 @@ var _flank: Dictionary = {}  # BotController -> -1 left, 0 centre, 1 right (last
 var _hunt: Dictionary = {}
 var _hunt_think: Dictionary = {}  # BotController -> seconds until the next look
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+## Copy of the first placed bot's controller (outside the tree), its tank scene and
+## data, and where bots live: for adding bots (_add_bot).
+var _template: BotController
+var _template_scene: String
+var _template_data: TankData
+var _template_xform: Transform3D
+var _bot_parent: Node
+var _bot_serial: int = 0
 
 
 func _ready() -> void:
@@ -89,89 +99,191 @@ func _ready() -> void:
 	_find_bots.call_deferred()
 
 
+func _enter_tree() -> void:
+	instance = self
+
+
+func _exit_tree() -> void:
+	if instance == self:
+		instance = null
+	if _template != null:
+		_template.free()
+		_template = null
+
+
 func _find_bots() -> void:
-	if not NetRole.is_online():
-		_fill_teams()
+	if NetRole.is_host():
+		# The map loads first, NetGame a frame or more later: it sorts the map's bots
+		# into teams (or removes them), and must know of every bot added here.
+		while NetSession.instance.game == null:
+			await get_tree().process_frame
+	_remember_template()
+	_fill_teams()
+	var per_team: Dictionary = {}
 	for node: Node in get_tree().current_scene.find_children("*", "", true, false):
 		var bot := node as BotController
-		if bot == null or bot.tank == null:
+		if bot == null or bot.tank == null or bot.is_queued_for_deletion():
 			continue
-		_bots.append(bot)
-		bot.respawn_delay_s = 0.0   # no repair on the spot: we bring it back at the spawn
-		bot.tank.knocked_out.connect(_on_knocked_out.bind(bot))
-		bot.tank.squad_contact.connect(_on_squad_contact.bind(bot))
-		bot.contact.connect(_on_bot_contact.bind(bot))
-	var per_team: Dictionary = {}
-	for bot: BotController in _bots:
+		_adopt(bot)
 		var n: int = int(per_team.get(bot.tank.team, 0))
 		per_team[bot.tank.team] = n + 1
 		_depart_later(bot, n * DEPART_INTERVAL_S)
 
 
-## Offline: brings both teams to MatchSettings.team_size tanks (the player counts as
-## one): copies of a placed bot (its controller settings, a random KothData bot config,
-## the team's paint) are added, extra bots removed. Runs before the match's first frame,
-## so KothMode puts the new tanks at the spawns with the rest.
+## Starts looking after a bot: respawns, contacts, orders.
+func _adopt(bot: BotController) -> void:
+	if _bots.has(bot):
+		return
+	_bots.append(bot)
+	bot.respawn_delay_s = 0.0   # no repair on the spot: we bring it back at the spawn
+	bot.tank.knocked_out.connect(_on_knocked_out.bind(bot))
+	bot.tank.squad_contact.connect(_on_squad_contact.bind(bot))
+	bot.contact.connect(_on_bot_contact.bind(bot))
+
+
+## Keeps a copy of the first bot (its controller settings, tank scene and data), so
+## bots can still be added after every placed one has made room for a player.
+func _remember_template() -> void:
+	if _template != null:
+		return
+	for node: Node in get_tree().current_scene.find_children("*", "", true, false):
+		var bot := node as BotController
+		if bot != null and bot.tank != null and not bot.is_queued_for_deletion():
+			_template = bot.duplicate() as BotController
+			_template_scene = bot.tank.scene_file_path
+			_template_data = bot.tank.data
+			_template_xform = bot.tank.global_transform
+			_bot_parent = bot.tank.get_parent()
+			return
+
+
+## Tanks of `team` in the match (players and bots), not counting ones on their way out.
+func _team_tanks(team: int) -> Array[Tank]:
+	var out: Array[Tank] = []
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var tank := node as Tank
+		if tank != null and tank.team == team and not tank.is_queued_for_deletion():
+			out.append(tank)
+	return out
+
+
+## Brings both teams to MatchSettings.team_size tanks, players included: bots (the
+## template's settings, a random KothData bot config) are added, extra bots removed.
+## Offline and on the host (with bots on). At the start it runs before the match's
+## first frame, so KothMode puts the new tanks at the spawns with the rest; later
+## (a player left) new bots go straight to their spawn.
 func _fill_teams() -> void:
 	MatchSettings.load_settings()
 	var size: int = MatchSettings.team_size
-	if size <= 0:
+	if size <= 0 or _template == null:
 		return
-	var scene: Node = get_tree().current_scene
-	var template: BotController = null
-	var bots_by_team: Dictionary = {}   # team -> Array of BotController
-	var count: Dictionary = {0: 0, 1: 0}
-	var paint: Dictionary = {}          # team -> Color
-	for node: Node in scene.find_children("*", "", true, false):
-		var tank := node as Tank
-		if tank != null:
-			count[tank.team] = int(count.get(tank.team, 0)) + 1
-			if not paint.has(tank.team) or tank.use_player_config:
-				paint[tank.team] = tank.paint_color
-		var bot := node as BotController
-		if bot != null and bot.tank != null:
-			if template == null:
-				template = bot
-			if not bots_by_team.has(bot.tank.team):
-				bots_by_team[bot.tank.team] = []
-			(bots_by_team[bot.tank.team] as Array).append(bot)
-	if template == null:
-		push_warning("KothBots: no bot to copy, team size ignored")
-		return
-	for team: int in count.keys():
-		var extra: int = int(count[team]) - size
-		var list: Array = bots_by_team.get(team, [])
-		while extra > 0 and not list.is_empty():
-			var bot: BotController = list.pop_back()
-			var tank: Tank = bot.tank
-			bot.get_parent().remove_child(bot)
-			bot.free()
-			tank.get_parent().remove_child(tank)
-			tank.free()
+	for team: int in [0, 1]:
+		var tanks: Array[Tank] = _team_tanks(team)
+		var extra: int = tanks.size() - size
+		while extra > 0:
+			var bot: BotController = _bot_to_remove(team)
+			if bot == null:
+				break
+			_remove_bot(bot)
 			extra -= 1
 		for i: int in range(-extra):
-			_add_bot(template, team, paint.get(team, Color(0, 0, 0, 0)), i)
+			_add_bot(team, tanks.size() + i)
 
 
-func _add_bot(template: BotController, team: int, paint: Color, index: int) -> void:
-	var tank: Tank = (load(template.tank.scene_file_path) as PackedScene).instantiate()
-	tank.name = "Team%dBot%d" % [team, index + 1]
+## Host: a player joins `team`. If the team is already full, a bot leaves to make room
+## (one that is knocked out, if any). Returns the bot's tank, already out of the bot
+## lists and without its controller; the caller removes it from the game.
+func make_room(team: int) -> Tank:
+	var size: int = MatchSettings.team_size
+	if size <= 0 or _team_tanks(team).size() < size:
+		return null
+	var bot: BotController = _bot_to_remove(team)
+	if bot == null:
+		return null
+	var tank: Tank = bot.tank
+	_forget_bot(bot)
+	bot.queue_free()
+	return tank
+
+
+## Host: a player left; bring the teams back up to size with bots.
+func refill() -> void:
+	if _template == null:
+		return
+	var before: Array[BotController] = _bots.duplicate()
+	_fill_teams()
+	for node: Node in get_tree().current_scene.find_children("*", "", true, false):
+		var bot := node as BotController
+		if bot != null and bot.tank != null and not before.has(bot) and not bot.is_queued_for_deletion():
+			_adopt(bot)
+			_respawned[bot] = true   # hurry to the zone
+			_depart_later(bot, _rng.randf_range(0.0, DEPART_INTERVAL_S))
+
+
+## Which of `team`'s bots goes: a knocked-out one first, else the last one.
+func _bot_to_remove(team: int) -> BotController:
+	var pick: BotController = null
+	for node: Node in get_tree().current_scene.find_children("*", "", true, false):
+		var bot := node as BotController
+		if bot == null or not is_instance_valid(bot.tank) or bot.tank.team != team \
+				or bot.is_queued_for_deletion():
+			continue
+		if bot.tank.is_knocked_out():
+			return bot
+		pick = bot
+	return pick
+
+
+## Takes a bot and its tank (and squad) out of the match. A knocked-out tank leaves
+## its wreck.
+func _remove_bot(bot: BotController) -> void:
+	var tank: Tank = bot.tank
+	_forget_bot(bot)
+	bot.queue_free()
+	var game: NetGame = NetSession.instance.game if NetRole.is_host() else null
+	if game != null:
+		game.remove_tank(tank)
+	else:
+		tank.leave_wreck()
+		if tank.squad != null and is_instance_valid(tank.squad):
+			tank.squad.queue_free()
+		tank.queue_free()
+
+
+## Drops a bot from every list (and from its partner's).
+func _forget_bot(bot: BotController) -> void:
+	_bots.erase(bot)
+	for d: Dictionary in [_hold, _respawn, _ordered_radius, _depart, _goals, _respawned,
+			_role, _partner, _role_time, _flank, _hunt, _hunt_think]:
+		d.erase(bot)
+	for other: Variant in _partner.keys():
+		if _partner[other] == bot:
+			_partner[other] = null
+
+
+func _add_bot(team: int, index: int) -> void:
+	var tank: Tank = (load(_template_scene) as PackedScene).instantiate()
+	_bot_serial += 1
+	tank.name = "Team%dBot%d" % [team, _bot_serial]
 	tank.team = team
-	tank.paint_color = paint
-	tank.data = template.tank.data
+	tank.data = _template_data
 	var pool: Array[TankConfig] = mode.data.bot_configs
 	if not pool.is_empty():
 		tank.config = pool[_rng.randi() % pool.size()]
-	var parent: Node = template.tank.get_parent()
+	var parent: Node = _bot_parent if is_instance_valid(_bot_parent) else get_tree().current_scene
 	parent.add_child(tank)
-	tank.global_transform = template.tank.global_transform.translated(Vector3(index * 12.0 + 12.0, 2.0, 0.0))
+	# Beside the first placed bot until KothMode moves everyone to the spawns.
+	tank.global_transform = _template_xform.translated(Vector3(index * 12.0 + 12.0, 2.0, 0.0))
 	if mode.has_started():
 		KothMode.place_tank(tank, mode.get_free_spawn(team, tank))
-	var bot: BotController = template.duplicate() as BotController
+	var bot: BotController = _template.duplicate() as BotController
 	bot.name = tank.name + "Controller"
 	bot.tank = tank
 	bot.waypoints = []
 	parent.add_child(bot)
+	var game: NetGame = NetSession.instance.game if NetRole.is_host() else null
+	if game != null:
+		game.add_bot_tank(tank)
 
 
 func _physics_process(delta: float) -> void:

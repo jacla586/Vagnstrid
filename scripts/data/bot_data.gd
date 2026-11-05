@@ -19,6 +19,9 @@ extends Resource
 @export var spot_time_closed_s: float = 4.0
 ## A spotted tank out of sight this long is forgotten (s).
 @export var forget_after_s: float = 8.0
+## Like a player, the commander marks enemies he sees for the team (minimap), with the
+## same spot cooldown; one still in sight is marked again after this long (s).
+@export var spot_remark_s: float = 12.0
 ## Cover and movement rules for the tanks this crew looks for. Null = ignored.
 @export var concealment: ConcealmentData
 

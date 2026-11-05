@@ -17,7 +17,7 @@
 script = ExtResource("1_squad")
 display_name = "Rifle squad"
 soldier_count = 4
-run_speed_mps = 4.0
+run_speed_mps = 4.8
 tactics = ExtResource("2_tactics")
 spacing_m = 4.0
 max_distance_from_tank_m = 300.0

@@ -145,7 +145,7 @@ func track_factor(side: int) -> float:
 func traverse_factor() -> float:
 	match state(&"turret_ring"):
 		State.DAMAGED: return data.ring_damaged_traverse_factor
-		State.DESTROYED: return 0.0
+		State.DESTROYED: return data.ring_destroyed_traverse_factor
 	return 1.0
 
 
