@@ -7,8 +7,7 @@
 [ext_resource type="Script" uid="uid://bxbikwibppxfd" path="res://scripts/data/shell_data.gd" id="5_shell_script"]
 [ext_resource type="Resource" path="res://data/weapons/tank_coax_mg.tres" id="6_coax"]
 [ext_resource type="Resource" path="res://data/weapons/tank_roof_mg.tres" id="7_roof"]
-
-[ext_resource type="Resource" path="res://data/tanks/layout_medium.tres" id="20_layout"]
+[ext_resource type="Resource" uid="uid://ctytvhtiilqu" path="res://data/tanks/layout_medium.tres" id="20_layout"]
 [ext_resource type="Resource" path="res://data/sounds/tank_medium.tres" id="80_snd0"]
 [ext_resource type="Resource" path="res://data/squads/rifle_squad.tres" id="81_squad"]
 
@@ -17,8 +16,6 @@ script = ExtResource("3_armour")
 
 [resource]
 script = ExtResource("1_data")
-commander_wound_time_s = 90.0
-broken_track_immobilises = true
 display_name = "Test Medium"
 gunner_sight_fov_deg = PackedFloat32Array(24, 12)
 armour = SubResource("Resource_armour")
@@ -26,5 +23,5 @@ layout = ExtResource("20_layout")
 ammo = Array[ExtResource("5_shell_script")]([ExtResource("2_shell"), ExtResource("4_he")])
 coax_mg = ExtResource("6_coax")
 roof_mg = ExtResource("7_roof")
-sounds = ExtResource("80_snd0")
 squad = ExtResource("81_squad")
+sounds = ExtResource("80_snd0")

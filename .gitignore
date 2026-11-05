@@ -4,3 +4,6 @@
 
 # Tank model pictures (tools/render_tank_models.gd)
 /renders/
+
+# Exported builds (EXPORTERA.md)
+/build/

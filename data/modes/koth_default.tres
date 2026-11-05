@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="KothData" format=3]
+[gd_resource type="Resource" script_class="KothData" format=3 uid="uid://de40w3uqoa668"]
 
-[ext_resource type="Script" path="res://scripts/data/koth_data.gd" id="1_koth"]
-[ext_resource type="Script" path="res://scripts/data/tank_config.gd" id="2_cfg"]
+[ext_resource type="Script" uid="uid://muykglch3d16" path="res://scripts/data/koth_data.gd" id="1_koth"]
+[ext_resource type="Script" uid="uid://bsh0u01p3147o" path="res://scripts/data/tank_config.gd" id="2_cfg"]
 [ext_resource type="Resource" path="res://data/configs/scout.tres" id="c0"]
 [ext_resource type="Resource" path="res://data/configs/light_hunter.tres" id="c1"]
 [ext_resource type="Resource" path="res://data/configs/medium_standard.tres" id="c2"]
@@ -13,25 +13,5 @@
 
 [resource]
 script = ExtResource("1_koth")
-zone_count = 0
-zone_point_budget = 1000.0
-zone_hold_s = 120.0
-zone_lifetime_s = 300.0
-zone_gap_s = 30.0
-radius_start_m = 300.0
-radius_end_m = 60.0
-points_per_tank_start = 0.5
-points_per_tank_end = 4.0
-max_counted_tanks = 4
-majority_multiplier = 1.5
-kill_bonus_points = 75.0
-kill_bonus_factor_start = 1.0
-kill_bonus_factor_end = 3.0
-score_to_win = 3000.0
-tick_interval_s = 0.25
-spawn_distance_m = 800.0
-spawn_min_distance_m = 400.0
-south_team = 0
-spawn_spacing_m = 15.0
-bot_respawn_delay_s = 12.0
+radius_start_m = 175.0
 bot_configs = Array[ExtResource("2_cfg")]([ExtResource("c0"), ExtResource("c1"), ExtResource("c2"), ExtResource("c3"), ExtResource("c4"), ExtResource("c5"), ExtResource("c6"), ExtResource("c7")])

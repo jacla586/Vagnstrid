@@ -1,32 +1,31 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://dqp2iuvcfla3f"]
 
-[ext_resource type="PackedScene" path="res://scenes/maps/vidingsjo.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scripts/modes/koth_mode.gd" id="2_koth"]
+[ext_resource type="PackedScene" uid="uid://d3ipodblnchrk" path="res://scenes/maps/vidingsjo.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://b7igmt2mm5h11" path="res://scripts/modes/koth_mode.gd" id="2_koth"]
 [ext_resource type="Resource" path="res://data/modes/koth_default.tres" id="3_koth_data"]
-[ext_resource type="Script" path="res://scripts/modes/koth_bots.gd" id="4_koth_bots"]
+[ext_resource type="Script" uid="uid://demkwdtsf2c6x" path="res://scripts/modes/koth_bots.gd" id="4_koth_bots"]
 
-[node name="VidingsjoKoth" instance=ExtResource("1_base")]
+[node name="VidingsjoKoth" unique_id=574312908 instance=ExtResource("1_base")]
 
-[node name="KothZone" type="Node3D" parent="." unique_id=1146002731]
+[node name="KothZone" type="Node3D" parent="." index="9" unique_id=1146002731]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1180, 70, 1450)
 script = ExtResource("2_koth")
 data = ExtResource("3_koth_data")
 
-[node name="SpotWest" type="Marker3D" parent="KothZone" unique_id=1146002740]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -480, 0, -200)
+[node name="SpotWest" type="Marker3D" parent="KothZone" index="0" unique_id=1146002740]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -185.49957, 3.1226196, -443.46008)
 
-[node name="SpotCentre" type="Marker3D" parent="KothZone" unique_id=1146002741]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+[node name="SpotCentre" type="Marker3D" parent="KothZone" index="1" unique_id=1146002741]
 
-[node name="SpotEast" type="Marker3D" parent="KothZone" unique_id=1146002742]
+[node name="SpotEast" type="Marker3D" parent="KothZone" index="2" unique_id=1146002742]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 720, 0, -150)
 
-[node name="SpotFarEast" type="Marker3D" parent="KothZone" unique_id=1146002743]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1420, 0, 150)
+[node name="SpotFarEast" type="Marker3D" parent="KothZone" index="3" unique_id=1146002743]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 881.4487, 0, 882.8013)
 
-[node name="SpotNorth" type="Marker3D" parent="KothZone" unique_id=1146002744]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 320, 0, 400)
+[node name="SpotNorth" type="Marker3D" parent="KothZone" index="4" unique_id=1146002744]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 154.4021, 0, 774.4785)
 
-[node name="KothBots" type="Node" parent="." unique_id=1146002732 node_paths=PackedStringArray("mode")]
+[node name="KothBots" type="Node" parent="." index="10" unique_id=1146002732 node_paths=PackedStringArray("mode")]
 script = ExtResource("4_koth_bots")
 mode = NodePath("../KothZone")
