@@ -44,6 +44,10 @@ signal commander_wounded
 ## Emitted when a shell or bullet hits the tank, penetrating or not. `direction` is
 ## the projectile's flight direction (bots turn towards where it came from).
 signal hit_taken(direction: Vector3)
+## A gun round (not bullets: at least THREAT_MIN_CALIBER_MM) hit the tank (`hit`) or
+## passed or landed within NEAR_MISS_M of it. `direction` is its flight direction.
+## Bots count these to decide when to pull back. Host/offline only.
+signal shell_threat(direction: Vector3, hit: bool)
 ## Emitted when a module changes state (TankDamage.State).
 signal module_changed(id: StringName, state: int)
 ## Emitted for every machine-gun bullet fired.
@@ -54,6 +58,11 @@ signal spotted(point: Vector3)
 ## Emitted when the tank's squad spots an enemy (a Tank or a Squad) at `at`.
 signal squad_contact(enemy: Node3D, at: Vector3)
 
+## Rounds of at least this calibre count as a threat to bots (shell_threat); MG and
+## rifle bullets don't (mm).
+const THREAT_MIN_CALIBER_MM: float = 20.0
+## A round passing or landing this close to the hull centre is a near miss (m).
+const NEAR_MISS_M: float = 8.0
 const KMH_TO_MS: float = 1.0 / 3.6
 const SHELL_SCENE: PackedScene = preload("res://scenes/weapons/shell.tscn")
 const MUZZLE_FLASH_SCENE: PackedScene = preload("res://scenes/effects/muzzle_flash.tscn")
@@ -506,6 +515,32 @@ func needs_repair() -> bool:
 	return _damage.needs_repair()
 
 
+## A shell flew from `from` to `to` this frame: enemy tanks of its shooter within
+## NEAR_MISS_M of that stretch go into `near` (Tank -> flight direction), once each.
+## Shell reports them when it is done (Shell._report_near_misses), except tanks it hit.
+static func collect_near_misses(tree: SceneTree, from: Vector3, to: Vector3,
+		shell_data: ShellData, shooter: Object, near: Dictionary) -> void:
+	if shell_data.caliber_mm < THREAT_MIN_CALIBER_MM:
+		return
+	var direction: Vector3 = (to - from).normalized()
+	for node: Node in tree.get_nodes_in_group("tanks"):
+		var other := node as Tank
+		if other == null or other == shooter or near.has(other) or other.is_knocked_out() \
+				or Tank.is_friendly(shooter, other):
+			continue
+		var closest: Vector3 = Geometry3D.get_closest_point_to_segment(other.global_position, from, to)
+		if closest.distance_to(other.global_position) <= NEAR_MISS_M:
+			near[other] = direction
+
+
+## Some module is knocked out (red), not just damaged.
+func has_destroyed_module() -> bool:
+	for m: ModuleData in _damage.get_modules():
+		if _damage.state(m.id) == TankDamage.State.DESTROYED:
+			return true
+	return false
+
+
 ## 0..1 towards the module repair; 0 while moving, firing, burning or just hit.
 func get_repair_progress() -> float:
 	return _damage.repair_progress()
@@ -576,6 +611,8 @@ func on_shell_hit(shell_data: ShellData, point: Vector3, normal: Vector3,
 	result.target = self
 	result.unworn_mm = data.armour.thickness_mm(part, face)
 	hit_taken.emit(velocity.normalized())
+	if shell_data.caliber_mm >= THREAT_MIN_CALIBER_MM:
+		shell_threat.emit(velocity.normalized(), true)
 	var dir: Vector3 = velocity.normalized()
 	var hull_basis: Basis = global_basis.orthonormalized().inverse()
 	var turret_basis: Basis = _turret.global_basis.orthonormalized().inverse()

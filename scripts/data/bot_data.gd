@@ -35,8 +35,20 @@ extends Resource
 @export var aim_settle_s: float = 2.5
 ## How close the gun must point to the aim to count as on target (degrees).
 @export var aim_tolerance_deg: float = 0.3
-## Fires the main gun only below this speed (km/h): stops to shoot.
+## Fires the main gun only below this speed (km/h): stops to shoot...
 @export var max_fire_speed_kmh: float = 3.0
+## ...except on the move in the open (no cover for a halt): then it fires on the move
+## at targets within this range (m; 0 = never), with a looser lay, a shorter settle and
+## an extra laying error per m/s of own speed (mrad).
+@export var move_fire_range_m: float = 300.0
+@export var move_aim_tolerance_deg: float = 1.0
+@export var move_aim_settle_s: float = 0.8
+@export var move_lay_error_mrad_per_mps: float = 1.5
+
+@export_group("Repair")
+## Without a destroyed module or thrown track, the crew only stops to repair below
+## this share of structure hp; lighter damage mends while it holds a position anyway.
+@export var repair_stop_hp_fraction: float = 0.4
 
 @export_group("Machine gun")
 ## Fires MGs at an exposed commander within this range (m).

@@ -72,13 +72,36 @@ extends Resource
 ## ...and the next firing spot this far to the side of the last one (m).
 @export var peek_side_min_m: float = 5.0
 @export var peek_side_max_m: float = 15.0
+## Chance to back off after a shot (0..1); otherwise the tank stays up and fights.
+@export var scoot_chance: float = 1.0
 ## Stay hidden until reloaded plus this (s), at most hide_max_s in all.
 @export var hide_extra_s: float = 1.0
 @export var hide_max_s: float = 12.0
-## Hit this many times from about the same direction within relocate_window_s: move
-## to a new position away from that threat (0 = never).
-@export var relocate_after_hits: int = 2
+## Pulling back: each gun round that hits or nearly misses (Tank.shell_threat) within
+## relocate_window_s of the last one may send the tank to a new position away from
+## that threat. Chance per count: [after 1, after 2, after 3...]; the last value holds
+## for more (empty = never).
+@export var relocate_chance_by_hits: Array[float] = [0.3, 0.85, 1.0]
 @export var relocate_window_s: float = 30.0
-## The new position is looked for about this far away (m).
+## The new position is looked for about this far away (m)...
 @export var relocate_distance_m: float = 80.0
+## ...and held this long after getting there before other orders take over (s).
+@export var relocate_hold_s: float = 6.0
 
+
+@export_group("Aggression")
+## Throttle for drives to the objective and hunts (KothBots).
+@export var travel_throttle: float = 0.7
+## On the way somewhere, halt to fire only at targets within this range (m).
+@export var transit_fire_range_m: float = 100000.0
+## Hunting: go after an enemy seen or reported within hunt_memory_s (s), up to
+## hunt_range_m (m) from the tank, if it is no further than hunt_zone_margin_m (m)
+## outside the zone (where kills pay and where it scores). 0 range = never hunt.
+@export var hunt_range_m: float = 0.0
+@export var hunt_memory_s: float = 20.0
+@export var hunt_zone_margin_m: float = 250.0
+## Drive to a firing spot about this far from the enemy's last known position (m);
+## already closer than this with it in sight: just fight from where it is.
+@export var hunt_engage_m: float = 250.0
+## Give a hunt up after this long (s) and go back to the zone orders.
+@export var hunt_max_s: float = 40.0

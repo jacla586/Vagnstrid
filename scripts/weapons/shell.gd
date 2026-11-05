@@ -35,6 +35,9 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Client copy of a host shell: same flight and impact effect, no damage. The host
 ## decides hits and sends ricochets as new shells.
 var _cosmetic: bool = false
+## Enemy tanks this shell passed close to (Tank -> flight direction) and tanks it hit.
+var _near: Dictionary = {}
+var _hit_tanks: Array[Tank] = []
 
 @onready var _tracer: MeshInstance3D = $Tracer
 
@@ -72,6 +75,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_age += delta
 	if _age > MAX_LIFETIME or global_position.y < MIN_HEIGHT:
+		_report_near_misses()
 		queue_free()
 		return
 	var from: Vector3 = global_position
@@ -83,6 +87,9 @@ func _physics_process(delta: float) -> void:
 	# Bushes and canopies hide things but don't stop shells.
 	query.collision_mask = Vision.SHOT_MASK
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	if not _cosmetic:
+		var end: Vector3 = next[0] if hit.is_empty() else hit["position"]
+		Tank.collect_near_misses(get_tree(), from, end, _data, _shooter, _near)
 	if not hit.is_empty():
 		_on_hit(hit)
 		return
@@ -113,6 +120,8 @@ func _on_hit(hit: Dictionary) -> void:
 	if collider != null and collider.has_method("on_shell_hit") and not Tank.is_friendly(_shooter, collider):
 		result = collider.on_shell_hit(_data, point, normal, _velocity, int(hit["shape"]))
 		_report(result)
+		if collider is Tank:
+			_hit_tanks.append(collider)
 	if _data.is_explosive() or result == null or result.outcome != HitResult.Outcome.RICOCHET:
 		_play_hit_sound(collider, point)
 	# Tank fire landing near enemy infantry makes them smoke and fall back.
@@ -122,12 +131,22 @@ func _on_hit(hit: Dictionary) -> void:
 		for fragment_result: HitResult in Explosion.detonate(get_world_3d(), get_tree(), point,
 				normal, _data, _rng, Tank.team_of(_shooter)):
 			_report(fragment_result)
+		_report_near_misses()
 		queue_free()
 		return
 	if result != null and result.outcome == HitResult.Outcome.RICOCHET:
 		_ricochet(point, normal, hit["rid"])
 		return
+	_report_near_misses()
 	queue_free()
+
+
+## Done flying: tanks it passed or landed close to (and didn't hit) feel a near miss.
+func _report_near_misses() -> void:
+	for key: Variant in _near.keys():
+		if is_instance_valid(key) and not _hit_tanks.has(key):
+			(key as Tank).shell_threat.emit(_near[key], false)
+	_near.clear()
 
 
 ## Tells the shooter what a hit did. Null results (nothing of note) aren't reported.

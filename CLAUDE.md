@@ -187,8 +187,18 @@ shows on the minimap. This is what we test first.
   short). Long drives go by a random flank point (teammates prefer different flanks)
   so routes vary. Shoot and scoot (`TacticsData.shoot_and_scoot`): after a shot a bot
   backs to a spot its target's commander can't see while it reloads, then comes up a
-  few metres to the side; hit repeatedly from one side, it relocates (find_position
-  away from that threat). Needs a baked grid. Without a baked grid bots drive
+  few metres to the side (only `scoot_chance` of shots). Gun rounds that hit or nearly
+  miss (`Tank.shell_threat`: >= 20 mm, passing or landing within 8 m, collected by
+  `Shell`) make it pull back (find_position away from the threat, held
+  `relocate_hold_s`; KothBots waits) with `relocate_chance_by_hits` (30 % / 85 % /
+  100 % for 1/2/3 in a row within `relocate_window_s`). Firing on the way: a short halt
+  only beside cover (`TacticalMap.is_covered`) within `transit_fire_range_m`; in the
+  open it fires on the move within `BotData.move_fire_range_m` (looser lay, error per
+  m/s), else holds fire. Bots stop to repair only for a destroyed module, a thrown
+  track or hp below `BotData.repair_stop_hp_fraction`. Hunting (KothBots, `TacticsData`
+  `hunt_*`): bots radio spots to the team and go after known enemies, those in the open
+  zone first (any range, no time limit, pressing closer), others near the zone for
+  `hunt_max_s`; firing spots for an enemy in the zone are inside it. Needs a baked grid. Without a baked grid bots drive
   straight. Baked so far: vidingsjo. Spawns avoid blocked cells.
 - `BotGroup` moves bots together: column along a route, on the first contact
   (shared to all members) line abreast towards an objective, short halts to fire.

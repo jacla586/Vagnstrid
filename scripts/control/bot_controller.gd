@@ -49,8 +49,6 @@ const SOLDIER_SPOT_FACTOR: float = 2.5
 enum Scoot { NONE, HIDING, RETURNING }
 ## Hide spot candidates: angles off straight back from the target (degrees).
 const HIDE_ANGLES_DEG: Array[float] = [0.0, 30.0, -30.0, 60.0, -60.0]
-## Hits counted for relocation come from "the same direction" within this (degrees).
-const RELOCATE_SAME_DIR_DEG: float = 45.0
 ## Cells remembered as blocked where this tank got stuck (planned round from then on).
 const AVOID_MEMORY: int = 6
 ## The obstacle is taken to be this far ahead of the tank when it gets stuck (m).
@@ -83,6 +81,8 @@ var _lead_error: float = 0.0
 var _gun_superelevation: float = 0.0
 var _mg_superelevation: float = 0.0
 var _settle_time: float = 0.0
+## Firing on the move: the way the extra laying error points (unit, picked per shot).
+var _move_error_dir: Vector2 = Vector2.RIGHT
 var _mg_time: float = 0.0
 var _hit_close_timer: float = 0.0
 var _calm_time: float = 0.0
@@ -118,8 +118,11 @@ var _scoot: Scoot = Scoot.NONE
 var _scoot_point: Vector3 = Vector3.ZERO
 var _peek_point: Vector3 = Vector3.ZERO
 var _scoot_time: float = 0.0
-## Recent hits: [time, flat direction they came from].
-var _hits: Array = []
+## Recent gun rounds that hit or nearly missed: times (_clock).
+var _hits: Array[float] = []
+## Pulling back: true from the order until relocate_hold_s after arriving.
+var _relocating: bool = false
+var _relocate_hold: float = 0.0
 var _clock: float = 0.0
 ## Grid cells where this tank got stuck on something (newest last).
 var _avoid_cells: Array[Vector2i] = []
@@ -127,6 +130,9 @@ var _avoid_cells: Array[Vector2i] = []
 var _since_contact: float = INF
 ## Enemies reported by the group: spotted in half the time (the crew knows where to look).
 var _reported: Dictionary = {}
+## Where enemies were last seen or reported: Tank -> [position, _clock then]. Kept
+## after a target is forgotten, so the crew can go after it (KothBots hunting).
+var _last_known: Dictionary = {}
 
 
 func _ready() -> void:
@@ -134,6 +140,7 @@ func _ready() -> void:
 	if tank != null:
 		tank.hit_taken.connect(_on_hit_taken)
 		tank.fired.connect(_on_fired)
+		tank.shell_threat.connect(_on_shell_threat)
 		tank.squad_contact.connect(_on_squad_contact)
 
 
@@ -213,8 +220,34 @@ func get_time_since_contact() -> float:
 	return _since_contact
 
 
+## Enemies this crew has seen or had reported within `max_age_s`: Tank -> last known
+## position. Own knowledge only (same rules as a player's).
+func get_known_enemies(max_age_s: float) -> Dictionary:
+	var result: Dictionary = {}
+	for key: Variant in _last_known.keys():
+		if not is_instance_valid(key):
+			continue
+		var other: Tank = key
+		var entry: Array = _last_known[key]
+		if other.is_knocked_out() or _clock - float(entry[1]) > max_age_s:
+			continue
+		result[other] = entry[0]
+	return result
+
+
+## True while the current target's hull is in sight (the gun can work on it).
+func has_target_in_sight() -> bool:
+	return _target != null and is_instance_valid(_target) \
+			and bool(_hull_visible.get(_target, false))
+
+
 func is_scouting() -> bool:
 	return _scout_wait > 0.0
+
+
+## Pulling back after hits or near misses (KothBots leaves such a bot alone).
+func is_relocating() -> bool:
+	return _relocating
 
 
 func _tactics() -> TacticsData:
@@ -250,6 +283,7 @@ func has_orders_left() -> bool:
 func share_contact(enemy: Tank, at: Vector3) -> void:
 	if enemy != null:
 		_reported[enemy] = true
+		_last_known[enemy] = [at, _clock]
 	if _target == null:
 		_alert_direction = at - tank.global_position
 		_alert_timer = ALERT_TIME_S
@@ -279,6 +313,10 @@ func _physics_process(delta: float) -> void:
 		_since_contact += delta
 	_halting = false
 	_clock += delta
+	if _relocating and not has_orders_left():
+		_relocate_hold -= delta
+		if _relocate_hold <= 0.0:
+			_relocating = false
 	if _target != null and not is_instance_valid(_target):
 		_target = null
 	if _target != null:
@@ -297,8 +335,8 @@ func _physics_process(delta: float) -> void:
 		_update_hatch(delta)
 		tank.set_command(_command)
 		return
-	# Damaged and no enemy in sight: stand still and repair (same rules as players).
-	var repairing: bool = _target == null and tank.needs_repair() and not tank.is_burning()
+	# Badly damaged and no enemy in sight: stand still and repair (same rules as players).
+	var repairing: bool = _target == null and _wants_repair() and not tank.is_burning()
 	if repairing:
 		_command.throttle = 0.0
 		_command.steering = 0.0
@@ -330,6 +368,7 @@ func _scan(dt: float) -> void:
 			continue
 		if other.is_knocked_out():
 			_forget(other)
+			_last_known.erase(other)
 			continue
 		_look_at(other, dt)
 	_scan_squads(dt)
@@ -374,6 +413,8 @@ func _look_at(other: Tank, dt: float) -> void:
 		_awareness[other] = aware + dt
 		if not _spotted.has(other) and aware + dt >= needed:
 			_spotted[other] = true
+		if _spotted.has(other):
+			_last_known[other] = [other.global_position, _clock]
 			contact.emit(other, other.global_position)
 	else:
 		var unseen: float = float(_unseen_time.get(other, 0.0)) + dt
@@ -445,7 +486,7 @@ func _drop_freed() -> void:
 	if _target != null and not is_instance_valid(_target):
 		_target = null
 	for memory: Dictionary in [_awareness, _spotted, _cover, _unseen_time, _hull_visible,
-			_head_visible, _reported]:
+			_head_visible, _reported, _last_known]:
 		for key: Variant in memory.keys():
 			if not is_instance_valid(key):
 				memory.erase(key)
@@ -458,7 +499,17 @@ func _forget_all() -> void:
 	_unseen_time.clear()
 	_hull_visible.clear()
 	_head_visible.clear()
+	_last_known.clear()
 	_target = null
+
+
+## Stops to repair only when it matters: a destroyed module, a thrown track, or hp
+## below BotData.repair_stop_hp_fraction. Light damage is repaired while holding.
+func _wants_repair() -> bool:
+	if not tank.needs_repair():
+		return false
+	return tank.is_immobilised() or tank.has_destroyed_module() \
+			or tank.get_hp_fraction() < bot_data.repair_stop_hp_fraction
 
 
 # --- Gunnery --------------------------------------------------------------------
@@ -494,21 +545,37 @@ func _engage(target: Tank, delta: float) -> void:
 		gun_aim = _aim_point(target.global_position + target.global_basis.y * 0.3, target,
 				muzzle.origin, _gun_superelevation, tank.get_loaded_shell())
 		gun_aim = _with_lay_error(gun_aim, muzzle.origin)
+
+	# How to shoot. Holding a spot: halt and fire. On the way somewhere: a short halt
+	# only beside cover and within transit_fire_range_m; in the open, fire on the move
+	# when close enough (BotData.move_fire_*), else hold fire and drive on to a better
+	# place.
+	var on_the_way: bool = has_orders_left()
+	var halt_ok: bool = not on_the_way or (distance <= _tactics().transit_fire_range_m
+			and _is_covered_here())
+	var fire_moving: bool = on_the_way and not halt_ok and distance <= bot_data.move_fire_range_m
+	if fire_moving and not coax_turn:
+		var extra: float = tank.linear_velocity.length() * bot_data.move_lay_error_mrad_per_mps * 0.001
+		var to_aim: Vector3 = gun_aim - muzzle.origin
+		var right: Vector3 = to_aim.cross(Vector3.UP).normalized()
+		gun_aim += (right * _move_error_dir.x + Vector3.UP * _move_error_dir.y) * extra * to_aim.length()
 	_command.aim_point = gun_aim
 	_command.has_aim = true
 
-	# Short halt: stop for the shot only when it's ready and the hull is in sight.
-	_halting = tank.is_loaded() and hull_seen and not coax_turn
+	_halting = tank.is_loaded() and hull_seen and not coax_turn and halt_ok
 	var still: bool = tank.linear_velocity.length() * 3.6 <= bot_data.max_fire_speed_kmh
 	var gun_error: float = (-muzzle.basis.z).angle_to(gun_aim - muzzle.origin)
-	if not coax_turn and hull_seen and still \
-			and gun_error <= deg_to_rad(bot_data.aim_tolerance_deg):
+	var tolerance: float = bot_data.move_aim_tolerance_deg if fire_moving else bot_data.aim_tolerance_deg
+	var settle_needed: float = bot_data.move_aim_settle_s if fire_moving else bot_data.aim_settle_s
+	if not coax_turn and hull_seen and (still or fire_moving) \
+			and gun_error <= deg_to_rad(tolerance):
 		_settle_time += delta
 	else:
 		_settle_time = 0.0
-	if _settle_time >= bot_data.aim_settle_s and tank.is_loaded():
+	if _settle_time >= settle_needed and tank.is_loaded():
 		_command.fire = true
 		_settle_time = 0.0
+		_move_error_dir = Vector2.from_angle(_rng.randf() * TAU) * sqrt(_rng.randf())
 		_range_error *= bot_data.range_error_correction
 		_lay_error *= bot_data.range_error_correction
 		_lead_error *= bot_data.range_error_correction
@@ -530,6 +597,13 @@ func _engage(target: Tank, delta: float) -> void:
 	_mg_time += delta
 	_command.fire_mg = fmod(_mg_time, bot_data.mg_burst_s + bot_data.mg_pause_s) \
 			< bot_data.mg_burst_s
+
+
+## Beside cover (bushes, trees, tree line, houses) by the tactical grid: a fair place
+## for a firing halt. True without a grid (no way to tell).
+func _is_covered_here() -> bool:
+	var map: TacticalMap = _tactical_map()
+	return map == null or map.is_covered(tank.global_position)
 
 
 ## Where to point a barrel at `from` to hit `point` on `target`: leads its motion over
@@ -709,6 +783,8 @@ func _on_fired(_shell: Shell) -> void:
 	var t: TacticsData = _tactics()
 	if not t.shoot_and_scoot or _target == null or not is_instance_valid(_target) or _scoot != Scoot.NONE:
 		return
+	if _rng.randf() >= t.scoot_chance:
+		return   # stays up and keeps fighting
 	var map: TacticalMap = _tactical_map()
 	if map == null:
 		return
@@ -783,21 +859,17 @@ func _reverse_towards(point: Vector3) -> void:
 	_command.throttle = -1.0 * clampf(1.0 - absf(error) / PI * 1.5, 0.3, 1.0)
 
 
-## Hit again and again from one side: find a new position away from that threat.
+## A gun round hit or nearly missed: maybe pull back to a new position away from the
+## threat, the more likely the more rounds came in a row (relocate_chance_by_hits).
 func _check_relocation(from_dir: Vector3) -> void:
 	var t: TacticsData = _tactics()
-	if t.relocate_after_hits <= 0 or _tactical_map() == null:
+	if t.relocate_chance_by_hits.is_empty() or _tactical_map() == null or _relocating:
 		return
-	_hits.append([_clock, from_dir])
-	var same: int = 0
-	var kept: Array = []
-	for h: Array in _hits:
-		if _clock - float(h[0]) <= t.relocate_window_s:
-			kept.append(h)
-			if (h[1] as Vector3).angle_to(from_dir) <= deg_to_rad(RELOCATE_SAME_DIR_DEG):
-				same += 1
-	_hits = kept
-	if same < t.relocate_after_hits:
+	if not _hits.is_empty() and _clock - _hits[_hits.size() - 1] > t.relocate_window_s:
+		_hits.clear()
+	_hits.append(_clock)
+	var chances: Array[float] = t.relocate_chance_by_hits
+	if _rng.randf() >= chances[mini(_hits.size(), chances.size()) - 1]:
 		return
 	_hits.clear()
 	_scoot = Scoot.NONE
@@ -808,16 +880,30 @@ func _check_relocation(from_dir: Vector3) -> void:
 			t.relocate_distance_m * 0.5, from_dir, here + from_dir * 200.0, 150.0, here,
 			friends, t, _rng, [tank.get_rid()])
 	order_path(spot, 0.8, true)
+	_relocating = true
+	_relocate_hold = t.relocate_hold_s
 
 
 func _on_hit_taken(direction: Vector3) -> void:
 	_hit_close_timer = bot_data.close_hatch_after_hit_s if bot_data != null else 0.0
 	_alert_direction = -direction
 	_alert_timer = ALERT_TIME_S
+	contact.emit(null, tank.global_position - direction.normalized() * HIT_ORIGIN_GUESS_M)
+
+
+## A gun round hit (also in _on_hit_taken) or nearly missed: look that way (a near
+## miss also shuts the hatch for a while) and maybe pull back.
+func _on_shell_threat(direction: Vector3, hit: bool) -> void:
+	if tank.is_knocked_out():
+		return
+	if not hit:
+		_hit_close_timer = bot_data.close_hatch_after_hit_s if bot_data != null else 0.0
+		if _target == null:
+			_alert_direction = -direction
+			_alert_timer = ALERT_TIME_S
 	var from_dir := Vector3(-direction.x, 0.0, -direction.z)
 	if from_dir.length() > 0.01:
 		_check_relocation(from_dir.normalized())
-	contact.emit(null, tank.global_position - direction.normalized() * HIT_ORIGIN_GUESS_M)
 
 
 ## Stuck on an ordered route: go round via a point to the side, alternating sides.

@@ -13,14 +13,30 @@ extends Node
 ## they swap (the watcher goes anyway after overwatch_max_s). A bot without a partner
 ## alternates a short halt and a move. Not while hurrying (between zones, just
 ## respawned). Inside the zone the usual spot-and-hold orders take over.
+##
+## Hunting (TacticsData.hunt_*): an enemy the crew has seen or had reported lately
+## (bots radio their spots to the team) is gone after: the bot drives to a firing spot
+## about hunt_engage_m from where it was last known, replanning as new sightings come
+## in, and closer each time it arrives. Enemies in the open zone come first, at any
+## range and without a time limit, until they are knocked out or lost; others only
+## when in reach near the zone, for at most hunt_max_s, and not while hurrying.
 
 ## Points are picked within this share of the radius, so bots end up well inside.
 const INNER_SHARE: float = 0.6
 ## A bot holding its point picks a new one after a random time in this range (s).
 const HOLD_MIN_S: float = 15.0
 const HOLD_MAX_S: float = 35.0
-## Speed on the way to the zone.
-const ORDER_THROTTLE: float = 0.7
+## Hunting: think this often (s); replan when the enemy's last known position has
+## moved this far (m); firing spots are looked for within this of the ideal one (m).
+const HUNT_THINK_S: float = 2.0
+const HUNT_REPLAN_M: float = 60.0
+const HUNT_SPOT_RADIUS_M: float = 60.0
+## After giving a hunt up, no new one for this long (s).
+const HUNT_GIVE_UP_PAUSE_S: float = 20.0
+## Enemies in the zone are preferred as if those outside were this much further (m).
+const HUNT_OUTSIDE_PENALTY_M: float = 10000.0
+## Pressing in, a hunter stops closing at this range (m).
+const HUNT_MIN_RANGE_M: float = 50.0
 ## Bots side by side at a spawn leave one after another this far apart (s), so they
 ## don't all turn into each other at once.
 const DEPART_INTERVAL_S: float = 2.5
@@ -58,6 +74,9 @@ var _role: Dictionary = {}
 var _partner: Dictionary = {}
 var _role_time: Dictionary = {}
 var _flank: Dictionary = {}  # BotController -> -1 left, 0 centre, 1 right (last long drive)
+## Hunting: BotController -> {"enemy": Tank, "at": Vector3 planned for, "time": s}.
+var _hunt: Dictionary = {}
+var _hunt_think: Dictionary = {}  # BotController -> seconds until the next look
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
@@ -81,6 +100,7 @@ func _find_bots() -> void:
 		bot.respawn_delay_s = 0.0   # no repair on the spot: we bring it back at the spawn
 		bot.tank.knocked_out.connect(_on_knocked_out.bind(bot))
 		bot.tank.squad_contact.connect(_on_squad_contact.bind(bot))
+		bot.contact.connect(_on_bot_contact.bind(bot))
 	var per_team: Dictionary = {}
 	for bot: BotController in _bots:
 		var n: int = int(per_team.get(bot.tank.team, 0))
@@ -175,6 +195,10 @@ func _physics_process(delta: float) -> void:
 			_depart.erase(bot)
 			_order_into_zone(bot)
 			continue
+		if bot.is_relocating():
+			continue   # pulling back after hits: its own order runs first
+		if _update_hunt(bot, delta):
+			continue
 		if _role.has(bot):
 			continue   # moving up in turns (_update_bounding)
 		var radius: float = mode.get_radius()
@@ -192,6 +216,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _order_all() -> void:
+	_hunt.clear()
 	for bot: BotController in _bots:
 		if is_instance_valid(bot) and is_instance_valid(bot.tank) and not bot.tank.is_knocked_out() \
 				and not _depart.has(bot):
@@ -230,7 +255,8 @@ func _update_bounding(delta: float) -> void:
 func _wants_bounding(bot: BotController) -> bool:
 	if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.is_knocked_out():
 		return false
-	if _respawn.has(bot) or _depart.has(bot) or _respawned.has(bot) or _hurry():
+	if _respawn.has(bot) or _depart.has(bot) or _respawned.has(bot) or _hurry() \
+			or _hunt.has(bot) or bot.is_relocating():
 		return false
 	var c: Vector3 = mode.get_center()
 	var to_edge: float = Vector2(bot.tank.global_position.x - c.x,
@@ -283,7 +309,7 @@ func _start_move(bot: BotController) -> void:
 	_role_time[bot] = 0.0
 	var goal: Vector3 = _bound_spot(bot)
 	_goals[bot] = goal
-	bot.order_path(goal, ORDER_THROTTLE, true)
+	bot.order_path(goal, _tactics_of(bot).travel_throttle, true)
 
 
 func _start_watch(bot: BotController) -> void:
@@ -299,7 +325,8 @@ func _leave_bounding(bot: BotController) -> void:
 	_role_time.erase(bot)
 	if partner != null and is_instance_valid(partner) and _partner.get(partner) == bot:
 		_partner[partner] = null   # re-paired on the next update
-	if is_instance_valid(bot) and is_instance_valid(bot.tank) and not bot.tank.is_knocked_out():
+	if is_instance_valid(bot) and is_instance_valid(bot.tank) and not bot.tank.is_knocked_out() \
+			and not _hunt.has(bot) and not bot.is_relocating():
 		_order_into_zone(bot)
 
 
@@ -331,6 +358,11 @@ func _hurry() -> bool:
 	return mode.get_shrink_progress() > 0.0 and mode.get_time_to_next_event() < HURRY_BEFORE_CLOSE_S
 
 
+## Inside the open zone (not just announced).
+func _is_in_open_zone(point: Vector3) -> bool:
+	return mode.is_zone_open() and _is_inside(point, mode.get_radius())
+
+
 ## Inside the zone's circle (open or announced).
 func _is_inside(point: Vector3, radius: float) -> bool:
 	var c: Vector3 = mode.get_center()
@@ -343,9 +375,120 @@ func _order_into_zone(bot: BotController) -> void:
 	_respawned.erase(bot)
 	var goal: Vector3 = _choose_spot(bot, radius * INNER_SHARE)
 	_goals[bot] = goal
-	bot.order_path(goal, ORDER_THROTTLE, urgent, _flank_point(bot, goal))
+	bot.order_path(goal, _tactics_of(bot).travel_throttle, urgent, _flank_point(bot, goal))
 	_ordered_radius[bot] = radius
 	_hold[bot] = _rng.randf_range(HOLD_MIN_S, HOLD_MAX_S)
+
+
+# --- Hunting ---------------------------------------------------------------------
+
+## Starts, steers and ends this bot's hunt. True while it is hunting (other orders wait).
+func _update_hunt(bot: BotController, delta: float) -> bool:
+	var t: TacticsData = _tactics_of(bot)
+	if _hunt.has(bot):
+		var h: Dictionary = _hunt[bot]
+		h["time"] = float(h["time"]) + delta
+		var enemy: Variant = h["enemy"]
+		var gone: bool = not is_instance_valid(enemy) or (enemy as Tank).is_knocked_out()
+		var in_zone: bool = _is_in_open_zone(h["at"])
+		var timed_out: bool = not in_zone and float(h["time"]) >= t.hunt_max_s
+		if gone or timed_out or (_hurry() and not in_zone):
+			_end_hunt(bot)
+			if not gone:
+				_hunt_think[bot] = HUNT_GIVE_UP_PAUSE_S   # back to the zone for a while
+			return false
+	_hunt_think[bot] = float(_hunt_think.get(bot, 0.0)) - delta
+	if float(_hunt_think[bot]) > 0.0:
+		return _hunt.has(bot)
+	_hunt_think[bot] = HUNT_THINK_S
+	if t.hunt_range_m <= 0.0:
+		return _hunt.has(bot)
+	# Enemies known to be in the open zone come first, at any range (they score there
+	# and kills there pay); then others in reach near the zone (not while hurrying).
+	var prey: Tank = null
+	var prey_at := Vector3.ZERO
+	var best: float = INF
+	var here: Vector3 = bot.tank.global_position
+	var known: Dictionary = bot.get_known_enemies(t.hunt_memory_s)
+	for other: Tank in known.keys():
+		var at: Vector3 = known[other]
+		var d: float = here.distance_to(at)
+		if not _is_in_open_zone(at):
+			if _hurry() or d > t.hunt_range_m \
+					or not _is_inside(at, mode.get_radius() + t.hunt_zone_margin_m):
+				continue
+			d += HUNT_OUTSIDE_PENALTY_M
+		if d < best:
+			best = d
+			prey = other
+			prey_at = at
+	if prey == null:
+		if _hunt.has(bot):
+			_end_hunt(bot)
+		return false
+	# Outside the zone, close enough and in sight: no new drive (the bot halts to fire
+	# on its own). An enemy in the zone is pressed until it is out.
+	if not _is_in_open_zone(prey_at) and bot.has_target_in_sight() \
+			and best - HUNT_OUTSIDE_PENALTY_M <= t.hunt_engage_m * 1.2:
+		return _hunt.has(bot)
+	if _hunt.has(bot):
+		var h: Dictionary = _hunt[bot]
+		var same: bool = h["enemy"] == prey \
+				and (h["at"] as Vector3).distance_to(prey_at) < HUNT_REPLAN_M
+		if same and bot.has_orders_left():
+			return true
+		if h["enemy"] != prey:
+			h["time"] = 0.0
+		h["enemy"] = prey
+		h["at"] = prey_at
+	else:
+		_hunt[bot] = {"enemy": prey, "at": prey_at, "time": 0.0}
+		if _role.has(bot):
+			_leave_bounding(bot)
+	var spot: Vector3 = _hunt_spot(bot, prey_at)
+	_goals[bot] = spot
+	bot.order_path(spot, t.travel_throttle, true)
+	return true
+
+
+func _end_hunt(bot: BotController) -> void:
+	_hunt.erase(bot)
+	if is_instance_valid(bot.tank) and not bot.tank.is_knocked_out():
+		_order_into_zone(bot)
+
+
+## A firing spot about hunt_engage_m from `enemy_at`, on this bot's side of it, with
+## sight towards it (cover and hull down where the grid offers them).
+func _hunt_spot(bot: BotController, enemy_at: Vector3) -> Vector3:
+	var t: TacticsData = _tactics_of(bot)
+	var here: Vector3 = bot.tank.global_position
+	var back := Vector3(here.x - enemy_at.x, 0.0, here.z - enemy_at.z)
+	var dist: float = back.length()
+	if dist < 1.0:
+		return enemy_at
+	back /= dist
+	var ideal: Vector3 = enemy_at + back * minf(dist, maxf(HUNT_MIN_RANGE_M,
+			minf(t.hunt_engage_m, dist * 0.8)))
+	# An enemy in the zone is fought from inside it (kills only pay from there, and
+	# the hunter scores meanwhile).
+	var inner: float = mode.get_radius() * INNER_SHARE
+	var c: Vector3 = mode.get_center()
+	var off := Vector3(ideal.x - c.x, 0.0, ideal.z - c.z)
+	if _is_inside(enemy_at, mode.get_radius()) and off.length() > inner:
+		ideal = Vector3(c.x, ideal.y, c.z) + off.normalized() * inner
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+	if map == null:
+		return ideal
+	var friends := PackedVector3Array()
+	for other: BotController in _bots:
+		if other != bot and is_instance_valid(other) and is_instance_valid(other.tank) \
+				and other.tank.team == bot.tank.team and _goals.has(other):
+			friends.append(_goals[other])
+	var exclude: Array[RID] = []
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		exclude.append((node as Tank).get_rid())
+	return map.find_position(mode.get_world_3d(), ideal, HUNT_SPOT_RADIUS_M, -back, enemy_at,
+			40.0, here, friends, t, _rng, exclude)
 
 
 ## A point to drive by on a long way to `goal` (a random flank, preferring one no
@@ -430,6 +573,13 @@ func _random_point(radius: float) -> Vector3:
 	return center
 
 
+## A bot spotted an enemy tank: the radio tells the rest of its team (as a player's
+## spot marks do), so they can go after it.
+func _on_bot_contact(enemy: Tank, at: Vector3, from: BotController) -> void:
+	if enemy != null:
+		_on_squad_contact(enemy, at, from)
+
+
 ## A bot's squad saw an enemy: the radio tells the rest of its team.
 func _on_squad_contact(enemy: Node3D, at: Vector3, from: BotController) -> void:
 	for other: BotController in _bots:
@@ -439,6 +589,7 @@ func _on_squad_contact(enemy: Node3D, at: Vector3, from: BotController) -> void:
 
 
 func _on_knocked_out(bot: BotController) -> void:
+	_hunt.erase(bot)
 	_respawn[bot] = mode.data.bot_respawn_delay_s
 
 
