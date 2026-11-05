@@ -6,7 +6,8 @@ extends RefCounted
 ## its corners can be collected into named point groups for convex collision shapes.
 ## `xform` places what is added next (e.g. inside a turret frame).
 
-enum Mat { PAINT, TRACK, WHEEL, DARK, DETAIL }
+## MARK: UN-blue friend markings (enemies get them in camouflage, see TeamLook).
+enum Mat { PAINT, TRACK, WHEEL, DARK, DETAIL, MARK }
 
 const EPS: float = 0.0005
 
@@ -26,6 +27,7 @@ static func material(m: Mat) -> StandardMaterial3D:
 		_materials[Mat.WHEEL] = _mat(Color(0.2, 0.21, 0.18), 0.9)
 		_materials[Mat.DARK] = _mat(Color(0.08, 0.08, 0.08), 0.6)
 		_materials[Mat.DETAIL] = _mat(Color(0.28, 0.31, 0.21), 0.9)
+		_materials[Mat.MARK] = _mat(Color(0.29, 0.57, 0.86), 0.6)
 	return _materials[m]
 
 
@@ -127,7 +129,7 @@ func extrude_x(profile: PackedVector2Array, x0: float, x1: float, mat: Mat, grou
 
 func build() -> ArrayMesh:
 	var mesh := ArrayMesh.new()
-	for m: Mat in [Mat.PAINT, Mat.TRACK, Mat.WHEEL, Mat.DARK, Mat.DETAIL]:
+	for m: Mat in [Mat.PAINT, Mat.TRACK, Mat.WHEEL, Mat.DARK, Mat.DETAIL, Mat.MARK]:
 		if not _verts.has(m):
 			continue
 		var arrays: Array = []

@@ -105,6 +105,14 @@ shows on the minimap. This is what we test first.
   (layer 5: bushes, tree crowns, laser-tree crowns) around a target, and standing
   still, make it slower and shorter-ranged to spot; moving fast makes it easier.
   Bots also spot faster the more of 4 hull points (+ exposed commander) they see.
+- Telling teams apart (`TeamLook`, `scripts/world/team_look.gd`): seen from THIS machine's
+  player (`TeamLook.viewer_team`, set by PlayerViews from the own tank), tanks and soldiers
+  of the same team show UN blue (blue bands round hull and turret and a roof panel =
+  `MeshKit.Mat.MARK`; plain box tanks get a turret band, `Tank._add_plain_marks`; soldiers
+  a blue helmet on the head bone, `SquadData.helmet_*`), every other team is camouflaged
+  (`assets/shaders/camo.gdshader`, model-space blotches, on paint, markings and uniforms).
+  Each machine decides for itself, nothing is sent; tanks/squads repaint when
+  `TeamLook.version` or their team changes. `Tank.paint_color` is no longer used.
 - Tank models (`scripts/tank/model/`): `TankModel.build(data)` makes the look AND the
   armour shapes from `TankData.model_style` (chassis: light = BT-like, sloped = T-34-like,
   boxy = Pz IV-like, heavy = KV-like; only loose visual inspiration), the geometry

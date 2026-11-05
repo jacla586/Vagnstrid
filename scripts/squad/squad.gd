@@ -95,6 +95,12 @@ var _meshes: Array[Node3D] = []
 var _body_offset: float = 0.0
 ## Per soldier: his model's AnimationPlayer (null for capsules) and what it plays.
 var _players: Array[AnimationPlayer] = []
+## Team look: [mesh instance, surface (-1 = whole mesh), friendly material] per uniform
+## surface; the helmets; and the TeamLook state they were last set for.
+var _uniform_surfaces: Array = []
+var _helmets: Array[Node3D] = []
+var _look_version: int = -1
+var _look_team: int = -2
 ## Per soldier: where he stood last frame (world), for his real speed (soldiers are
 ## children of the squad node, so they ride along when its point moves).
 var _last_pos: Array[Vector3] = []
@@ -273,6 +279,8 @@ func _physics_process(delta: float) -> void:
 	if not is_instance_valid(tank):
 		queue_free()
 		return
+	if _look_version != TeamLook.version or _look_team != get_team():
+		_apply_look()
 	if net_puppet:
 		if is_out():
 			global_position = global_position.lerp(_net_position, minf(delta * NET_FOLLOW_RATE, 1.0))
@@ -1004,6 +1012,51 @@ func _add_soldier(i: int) -> void:
 	_size_hitbox(i)
 
 
+## Friend or foe as seen by this machine's player (TeamLook): friends wear the
+## uniform colour and a UN-blue helmet, enemies a camouflage uniform.
+func _apply_look() -> void:
+	_look_version = TeamLook.version
+	_look_team = get_team()
+	var friend: bool = TeamLook.is_friend(_look_team)
+	var camo: Material = TeamLook.camo(data.camo_pattern_per_m * (data.model_scale if data.model != null else 1.0))
+	for entry: Array in _uniform_surfaces:
+		var mi: MeshInstance3D = entry[0]
+		if not is_instance_valid(mi):
+			continue
+		if entry[1] < 0:
+			mi.material_override = entry[2] if friend else camo
+		else:
+			mi.set_surface_override_material(entry[1], entry[2] if friend else camo)
+	for helmet: Node3D in _helmets:
+		if is_instance_valid(helmet):
+			helmet.visible = friend
+
+
+## A UN-blue helmet on the model's head bone (hidden on enemies, see _apply_look).
+func _add_helmet(body: Node3D) -> void:
+	var skeletons: Array[Node] = body.find_children("*", "Skeleton3D", true, false)
+	if skeletons.is_empty() or data.helmet_bone == &"":
+		return
+	var skeleton: Skeleton3D = skeletons[0]
+	if skeleton.find_bone(data.helmet_bone) < 0:
+		return
+	var attach := BoneAttachment3D.new()
+	attach.bone_name = data.helmet_bone
+	skeleton.add_child(attach)
+	var helmet := MeshInstance3D.new()
+	var dome := SphereMesh.new()
+	dome.is_hemisphere = true
+	dome.radius = data.helmet_radius
+	dome.height = data.helmet_radius * data.helmet_height_share
+	dome.radial_segments = 12
+	dome.rings = 4
+	dome.material = TeamLook.blue()
+	helmet.mesh = dome
+	helmet.position = data.helmet_offset
+	attach.add_child(helmet)
+	_helmets.append(helmet)
+
+
 ## The soldier model in the uniform colour, or a capsule without a model.
 func _make_body() -> Node3D:
 	if data.model == null:
@@ -1017,6 +1070,7 @@ func _make_body() -> Node3D:
 		material.albedo_color = data.uniform_color
 		material.roughness = 0.9
 		mesh.material_override = material
+		_uniform_surfaces.append([mesh, -1, material])
 		return mesh
 	_body_offset = 0.0
 	var body: Node3D = data.model.instantiate()
@@ -1032,7 +1086,9 @@ func _make_body() -> Node3D:
 				var paint := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
 				paint.albedo_color = shades[mini(k, shades.size() - 1)]
 				mi.set_surface_override_material(s, paint)
+				_uniform_surfaces.append([mi, s, paint])
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	_add_helmet(body)
 	if data.model_animation != &"" and data.model_animations == null:
 		for node: Node in body.find_children("*", "AnimationPlayer", true, false):
 			var player := node as AnimationPlayer

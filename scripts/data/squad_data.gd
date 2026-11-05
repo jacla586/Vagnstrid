@@ -56,6 +56,15 @@ extends Resource
 @export var anim_blend_s: float = 0.25
 ## Uniform colour: green or brown, naturally hard to see.
 @export var uniform_color: Color = Color(0.29, 0.36, 0.2)
+## Enemy camouflage blotches per metre (TeamLook).
+@export var camo_pattern_per_m: float = 3.5
+## UN-blue helmet for friends: bone it sits on, size and offset in that bone's space
+## (model units).
+@export var helmet_bone: StringName = &"head"
+@export var helmet_radius: float = 3.3
+@export var helmet_offset: Vector3 = Vector3(0.0, 1.5, 0.15)
+## Dome height as a share of its radius (> 1 = taller than a half sphere).
+@export var helmet_height_share: float = 1.3
 ## Soldier size (m).
 @export var soldier_height_m: float = 1.8
 @export var soldier_radius_m: float = 0.3

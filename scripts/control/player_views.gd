@@ -67,6 +67,10 @@ func drives_turret() -> bool:
 
 ## Back to the tank when the squad mounts (or is gone) while looking through it.
 func _process(_delta: float) -> void:
+	# This machine's player decides who looks friendly (TeamLook).
+	var own: Tank = get_tank()
+	if own != null:
+		TeamLook.set_viewer_team(own.team)
 	if _mode == ViewMode.SQUAD and (squad_camera == null or not squad_camera.can_view()):
 		_set_mode(ViewMode.COMMANDER)
 

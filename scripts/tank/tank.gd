@@ -89,7 +89,8 @@ const HATCH_OPEN_ANGLE_DEG: float = 110.0
 @export var use_player_config: bool = false
 ## Name on the scoreboard (set for network players; empty = made up from the tank).
 var display_label: String = ""
-## Visual only: paint colour for this tank. Alpha 0 keeps the scene's paint.
+## Unused since TeamLook (friend blue / enemy camouflage, per viewer); kept so maps
+## that set it still load.
 @export var paint_color: Color = Color(0.0, 0.0, 0.0, 0.0)
 ## Side this tank fights for. Tanks of other teams are enemies (bots use this).
 @export var team: int = 0
@@ -106,7 +107,9 @@ var _knocked_out: bool = false
 var _commander_wound_remaining: float = 0.0
 var _idle_command: TankCommand = TankCommand.new()
 var _burning: Node3D
-var _paint_override: StandardMaterial3D
+## TeamLook state the paint was last applied for (repaint when either changes).
+var _look_version: int = -1
+var _look_team: int = -1
 var _charred_material: StandardMaterial3D
 var _mg_shot_timer: float = 0.0
 var _spot_cooldown_remaining: float = 0.0
@@ -263,6 +266,7 @@ func apply_geometry() -> void:
 	gun.mesh = gm
 	gun.position = Vector3(0.0, 0.0, -(0.2 + data.gun_length_m * 0.5))
 	muzzle.position = Vector3(0.0, 0.0, -(0.25 + data.gun_length_m))
+	_add_plain_marks(turret, data.turret_radius_m, th)
 	for child: Node in suspension.get_children():
 		var ray := child as RayCast3D
 		if ray != null:
@@ -326,6 +330,25 @@ func _apply_model() -> void:
 		if ray != null:
 			ray.position = Vector3(signf(ray.position.x) * track_x, -data.hull_size.y * 0.5,
 					ray.position.z * data.hull_size.z / BASE_HULL.z)
+
+
+## Plain box tanks: a UN-blue band round the round turret and a roof panel (TeamLook).
+func _add_plain_marks(turret: Node3D, radius: float, height: float) -> void:
+	var old: Node = turret.get_node_or_null("TeamMarks")
+	if old != null:
+		turret.remove_child(old)
+		old.free()
+	var kit := MeshKit.new()
+	var r_at := func(y: float) -> float:
+		return lerpf(radius, radius * BASE_TURRET_TOP_SHARE, y / height + 0.5) + 0.015
+	var y0: float = -0.1 * height
+	var y1: float = 0.15 * height
+	kit.cylinder(Vector3(0, y0, 0), Vector3(0, y1, 0), r_at.call(y0), r_at.call(y1), 20, MeshKit.Mat.MARK)
+	kit.box(Vector3(0.0, height * 0.5 + 0.012, 0.15), Vector3(radius * 0.9, 0.024, radius * 0.9), MeshKit.Mat.MARK)
+	var marks := MeshInstance3D.new()
+	marks.name = "TeamMarks"
+	marks.mesh = kit.build()
+	turret.add_child(marks)
 
 
 static func _set_convex(cs: CollisionShape3D, points: PackedVector3Array) -> void:
@@ -640,30 +663,37 @@ func _face_for_normal(local_normal: Vector3) -> String:
 
 
 func _setup_paint() -> void:
-	if paint_color.a > 0.0:
-		_paint_override = StandardMaterial3D.new()
-		_paint_override.albedo_color = paint_color
-		_paint_override.roughness = 0.85
 	_charred_material = StandardMaterial3D.new()
 	_charred_material.albedo_color = CHARRED_COLOR
 	_charred_material.roughness = 1.0
 	_apply_paint(false)
 
 
-## Paint override goes on meshes that use the scene's paint (same material as the
-## hull); charred goes on every mesh.
+## Team look (TeamLook, seen from this machine's player): friends keep paint and
+## UN-blue markings, enemies get camouflage on paint and markings; charred on all.
 func _apply_paint(charred: bool) -> void:
-	var hull_mesh: Mesh = ($Visual/Hull as MeshInstance3D).mesh
-	var paint: Material = hull_mesh.surface_get_material(0) if hull_mesh != null else null
-	var model_paint: Material = MeshKit.material(MeshKit.Mat.PAINT)
-	for mesh_instance: MeshInstance3D in _visual.find_children("*", "MeshInstance3D", true, false):
-		mesh_instance.material_override = _charred_material if charred else null
+	_look_version = TeamLook.version
+	_look_team = team
+	paint_visual(_visual, TeamLook.is_friend(team), _charred_material if charred else null)
+
+
+## Paints a tank's Visual: friends keep paint and blue markings, enemies are
+## camouflaged all over; `charred` (if given) covers everything.
+static func paint_visual(visual: Node3D, friend: bool, charred: Material = null) -> void:
+	var camo: Material = TeamLook.camo()
+	# The hull's first surface is the paint (the scene's own on plain box tanks).
+	var hull_mesh: Mesh = (visual.get_node("Hull") as MeshInstance3D).mesh
+	var paints: Array[Material] = [MeshKit.material(MeshKit.Mat.PAINT), MeshKit.material(MeshKit.Mat.MARK)]
+	if hull_mesh != null:
+		paints.append(hull_mesh.surface_get_material(0))
+	for mesh_instance: MeshInstance3D in visual.find_children("*", "MeshInstance3D", true, false):
+		mesh_instance.material_override = charred
 		if mesh_instance.mesh == null:
 			continue
 		for i: int in mesh_instance.mesh.get_surface_count():
-			var m: Material = mesh_instance.mesh.surface_get_material(i)
-			var painted: bool = not charred and _paint_override != null and (m == paint or m == model_paint)
-			mesh_instance.set_surface_override_material(i, _paint_override if painted else null)
+			var painted: bool = paints.has(mesh_instance.mesh.surface_get_material(i))
+			mesh_instance.set_surface_override_material(i,
+					camo if painted and not friend and charred == null else null)
 
 
 ## Speed along the hull's forward axis (m/s), negative when reversing.
@@ -730,6 +760,8 @@ func get_ammo_index() -> int:
 
 func _physics_process(delta: float) -> void:
 	_sync_turret_shapes()
+	if _look_version != TeamLook.version or _look_team != team:
+		_apply_paint(_knocked_out)
 	if net_puppet:
 		_puppet_process(delta)
 		return

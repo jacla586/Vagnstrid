@@ -42,12 +42,16 @@ func _run() -> void:
 		tank.position = Vector3(x, data.hull_size.y * 0.5, 0.0)
 		x += data.hull_size.x + 2.5
 		lineup.append(tank)
-	# Lineup: all of them side by side, three-quarter view.
+	# Lineup: all of them side by side, three-quarter view; as friends (UN-blue
+	# markings) and as enemies (camouflage), see TeamLook.
 	var mid: float = x * 0.5 - 1.25
 	_camera.position = Vector3(mid - x * 0.35, x * 0.32, -x * 0.75)
 	_camera.look_at(Vector3(mid, 1.0, 0.0))
-	await _frames()
-	_vp.get_texture().get_image().save_png("%s/lineup.png" % out_dir)
+	for look: String in ["friend", "enemy"]:
+		for t: Node3D in lineup:
+			Tank.paint_visual(t, look == "friend")
+		await _frames()
+		_vp.get_texture().get_image().save_png("%s/lineup_%s.png" % [out_dir, look])
 	print("rendered %d tanks to %s" % [names.size(), ProjectSettings.globalize_path(out_dir)])
 	quit()
 

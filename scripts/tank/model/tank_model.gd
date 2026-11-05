@@ -128,6 +128,9 @@ func _light() -> void:
 	turret.block(Vector3(-R * 0.55, TH * 0.1, R * 0.45), Vector3(R * 0.55, TH * 0.8, R * 1.25),
 			MeshKit.Mat.PAINT, [[Vector3(0, TH * 0.1, R * 1.25), Vector3(0, -0.6, 1)]], "t_bustle")
 	_turret_groups.append_array(["t_body", "t_bustle"])
+	turret.cylinder(Vector3(0, TH * 0.42, 0), Vector3(0, TH * 0.68, 0), lerpf(R, R * 0.82, 0.42) + 0.015,
+			lerpf(R, R * 0.82, 0.68) + 0.015, 14, MeshKit.Mat.MARK)
+	_roof_panel(TH, 0.0)
 	if heavy_look:
 		turret.cylinder(Vector3(0, TH * 0.15, 0), Vector3(0, TH * 0.85, 0), R * 1.05, R * 0.9, 14,
 				MeshKit.Mat.PAINT)
@@ -171,6 +174,8 @@ func _sloped() -> void:
 	]
 	turret.block(Vector3(-R, 0.0, -R * 1.05), Vector3(R, TH, R * 1.15), MeshKit.Mat.PAINT, cuts, "t_body")
 	_turret_groups.append("t_body")
+	_band(turret, Vector3(-R, 0.0, -R * 1.05), Vector3(R, TH, R * 1.15), cuts, TH * 0.4, TH * 0.62)
+	_roof_panel(TH, R * 0.1)
 	if heavy_look:
 		for s: float in [-1.0, 1.0]:
 			turret.block(Vector3(s * R * 0.55 - R * 0.3, TH * 0.15, -R * 0.95),
@@ -204,10 +209,13 @@ func _boxy() -> void:
 	_hull_groups.append("h_lower")
 	var z1: float = zf + (ym - nose) * tan(deg_to_rad(72.0)) + 0.05
 	var wu: float = W * 0.5 - 0.03
-	hull.block(Vector3(-wu, ym, z1), Vector3(wu, yt, zr * 0.97), MeshKit.Mat.PAINT, [
+	var sup_cuts: Array = [
 		[Vector3(0, ym, z1), _n_front(10.0, true)],
-		[Vector3(0, ym, zr * 0.97), _n_rear(12.0, true)]], "h_upper")
+		[Vector3(0, ym, zr * 0.97), _n_rear(12.0, true)]]
+	hull.block(Vector3(-wu, ym, z1), Vector3(wu, yt, zr * 0.97), MeshKit.Mat.PAINT, sup_cuts, "h_upper")
 	_hull_groups.append("h_upper")
+	var yb0: float = ym + (yt - ym) * 0.4
+	_band(hull, Vector3(-wu, ym, z1), Vector3(wu, yt, zr * 0.97), sup_cuts, yb0, yb0 + 0.13)
 	# Fenders over the tracks, front and back.
 	for s: float in [-1.0, 1.0]:
 		var x0: float = minf(s * (W * 0.5 - tw - 0.02), s * W * 0.5)
@@ -246,6 +254,8 @@ func _boxy() -> void:
 		[Vector3(0, TH, -R * 0.75), Vector3(0, 1, -0.25)],
 	]
 	turret.block(Vector3(-R, 0.0, -R * 0.95), Vector3(R, TH, R * 0.95), MeshKit.Mat.PAINT, cuts, "t_body")
+	_band(turret, Vector3(-R, 0.0, -R * 0.95), Vector3(R, TH, R * 0.95), cuts, TH * 0.4, TH * 0.6)
+	_roof_panel(TH, -R * 0.1)
 	# Stowage bin round the back.
 	turret.block(Vector3(-R * 0.75, TH * 0.25, R * 0.9), Vector3(R * 0.75, TH * 0.8, R * 1.4),
 			MeshKit.Mat.PAINT, [[Vector3(0, TH * 0.8, R * 1.4), Vector3(0, 0.4, 1)]], "t_bin")
@@ -288,11 +298,14 @@ func _heavy(box_turret: bool) -> void:
 	var top: float = TH
 	if box_turret:
 		top = TH * 1.6
-		turret.block(Vector3(-R * 0.95, 0.0, -R * 1.0), Vector3(R * 0.95, top, R * 1.2), MeshKit.Mat.PAINT, [
+		var box_cuts: Array = [
 			[Vector3(0, top, -R * 1.0), _n_front(12.0, true)],
 			[Vector3(0, top, R * 1.2), Vector3(0, 1, 0.5)],
-			[Vector3(R * 0.95, 0, 0), _n_side(4.0, 1.0)], [Vector3(-R * 0.95, 0, 0), _n_side(4.0, -1.0)]], "t_body")
+			[Vector3(R * 0.95, 0, 0), _n_side(4.0, 1.0)], [Vector3(-R * 0.95, 0, 0), _n_side(4.0, -1.0)]]
+		turret.block(Vector3(-R * 0.95, 0.0, -R * 1.0), Vector3(R * 0.95, top, R * 1.2), MeshKit.Mat.PAINT, box_cuts, "t_body")
 		_turret_groups.append("t_body")
+		_band(turret, Vector3(-R * 0.95, 0.0, -R * 1.0), Vector3(R * 0.95, top, R * 1.2), box_cuts, top * 0.55, top * 0.68)
+		_roof_panel(top, R * 0.05)
 		if heavy_look:
 			for s: float in [-1.0, 1.0]:
 				turret.box(Vector3(s * R * 0.99, top * 0.5, R * 0.1), Vector3(0.05, top * 0.7, R * 1.6), MeshKit.Mat.PAINT)
@@ -301,13 +314,16 @@ func _heavy(box_turret: bool) -> void:
 				MeshKit.Mat.PAINT, [])
 		mantlet.cylinder(Vector3(0, 0, -0.3), Vector3(0, 0, -0.7), BR * 1.7, BR * 1.6, 12, MeshKit.Mat.PAINT)
 	else:
-		turret.block(Vector3(-R, 0.0, -R * 1.0), Vector3(R, TH, R * 1.05), MeshKit.Mat.PAINT, [
+		var kv_cuts: Array = [
 			[Vector3(R, 0, 0), _n_side(15.0, 1.0)], [Vector3(-R, 0, 0), _n_side(15.0, -1.0)],
 			[Vector3(0, 0, -R), _n_front(20.0, true)],
 			[Vector3(R * 0.7, 0, -R * 0.95), Vector3(0.7, 0, -0.7)], [Vector3(-R * 0.7, 0, -R * 0.95), Vector3(-0.7, 0, -0.7)],
 			[Vector3(R * 0.75, 0, R * 1.0), Vector3(0.7, 0, 0.7)], [Vector3(-R * 0.75, 0, R * 1.0), Vector3(-0.7, 0, 0.7)],
-			[Vector3(0, TH, R * 0.9), Vector3(0, 1, 0.5)]], "t_body")
+			[Vector3(0, TH, R * 0.9), Vector3(0, 1, 0.5)]]
+		turret.block(Vector3(-R, 0.0, -R * 1.0), Vector3(R, TH, R * 1.05), MeshKit.Mat.PAINT, kv_cuts, "t_body")
 		_turret_groups.append("t_body")
+		_band(turret, Vector3(-R, 0.0, -R * 1.0), Vector3(R, TH, R * 1.05), kv_cuts, TH * 0.42, TH * 0.62)
+		_roof_panel(TH, 0.0)
 		if heavy_look:
 			for s: float in [-1.0, 1.0]:
 				turret.block(Vector3(s * R * 0.92 - 0.04, TH * 0.15, -R * 0.6), Vector3(s * R * 0.92 + 0.04, TH * 0.85, R * 0.6),
@@ -375,6 +391,8 @@ func _upper_hull(zf: float, zr: float, nose_y: float, glacis_deg: float, rear_y:
 		cuts.append([Vector3(-w, yk, 0), _n_side(side_deg, -1.0)])
 	hull.block(Vector3(-w, yk, zf), Vector3(w, yt, zr), MeshKit.Mat.PAINT, cuts, "h_upper")
 	_hull_groups.append("h_upper")
+	var y0: float = yk + (yt - yk) * 0.45
+	_band(hull, Vector3(-w, yk, zf), Vector3(w, yt, zr), cuts, y0, y0 + 0.13)
 
 
 ## Driver's visor on a glacis sloped `deg` from vertical through (0, nose_y, zf).
@@ -425,6 +443,24 @@ func _barrel(brake: bool) -> void:
 		gun.cylinder(Vector3(0, 0, end + blen), Vector3(0, 0, end + blen * 0.55), BR * 1.75, BR * 1.75, 10, MeshKit.Mat.PAINT)
 		gun.cylinder(Vector3(0, 0, end + blen * 0.4), Vector3(0, 0, end), BR * 1.75, BR * 1.75, 10, MeshKit.Mat.PAINT)
 	out["muzzle_z"] = end - 0.05
+
+
+# --- Friend markings (UN blue, see TeamLook) -------------------------------------------
+
+## A band round a solid: the same block and plate cuts grown by `grow`, cut to y0..y1.
+func _band(kit: MeshKit, lo: Vector3, hi: Vector3, cuts: Array, y0: float, y1: float,
+		grow: float = 0.015) -> void:
+	var grown: Array = []
+	for c: Array in cuts:
+		var n: Vector3 = (c[1] as Vector3).normalized()
+		grown.append([(c[0] as Vector3) + n * grow, n])
+	kit.block(Vector3(lo.x - grow, y0, lo.z - grow), Vector3(hi.x + grow, y1, hi.z + grow),
+			MeshKit.Mat.MARK, grown)
+
+
+## A square panel on the turret roof (seen from above and from the cupola).
+func _roof_panel(top: float, z: float) -> void:
+	turret.box(Vector3(0.0, top + 0.012, z), Vector3(R * 0.9, 0.024, R * 0.9), MeshKit.Mat.MARK)
 
 
 # --- Plate normals ---------------------------------------------------------------------
