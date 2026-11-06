@@ -20,6 +20,10 @@ extends Node
 ## in, and closer each time it arrives. Enemies in the open zone come first, at any
 ## range and without a time limit, until they are knocked out or lost; others only
 ## when in reach near the zone, for at most hunt_max_s, and not while hurrying.
+##
+## New orders that come in a crowd (the zone moved or shrank, bounding ended) wait in a
+## queue and go out one at a time (ORDER_INTERVAL_S), as do new bounding pairs: each
+## costs a position search and path searches, which all at once freeze the game.
 
 ## Points are picked within this share of the radius, so bots end up well inside.
 const INNER_SHARE: float = 0.6
@@ -59,6 +63,8 @@ const FLANK_MIN_DRIVE_M: float = 400.0
 const FLANK_OFFSET_MIN_M: float = 150.0
 const FLANK_OFFSET_MAX_M: float = 250.0
 const FLANK_ALONG: float = 0.4
+## One queued order or new bounding pair per this long (s). A bot's order costs ~15 ms.
+const ORDER_INTERVAL_S: float = 0.05
 
 @export var mode: KothMode
 
@@ -79,6 +85,9 @@ var _flank: Dictionary = {}  # BotController -> -1 left, 0 centre, 1 right (last
 ## Hunting: BotController -> {"enemy": Tank, "at": Vector3 planned for, "time": s}.
 var _hunt: Dictionary = {}
 var _hunt_think: Dictionary = {}  # BotController -> seconds until the next look
+## Bots waiting for a new order into the zone (they keep their old one until then).
+var _order_queue: Array[BotController] = []
+var _order_wait: float = 0.0  # seconds until the next queued order or new pair
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Copy of the first placed bot's controller (outside the tree), its tank scene and
 ## data, and where bots live: for adding bots (_add_bot).
@@ -253,6 +262,7 @@ func _remove_bot(bot: BotController) -> void:
 ## Drops a bot from every list (and from its partner's).
 func _forget_bot(bot: BotController) -> void:
 	_bots.erase(bot)
+	_order_queue.erase(bot)
 	for d: Dictionary in [_hold, _respawn, _ordered_radius, _depart, _goals, _respawned,
 			_role, _partner, _role_time, _flank, _hunt, _hunt_think]:
 		d.erase(bot)
@@ -291,6 +301,11 @@ func _physics_process(delta: float) -> void:
 	for i: int in range(_bots.size() - 1, -1, -1):
 		if not is_instance_valid(_bots[i]) or not is_instance_valid(_bots[i].tank):
 			_bots.remove_at(i)
+	for i: int in range(_order_queue.size() - 1, -1, -1):
+		if not is_instance_valid(_order_queue[i]):
+			_order_queue.remove_at(i)
+	_order_wait -= delta
+	_update_order_queue()
 	_update_bounding(delta)
 	for bot: BotController in _bots:
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
@@ -308,6 +323,8 @@ func _physics_process(delta: float) -> void:
 			_depart.erase(bot)
 			_order_into_zone(bot)
 			continue
+		if _order_queue.has(bot):
+			continue   # a new order is on its way
 		if bot.is_relocating():
 			continue   # pulling back after hits: its own order runs first
 		if _update_hunt(bot, delta):
@@ -318,22 +335,47 @@ func _physics_process(delta: float) -> void:
 		var shrunk: bool = float(_ordered_radius.get(bot, radius)) > radius / INNER_SHARE
 		if bot.has_orders_left():
 			if shrunk:
-				_order_into_zone(bot)
+				_queue_order(bot)
 			continue
 		if not _is_inside(bot.tank.global_position, radius):
-			_order_into_zone(bot)
+			_queue_order(bot)
 			continue
 		_hold[bot] = float(_hold.get(bot, HOLD_MAX_S)) - delta
 		if float(_hold[bot]) <= 0.0:
-			_order_into_zone(bot)
+			_queue_order(bot)
 
 
+## The zone moved: every bot gets a new order, in random order so no team goes first.
 func _order_all() -> void:
 	_hunt.clear()
+	_order_queue.clear()
 	for bot: BotController in _bots:
-		if is_instance_valid(bot) and is_instance_valid(bot.tank) and not bot.tank.is_knocked_out() \
-				and not _depart.has(bot):
+		if _can_be_ordered(bot):
+			_order_queue.append(bot)
+	_order_queue.shuffle()
+
+
+func _can_be_ordered(bot: BotController) -> bool:
+	return is_instance_valid(bot) and is_instance_valid(bot.tank) and not bot.tank.is_knocked_out() \
+			and not _depart.has(bot) and not _respawn.has(bot)
+
+
+func _queue_order(bot: BotController) -> void:
+	if not _order_queue.has(bot):
+		_order_queue.append(bot)
+
+
+## Gives the next bot in the queue its order, when one is due. Bots that have since been
+## knocked out or are about to leave a spawn drop out without using the turn.
+func _update_order_queue() -> void:
+	if _order_wait > 0.0:
+		return
+	while not _order_queue.is_empty():
+		var bot: BotController = _order_queue.pop_front()
+		if _can_be_ordered(bot):
 			_order_into_zone(bot)
+			_order_wait = ORDER_INTERVAL_S
+			return
 
 
 ## Hold at the spawn for a moment, then go (staggered per team).
@@ -345,6 +387,8 @@ func _depart_later(bot: BotController, delay: float) -> void:
 # --- Bounding ------------------------------------------------------------------------
 
 func _update_bounding(delta: float) -> void:
+	if not _order_queue.is_empty():
+		return   # pairs form once the bots have their orders, or they'd re-pair per bot
 	var teams: Dictionary = {}  # team -> bots that should bound
 	for bot: BotController in _bots:
 		if _wants_bounding(bot):
@@ -386,6 +430,9 @@ func _wants_bounding(bot: BotController) -> bool:
 func _step_pair(a: BotController, b: BotController, delta: float) -> void:
 	if _partner.get(a, a) != b or not _role.has(a) or (b != null and not _role.has(b)):
 		# New pair (or partner changed): a moves first, b watches.
+		if _order_wait > 0.0:
+			return   # one new pair at a time: its move is as dear as an order
+		_order_wait = ORDER_INTERVAL_S
 		_partner[a] = b
 		_start_move(a)
 		if b != null:
@@ -440,7 +487,7 @@ func _leave_bounding(bot: BotController) -> void:
 		_partner[partner] = null   # re-paired on the next update
 	if is_instance_valid(bot) and is_instance_valid(bot.tank) and not bot.tank.is_knocked_out() \
 			and not _hunt.has(bot) and not bot.is_relocating():
-		_order_into_zone(bot)
+		_queue_order(bot)
 
 
 ## The next position for a bound: a good spot (cover, hull down, sight towards the

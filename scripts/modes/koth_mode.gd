@@ -482,6 +482,9 @@ func _find_spawn(side: int) -> Transform3D:
 			distance -= SPAWN_STEP_M
 	push_warning("KothMode: no good spawn on side %d of the zone; using the minimum distance" % side)
 	var fallback: Vector3 = _center + dir * data.spawn_min_distance_m
+	if map_rect.has_area():
+		fallback.x = clampf(fallback.x, map_rect.position.x, map_rect.end.x)
+		fallback.z = clampf(fallback.z, map_rect.position.y, map_rect.end.y)
 	var h: Dictionary = ground_hit(get_world_3d(), fallback)
 	if not h.is_empty():
 		fallback.y = (h["position"] as Vector3).y + SPAWN_LIFT_M

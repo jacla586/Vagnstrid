@@ -215,7 +215,8 @@ shows on the minimap. This is what we test first.
   long open stretches (`TacticalMap.scout_points`, values in `TacticsData`; skipped
   when urgent or after recent contact). Keep stops short: bots must keep moving.
   KothBots lets bots leave a spawn one by one and orders urgently after respawns,
-  between zones and when the zone closes soon. Positions: `TacticalMap.find_position()`
+  between zones and when the zone closes soon. New orders in a crowd (zone moved or shrank) queue up and go out
+  one per `KothBots.ORDER_INTERVAL_S`, as do new bounding pairs: all at once they froze the game. Positions: `TacticalMap.find_position()`
   scores candidate spots for cover, hull down (grid heights towards the threat), sight
   lines from the commander's eye and spacing from teammates (weights in TacticsData);
   KothBots uses it with `BotController.get_threat_direction()` (own knowledge only;
@@ -238,7 +239,7 @@ shows on the minimap. This is what we test first.
   `hunt_*`): bots radio spots to the team and go after known enemies, those in the open
   zone first (any range, no time limit, pressing closer), others near the zone for
   `hunt_max_s`; firing spots for an enemy in the zone are inside it. Needs a baked grid. Without a baked grid bots drive
-  straight. Baked so far: vidingsjo. Spawns avoid blocked cells.
+  straight. Baked so far: vidingsjo, linghem, vikbolandet. Spawns avoid blocked cells.
 - `BotGroup` moves bots together: column along a route, on the first contact
   (shared to all members) line abreast towards an objective, short halts to fire.
   Bots on an ordered route that get stuck reverse and detour sideways.
@@ -261,7 +262,7 @@ shows on the minimap. This is what we test first.
   Tanks go to their spawn at the start; respawns (`RespawnAtStart`, `KothBots`) use the
   current spawn. `KothBots` orders every BotController into the (next) zone. Runs
   offline/host only. HUD: `ScorePanel`; `MapView` draws zone and own spawn.
-  Scenario: `vidingsjo_koth.tscn`. Tanks per team (main menu number, `MatchSettings.team_size`,
+  Scenarios: `vidingsjo_koth`, `linghem_koth`, `vikbolandet_koth` (`scenes/scenarios/`, listed in the main menu; a map needs a baked tactical grid, a map image, KothZone with spots, KothBots, PlayerRespawn and at least one placed bot; default 4 v 4). Move a zone by moving its Marker3D; keep them ≥ ~400 m plus the zone radius from map edges where possible. Tanks per team (main menu number, `MatchSettings.team_size`,
   `user://settings.cfg`; offline and hosting with bots): `KothBots._fill_teams` adds copies
   of a placed bot or removes extras; on the host a joining player replaces a bot of his team
   (`KothBots.make_room`, `NetGame.remove_tank`) and a leaving one is replaced
