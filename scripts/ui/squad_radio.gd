@@ -82,6 +82,9 @@ func _on_radio(kind: int, at: Vector3) -> void:
 		Squad.RADIO_UNDER_ATTACK:
 			stream = r.under_attack
 			line = r.under_attack_text
+		Squad.RADIO_DISMOUNT:
+			stream = r.dismount
+			line = r.dismount_text
 		Squad.RADIO_RETURNING:
 			stream = r.returning
 			line = r.returning_text

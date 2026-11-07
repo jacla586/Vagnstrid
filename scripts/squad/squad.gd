@@ -48,6 +48,8 @@ const RADIO_ARMOUR: int = 3
 const RADIO_INFANTRY: int = 4
 ## "Skott kommer! Klart bakåt!": an AT round is about to be fired.
 const RADIO_AT_FIRE: int = 5
+## "Avsittning!": the squad gets off the tank.
+const RADIO_DISMOUNT: int = 6
 
 ## Orders in TankCommand.squad_order.
 const ORDER_NONE: int = 0
@@ -416,6 +418,7 @@ func _dismount() -> void:
 	global_position.y = _ground_height(global_position, global_position.y)
 	_spots_chosen = false
 	_snap_soldiers()
+	radio.emit(RADIO_DISMOUNT, Vector3.ZERO)
 
 
 func _mount() -> void:

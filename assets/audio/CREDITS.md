@@ -44,4 +44,16 @@ Voices from elevenlabs.io.
 
 | File | Voice | Line |
 |---|---|---|
-| *(to be filled in when the files are added)* | | |
+| radio/under_attack.ogg | ElevenLabs | Vi är under anfall! |
+| radio/dismount.ogg | ElevenLabs | Avsittning! |
+| radio/returning.ogg | ElevenLabs | Uppsittning! |
+| radio/in_position.ogg | ElevenLabs | På plats! |
+| radio/at_fire.ogg | ElevenLabs | Skott kommer! Klart bakåt! |
+| radio/armour_1–12.ogg | ElevenLabs | Pansar! + Klockan ett … tolv! |
+| radio/infantry_1–12.ogg | ElevenLabs | Skyttar! + Klockan ett … tolv! |
+| radio/crew_hit.ogg | ElevenLabs | Vi är träffade! |
+| radio/crew_near_miss.ogg | ElevenLabs | Närträff! |
+
+Sources in `geodata/sound/` (`ElevenLabs_*.mp3`; the clock hours cut into
+`geodata/sound/klockan/`), filtered with `tools/audio/make_elevenlabs.sh`.
+`make_radio.sh` (Piper) made the earlier versions and would overwrite these.

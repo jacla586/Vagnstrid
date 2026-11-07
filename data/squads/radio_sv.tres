@@ -29,10 +29,12 @@
 [ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_11.ogg" id="infantry_11"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_12.ogg" id="infantry_12"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/at_fire.ogg" id="at_fire"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/dismount.ogg" id="dismount"]
 
 [resource]
 script = ExtResource("1_radio")
 under_attack = ExtResource("under_attack")
+dismount = ExtResource("dismount")
 returning = ExtResource("returning")
 in_position = ExtResource("in_position")
 at_fire = ExtResource("at_fire")

@@ -6,10 +6,13 @@ extends Resource
 
 @export var under_attack: AudioStream
 @export var under_attack_text: String = "Vi är under anfall!"
+## The squad gets off the tank.
+@export var dismount: AudioStream
+@export var dismount_text: String = "Avsittning!"
 @export var returning: AudioStream
-@export var returning_text: String = "Återvänder till vagnen!"
+@export var returning_text: String = "Uppsittning!"
 @export var in_position: AudioStream
-@export var in_position_text: String = "I position!"
+@export var in_position_text: String = "På plats!"
 ## An AT round is about to be fired (comes before the queue).
 @export var at_fire: AudioStream
 @export var at_fire_text: String = "Skott kommer! Klart bakåt!"
@@ -17,7 +20,7 @@ extends Resource
 @export var armour: Array[AudioStream] = []
 @export var armour_text: String = "Pansar, klockan %s!"
 @export var infantry: Array[AudioStream] = []
-@export var infantry_text: String = "Fientliga skyttar, klockan %s!"
+@export var infantry_text: String = "Skyttar, klockan %s!"
 @export var clock_words: PackedStringArray = ["ett", "två", "tre", "fyra", "fem", "sex",
 		"sju", "åtta", "nio", "tio", "elva", "tolv"]
 @export var volume_db: float = 0.0
