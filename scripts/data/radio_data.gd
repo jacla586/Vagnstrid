@@ -16,6 +16,11 @@ extends Resource
 ## An AT round is about to be fired (comes before the queue).
 @export var at_fire: AudioStream
 @export var at_fire_text: String = "Skott kommer! Klart bakåt!"
+## How the AT round landed (right after at_fire, never skipped).
+@export var at_hit: AudioStream
+@export var at_hit_text: String = "Träff!"
+@export var at_miss: AudioStream
+@export var at_miss_text: String = "Miss!"
 ## Twelve recordings each, one per clock hour (1..12).
 @export var armour: Array[AudioStream] = []
 @export var armour_text: String = "Pansar, klockan %s!"

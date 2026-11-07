@@ -11,10 +11,13 @@ extends Label
 @export var color: Color = Color(0.75, 1.0, 0.7, 1.0)
 @export var font_size: int = 20
 
+## Queue kinds that are never dropped for an ordinary call (-1 = crew shout).
+const _URGENT: Array[int] = [Squad.RADIO_AT_FIRE, Squad.RADIO_AT_HIT, Squad.RADIO_AT_MISS, -1]
+
 var _player: AudioStreamPlayer
 var _squad: Squad
 var _tank: Tank
-var _queue: Array = []          # [stream, text, volume_db]
+var _queue: Array = []          # [stream, text, volume_db, kind (-1: crew)]
 var _last: Dictionary = {}      # call key -> time it was last played
 var _time: float = 0.0
 var _subtitle_left: float = 0.0
@@ -94,6 +97,12 @@ func _on_radio(kind: int, at: Vector3) -> void:
 		Squad.RADIO_AT_FIRE:
 			stream = r.at_fire
 			line = r.at_fire_text
+		Squad.RADIO_AT_HIT:
+			stream = r.at_hit
+			line = r.at_hit_text
+		Squad.RADIO_AT_MISS:
+			stream = r.at_miss
+			line = r.at_miss_text
 		Squad.RADIO_ARMOUR, Squad.RADIO_INFANTRY:
 			var hour: int = clock_hour(tank.global_transform, at)
 			var list: Array[AudioStream] = r.armour if kind == Squad.RADIO_ARMOUR else r.infantry
@@ -103,19 +112,34 @@ func _on_radio(kind: int, at: Vector3) -> void:
 			key += "/%d" % hour
 		_:
 			return
-	var entry: Array = [stream, "Grupp: " + line, r.volume_db]
+	var entry: Array = [stream, "Grupp: " + line, r.volume_db, kind]
 	if kind == Squad.RADIO_AT_FIRE:
 		# Urgent and always said: first in the queue, no repeat limit.
 		_queue.push_front(entry)
 		while _queue.size() > r.max_queue:
 			_queue.pop_back()
 		return
+	if kind == Squad.RADIO_AT_HIT or kind == Squad.RADIO_AT_MISS:
+		# Always said, straight after its "Skott kommer!" if that is still waiting.
+		var slot: int = 0
+		while slot < _queue.size() and int(_queue[slot][3]) == Squad.RADIO_AT_FIRE:
+			slot += 1
+		_queue.insert(slot, entry)
+		while _queue.size() > r.max_queue + 1:
+			_queue.pop_back()
+		return
 	if _time - float(_last.get(key, -INF)) < r.repeat_cooldown_s:
 		return
 	_last[key] = _time
 	_queue.append(entry)
+	# Too many: drop the oldest ordinary call (AT calls and crew shouts stay).
 	while _queue.size() > r.max_queue:
-		_queue.pop_front()
+		var drop: int = -1
+		for j: int in _queue.size():
+			if not _URGENT.has(int(_queue[j][3])):
+				drop = j
+				break
+		_queue.remove_at(drop)
 
 
 func _on_struck(_outcome: int, _direction: Vector3) -> void:
@@ -135,7 +159,7 @@ func _crew_call(key: String, stream: AudioStream, line: String, v: CrewVoiceData
 	if _time - float(_last.get("crew/" + key, -INF)) < v.repeat_cooldown_s:
 		return
 	_last["crew/" + key] = _time
-	_queue.push_front([stream, "Besättning: " + line, v.volume_db])
+	_queue.push_front([stream, "Besättning: " + line, v.volume_db, -1])
 	while _queue.size() > 3:
 		_queue.pop_back()
 

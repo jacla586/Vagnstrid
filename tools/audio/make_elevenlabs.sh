@@ -65,7 +65,7 @@ for h in $(seq 1 12); do
   trim "$T/k.wav" "$S/klockan/klockan_$h.wav"
 done
 
-for n in under-anfall avsittning uppsittning på-plats skott-kommer pansar skyttar träffade närträff; do
+for n in under-anfall avsittning uppsittning på-plats skott-kommer träff miss pansar skyttar träffade närträff; do
   trim "$S/ElevenLabs_$n.mp3" "$T/$n.wav"
 done
 ffmpeg -loglevel error -y -f lavfi -t 0.12 -i "anullsrc=r=22050:cl=mono" "$T/gap.wav"
@@ -75,6 +75,8 @@ radio dismount "$T/avsittning.wav" -18
 radio returning "$T/uppsittning.wav" -18
 radio in_position "$T/på-plats.wav" -18
 radio at_fire "$T/skott-kommer.wav" -13
+radio at_hit "$T/träff.wav" -14
+radio at_miss "$T/miss.wav" -14
 for h in $(seq 1 12); do
   for pair in "armour pansar" "infantry skyttar"; do
     set -- $pair

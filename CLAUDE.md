@@ -83,7 +83,10 @@ shows on the minimap. This is what we test first.
   facing them (shots allow for drop). The AT gunner stands, turns to the tank, swaps
   his rifle for a plain launcher tube (`SquadData.at_launcher_*`, "aim" animation),
   radios "Skott kommer! Klart bakåt!" (`RADIO_AT_FIRE`, first in the queue) and fires
-  `at_aim_time_s` (3 s) later with a back blast; clients see it via `rpc_squad_aim`. A destroyed track immobilises the tank
+  `at_aim_time_s` (3 s) later with a back blast (once called, the round always goes: at the
+  last seen track if sight is lost, at once if the squad must move; only the gunner's fall
+  or the target's knock-out stops it), then "Träff!"/"Miss!" (`RADIO_AT_HIT/MISS`, from
+  `Shell.finished`, straight after the call in the queue); clients see it via `rpc_squad_aim`. A destroyed track immobilises the tank
   (`TankData.broken_track_immobilises`) until repaired; tracks take
   `ModuleData.repair_time_min_s..max_s` (30-45 s) standing still, other modules
   `TankData.repair_time_s`. Soldiers see through vegetation crowns

@@ -13,6 +13,9 @@ extends Node3D
 
 ## Emitted on the host when the shell bounces off (the net code shows it on clients).
 signal ricocheted(from: Vector3, velocity: Vector3)
+## Emitted on the host when the shell is done (landed, burst or expired), with the
+## enemy tanks it struck directly (empty: a miss).
+signal finished(struck: Array[Tank])
 
 const MAX_LIFETIME: float = 15.0
 ## Freed if it somehow gets this far below the world origin (m).
@@ -77,7 +80,7 @@ func _physics_process(delta: float) -> void:
 	_age += delta
 	if _age > MAX_LIFETIME or global_position.y < MIN_HEIGHT:
 		_report_near_misses()
-		queue_free()
+		_finish()
 		return
 	var from: Vector3 = global_position
 	var next: PackedVector3Array = Ballistics.integrate(from, _velocity, _drag_factor, delta)
@@ -131,12 +134,18 @@ func _on_hit(hit: Dictionary) -> void:
 				normal, _data, _rng, Tank.team_of(_shooter)):
 			_report(fragment_result)
 		_report_near_misses()
-		queue_free()
+		_finish()
 		return
 	if result != null and result.outcome == HitResult.Outcome.RICOCHET:
 		_ricochet(point, normal, hit["rid"])
 		return
 	_report_near_misses()
+	_finish()
+
+
+func _finish() -> void:
+	if not _cosmetic:
+		finished.emit(_hit_tanks.duplicate())
 	queue_free()
 
 

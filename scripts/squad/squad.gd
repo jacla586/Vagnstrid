@@ -50,6 +50,9 @@ const RADIO_INFANTRY: int = 4
 const RADIO_AT_FIRE: int = 5
 ## "Avsittning!": the squad gets off the tank.
 const RADIO_DISMOUNT: int = 6
+## "Träff!" / "Miss!": how the AT round that was just fired landed.
+const RADIO_AT_HIT: int = 7
+const RADIO_AT_MISS: int = 8
 
 ## Orders in TankCommand.squad_order.
 const ORDER_NONE: int = 0
@@ -57,6 +60,8 @@ const ORDER_MOVE: int = 1
 const ORDER_RECALL: int = 2
 ## A waypoint counts as reached this close (m).
 const WAYPOINT_RADIUS_M: float = 3.0
+## An AT round not landed this long after its expected flight time counts as a miss (s).
+const AT_RESULT_MARGIN_S: float = 1.5
 ## Soldiers turn towards where they go this fast (radians/s).
 const TURN_RATE: float = 4.0
 ## Re-plan the way back to a moving tank this often (s).
@@ -190,6 +195,12 @@ var _at_timer: float = 0.0
 var _at_gunner: int = -1
 var _at_target: Tank
 var _at_aim_left: float = 0.0
+## Where the AT round goes: the target's track as last seen (INF: not yet seen).
+var _at_aim_point: Vector3 = Vector3.INF
+## The AT round in flight (its hit/miss call is still due) and the time left before it
+## counts as a miss anyway.
+var _at_shell: Shell
+var _at_shell_left: float = 0.0
 ## Per soldier: where he aims the launcher (INF = he doesn't), how long he still holds
 ## it after the shot, his launcher and his rifle meshes (hidden while he has the tube).
 var _aim_point: Array[Vector3] = []
@@ -952,8 +963,10 @@ func _rifle_aim(target: Node3D) -> Vector3:
 
 ## Picks a tank for an AT round: the gunner stands up, shoulders the launcher, calls
 ## "Skott kommer! Klart bakåt!" and fires at_aim_time_s later (_update_at_aim).
+## Not while the last round is still in the air (its "Träff!"/"Miss!" comes first).
 func _try_at_round(targets: Array[Node3D]) -> void:
-	if _at_left <= 0 or _at_timer > 0.0 or data.at_round == null or _at_gunner >= 0:
+	if _at_left <= 0 or _at_timer > 0.0 or data.at_round == null or _at_gunner >= 0 \
+			or _at_shell != null:
 		return
 	for target: Node3D in targets:
 		var other := target as Tank
@@ -965,37 +978,49 @@ func _try_at_round(targets: Array[Node3D]) -> void:
 		_at_gunner = gunner
 		_at_target = other
 		_at_aim_left = data.at_aim_time_s
+		_at_aim_point = _at_aim(other, _soldiers[gunner].global_position)
 		_set_aim(gunner, other.global_position)
 		radio.emit(RADIO_AT_FIRE, other.global_position)
 		return
 
 
-## The gunner follows his target and fires when the aim time is up; he gives up (the
-## round kept) if he falls, the squad moves or the target is gone or out of sight.
+## The gunner follows his target and fires when the aim time is up. Once he has called
+## "Skott kommer!" the round always goes: out of sight he fires at where he last saw
+## the track, and if the squad has to move (or withdraw) he fires at once. Only his fall
+## or the target's knock-out stops it (the round kept). Then he reports the result.
 func _update_at_aim(delta: float) -> void:
 	for i: int in _launcher_hold.size():
 		if _launcher_hold[i] > 0.0:
 			_launcher_hold[i] -= delta
 			if _launcher_hold[i] <= 0.0 and i != _at_gunner:
 				_set_aim(i, Vector3.INF)
+	if _at_shell != null:
+		_at_shell_left -= delta
+		if _at_shell_left <= 0.0:
+			_on_at_round_done([] as Array[Tank], _at_shell)
 	if _at_gunner < 0:
 		return
 	var i: int = _at_gunner
 	var other: Tank = _at_target
-	if _state != State.HOLDING or not _alive[i] or not is_instance_valid(other) or other.is_knocked_out() \
-			or not _in_sight.has(other) \
-			or global_position.distance_to(other.global_position) > data.at_range_m * 1.1:
+	if not _alive[i] or not is_instance_valid(other) or other.is_knocked_out():
 		_cancel_at_aim()
 		return
-	_set_aim(i, other.global_position)
+	var seen: bool = _in_sight.has(other)
+	if seen:
+		_at_aim_point = _at_aim(other, _soldiers[i].global_position)
+	_set_aim(i, _at_aim_point)
 	_at_aim_left -= delta
-	if _at_aim_left > 0.0:
+	if _at_aim_left > 0.0 and _state == State.HOLDING:
 		return
 	var spread: float = data.at_dispersion_mrad
 	if other.linear_velocity.length() * 3.6 > data.at_fast_target_kmh:
 		spread *= data.at_moving_factor
-	_fire(i, data.at_round, _at_aim(other, _soldiers[i].global_position), other, spread,
+	var shell: Shell = _fire(i, data.at_round, _at_aim_point, other if seen else null, spread,
 			data.at_sound)
+	_at_shell = shell
+	_at_shell_left = _soldiers[i].global_position.distance_to(_at_aim_point) \
+			/ maxf(data.at_round.muzzle_velocity_mps, 1.0) + AT_RESULT_MARGIN_S
+	shell.finished.connect(_on_at_round_done.bind(shell))
 	_at_left -= 1
 	_at_timer = data.at_interval_s
 	_at_gunner = -1
@@ -1003,9 +1028,20 @@ func _update_at_aim(delta: float) -> void:
 	_launcher_hold[i] = data.at_hold_after_s
 
 
+## The AT round `shell` landed (or flew on too long): "Träff!" if it struck a tank.
+func _on_at_round_done(struck: Array[Tank], shell: Shell) -> void:
+	if shell != _at_shell:
+		return
+	_at_shell = null
+	if _first_alive() >= 0:
+		radio.emit(RADIO_AT_MISS if struck.is_empty() else RADIO_AT_HIT, Vector3.ZERO)
+
+
 func _cancel_at_aim() -> void:
 	if _at_gunner >= 0:
 		_set_aim(_at_gunner, Vector3.INF)
+		# No new aim (and call) at once: nobody else had shouldered it.
+		_at_timer = maxf(_at_timer, data.at_interval_s * 0.5)
 	_at_gunner = -1
 	_at_target = null
 
@@ -1053,7 +1089,7 @@ func _at_aim(other: Tank, from: Vector3) -> Vector3:
 
 ## One round from soldier `i` at `aim` (led for a moving tank), with random spread.
 func _fire(i: int, shell_data: ShellData, aim: Vector3, target: Node3D, spread_mrad: float,
-		sound: SoundSetData) -> void:
+		sound: SoundSetData) -> Shell:
 	var from: Vector3 = _soldiers[i].global_position + Vector3.UP \
 			* lerpf(data.eye_height_standing_m, data.eye_height_kneeling_m, _kneel[i])
 	if shell_data == data.at_round and _launchers[i].visible and _launchers[i].is_inside_tree():
@@ -1077,6 +1113,7 @@ func _fire(i: int, shell_data: ShellData, aim: Vector3, target: Node3D, spread_m
 	SoundFx.play_at(self, sound, from)
 	fired_round.emit(SHOT_AT if shell_data == data.at_round else SHOT_RIFLE, from,
 			dir * shell_data.muzzle_velocity_mps)
+	return shell
 
 
 func _first_alive() -> int:

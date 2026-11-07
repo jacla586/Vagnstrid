@@ -30,6 +30,8 @@
 [ext_resource type="AudioStream" path="res://assets/audio/radio/infantry_12.ogg" id="infantry_12"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/at_fire.ogg" id="at_fire"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/dismount.ogg" id="dismount"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/at_hit.ogg" id="at_hit"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/at_miss.ogg" id="at_miss"]
 
 [resource]
 script = ExtResource("1_radio")
@@ -38,6 +40,8 @@ dismount = ExtResource("dismount")
 returning = ExtResource("returning")
 in_position = ExtResource("in_position")
 at_fire = ExtResource("at_fire")
+at_hit = ExtResource("at_hit")
+at_miss = ExtResource("at_miss")
 armour = Array[AudioStream]([ExtResource("armour_1"), ExtResource("armour_2"), ExtResource("armour_3"), ExtResource("armour_4"), ExtResource("armour_5"), ExtResource("armour_6"), ExtResource("armour_7"), ExtResource("armour_8"), ExtResource("armour_9"), ExtResource("armour_10"), ExtResource("armour_11"), ExtResource("armour_12")])
 infantry = Array[AudioStream]([ExtResource("infantry_1"), ExtResource("infantry_2"), ExtResource("infantry_3"), ExtResource("infantry_4"), ExtResource("infantry_5"), ExtResource("infantry_6"), ExtResource("infantry_7"), ExtResource("infantry_8"), ExtResource("infantry_9"), ExtResource("infantry_10"), ExtResource("infantry_11"), ExtResource("infantry_12")])
 volume_db = 4.0
