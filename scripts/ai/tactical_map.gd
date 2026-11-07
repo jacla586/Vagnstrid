@@ -250,6 +250,61 @@ func is_blocked(point: Vector3) -> bool:
 	return grid.flags_at(grid.cell_of(point)) & TacticalGridData.BLOCKED != 0
 
 
+## How dear the way from `from` to `to` is (sum of path cost weights times metres; INF
+## if there is no way) and the share of it that runs covered (is_covered). For judging
+## places (zone placement), not for driving: the raw A* cells, not straightened.
+func path_info(from: Vector3, to: Vector3) -> Dictionary:
+	var start: Vector2i = _snap(grid.cell_of(from))
+	var goal: Vector2i = _snap(grid.cell_of(to))
+	if start.x < 0 or goal.x < 0 \
+			or _components[grid.index_of(start)] != _components[grid.index_of(goal)]:
+		return {"cost": INF, "cover": 0.0}
+	var cells: Array[Vector2i] = _astar.get_id_path(start, goal)
+	if cells.is_empty():
+		return {"cost": INF, "cover": 0.0}
+	var cost: float = 0.0
+	var covered: int = 0
+	for k: int in cells.size():
+		var i: int = grid.index_of(cells[k])
+		var step: float = grid.cell_size
+		if k > 0 and cells[k].x != cells[k - 1].x and cells[k].y != cells[k - 1].y:
+			step *= 1.4142136
+		cost += _weights[i] * step
+		if is_covered(grid.center_of(cells[k])):
+			covered += 1
+	return {"cost": cost, "cover": float(covered) / cells.size()}
+
+
+## The ground within `radius` of `center` (every 2nd cell): shares of cells that are
+## blocked (houses, water, steep), water, and covered (of the drivable ones).
+func area_info(center: Vector3, radius: float) -> Dictionary:
+	var c: Vector2i = grid.cell_of(center)
+	var r: int = ceili(radius / grid.cell_size)
+	var total: int = 0
+	var blocked: int = 0
+	var water: int = 0
+	var covered: int = 0
+	for dz: int in range(-r, r + 1, 2):
+		for dx: int in range(-r, r + 1, 2):
+			if dx * dx + dz * dz > r * r:
+				continue
+			var cell := c + Vector2i(dx, dz)
+			total += 1
+			if not grid.has_cell(cell):
+				blocked += 1
+				continue
+			var f: int = grid.flags[grid.index_of(cell)]
+			if f & TacticalGridData.WATER:
+				water += 1
+			if f & TacticalGridData.BLOCKED:
+				blocked += 1
+			elif is_covered(grid.center_of(cell)):
+				covered += 1
+	var open: int = maxi(total - blocked, 1)
+	return {"blocked": float(blocked) / maxi(total, 1), "water": float(water) / maxi(total, 1),
+			"cover": float(covered) / open}
+
+
 ## Waypoints from `from` to `to` (world, at ground height), or empty if there is no
 ## way (or both ends lie far inside closed areas). `avoid`: extra cells to treat as
 ## closed for this search (where this tank got stuck on something the grid misses).

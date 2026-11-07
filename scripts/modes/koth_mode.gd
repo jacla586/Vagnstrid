@@ -11,7 +11,8 @@ extends Node3D
 ## the next spot is announced at once and opens zone_gap_s later. While a zone is open
 ## every team scores for each of its own tanks inside (horizontal distance, capped),
 ## the team with most tanks there gets the majority multiplier, and an in-zone
-## knock-out from inside the zone gives a bonus (both paid from the zone's budget).
+## knock-out (from inside the zone, unless the rules say any shooter) gives a bonus
+## (both paid from the zone's budget).
 ## Each new spot moves the spawns, on opposite sides of it: for the first zone the
 ## south team south, the others north; after that each team on the side where it is
 ## now, away from the enemy (the spawn axis runs from the other team's centre of mass
@@ -79,6 +80,7 @@ var _spawns: Dictionary = {}  # side (+1 south team, -1 the others) -> Transform
 ## The south team's side of the zone (flat unit vector); the others spawn opposite.
 var _spawn_axis: Vector3 = Vector3(0.0, 0.0, 1.0)
 var _started: bool = false
+var _choosing: bool = false  # a roaming zone choice is running (over several frames)
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
@@ -371,14 +373,17 @@ func _close_zone() -> void:
 		_end_by_score()
 		return
 	_gap_ends = _time + data.zone_gap_s
-	_choose_zone()
+	if data.zone_placement == KothData.Placement.ROAMING:
+		_choose_roaming_zone()   # takes a few frames; announces when done
+	else:
+		_choose_zone()
 
 
 func _update_timeline() -> void:
 	if _zone_open:
 		if _zone_time() >= data.zone_lifetime_s:
 			_close_zone()
-	elif _time >= _gap_ends:
+	elif _time >= _gap_ends and not _choosing:
 		_zone_index += 1
 		_open_zone()
 
@@ -403,6 +408,12 @@ func _choose_zone() -> void:
 			pick = (pick + 1 + _rng.randi_range(0, spots.size() - 2)) % spots.size()
 		_last_spot = pick
 		_center = spots[pick].global_position
+	_announce_zone(_center)
+
+
+## Makes `center` the next zone: ground height, spawns, and tells everyone.
+func _announce_zone(center: Vector3) -> void:
+	_center = center
 	var hit: Dictionary = ground_hit(get_world_3d(), _center)
 	if not hit.is_empty():
 		_center.y = (hit["position"] as Vector3).y
@@ -410,6 +421,95 @@ func _choose_zone() -> void:
 	_spawns[1] = _find_spawn(1)
 	_spawns[-1] = _find_spawn(-1)
 	zone_moved.emit(_center)
+
+
+## ROAMING placement: tries roam_candidates places roam_min_m..roam_max_m from the
+## last zone, one per physics frame (each costs two path searches), mostly along the
+## front (across the line between the teams' centres of mass) and near the middle
+## between them; keeps fair ones (similar travel cost and cover on the way for both
+## teams, a mix of cover and open ground in the zone) and picks one of the best at
+## random. Falls back to the hand-placed spots if none will do.
+func _choose_roaming_zone() -> void:
+	_choosing = true
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+	var south: Vector3 = _team_centre(1)
+	var north: Vector3 = _team_centre(-1)
+	var old: Vector3 = _center
+	var across: Vector3 = _spawn_axis
+	var middle: Vector3 = old
+	if south != Vector3.INF and north != Vector3.INF:
+		var line := Vector3(south.x - north.x, 0.0, south.z - north.z)
+		if line.length() > 1.0:
+			across = line.normalized()
+		middle = (south + north) * 0.5
+	if south == Vector3.INF:
+		south = _spawns.get(1, global_transform).origin
+	if north == Vector3.INF:
+		north = _spawns.get(-1, global_transform).origin
+	var along: Vector3 = across.cross(Vector3.UP)
+	var found: Array = []  # [score, point]
+	for i: int in data.roam_candidates:
+		await get_tree().physics_frame
+		if _over or not is_inside_tree():
+			_choosing = false
+			return
+		var side: float = 1.0 if _rng.randf() < 0.5 else -1.0
+		var dir: Vector3 = (along * side).rotated(Vector3.UP,
+				deg_to_rad(clampf(_rng.randfn(0.0, 30.0), -70.0, 70.0)))
+		var p: Vector3 = old + dir * _rng.randf_range(data.roam_min_m, data.roam_max_m)
+		var score: float = _roam_score(p, map, south, north, middle, across)
+		if score > -INF:
+			found.append([score, p])
+	_choosing = false
+	if found.is_empty():
+		push_warning("KothMode: no fair roaming zone found; using a spot")
+		_choose_zone()
+		return
+	found.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) > float(b[0]))
+	var pick: Array = found[_rng.randi_range(0, mini(data.roam_top_picks, found.size()) - 1)]
+	_announce_zone(pick[1])
+
+
+## Score of a place for the next zone (higher is better), -INF if it won't do.
+func _roam_score(p: Vector3, map: TacticalMap, south: Vector3, north: Vector3,
+		middle: Vector3, across: Vector3) -> float:
+	var map_image: MapImageData = MapImageData.find_for_scene(get_tree().current_scene)
+	if map_image != null and not map_image.world_rect.grow(-data.roam_edge_margin_m) \
+			.has_point(Vector2(p.x, p.z)):
+		return -INF
+	var hit: Dictionary = ground_hit(get_world_3d(), p)
+	if hit.is_empty() or (hit["position"] as Vector3).y <= SEA_LEVEL_LIMIT_M:
+		return -INF
+	p.y = (hit["position"] as Vector3).y
+	var score: float = 0.0
+	# Near the middle between the teams, so neither gets it on its doorstep.
+	score -= absf((p - middle).dot(across)) / maxf(data.roam_max_m, 1.0)
+	var cost_s: float = Vector2(p.x - south.x, p.z - south.z).length()
+	var cost_n: float = Vector2(p.x - north.x, p.z - north.z).length()
+	if map != null:
+		if map.is_blocked(p):
+			return -INF
+		var area: Dictionary = map.area_info(p, data.radius_start_m)
+		if float(area["blocked"]) > 0.3 or float(area["water"]) > 0.15:
+			return -INF
+		score -= absf(float(area["cover"]) - data.roam_cover_target) * 2.0
+		var way_s: Dictionary = map.path_info(south, p)
+		var way_n: Dictionary = map.path_info(north, p)
+		cost_s = way_s["cost"]
+		cost_n = way_n["cost"]
+		if cost_s == INF or cost_n == INF:
+			return -INF
+		score -= absf(float(way_s["cover"]) - float(way_n["cover"])) * 1.5
+	var ratio: float = maxf(cost_s, cost_n) / maxf(minf(cost_s, cost_n), 1.0)
+	if ratio > data.roam_max_travel_ratio:
+		return -INF
+	score -= (ratio - 1.0) * 2.0
+	for spot: Marker3D in _spots():
+		var d := Vector2(spot.global_position.x - p.x, spot.global_position.z - p.z)
+		if d.length() < data.radius_start_m:
+			score += data.roam_marker_bonus
+			break
+	return score
 
 
 ## Which way from the zone the south team spawns. First zone: south. Later: each team
@@ -649,7 +749,9 @@ func _on_shot_landed(result: HitResult, shooter: Tank) -> void:
 	if victim == null or not shooter.is_enemy_of(victim):
 		return
 	_stat_add(shooter, 2, 1)
-	if not is_in_zone(shooter.global_position) or not is_in_zone(victim.global_position):
+	if not is_in_zone(victim.global_position):
+		return
+	if data.kill_bonus_needs_shooter_in_zone and not is_in_zone(shooter.global_position):
 		return
 	var factor: float = lerpf(data.kill_bonus_factor_start, data.kill_bonus_factor_end,
 			get_shrink_progress())

@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://d3ipodblnchrk" path="res://scenes/maps/vidingsjo.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://b7igmt2mm5h11" path="res://scripts/modes/koth_mode.gd" id="2_koth"]
-[ext_resource type="Resource" path="res://data/modes/koth_default.tres" id="3_koth_data"]
+[ext_resource type="Resource" path="res://data/modes/koth_tactical.tres" id="3_koth_data"]
 [ext_resource type="Script" uid="uid://demkwdtsf2c6x" path="res://scripts/modes/koth_bots.gd" id="4_koth_bots"]
 
 [node name="VidingsjoKoth" unique_id=574312908 instance=ExtResource("1_base")]

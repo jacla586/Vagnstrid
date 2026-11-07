@@ -101,8 +101,10 @@ shows on the minimap. This is what we test first.
   position, armour/infantry contact, AT round coming): `SquadRadio` in the player rig plays the own
   squad's calls one at a time on Master (not muffled) with a subtitle; contacts get a
   clock hour from the tank's hull. Lines and recordings in `RadioData`
-  (`data/squads/radio_sv.tres`, Swedish, `assets/audio/radio/`, made with
-  `tools/audio/make_radio.sh` from Piper TTS; a 4th argument makes only matching calls); clients get calls by `rpc_squad_radio`.
+  (`data/squads/radio_sv.tres`, Swedish, `assets/audio/radio/`: ElevenLabs recordings in
+  `geodata/sound/` filtered by `tools/audio/make_elevenlabs.sh` (it also cuts the clock hours);
+  the old Piper TTS script `tools/audio/make_radio.sh` would overwrite them). Dismounting radios "Avsittning!"
+  (`RADIO_DISMOUNT`), a recall "Uppsittning!"; clients get calls by `rpc_squad_radio`.
   Soldiers use `assets/models/soldier/soldier.glb` (CC-BY, KolosStudios, see its
   CREDITS.md; uniform materials repainted green) with animations (jog, crouch, death...)
   from Quaternius' Universal Animation Library (CC0, `assets/models/ual/`), retargeted by
@@ -283,6 +285,19 @@ shows on the minimap. This is what we test first.
   on) and kill bonuses (`rpc_koth_bonus`); NetGame (re)spawns players at the zone
   spawns, and with KotH the bots fill teams 1 and 0 alternately instead of team 2.
   Spawns lift the tank 1.5 m (origin is mid-hull) so it doesn't start in the ground.
+  Rule sets: `koth_default.tres` (Vikbolandet) and `koth_tactical.tres` (Vidingsjö, Linghem:
+  slower, less shrink, kill bonus for any knock-out of an enemy in the zone
+  (`kill_bonus_needs_shooter_in_zone` false), `zone_placement` ROAMING and bot attack axes).
+  ROAMING: after the first (marker) zone, `KothMode._choose_roaming_zone` tries
+  `roam_candidates` places `roam_min_m..roam_max_m` from the last zone, one per physics
+  frame, mostly along the front near the middle between the teams; fair = similar
+  `TacticalMap.path_info` cost and cover from both teams' centres, a cover mix in the zone
+  (`area_info`); markers nearby add a bonus. Attack axes (`KothData.bot_attack_axes`, in
+  KothBots): per zone each team gets 3 axes round its side (fewer known enemies first),
+  pairs per axis (`_mate`) meet at an assembly point `assembly_distance_m` outside the zone
+  (wait <= `assembly_wait_max_s`; respawns don't wait), then bound towards their axis'
+  entry point; `support_per_team` bots watch from outside and don't hunt. The gap is not
+  a hurry then.
 - Sound: `SoundSetData` (`data/sounds/*.tres`, random variant, optional `distant` set
   far away) on `TankData.sounds` (`TankSoundData`: engine, tracks, gun, hatch),
   `ShellData` (hit armour/ground, ricochet; explosive shells add `sound_explosion` on every impact) and `MachineGunData.sound_shot` (one per bullet, `GunfireSound`, polyphonic).

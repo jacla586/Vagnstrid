@@ -24,6 +24,15 @@ extends Node
 ## New orders that come in a crowd (the zone moved or shrank, bounding ended) wait in a
 ## queue and go out one at a time (ORDER_INTERVAL_S), as do new bounding pairs: each
 ## costs a position search and path searches, which all at once freeze the game.
+##
+## Attack axes (KothData.bot_attack_axes): when a zone is announced each team splits
+## onto three axes fanned round its own side (left, centre, right; axes with known
+## enemies near them come last). Pairs on one axis first meet at an assembly point
+## assembly_distance_m outside the zone (waiting at most assembly_wait_max_s for the
+## partner), then bound in towards their axis' entry point, not the zone centre, and
+## hold round it. support_per_team bots per team don't go in: they watch the zone from
+## outside (kills of enemies in the zone pay from anywhere under those rules). The gap
+## between zones isn't a hurry then: it is the time to get into place.
 
 ## Points are picked within this share of the radius, so bots end up well inside.
 const INNER_SHARE: float = 0.6
@@ -65,6 +74,21 @@ const FLANK_OFFSET_MAX_M: float = 250.0
 const FLANK_ALONG: float = 0.4
 ## One queued order or new bounding pair per this long (s). A bot's order costs ~15 ms.
 const ORDER_INTERVAL_S: float = 0.05
+## Attack axes: assembly and support spots are searched within this of the ideal (m).
+const ASSEMBLY_SPOT_RADIUS_M: float = 80.0
+const SUPPORT_SPOT_RADIUS_M: float = 100.0
+## An axis' entry point lies this share of the radius out from the centre.
+const ENTRY_SHARE: float = 0.5
+## Bots round their entry point hold within this share of the radius of it.
+const ENTRY_HOLD_SHARE: float = 0.35
+## Known enemies within this of an axis' way in (assembly point to entry) count against it (m).
+const AXIS_THREAT_M: float = 250.0
+## How old known enemies may be for choosing axes (s).
+const AXIS_MEMORY_S: float = 60.0
+## A bot already this share of the assembly distance from the zone edge skips assembling.
+const ASSEMBLY_SKIP_SHARE: float = 0.7
+## Teams smaller than this have no support bot.
+const SUPPORT_MIN_TEAM: int = 3
 
 @export var mode: KothMode
 
@@ -85,6 +109,16 @@ var _flank: Dictionary = {}  # BotController -> -1 left, 0 centre, 1 right (last
 ## Hunting: BotController -> {"enemy": Tank, "at": Vector3 planned for, "time": s}.
 var _hunt: Dictionary = {}
 var _hunt_think: Dictionary = {}  # BotController -> seconds until the next look
+## Attack axes: axis per bot (-1 left, 0 centre, 1 right of its team's side), support
+## bots, the axes' directions per team, and assembly state for the current zone.
+var _axis: Dictionary = {}
+var _support: Dictionary = {}
+var _axis_dirs: Dictionary = {}  # team -> {axis: flat unit vector from the zone centre}
+var _assembled: Dictionary = {}  # BotController -> true once it left its assembly point
+var _assembly_wait: Dictionary = {}  # BotController -> seconds waited there (has = arrived)
+var _no_wait: Dictionary = {}  # BotController -> true: don't wait for the partner (respawned)
+var _mate: Dictionary = {}  # BotController -> its assembly partner (same axis), or absent
+var _axes_assigned_once: bool = false  # the first zone: everyone assembles
 ## Bots waiting for a new order into the zone (they keep their old one until then).
 var _order_queue: Array[BotController] = []
 var _order_wait: float = 0.0  # seconds until the next queued order or new pair
@@ -104,7 +138,10 @@ func _ready() -> void:
 		set_physics_process(false)
 		return
 	_rng.randomize()
-	mode.zone_moved.connect(func(_c: Vector3) -> void: _order_all())
+	mode.zone_moved.connect(func(_c: Vector3) -> void:
+		if _axes_on():
+			_assign_axes()
+		_order_all())
 	_find_bots.call_deferred()
 
 
@@ -137,6 +174,8 @@ func _find_bots() -> void:
 		var n: int = int(per_team.get(bot.tank.team, 0))
 		per_team[bot.tank.team] = n + 1
 		_depart_later(bot, n * DEPART_INTERVAL_S)
+	if _axes_on() and mode.has_started():
+		_assign_axes()   # the first zone was announced before the bots were found
 
 
 ## Starts looking after a bot: respawns, contacts, orders.
@@ -264,11 +303,15 @@ func _forget_bot(bot: BotController) -> void:
 	_bots.erase(bot)
 	_order_queue.erase(bot)
 	for d: Dictionary in [_hold, _respawn, _ordered_radius, _depart, _goals, _respawned,
-			_role, _partner, _role_time, _flank, _hunt, _hunt_think]:
+			_role, _partner, _role_time, _flank, _hunt, _hunt_think, _axis, _support,
+			_assembled, _assembly_wait, _no_wait, _mate]:
 		d.erase(bot)
 	for other: Variant in _partner.keys():
 		if _partner[other] == bot:
 			_partner[other] = null
+	for other: Variant in _mate.keys():
+		if _mate[other] == bot:
+			_mate.erase(other)
 
 
 func _add_bot(team: int, index: int) -> void:
@@ -327,7 +370,13 @@ func _physics_process(delta: float) -> void:
 			continue   # a new order is on its way
 		if bot.is_relocating():
 			continue   # pulling back after hits: its own order runs first
+		if _support.has(bot):
+			_update_support(bot, delta)
+			continue
 		if _update_hunt(bot, delta):
+			continue
+		if _axes_on() and not _assembled.has(bot):
+			_update_assembly(bot, delta)
 			continue
 		if _role.has(bot):
 			continue   # moving up in turns (_update_bounding)
@@ -392,9 +441,11 @@ func _update_bounding(delta: float) -> void:
 	var teams: Dictionary = {}  # team -> bots that should bound
 	for bot: BotController in _bots:
 		if _wants_bounding(bot):
-			if not teams.has(bot.tank.team):
-				teams[bot.tank.team] = []
-			(teams[bot.tank.team] as Array).append(bot)
+			# With attack axes, pairs are formed per axis (key: team and axis).
+			var key: int = bot.tank.team * 10 + (_axis_of(bot) + 1 if _axes_on() else 0)
+			if not teams.has(key):
+				teams[key] = []
+			(teams[key] as Array).append(bot)
 		elif _role.has(bot):
 			_leave_bounding(bot)
 	for team: int in teams:
@@ -413,8 +464,10 @@ func _wants_bounding(bot: BotController) -> bool:
 	if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.is_knocked_out():
 		return false
 	if _respawn.has(bot) or _depart.has(bot) or _respawned.has(bot) or _hurry() \
-			or _hunt.has(bot) or bot.is_relocating():
+			or _hunt.has(bot) or bot.is_relocating() or _support.has(bot):
 		return false
+	if _axes_on() and not _assembled.has(bot):
+		return false   # on its way to (or waiting at) its assembly point
 	var c: Vector3 = mode.get_center()
 	var to_edge: float = Vector2(bot.tank.global_position.x - c.x,
 			bot.tank.global_position.z - c.z).length() - mode.get_radius() * INNER_SHARE
@@ -496,8 +549,17 @@ func _bound_spot(bot: BotController) -> Vector3:
 	var t: TacticsData = _tactics_of(bot)
 	var c: Vector3 = mode.get_center()
 	var p: Vector3 = bot.tank.global_position
-	var to_zone := Vector3(c.x - p.x, 0.0, c.z - p.z)
 	var inner: float = mode.get_radius() * INNER_SHARE
+	if _axes_on():
+		# Towards the own axis' entry point, not the zone centre.
+		var entry: Vector3 = _entry_point(bot)
+		var to_entry := Vector3(entry.x - p.x, 0.0, entry.z - p.z)
+		if to_entry.length() <= t.bound_length_m:
+			return _choose_spot(bot, mode.get_radius() * ENTRY_HOLD_SHARE, entry)
+		return _choose_spot(bot, t.bound_length_m * 0.35,
+				p + to_entry.normalized() * t.bound_length_m * 0.8,
+				t.bound_length_m * BOUND_MIN_PROGRESS)
+	var to_zone := Vector3(c.x - p.x, 0.0, c.z - p.z)
 	if to_zone.length() - inner <= t.bound_length_m:
 		return _choose_spot(bot, inner)
 	var leg_center: Vector3 = p + to_zone.normalized() * t.bound_length_m * 0.8
@@ -514,7 +576,7 @@ func _tactics_of(bot: BotController) -> TacticsData:
 ## No time for scouting stops: racing to the next zone, or the open one closes soon.
 func _hurry() -> bool:
 	if not mode.is_zone_open():
-		return true
+		return not _axes_on()   # with attack axes the gap is for getting into place
 	return mode.get_shrink_progress() > 0.0 and mode.get_time_to_next_event() < HURRY_BEFORE_CLOSE_S
 
 
@@ -533,11 +595,209 @@ func _order_into_zone(bot: BotController) -> void:
 	var radius: float = mode.get_radius()
 	var urgent: bool = _respawned.has(bot) or _hurry()
 	_respawned.erase(bot)
+	if _axes_on():
+		_order_on_axis(bot, urgent)
+		_ordered_radius[bot] = radius
+		_hold[bot] = _rng.randf_range(HOLD_MIN_S, HOLD_MAX_S)
+		return
 	var goal: Vector3 = _choose_spot(bot, radius * INNER_SHARE)
 	_goals[bot] = goal
 	bot.order_path(goal, _tactics_of(bot).travel_throttle, urgent, _flank_point(bot, goal))
 	_ordered_radius[bot] = radius
 	_hold[bot] = _rng.randf_range(HOLD_MIN_S, HOLD_MAX_S)
+
+
+# --- Attack axes, assembly and support ------------------------------------------------
+
+func _axes_on() -> bool:
+	return mode.data.bot_attack_axes
+
+
+## A new zone: per team three axes round its side, the best (fewest known enemies near
+## the way in) first; support bots picked at random, the rest in pairs onto the axes.
+## Every bot assembles again unless it is already near the zone.
+func _assign_axes() -> void:
+	_assembled.clear()
+	_assembly_wait.clear()
+	_no_wait.clear()
+	_axis.clear()
+	_support.clear()
+	_mate.clear()
+	_axis_dirs.clear()
+	var c: Vector3 = mode.get_center()
+	var reach: float = mode.get_radius() + mode.data.assembly_distance_m
+	var teams: Dictionary = {}  # team -> bots
+	for bot: BotController in _bots:
+		if is_instance_valid(bot) and is_instance_valid(bot.tank):
+			if not teams.has(bot.tank.team):
+				teams[bot.tank.team] = []
+			(teams[bot.tank.team] as Array).append(bot)
+	var first: bool = not _axes_assigned_once
+	for team: int in teams:
+		var base: Vector3 = mode.get_spawn_direction(team)
+		var dirs: Dictionary = {}
+		var scored: Array = []  # [penalty, axis]
+		var known: Array[Vector3] = _team_known(team)
+		for axis: int in [-1, 0, 1]:
+			var dir: Vector3 = base.rotated(Vector3.UP, deg_to_rad(mode.data.axis_spread_deg * axis))
+			dirs[axis] = dir
+			var a: Vector3 = c + dir * reach
+			var e: Vector3 = c + dir * mode.get_radius() * ENTRY_SHARE
+			var penalty: float = _rng.randf() * 0.5   # ties broken at random
+			for k: Vector3 in known:
+				if _distance_to_segment(k, a, e) < AXIS_THREAT_M:
+					penalty += 1.0
+			var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+			if map != null and map.is_blocked(a):
+				penalty += 0.5
+			scored.append([penalty, axis])
+		scored.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) < float(y[0]))
+		_axis_dirs[team] = dirs
+		var group: Array = teams[team]
+		group.shuffle()
+		var alive: Array = group.filter(func(b: BotController) -> bool:
+				return not b.tank.is_knocked_out() and not _respawn.has(b))
+		if group.size() >= SUPPORT_MIN_TEAM:
+			for i: int in mini(mode.data.support_per_team, alive.size() - 1):
+				_support[alive[i]] = true
+		var n: int = 0
+		var last: BotController = null
+		for bot: BotController in group:
+			if _support.has(bot):
+				continue
+			_axis[bot] = int(scored[(n / 2) % scored.size()][1])
+			if n % 2 == 1:
+				_mate[bot] = last
+				_mate[last] = bot
+			last = bot
+			n += 1
+			var flat := Vector2(bot.tank.global_position.x - c.x, bot.tank.global_position.z - c.z)
+			if not first and flat.length() - mode.get_radius() \
+					< mode.data.assembly_distance_m * ASSEMBLY_SKIP_SHARE:
+				_assembled[bot] = true   # already close: no going back out to assemble
+	_axes_assigned_once = true
+
+
+## Last known positions of enemies any bot of `team` knows of (shared by radio).
+func _team_known(team: int) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for bot: BotController in _bots:
+		if is_instance_valid(bot) and is_instance_valid(bot.tank) and bot.tank.team == team:
+			for at: Vector3 in bot.get_known_enemies(AXIS_MEMORY_S).values():
+				out.append(at)
+	return out
+
+
+static func _distance_to_segment(p: Vector3, a: Vector3, b: Vector3) -> float:
+	var p2 := Vector2(p.x, p.z)
+	var a2 := Vector2(a.x, a.z)
+	var b2 := Vector2(b.x, b.z)
+	var ab: Vector2 = b2 - a2
+	var t: float = clampf((p2 - a2).dot(ab) / maxf(ab.length_squared(), 0.01), 0.0, 1.0)
+	return p2.distance_to(a2 + ab * t)
+
+
+## This bot's axis; a bot that came later joins the team's axis with fewest bots.
+func _axis_of(bot: BotController) -> int:
+	if _axis.has(bot):
+		return int(_axis[bot])
+	var count: Dictionary = {-1: 0, 0: 0, 1: 0}
+	for other: BotController in _axis:
+		if is_instance_valid(other) and is_instance_valid(other.tank) \
+				and other.tank.team == bot.tank.team:
+			count[int(_axis[other])] = int(count[int(_axis[other])]) + 1
+	var best: int = 0
+	for axis: int in [0, -1, 1]:
+		if int(count[axis]) < int(count[best]):
+			best = axis
+	_axis[bot] = best
+	return best
+
+
+## Flat unit vector from the zone centre out along this bot's axis.
+func _axis_dir(bot: BotController) -> Vector3:
+	var team: int = bot.tank.team
+	var axis: int = 0 if _support.has(bot) else _axis_of(bot)
+	if _axis_dirs.has(team) and (_axis_dirs[team] as Dictionary).has(axis):
+		return (_axis_dirs[team] as Dictionary)[axis]
+	return mode.get_spawn_direction(team).rotated(Vector3.UP,
+			deg_to_rad(mode.data.axis_spread_deg * axis))
+
+
+func _entry_point(bot: BotController) -> Vector3:
+	return mode.get_center() + _axis_dir(bot) * mode.get_radius() * ENTRY_SHARE
+
+
+## Orders a bot along its axis: to its assembly point first, then to a spot round its
+## entry point (bounding takes it in when near), or to its support position.
+func _order_on_axis(bot: BotController, urgent: bool) -> void:
+	var c: Vector3 = mode.get_center()
+	var dir: Vector3 = _axis_dir(bot)
+	var goal: Vector3
+	if _support.has(bot):
+		var out: float = mode.get_radius() + _rng.randf_range(mode.data.support_distance_min_m,
+				mode.data.support_distance_max_m)
+		goal = _outside_spot(bot, c + dir * out, SUPPORT_SPOT_RADIUS_M)
+	elif not _assembled.has(bot):
+		_assembly_wait.erase(bot)
+		goal = _outside_spot(bot, c + dir * (mode.get_radius() + mode.data.assembly_distance_m),
+				ASSEMBLY_SPOT_RADIUS_M)
+	else:
+		goal = _choose_spot(bot, mode.get_radius() * ENTRY_HOLD_SHARE, _entry_point(bot))
+	_goals[bot] = goal
+	bot.order_path(goal, _tactics_of(bot).travel_throttle, urgent)
+
+
+## A spot outside the zone near `ideal`, watching the zone (cover, hull down, sight).
+func _outside_spot(bot: BotController, ideal: Vector3, radius: float) -> Vector3:
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+	if map == null:
+		return ideal
+	var c: Vector3 = mode.get_center()
+	var threat := Vector3(c.x - ideal.x, 0.0, c.z - ideal.z).normalized()
+	var friends := PackedVector3Array()
+	for other: BotController in _bots:
+		if other != bot and is_instance_valid(other) and is_instance_valid(other.tank) \
+				and other.tank.team == bot.tank.team and _goals.has(other):
+			friends.append(_goals[other])
+	var exclude: Array[RID] = []
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		exclude.append((node as Tank).get_rid())
+	return map.find_position(mode.get_world_3d(), ideal, radius, threat, c,
+			mode.get_radius(), bot.tank.global_position, friends, _tactics_of(bot), _rng, exclude)
+
+
+## A bot on its way to, or waiting at, its assembly point. It goes on when its partner
+## (the other bot on its axis) is there too, or has gone on, or is out, or after
+## assembly_wait_max_s; a respawned bot doesn't wait.
+func _update_assembly(bot: BotController, delta: float) -> void:
+	if bot.has_orders_left():
+		return
+	if not _goals.has(bot):
+		_queue_order(bot)   # e.g. added after the axes were chosen
+		return
+	_assembly_wait[bot] = float(_assembly_wait.get(bot, 0.0)) + delta
+	var partner: BotController = _mate.get(bot)
+	if partner != null and (not is_instance_valid(partner) or not is_instance_valid(partner.tank)):
+		partner = null
+	var ready: bool = partner == null or partner.tank.is_knocked_out() or _respawn.has(partner) \
+			or _assembled.has(partner) or _assembly_wait.has(partner)
+	if ready or _no_wait.has(bot) or float(_assembly_wait[bot]) >= mode.data.assembly_wait_max_s:
+		_assembled[bot] = true
+		_no_wait.erase(bot)
+		_queue_order(bot)
+
+
+## A support bot: holds its watching spot outside the zone, a new one now and then
+## (and when the zone shrank). It fights from there on its own; it doesn't hunt.
+func _update_support(bot: BotController, delta: float) -> void:
+	if bot.has_orders_left():
+		return
+	var radius: float = mode.get_radius()
+	var shrunk: bool = float(_ordered_radius.get(bot, radius)) > radius / INNER_SHARE
+	_hold[bot] = float(_hold.get(bot, HOLD_MAX_S)) - delta
+	if shrunk or float(_hold[bot]) <= 0.0 or not _goals.has(bot):
+		_queue_order(bot)
 
 
 # --- Hunting ---------------------------------------------------------------------
@@ -761,4 +1021,7 @@ func _update_respawn(bot: BotController, delta: float) -> void:
 	KothMode.place_tank(bot.tank, mode.get_free_spawn(bot.tank.team, bot.tank))
 	bot.tank.repair()
 	_respawned[bot] = true
+	if _axes_on() and not _support.has(bot):
+		_assembled.erase(bot)   # back along its axis: via the assembly point, no waiting
+		_no_wait[bot] = true
 	_depart_later(bot, _rng.randf_range(0.0, DEPART_INTERVAL_S))

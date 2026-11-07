@@ -37,10 +37,50 @@ extends Resource
 @export var kill_bonus_points: float = 75.0
 @export var kill_bonus_factor_start: float = 1.0
 @export var kill_bonus_factor_end: float = 3.0
+## True: the bonus needs the shooter in the zone too. False: any knock-out of an enemy
+## in the zone pays, wherever it was fired from (support from outside counts).
+@export var kill_bonus_needs_shooter_in_zone: bool = true
 ## First team to this many points wins.
 @export var score_to_win: float = 3000.0
 ## How often the zone is counted (s).
 @export var tick_interval_s: float = 0.25
+
+@export_group("Zone placement")
+## SPOTS: zones open at the hand-placed Marker3D spots. ROAMING: the first zone opens at
+## a spot, each later one at a fair random place roam_min_m..roam_max_m from the last
+## (mostly along the front, similar travel time and cover for both teams).
+enum Placement { SPOTS, ROAMING }
+@export var zone_placement: Placement = Placement.SPOTS
+@export var roam_min_m: float = 400.0
+@export var roam_max_m: float = 700.0
+## Candidate places tried (one per physics frame, so the choice takes about this many frames).
+@export var roam_candidates: int = 30
+## Zone centres stay this far inside the map edge (m).
+@export var roam_edge_margin_m: float = 400.0
+## The team with the longer way may need at most this many times the other's travel cost.
+@export var roam_max_travel_ratio: float = 1.25
+## Best share of covered cells inside the zone (cover in it, open ground round it).
+@export var roam_cover_target: float = 0.35
+## Score for a candidate near (within the zone radius of) a hand-placed spot.
+@export var roam_marker_bonus: float = 0.5
+## The new zone is picked at random among this many best candidates.
+@export var roam_top_picks: int = 4
+
+@export_group("Bot tactics")
+## Bots of a team split onto attack axes (left, centre, right of their side), meet at an
+## assembly point outside the zone in pairs and bound in along their own axis.
+@export var bot_attack_axes: bool = false
+## Angle between the centre axis and each side axis (degrees).
+@export var axis_spread_deg: float = 55.0
+## Assembly points lie this far outside the zone edge on the axis (m).
+@export var assembly_distance_m: float = 450.0
+## At the assembly point a bot waits at most this long for its partner (s).
+@export var assembly_wait_max_s: float = 18.0
+## Bots per team that support from outside the zone instead of going in.
+@export var support_per_team: int = 0
+## Support positions lie this far outside the zone edge (m).
+@export var support_distance_min_m: float = 120.0
+@export var support_distance_max_m: float = 300.0
 
 @export_group("Spawns")
 ## Spawns lie this far from the zone centre, straight south / north (m)...
