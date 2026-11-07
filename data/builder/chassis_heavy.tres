@@ -14,13 +14,13 @@
 
 [sub_resource type="Resource" id="Armour_heavy"]
 script = ExtResource("2_armour")
-hull_front_mm = 100.0
-hull_side_mm = 90.0
-hull_rear_mm = 60.0
+hull_front_mm = 77.0
+hull_side_mm = 50.0
+hull_rear_mm = 25.0
 hull_roof_mm = 30.0
-turret_front_mm = 110.0
-turret_side_mm = 90.0
-turret_rear_mm = 75.0
+turret_front_mm = 86.0
+turret_side_mm = 38.0
+turret_rear_mm = 33.0
 turret_roof_mm = 35.0
 ricochet_angle_deg = 70.0
 
