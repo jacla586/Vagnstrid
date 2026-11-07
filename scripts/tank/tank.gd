@@ -382,6 +382,15 @@ func _apply_model() -> void:
 					ray.position.z * data.hull_size.z / BASE_HULL.z)
 
 
+## Puts the gun and mantlet meshes on render layer `layer` alone. The gunner's sight
+## moves its own tank's gun to a layer it doesn't render (GunnerCamera), others stay on 1.
+func set_gun_render_layer(layer: int) -> void:
+	for path: String in ["Visual/Turret/GunPivot/Mantlet", "Visual/Turret/GunPivot/Gun"]:
+		var mesh := get_node_or_null(path) as MeshInstance3D
+		if mesh != null:
+			mesh.layers = 1 << (layer - 1)
+
+
 ## Plain box tanks: a UN-blue band round the round turret and a roof panel (TeamLook).
 func _add_plain_marks(turret: Node3D, radius: float, height: float) -> void:
 	var old: Node = turret.get_node_or_null("TeamMarks")
