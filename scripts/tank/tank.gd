@@ -33,7 +33,7 @@ extends RigidBody3D
 ## Spotting: the command's spot marks spot_point (emits `spotted`), then waits the
 ## data's spot cooldown.
 ## Smoke: the command's smoke fires a salvo (TankData.smoke_*: a screen ahead of the
-## turret), smoke_salvos per life. Abandon: the crew bails out (stuck for good): the tank
+## turret), smoke_salvos per life, smoke_cooldown_s apart. Abandon: the crew bails out (stuck for good): the tank
 ## counts as knocked out (no one scores it) and respawns like one.
 ## Respawn (repair): everything as at the first spawn: damage, commander, gun, smoke,
 ## the squad back on the tank.
@@ -80,6 +80,8 @@ const THREAT_MIN_CALIBER_MM: float = 20.0
 ## A round passing or landing this close to the hull centre is a near miss (m).
 const NEAR_MISS_M: float = 8.0
 const KMH_TO_MS: float = 1.0 / 3.6
+## After a shot the hull's speed says nothing about driving for this long (s): recoil.
+const RECOIL_SETTLE_S: float = 1.5
 const SHELL_SCENE: PackedScene = preload("res://scenes/weapons/shell.tscn")
 const MUZZLE_FLASH_SCENE: PackedScene = preload("res://scenes/effects/muzzle_flash.tscn")
 const BURNING_SCENE: PackedScene = preload("res://scenes/effects/burning.tscn")
@@ -159,6 +161,8 @@ var _charred_material: StandardMaterial3D
 var _mg_shot_timer: float = 0.0
 var _spot_cooldown_remaining: float = 0.0
 var _smoke_left: int = 0
+## Time.get_ticks_msec() when the next salvo may go (clock time, so clients have it too).
+var _smoke_ready_ms: int = 0
 var _damage: TankDamage
 ## Network id (0 = not replicated). Set by the net code.
 var net_id: int = 0
@@ -168,8 +172,10 @@ var net_puppet: bool = false
 var net_predict: bool = false
 var _net_velocity: Vector3 = Vector3.ZERO
 var _net_command: TankCommand = TankCommand.new()
-## Time since the main gun fired, for repairs (which need the tank to stand quiet).
+## Time since the main gun fired: the recoil shove doesn't count as moving for repairs.
 var _since_fired: float = 999.0
+## Slow enough for repairs, as of the last check before a shot's shove.
+var _at_rest: bool = false
 var _fire_effect: Node3D
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Engine, track, gun and hatch sounds (null when the data has none).
@@ -717,8 +723,10 @@ func repair() -> void:
 	_ammo_index = 0
 	_spot_cooldown_remaining = 0.0
 	_smoke_left = data.smoke_salvos
+	_smoke_ready_ms = 0
 	_mg_shot_timer = 0.0
 	_since_fired = 999.0
+	_at_rest = false
 	_rock = 0.0
 	_rock_slow = 0.0
 	if squad != null and is_instance_valid(squad) and not net_puppet:
@@ -809,9 +817,13 @@ func _set_fire_effect(on: bool) -> void:
 
 func _update_damage(delta: float) -> void:
 	_since_fired += delta
-	# Held by a thrown track, the crew repairs whatever the driver does with the pedals.
-	var still: bool = absf(get_forward_speed()) < data.repair_max_speed_kmh * KMH_TO_MS \
-			and (absf(_command.throttle) < 0.05 or _damage.is_immobilised()) and _since_fired > 1.0
+	# The gun's recoil shoves the hull past the speed limit for a moment: repairs go on
+	# through a shot, with the verdict from just before it.
+	if _since_fired > RECOIL_SETTLE_S:
+		_at_rest = absf(get_forward_speed()) < data.repair_max_speed_kmh * KMH_TO_MS
+	# Held by a thrown track, the crew repairs whatever the driver does with the controls.
+	var driving: bool = absf(_command.throttle) >= 0.05 or absf(_command.steering) >= 0.05
+	var still: bool = _at_rest and (not driving or _damage.is_immobilised())
 	_damage.tick(delta, still)
 	_set_fire_effect(_damage.is_burning() and not _knocked_out)
 	if _damage.knocked_out and not _knocked_out:
@@ -1069,10 +1081,17 @@ func get_smoke_left() -> int:
 	return _smoke_left
 
 
+## Seconds until the next salvo may go (0 = now).
+func get_smoke_cooldown() -> float:
+	return maxf((_smoke_ready_ms - Time.get_ticks_msec()) * 0.001, 0.0)
+
+
 func _update_smoke() -> void:
-	if not _command.smoke or _smoke_left <= 0 or data.smoke_clouds_per_salvo <= 0:
+	if not _command.smoke or _smoke_left <= 0 or data.smoke_clouds_per_salvo <= 0 \
+			or get_smoke_cooldown() > 0.0:
 		return
 	_smoke_left -= 1
+	_start_smoke_cooldown()
 	var points := PackedVector3Array()
 	var forward: Vector3 = -_turret.global_basis.z
 	forward.y = 0.0
@@ -1109,7 +1128,12 @@ func show_smoke(points: PackedVector3Array) -> void:
 func net_show_smoke(points: PackedVector3Array) -> void:
 	if net_predict:
 		_smoke_left = maxi(_smoke_left - 1, 0)
+		_start_smoke_cooldown()
 	show_smoke(points)
+
+
+func _start_smoke_cooldown() -> void:
+	_smoke_ready_ms = Time.get_ticks_msec() + int(data.smoke_cooldown_s * 1000.0)
 
 
 ## A gun round passed or landed close without hitting (Shell, host/offline).

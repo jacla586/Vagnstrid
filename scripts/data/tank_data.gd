@@ -116,7 +116,7 @@ extends Resource
 @export var structure_hp: float = 100.0
 ## Where the modules (engine, tracks, turret ring, fuel, ammo) sit.
 @export var layout: ModuleLayoutData
-## Standing still this long (s, no shots, no hits) repairs all modules (unless a
+## Standing still this long (s; firing and MG fire are fine, see TankDamage) repairs all modules (unless a
 ## module has its own repair time, ModuleData.repair_time_min_s/max_s).
 @export var repair_time_s: float = 25.0
 ## Slower than this counts as standing still (km/h).
@@ -167,6 +167,8 @@ extends Resource
 ## smoke_clouds_per_salvo clouds smoke_distance_m ahead of the turret, spread over
 ## smoke_spread_deg.
 @export var smoke_salvos: int = 3
+## At least this long between salvos (s).
+@export var smoke_cooldown_s: float = 20.0
 @export var smoke_clouds_per_salvo: int = 3
 @export var smoke_distance_m: float = 30.0
 @export var smoke_spread_deg: float = 50.0

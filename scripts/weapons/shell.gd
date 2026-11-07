@@ -125,8 +125,6 @@ func _on_hit(hit: Dictionary) -> void:
 			_hit_tanks.append(collider)
 	if _data.is_explosive() or result == null or result.outcome != HitResult.Outcome.RICOCHET:
 		_play_hit_sound(collider, point)
-	# Tank fire landing near enemy infantry makes them smoke and fall back.
-	Squad.notify_impact(get_tree(), point, _data, _shooter)
 	if _data.is_explosive():
 		_rng.randomize()
 		for fragment_result: HitResult in Explosion.detonate(get_world_3d(), get_tree(), point,

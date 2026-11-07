@@ -58,13 +58,11 @@ extends Resource
 ## this share of structure hp; lighter damage mends while it holds a position anyway.
 @export var repair_stop_hp_fraction: float = 0.4
 
-@export_group("Stuck and smoke")
+@export_group("Stuck")
 ## Trying to drive but not this far from where it was (m) for abandon_stuck_s (s): the
 ## crew abandons the tank (hung on a rock) and it respawns, like a player can.
 @export var abandon_stuck_m: float = 8.0
 @export var abandon_stuck_s: float = 60.0
-## Pulling back after hits: chance to fire a smoke salvo first (while any are left).
-@export var smoke_on_relocate_chance: float = 0.6
 
 @export_group("Machine gun")
 ## Fires MGs at an exposed commander within this range (m).

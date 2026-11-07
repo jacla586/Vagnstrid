@@ -8,7 +8,8 @@ extends RefCounted
 ## path passes within module_reach_m. Ammo = knocked out at once; fuel = fire.
 ## No penetration: wears the hit cell of the plate (ArmourData wear settings).
 ## External modules (tracks) are damaged by any shell landing in them and by HE fragments.
-## Repair: standing still for repair_time_s (no shots, no hits, no fire) repairs every
+## Repair: standing still for repair_time_s (no fire, no penetration by a gun round, no
+## AT round; MG fire, fragments and bounced shells don't disturb the crew) repairs every
 ## module (a module with its own repair time, e.g. a thrown track, takes that long);
 ## after that structure hp creeps back up to repair_hp_max_fraction.
 ## A destroyed track can immobilise the tank (TankData.broken_track_immobilises); a
@@ -34,6 +35,8 @@ var _modules: Dictionary = {}
 var _wear: Dictionary = {}
 ## id -> standing-still time its repair needs (s), rolled when it broke
 var _repair_needed: Dictionary = {}
+## id -> repair_time when it broke: what breaks during a repair takes its full time.
+var _repair_started: Dictionary = {}
 ## Client puppets: repair time left and total from the host (s); total < 0 = not set.
 var _net_repair_left: float = 0.0
 var _net_repair_total: float = -1.0
@@ -53,7 +56,7 @@ func reset() -> void:
 	hp = data.structure_hp
 	knocked_out = false
 	fire_left = 0.0
-	repair_time = 0.0
+	_restart_repair()
 	_wear.clear()
 	_repair_needed.clear()
 	_net_repair_total = -1.0
@@ -107,8 +110,18 @@ func repair_total() -> float:
 	var total: float = 0.0
 	for id: StringName in _modules:
 		if state(id) != State.OK:
-			total = maxf(total, float(_repair_needed.get(id, data.repair_time_s)))
+			total = maxf(total, _repair_done_at(id))
 	return total if total > 0.0 else data.repair_time_s
+
+
+## Value of repair_time at which this module is repaired.
+func _repair_done_at(id: StringName) -> float:
+	return float(_repair_started.get(id, 0.0)) + float(_repair_needed.get(id, data.repair_time_s))
+
+
+func _restart_repair() -> void:
+	repair_time = 0.0
+	_repair_started.clear()
 
 
 ## Seconds of standing still left until the modules are repaired.
@@ -211,7 +224,9 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 		turret_from: Vector3, turret_dir: Vector3) -> bool:
 	if knocked_out:
 		return false
-	repair_time = 0.0
+	if shell.stops_repair_on_hit or (result.outcome == HitResult.Outcome.PENETRATION
+			and shell.caliber_mm >= Tank.THREAT_MIN_CALIBER_MM):
+		_restart_repair()
 	var hit: Array[StringName] = []
 	# External modules (tracks) take any gun round that lands in them: HE (and AT
 	# rounds) break a track, other rounds damage it (bullets do nothing).
@@ -255,7 +270,6 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 func apply_fragment(id: StringName, shell: ShellData) -> void:
 	if knocked_out or not _modules.has(id):
 		return
-	repair_time = 0.0
 	_damage_module(id, shell.fragment_module_damage)
 
 
@@ -275,6 +289,7 @@ func _damage_module(id: StringName, amount: float) -> void:
 		if after == State.DESTROYED and m.repair_time_max_s > 0.0:
 			needed = _rng.randf_range(m.repair_time_min_s, maxf(m.repair_time_max_s, m.repair_time_min_s))
 		_repair_needed[id] = maxf(float(_repair_needed.get(id, 0.0)), needed)
+		_repair_started[id] = repair_time
 		module_changed.emit(id, after)
 
 
@@ -340,32 +355,31 @@ func set_net_burning(burning: bool) -> void:
 
 # --- Time --------------------------------------------------------------------------
 
-## still: the tank stands still (slow, no throttle) and doesn't fire.
+## still: the tank stands still (slow, no throttle or steering). Firing doesn't count.
 func tick(delta: float, still: bool) -> void:
 	if knocked_out:
 		return
 	if fire_left > 0.0:
 		fire_left = maxf(fire_left - delta, 0.0)
 		hp -= data.fire_hp_per_s * delta
-		repair_time = 0.0
+		_restart_repair()
 		if hp <= 0.0:
 			knocked_out = true
 		return
-	if not still:
-		repair_time = 0.0
-		return
-	if not needs_repair():
+	if not still or not needs_repair():
+		_restart_repair()
 		return
 	repair_time += delta
 	var all_ok: bool = true
 	for id: StringName in _modules:
 		if state(id) == State.OK:
 			continue
-		if repair_time < float(_repair_needed.get(id, data.repair_time_s)):
+		if repair_time < _repair_done_at(id):
 			all_ok = false
 			continue
 		_module_hp[id] = (_modules[id] as ModuleData).hp
 		_repair_needed.erase(id)
+		_repair_started.erase(id)
 		module_changed.emit(id, State.OK)
 	if not all_ok or repair_time < data.repair_time_s:
 		return

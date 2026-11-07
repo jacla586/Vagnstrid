@@ -19,6 +19,8 @@ enum Kind { LIGHT, MEDIUM, HEAVY, TANK_DESTROYER }
 @export var hull_size: Vector3 = Vector3(3.2, 1.4, 6.5)
 @export var turret_radius_m: float = 1.2
 @export var turret_height_m: float = 0.8
+## Max gun depression below the turret's horizontal plane (degrees, positive number).
+@export var gun_max_depression_deg: float = 8.0
 
 @export_group("Power and armour")
 @export var engine_kw: float = 400.0

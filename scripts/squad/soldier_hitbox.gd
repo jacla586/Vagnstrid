@@ -56,10 +56,10 @@ func get_fragment_collider() -> CollisionObject3D:
 	return self
 
 
-func on_fragment_hit(shell_data: ShellData, _distance: float) -> HitResult:
-	return squad.soldier_hit(index, shell_data) if squad != null else null
+func on_fragment_hit(_shell_data: ShellData, _distance: float) -> HitResult:
+	return squad.soldier_hit(index) if squad != null else null
 
 
-func on_shell_hit(shell_data: ShellData, _point: Vector3, _normal: Vector3,
+func on_shell_hit(_shell_data: ShellData, _point: Vector3, _normal: Vector3,
 		_velocity: Vector3, _shape_index: int = -1) -> HitResult:
-	return squad.soldier_hit(index, shell_data) if squad != null else null
+	return squad.soldier_hit(index) if squad != null else null

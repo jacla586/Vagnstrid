@@ -79,6 +79,7 @@ static func build(config: TankConfig) -> TankData:
 	d.turret_radius_m = maxf(chassis.turret_radius_m, gun.min_turret_radius_m) * pack.size_factor
 	d.turret_height_m = chassis.turret_height_m * pack.size_factor
 	d.gun_length_m = gun.gun_length_m
+	d.gun_max_depression_deg = chassis.gun_max_depression_deg
 	d.model_style = chassis.model_style
 	d.turret_variant = gun.turret_variant
 	d.muzzle_brake = gun.muzzle_brake

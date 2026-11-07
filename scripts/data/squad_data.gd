@@ -75,7 +75,7 @@ extends Resource
 ## through k + 1 layers (m). [500, 300] = one layer to 500 m, two to 300 m.
 @export var see_through_ranges_m: PackedFloat32Array = PackedFloat32Array([500.0, 300.0])
 ## ...but only in this cone ahead while on the move (degrees, full width).
-@export var moving_view_cone_deg: float = 140.0
+@export var moving_view_cone_deg: float = 240.0
 ## Base time to make out an enemy tank in plain view (s); cover, stillness and how
 ## much of it shows change it like for tank crews (concealment).
 @export var spot_time_s: float = 2.0
@@ -134,12 +134,13 @@ extends Resource
 @export_group("Smoke and withdrawal")
 ## Smoke grenades per sortie (refilled on the tank).
 @export var smoke_grenades: int = 1
-## A tank shell landing this close to a soldier counts as being fired on (m).
-@export var near_miss_m: float = 15.0
-## Fired on by a tank: smoke this far towards the threat, then fall back this far
-## towards the own tank (m).
+## A soldier down: smoke this far towards the threat, then run for cover at most
+## fallback_m away (m), or to the tank if that is nearer or there is none.
 @export var smoke_ahead_m: float = 8.0
 @export var fallback_m: float = 80.0
+## After a halt to fight on the way, walk on once nothing in reach has been in sight
+## this long (s).
+@export var contact_resume_s: float = 4.0
 ## No new smoke or withdrawal within this long of the last (s).
 @export var withdraw_cooldown_s: float = 15.0
 @export var smoke_radius_m: float = 9.0

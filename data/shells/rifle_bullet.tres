@@ -18,4 +18,3 @@ tracer_scale = 0.25
 tracer_color = Color(1, 0.8, 0.5, 1)
 sound_hit_armour = ExtResource("2_hit")
 sound_ricochet = ExtResource("3_ric")
-infantry = true

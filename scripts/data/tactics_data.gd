@@ -87,6 +87,14 @@ extends Resource
 @export var relocate_distance_m: float = 80.0
 ## ...and held this long after getting there before other orders take over (s).
 @export var relocate_hold_s: float = 6.0
+## Under fire a crew first looks for an answer: it stays and fights if the gun can bear
+## on the shooter within answer_time_s (reload + traverse), unless exposed_hits rounds
+## came in a row. Else it backs into cover if a hide spot is near; only with neither
+## is it too exposed: smoke and a new position.
+@export var answer_time_s: float = 3.0
+@export var exposed_hits: int = 3
+## The target counts as the shooter within this angle of where the round came from.
+@export var answer_cone_deg: float = 30.0
 
 
 @export_group("Aggression")

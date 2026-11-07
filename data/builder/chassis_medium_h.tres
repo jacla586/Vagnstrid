@@ -34,6 +34,7 @@ base = ExtResource("3_base")
 hull_size = Vector3(3.0, 1.45, 6.4)
 turret_radius_m = 1.2
 turret_height_m = 1.0
+gun_max_depression_deg = 10.0
 engine_kw = 380.0
 base_mass_kg = 26500.0
 armour = SubResource("Armour_medium_h")

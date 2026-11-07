@@ -26,6 +26,9 @@ func _process(_delta: float) -> void:
 	var shell: ShellData = tank.get_loaded_shell()
 	var prefix: String = (shell.short_name + " – ") if shell != null else ""
 	var smoke: String = "    SMOKE %d" % tank.get_smoke_left() if tank.data.smoke_salvos > 0 else ""
+	var smoke_wait: float = tank.get_smoke_cooldown()
+	if smoke != "" and smoke_wait > 0.0 and tank.get_smoke_left() > 0:
+		smoke += " (%d s)" % ceili(smoke_wait)
 	if tank.is_loaded():
 		text = prefix + "LOADED" + smoke
 		add_theme_color_override("font_color", loaded_color)

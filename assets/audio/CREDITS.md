@@ -34,3 +34,14 @@ required, but we list the authors anyway. Files were cut, looped, mixed to mono 
 Spoken with Piper TTS (https://github.com/rhasspy/piper) using the voice
 `sv_SE-nst-medium` (trained by KBLab, National Library of Sweden, on the NST Swedish
 dataset, CC0), then radio-filtered with ffmpeg: `tools/audio/make_radio.sh`.
+
+## ElevenLabs voices
+Some voice lines are generated with [ElevenLabs](https://elevenlabs.io) (text to speech,
+free plan). Free-plan terms: attribution to elevenlabs.io is required and the audio may
+only be used non-commercially.
+
+Voices from elevenlabs.io.
+
+| File | Voice | Line |
+|---|---|---|
+| *(to be filled in when the files are added)* | | |

@@ -40,6 +40,7 @@ För varje förinställning:
 | Embed PCK | av (spelet är stort, låt `.pck` ligga bredvid) |
 | Architecture | `x86_64` |
 | Resources → Export Mode | Export all resources in the project |
+| Resources → Filters to include | `*.bin` (trädens och buskarnas data, annars saknas all vegetation) |
 | Resources → Filters to exclude | `renders/*, build/*, tools/*` |
 
 `geodata/` har en `.gdignore` och följer aldrig med, så rådata, laser och
@@ -141,6 +142,7 @@ liknande).
 |---|---|
 | "No export template found" | Steg 1 är inte gjort, eller mallarna är för en annan Godot-version |
 | Marken saknas, vagnar faller | Terrain3D-`.dll`/`.so` saknas bredvid programmet |
+| Inga träd eller buskar | `*.bin` saknas i Filters to include, exportera igen (Linux-bygget får samma fel) |
 | Spelet startar inte alls i Windows | Zippen är inte uppackad, eller så har SmartScreen eller antivirus blockerat filen |
 | Kompisen kan inte ansluta | Se SPELA_ONLINE.md (Tailscale, port 24680, värden måste ha tryckt Host) |
 | Ansluter men konstigt beteende | Olika versioner av spelet: skicka ny zip till alla |

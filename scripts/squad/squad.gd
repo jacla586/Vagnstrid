@@ -15,14 +15,17 @@ extends Node3D
 ## soldier (the player can look through his eyes, PlayerViews squad view).
 ##
 ## Spotting: same rules as tank crews (sight lines, cover, stillness), all round when
-## holding, a cone ahead when moving; enemies it makes out become marks for the team
-## (Tank.report_squad_spot), again every mark_interval_s while in sight.
+## holding, a wide cone ahead when moving; enemies it makes out become marks for the
+## team (Tank.report_squad_spot), again every mark_interval_s while in sight.
 ## Fighting (holding still only): rifle bursts at exposed commanders and enemy soldiers
 ## (low accuracy), AT rounds at tanks within at_range_m (they never knock a tank out).
-## Any hit puts a soldier down; one of them is "Wilhelm". Fired on by a tank (a hit, or
-## a shell landing close) it throws smoke and falls back towards its tank; losing a man
-## to rifles it just falls back. Mounted, the missing come back one by one; wiped out,
-## a new squad is ready on the tank after wipe_cooldown_s. No friendly fire.
+## On the way to a position it halts for an enemy that comes within reach of its weapons
+## and walks on when none is left (not for enemies it knew of when ordered, and not
+## while withdrawing or recalled). Being shot at alone doesn't move it. Any hit puts a
+## soldier down (one of them is "Wilhelm"), and with a man down it throws smoke and runs
+## for cover or the tank, whichever is nearer. Mounted, the missing come back one by
+## one; wiped out, a new squad is ready on the tank after wipe_cooldown_s. No friendly
+## fire.
 ## Network: the host runs all this; on clients the squad is a puppet (net_puppet) shown
 ## from the host's state.
 
@@ -94,6 +97,10 @@ const DETOUR_ANGLES_DEG: Array[float] = [35.0, 70.0, 105.0]
 const CLIMB_SLACK_M: float = 0.05
 ## The squad's point re-plans its path after being blocked this long (s).
 const BLOCKED_REPLAN_S: float = 1.5
+## A man down, the way to cover is looked for at these shares of fallback_m and turns
+## off straight away from the threat (degrees).
+const COVER_RANGE_SHARES: Array[float] = [0.25, 0.5, 1.0]
+const COVER_ANGLES_DEG: Array[float] = [0.0, 40.0, -40.0, 80.0, -80.0, 120.0, -120.0]
 ## Walls are looked for this high above the feet, this far beyond each step (m).
 const WALL_CHECK_HEIGHT_M: float = 0.8
 const WALL_CHECK_AHEAD_M: float = 0.3
@@ -189,6 +196,15 @@ var _launchers: Array[Node3D] = []
 var _rifles: Array = []
 var _smoke_left: int = 0
 var _withdraw_timer: float = 0.0
+## Withdrawing: on the move to cover, no halts to fight.
+var _retreating: bool = false
+## Halted on the way to fight: where it was going (INF = no such halt), and how long it
+## still waits with nothing in reach before walking on.
+var _resume_goal: Vector3 = Vector3.INF
+var _resume_wait: float = 0.0
+## Enemies (Tank / Squad) in sight when the last move order came: the order was given
+## knowing of them, so they don't stop the walk.
+var _order_known: Dictionary = {}
 # Losses
 var _refill_timer: float = 0.0
 var _wipe_timer: float = 0.0
@@ -319,6 +335,9 @@ func order(kind: int, target: Vector3) -> void:
 				if get_alive_count() == 0:
 					return
 				_dismount()
+			_order_known.clear()
+			for seen: Node3D in _targets_in_sight():
+				_order_known[_enemy_of(seen)] = true
 			_move_to(_clamp_to_tank(target))
 		ORDER_RECALL:
 			if _state != State.MOUNTED:
@@ -376,6 +395,7 @@ func _physics_process(delta: float) -> void:
 	if _scan_timer <= 0.0:
 		_scan_timer += data.scan_interval_s
 		_scan(data.scan_interval_s)
+		_update_contact_halt(data.scan_interval_s)
 	_update_at_aim(delta)
 	if _state == State.HOLDING:
 		_fight(delta)
@@ -405,21 +425,26 @@ func _mount() -> void:
 		_set_aim(i, Vector3.INF)
 	_state = State.MOUNTED
 	_path.clear()
+	_resume_goal = Vector3.INF
 	visible = false
 	_set_hitboxes_active(false)
 	_forget_all()
 
 
-func _move_to(target: Vector3) -> void:
+## `retreat`: withdrawing, so it doesn't halt to fight on the way.
+func _move_to(target: Vector3, retreat: bool = false) -> void:
 	_goal = target
 	_path = _plan(target)
 	_state = State.MOVING
+	_retreating = retreat
+	_resume_goal = Vector3.INF
 
 
-func _start_return() -> void:
-	if _state != State.RETURNING:
+func _start_return(announce: bool = true) -> void:
+	if _state != State.RETURNING and announce:
 		radio.emit(RADIO_RETURNING, Vector3.ZERO)
 	_state = State.RETURNING
+	_resume_goal = Vector3.INF
 	_goal = tank.global_position
 	_path = _plan(_goal)
 	_replan_timer = RETURN_REPLAN_S
@@ -813,6 +838,7 @@ func _forget_all() -> void:
 	_awareness.clear()
 	_spotted.clear()
 	_in_sight.clear()
+	_order_known.clear()
 
 
 func _own_rids() -> Array[RID]:
@@ -835,6 +861,49 @@ func _targets_in_sight() -> Array[Node3D]:
 
 
 # --- Fighting ----------------------------------------------------------------------
+
+## The Tank or Squad behind a target (Tank / SoldierHitbox).
+func _enemy_of(target: Node3D) -> Node3D:
+	return (target as SoldierHitbox).squad if target is SoldierHitbox else target
+
+
+## The squad's weapons can do something to `target` from here.
+func _in_reach(target: Node3D) -> bool:
+	if target is Tank and _at_left > 0 and data.at_round != null \
+			and global_position.distance_to(target.global_position) <= data.at_range_m:
+		return true
+	var aim: Vector3 = _rifle_aim(target)
+	return aim != Vector3.INF and global_position.distance_to(aim) <= data.rifle_range_m
+
+
+## On the way to a position: halts when an enemy comes within reach (holding, it fights,
+## spreads out and sees all round). Halted: walks on when none has been left a while.
+func _update_contact_halt(dt: float) -> void:
+	if _state == State.MOVING and _retreating:
+		return
+	if _state != State.MOVING and _resume_goal == Vector3.INF:
+		return
+	if tank.is_knocked_out():
+		_resume_goal = Vector3.INF
+		return
+	var contact: bool = false
+	for target: Node3D in _targets_in_sight():
+		if not _order_known.has(_enemy_of(target)) and _in_reach(target):
+			contact = true
+			break
+	if _state == State.MOVING:
+		if contact:
+			_resume_goal = _goal
+			_resume_wait = data.contact_resume_s
+			_path.clear()
+			_state = State.HOLDING
+	elif contact:
+		_resume_wait = data.contact_resume_s
+	else:
+		_resume_wait -= dt
+		if _resume_wait <= 0.0:
+			_move_to(_resume_goal)
+
 
 func _fight(delta: float) -> void:
 	_at_timer = maxf(_at_timer - delta, 0.0)
@@ -1017,7 +1086,7 @@ func _first_alive() -> int:
 # --- Being hit ---------------------------------------------------------------------
 
 ## A shell, bullet or fragment hit soldier `index`: he goes down.
-func soldier_hit(index: int, shell_data: ShellData) -> HitResult:
+func soldier_hit(index: int) -> HitResult:
 	if net_puppet or not is_soldier_exposed(index):
 		return null
 	var screamed: bool = index == _wilhelm and _rng.randf() < data.scream_chance
@@ -1026,10 +1095,8 @@ func soldier_hit(index: int, shell_data: ShellData) -> HitResult:
 	result.note = "SOLDIER DOWN"
 	if get_alive_count() == 0:
 		_wipe()
-	elif shell_data != null and shell_data.infantry:
-		_withdraw(false, Vector3.INF)
 	else:
-		_withdraw(true, Vector3.INF)
+		_withdraw()
 	return result
 
 
@@ -1052,55 +1119,52 @@ func _put_down(index: int, screamed: bool) -> void:
 	soldier_down.emit(index, screamed)
 
 
-## A tank's shell landed near the squad (`point`): smoke and fall back.
-func on_near_miss(point: Vector3) -> void:
-	if not net_puppet and is_out():
-		_withdraw(true, point)
-
-
-## Shells on the host: tell squads near the impact (not infantry fire, not the
-## shooter's own team: no friendly fire).
-static func notify_impact(tree: SceneTree, point: Vector3, shell_data: ShellData,
-		shooter: Object) -> void:
-	if shell_data.infantry:
-		return
-	for node: Node in tree.get_nodes_in_group("squads"):
-		var squad := node as Squad
-		if squad == null or not squad.is_out() or Tank.is_friendly(shooter, squad):
-			continue
-		if squad.global_position.distance_to(point) > squad.data.near_miss_m + squad.data.spacing_m * 3.0:
-			continue
-		for hb: SoldierHitbox in squad.get_hitboxes():
-			if squad.is_soldier_exposed(hb.index) \
-					and hb.global_position.distance_to(point) <= squad.data.near_miss_m:
-				squad.on_near_miss(point)
-				break
-
-
-## Fall back towards the own tank (fired on by a tank: smoke first, towards the threat).
-func _withdraw(smoke: bool, threat_point: Vector3) -> void:
+## A man down: smoke towards the threat, then run for cover, or to the tank if that is
+## nearer or there is no cover.
+func _withdraw() -> void:
 	if _withdraw_timer > 0.0 or not is_instance_valid(tank):
 		return
 	_withdraw_timer = data.withdraw_cooldown_s
 	radio.emit(RADIO_UNDER_ATTACK, Vector3.ZERO)
-	if smoke and _smoke_left > 0:
+	var threat: Vector3 = _threat_direction()
+	if _smoke_left > 0:
 		_smoke_left -= 1
-		throw_smoke(global_position + _threat_direction(threat_point) * data.smoke_ahead_m)
-	var back: Vector3 = _flat(tank.global_position - global_position)
-	if back.length() < 1.0:
+		throw_smoke(global_position + threat * data.smoke_ahead_m)
+	if _state == State.RETURNING or tank.is_knocked_out():
 		return
-	_move_to(global_position + back.normalized() * minf(data.fallback_m, back.length()))
+	var cover: Vector3 = _find_cover(threat)
+	var to_tank: float = _flat(tank.global_position - global_position).length()
+	if cover == Vector3.INF or to_tank <= _flat(cover - global_position).length():
+		_start_return(false)
+	else:
+		_move_to(cover, true)
 
 
-## Towards the nearest enemy tank in sight, else the impact, else away from the own tank.
-func _threat_direction(threat_point: Vector3) -> Vector3:
-	for target: Node3D in _targets_in_sight():
-		if target is Tank:
-			return _flat(target.global_position - global_position).normalized()
-	if threat_point != Vector3.INF and _flat(threat_point - global_position).length() > 1.0:
-		return _flat(threat_point - global_position).normalized()
+## Towards the nearest enemy in sight, else away from the own tank.
+func _threat_direction() -> Vector3:
+	var targets: Array[Node3D] = _targets_in_sight()
+	if not targets.is_empty():
+		var to_enemy: Vector3 = _flat(targets[0].global_position - global_position)
+		if to_enemy.length() > 1.0:
+			return to_enemy.normalized()
 	var away: Vector3 = _flat(global_position - tank.global_position)
 	return away.normalized() if away.length() > 1.0 else _heading
+
+
+## The nearest covered spot within fallback_m, away from `threat` and not past the
+## squad's leash; INF if none.
+func _find_cover(threat: Vector3) -> Vector3:
+	var map: TacticalMap = _tactical_map()
+	if map == null:
+		return Vector3.INF
+	for share: float in COVER_RANGE_SHARES:
+		for angle: float in COVER_ANGLES_DEG:
+			var p: Vector3 = global_position \
+					- threat.rotated(Vector3.UP, deg_to_rad(angle)) * data.fallback_m * share
+			if not map.is_blocked(p) and map.is_covered(p) \
+					and _flat(p - tank.global_position).length() <= data.max_distance_from_tank_m:
+				return p
+	return Vector3.INF
 
 
 func throw_smoke(at: Vector3) -> void:

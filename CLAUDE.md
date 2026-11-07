@@ -52,8 +52,10 @@ shows on the minimap. This is what we test first.
   traverse_factor`, shares in TankData): engine damaged 50 % speed, destroyed stopped; fire
   stands the tank still, a haze for the player (`FireHaze`), bots see
   `fire_view_range_factor`; ring 50 % / 10 % traverse; damaged track 80 % speed and 55 % turn
-  rate, destroyed = immobilised. Standing still `repair_time_s` repairs
-  modules, then hp creeps back to `repair_hp_max_fraction`. The player sees own hp/modules
+  rate, destroyed = immobilised. Standing still (no throttle, no steering) `repair_time_s` repairs
+  modules (firing and MG hits don't interrupt; a penetrating gun round, an AT round
+  (`ShellData.stops_repair_on_hit`) or fire restarts it; a module breaking meanwhile
+  takes its full time), then hp creeps back to `repair_hp_max_fraction`. The player sees own hp/modules
   (`DamagePanel`: a see-through top-down tank icon bottom left with the turret turned and
   modules green/yellow/red), never the enemy's; bots stop to repair when they have no target.
 - Infantry squads (`Squad`, `scripts/squad/`; data `SquadData`, `data/squads/`,
@@ -86,9 +88,14 @@ shows on the minimap. This is what we test first.
   `ModuleData.repair_time_min_s..max_s` (30-45 s) standing still, other modules
   `TankData.repair_time_s`. Soldiers see through vegetation crowns
   (`Vision.has_line_of_sight_through`, `SquadData.see_through_ranges_m`: one layer to
-  500 m, two to 300 m). Fired on by a
-  tank (hit or `Squad.notify_impact` near miss) they smoke (`SmokeCloud`, a vision
-  blocker) and fall back; losses to rifles: fall back. Mounted they refill one by one (one a minute);
+  500 m, two to 300 m). On the way to a
+  position (MOVING) a squad halts for any enemy that comes within reach of its weapons
+  (`Squad._in_reach`: AT range with rounds left, rifle range for commanders/soldiers) and
+  walks on `contact_resume_s` after none is left (`_update_contact_halt`, `_resume_goal`);
+  enemies in sight when the order came don't stop it (`_order_known`), nor does a recall
+  or a withdrawal halt. Being shot at alone doesn't move them; with a man down they
+  smoke (`SmokeCloud`, a vision blocker) and run for cover within `fallback_m` or to the
+  tank, whichever is nearer (`Squad._withdraw`). Mounted they refill one by one (one a minute);
   wiped out, a full squad is back after `wipe_cooldown_s`. HUD: `SquadPanel`.
   Radio (`Squad.radio` signal, kinds `RADIO_*`: under attack (withdraw), returning, in
   position, armour/infantry contact, AT round coming): `SquadRadio` in the player rig plays the own
@@ -129,8 +136,8 @@ shows on the minimap. This is what we test first.
   `KothMode.place_tank` / a puppet's respawn jump) for the whole match.
   The host lists wrecks (`Tank.wreck_left`) and sends them to late joiners (`rpc_wreck`:
   a throw-away `wreck_only` tank of the same spec makes the copy, `make_wreck_here`).
-- Smoke: `TankCommand.smoke` (key X; bots when pulling back, `BotData.smoke_on_relocate_chance`)
-  fires a salvo, `TankData.smoke_salvos` (3) per life: `smoke_clouds_per_salvo` `SmokeCloud`s
+- Smoke: `TankCommand.smoke` (key X; bots when too exposed, see below) fires a salvo,
+  `TankData.smoke_salvos` (3) per life, `smoke_cooldown_s` (20) apart for players and bots: `smoke_clouds_per_salvo` `SmokeCloud`s
   ahead of the turret. Clients send it (and abandon) by `rpc_tank_action`; the host sends the
   clouds by `rpc_tank_smoke`. Squads have one grenade.
 - Abandon: `TankCommand.abandon` (Esc menu `EscMenu`; bots after `BotData.abandon_stuck_s`
@@ -229,9 +236,11 @@ shows on the minimap. This is what we test first.
   backs to a spot its target's commander can't see while it reloads, then comes up a
   few metres to the side (only `scoot_chance` of shots). Gun rounds that hit or nearly
   miss (`Tank.shell_threat`: >= 20 mm, passing or landing within 8 m, collected by
-  `Shell`) make it pull back (find_position away from the threat, held
-  `relocate_hold_s`; KothBots waits) with `relocate_chance_by_hits` (30 % / 85 % /
-  100 % for 1/2/3 in a row within `relocate_window_s`). Firing on the way: a short halt
+  `Shell`) make it react with `relocate_chance_by_hits` (30 % / 85 % / 100 % for 1/2/3 in a row
+  within `relocate_window_s`): it stays and shoots if the gun bears on the shooter within
+  `answer_time_s` (unless `exposed_hits` came in a row), else backs into a hide spot if
+  one is near, and only with neither is it too exposed: smoke and pull back
+  (find_position away from the threat, held `relocate_hold_s`; KothBots waits). Firing on the way: a short halt
   only beside cover (`TacticalMap.is_covered`) within `transit_fire_range_m`; in the
   open it fires on the move within `BotData.move_fire_range_m` (looser lay, error per
   m/s), else holds fire. Bots stop to repair only for a destroyed module, a thrown

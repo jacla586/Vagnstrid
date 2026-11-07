@@ -44,10 +44,11 @@ extends Resource
 @export var breaks_tracks: bool = false
 
 @export_group("Infantry")
-## Fired by infantry (rifles, AT rounds). Infantry fire doesn't make squads throw smoke.
-@export var infantry: bool = false
 ## Never knocks a tank out (AT rounds): no last structure points, no ammo blow-up.
 @export var cannot_knock_out: bool = false
+## Any hit restarts the crew's repair, penetrating or not (AT rounds). Otherwise only
+## a penetrating gun round does.
+@export var stops_repair_on_hit: bool = false
 
 @export_group("Sound")
 ## Landing on a tank.

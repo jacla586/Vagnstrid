@@ -935,9 +935,19 @@ func _on_fired(_shell: Shell) -> void:
 	if away.length() < 1.0:
 		return
 	away = away.normalized()
-	var their_eye: Vector3 = _target.get_commander_eye_position()
-	var exclude: Array[RID] = [tank.get_rid(), _target.get_rid()]
-	var best := Vector3.INF
+	var spot: Vector3 = _find_hide_spot(away, _target.get_commander_eye_position())
+	if spot != Vector3.INF:
+		_start_hiding(spot, away)
+	# Nowhere to hide nearby: stay and fight.
+
+
+## A spot close behind the tank (along `away`) hidden from an eye at `their_eye`, or INF.
+func _find_hide_spot(away: Vector3, their_eye: Vector3) -> Vector3:
+	var t: TacticsData = _tactics()
+	var map: TacticalMap = _tactical_map()
+	var exclude: Array[RID] = [tank.get_rid()]
+	if _target != null and is_instance_valid(_target):
+		exclude.append(_target.get_rid())
 	for dist: float in [t.hide_distance_min_m, (t.hide_distance_min_m + t.hide_distance_max_m) * 0.5,
 			t.hide_distance_max_m]:
 		for angle: float in HIDE_ANGLES_DEG:
@@ -949,16 +959,17 @@ func _on_fired(_shell: Shell) -> void:
 			# Hidden: the target's commander can't see where our commander's head would be.
 			if not TacticalMap._sight_clear(tank.get_world_3d(), their_eye,
 					p + Vector3.UP * TacticalMap.EYE_HEIGHT_M, exclude):
-				best = p
-				break
-		if best != Vector3.INF:
-			break
-	if best == Vector3.INF:
-		return   # nowhere to hide nearby: stay and fight
+				return p
+	return Vector3.INF
+
+
+## Backs to `spot`, then comes up again to the side (_update_scoot).
+func _start_hiding(spot: Vector3, away: Vector3) -> void:
+	var t: TacticsData = _tactics()
 	var side: Vector3 = away.cross(Vector3.UP) * (1.0 if _rng.randf() < 0.5 else -1.0)
 	var peek: Vector3 = tank.global_position + side * _rng.randf_range(t.peek_side_min_m, t.peek_side_max_m)
-	_peek_point = tank.global_position if map.is_blocked(peek) else peek
-	_scoot_point = best
+	_peek_point = tank.global_position if _tactical_map().is_blocked(peek) else peek
+	_scoot_point = spot
 	_scoot = Scoot.HIDING
 	_scoot_time = 0.0
 
@@ -1001,8 +1012,10 @@ func _reverse_towards(point: Vector3) -> void:
 	_command.throttle = -1.0 * clampf(1.0 - absf(error) / PI * 1.5, 0.3, 1.0)
 
 
-## A gun round hit or nearly missed: maybe pull back to a new position away from the
-## threat, the more likely the more rounds came in a row (relocate_chance_by_hits).
+## A gun round hit or nearly missed: maybe leave, the more likely the more rounds came
+## in a row (relocate_chance_by_hits). A crew that can answer the shooter soon stays
+## and fights; one with a hide spot close by backs into it; only one with neither is
+## too exposed, and smokes and moves to a new position away from the threat.
 func _check_relocation(from_dir: Vector3) -> void:
 	var t: TacticsData = _tactics()
 	if t.relocate_chance_by_hits.is_empty() or _tactical_map() == null or _relocating:
@@ -1013,10 +1026,24 @@ func _check_relocation(from_dir: Vector3) -> void:
 	var chances: Array[float] = t.relocate_chance_by_hits
 	if _rng.randf() >= chances[mini(_hits.size(), chances.size()) - 1]:
 		return
+	if _scoot == Scoot.HIDING or (_hits.size() < t.exposed_hits and _can_answer(from_dir)):
+		return   # already on the way into cover, or shooting back first
 	_hits.clear()
 	_scoot = Scoot.NONE
-	if tank.get_smoke_left() > 0 and _rng.randf() < bot_data.smoke_on_relocate_chance:
-		_smoke_pending = true   # a screen towards the threat (the turret turns to hits)
+	if tank.is_immobilised():
+		_smoke_pending = true
+		return
+	var shooter_known: bool = _target_is_shooter(from_dir)
+	var cover: Vector3 = _find_hide_spot(-from_dir, _threat_eye(from_dir, shooter_known))
+	if cover != Vector3.INF:
+		if shooter_known:
+			_start_hiding(cover, -from_dir)   # gun on the target, back up after the reload
+		else:
+			order_path(cover, 0.8, true)
+			_relocating = true
+			_relocate_hold = t.relocate_hold_s
+		return
+	_smoke_pending = true
 	var here: Vector3 = tank.global_position
 	var center: Vector3 = here - from_dir * t.relocate_distance_m * 0.6
 	var friends := PackedVector3Array()
@@ -1026,6 +1053,34 @@ func _check_relocation(from_dir: Vector3) -> void:
 	order_path(spot, 0.8, true)
 	_relocating = true
 	_relocate_hold = t.relocate_hold_s
+
+
+## The bot's target stands about where a round came from (`from_dir`, flat).
+func _target_is_shooter(from_dir: Vector3) -> bool:
+	if _target == null or not is_instance_valid(_target) or _target.is_knocked_out():
+		return false
+	var to_target: Vector3 = Squad._flat(_target.global_position - tank.global_position)
+	return to_target.length() > 1.0 and to_target.normalized().dot(from_dir) \
+			>= cos(deg_to_rad(_tactics().answer_cone_deg))
+
+
+## The gun can fire at the shooter within answer_time_s: in sight, reloaded and laid.
+func _can_answer(from_dir: Vector3) -> bool:
+	if not _target_is_shooter(from_dir) or not bool(_hull_visible.get(_target, false)):
+		return false
+	var gun: Vector3 = Squad._flat(-tank.get_muzzle_transform().basis.z)
+	var to_target: Vector3 = Squad._flat(_target.global_position - tank.global_position)
+	var lay_s: float = gun.angle_to(to_target) / deg_to_rad(tank.data.turret_traverse_speed_deg)
+	return tank.get_reload_remaining() + lay_s <= _tactics().answer_time_s
+
+
+## Where the shooter's eye is, as far as the crew can tell.
+func _threat_eye(from_dir: Vector3, shooter_known: bool) -> Vector3:
+	if shooter_known:
+		return _target.get_commander_eye_position()
+	var p: Vector3 = tank.global_position + from_dir * HIT_ORIGIN_GUESS_M
+	p.y = _tactical_map()._height_at(p) + TacticalMap.EYE_HEIGHT_M
+	return p
 
 
 func _on_hit_taken(direction: Vector3) -> void:
