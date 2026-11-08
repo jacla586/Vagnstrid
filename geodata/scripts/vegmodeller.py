@@ -94,15 +94,69 @@ def gran(rng):
     return _normalisera(trimesh.util.concatenate(delar))
 
 
+TALL_BARK_NERE = (88, 78, 70)    # gråbrun grov bark nertill
+TALL_BARR = (52, 82, 46)
+TALL_BARR_LJUS = (66, 96, 52)
+
+
+def _gren(p0, p1, r, rng, farg):
+    """Rak cylinder mellan två punkter (gren eller stambit)."""
+    p0 = np.asarray(p0, float); p1 = np.asarray(p1, float)
+    if np.linalg.norm(p1 - p0) < 1e-4:
+        return None
+    return _farga(trimesh.creation.cylinder(radius=r, segment=[p0, p1], sections=6), farg, rng, variation=0.05)
+
+
+def _pa_linje(pkt, y):
+    """Punkten på en brutet linje (stammen) vid höjden y."""
+    for a, b in zip(pkt, pkt[1:]):
+        if a[1] <= y <= b[1]:
+            return a + (b - a) * ((y - a[1]) / max(b[1] - a[1], 1e-6))
+    return pkt[-1].copy()
+
+
 def tall(rng):
-    topp = rng.uniform(0.72, 0.82)
-    delar = [_farga(_cyl(0.06, 0.04, 0, topp + 0.05), TALLBARK, rng, mork_nere=0.3)]
-    for _ in range(int(rng.integers(3, 6))):
-        a = rng.uniform(0, 2 * math.pi); d = rng.uniform(0.1, 0.45)
-        c = [math.cos(a) * d, rng.uniform(topp, 0.93), math.sin(a) * d]
-        delar.append(_farga(_klump(c, rng.uniform(0.3, 0.5), rng.uniform(0.08, 0.14), rng.uniform(0.3, 0.5), rng),
-                            (54, 86, 46), rng, mork_nere=0.2))
-    return _normalisera(trimesh.util.concatenate(delar))
+    """Yvig tall som i Vidingsjö, byggd i meter (21 m hög) och normaliserad sist: lite krokig
+    stam (grå nertill, orange spegelbark uppåt) som delar sig i 2-3 toppskott vid ca 70 %;
+    stor, klumpig och oregelbunden krona av 12-16 platta tussar från ca 45 %, ensidig;
+    några döda grenstumpar under kronan."""
+    H = 21.0
+    gaffel = H * rng.uniform(0.66, 0.74)
+    pkt = [np.zeros(3)]
+    a = rng.uniform(0, 2 * math.pi)
+    for i in range(1, 5):
+        a += rng.uniform(-0.9, 0.9)
+        pkt.append(np.array([math.cos(a) * 0.5 * i / 4, gaffel * i / 4, math.sin(a) * 0.5 * i / 4]))
+    delar = [_gren(pkt[i], pkt[i + 1], 0.22 * (1 - 0.6 * i / 4), rng,
+                   TALLBARK if i >= 2 else TALL_BARK_NERE) for i in range(4)]
+    skott = []
+    for _ in range(int(rng.integers(2, 4))):
+        a = rng.uniform(0, 2 * math.pi); d = rng.uniform(1.0, 2.2)
+        s = pkt[-1] + [math.cos(a) * d, rng.uniform(3.0, 4.5), math.sin(a) * d]
+        delar.append(_gren(pkt[-1], s, 0.11, rng, TALLBARK))
+        skott.append(s)
+    sida = rng.uniform(0, 2 * math.pi)                  # kronan väger åt ett håll
+    sx, sz = math.cos(sida) * 0.9, math.sin(sida) * 0.9
+    for k in range(int(rng.integers(12, 17))):
+        a = rng.uniform(0, 2 * math.pi)
+        if k < len(skott) or rng.random() < 0.45:       # tuss i toppskotten (minst en per skott)
+            d = rng.uniform(0.3, 1.6)
+            c = skott[k if k < len(skott) else int(rng.integers(len(skott)))] + [
+                math.cos(a) * d + sx, rng.uniform(-1.2, 0.3), math.sin(a) * d + sz]
+        else:                                           # tuss på en gren ut från stammen
+            bas = _pa_linje(pkt, rng.uniform(H * 0.45, gaffel + 1.0))
+            d = rng.uniform(1.2, 3.2)
+            c = bas + [math.cos(a) * d + sx, rng.uniform(0.3, 0.9), math.sin(a) * d + sz]
+            delar.append(_gren(bas, c, 0.07, rng, TALLBARK))
+        r = rng.uniform(1.0, 1.9)
+        farg = TALL_BARR if rng.random() < 0.6 else TALL_BARR_LJUS
+        delar.append(_farga(_klump(c, r, r * rng.uniform(0.45, 0.65), r * rng.uniform(0.7, 1.2), rng, jitter=0.22),
+                            farg, rng, variation=0.09, mork_nere=0.35))
+    for _ in range(int(rng.integers(1, 4))):            # döda grenstumpar
+        a = rng.uniform(0, 2 * math.pi)
+        s = _pa_linje(pkt, rng.uniform(H * 0.25, H * 0.42))
+        delar.append(_gren(s, s + [math.cos(a) * 0.7, 0.15, math.sin(a) * 0.7], 0.04, rng, TALL_BARK_NERE))
+    return _normalisera(trimesh.util.concatenate([d for d in delar if d is not None]))
 
 
 def bjork(rng):

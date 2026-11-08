@@ -4,7 +4,7 @@
  "trad": {
   "gran": {"nmd": ["gran"], "allometri": [0.40, 0.08], "fargvariation": 0.10,
            "varianter": [{"generera": "gran"}, {"generera": "gran"}, {"generera": "gran"}]},
-  "tall": {"nmd": ["tall"], "allometri": [0.60, 0.09], "fargvariation": 0.10,
+  "tall": {"nmd": ["tall"], "allometri": [0.60, 0.15], "fargvariation": 0.10,
            "varianter": [{"generera": "tall"}, {"generera": "tall"}, {"generera": "tall"}]},
   "bjork": {"nmd": ["trivial"], "allometri": [0.70, 0.12], "fargvariation": 0.14,
             "varianter": [{"generera": "bjork"}, {"generera": "bjork"}, {"generera": "bjork"}]},
