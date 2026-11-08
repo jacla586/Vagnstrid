@@ -65,6 +65,11 @@ extends Resource
 @export_group("Wind and rain")
 ## Wind (m/s, x east, y south): clouds, smoke and rain drift with it.
 @export var wind_mps: Vector2 = Vector2(2.0, 0.8)
+## Smoke screens (SmokeCloud) drift at this share of the wind speed (gameplay: a
+## screen must hold long enough to be worth firing).
+@export_range(0.0, 1.0) var smoke_drift_share: float = 0.4
+## Fire smoke (a burning tank) leans with this share of the wind.
+@export_range(0.0, 1.0) var fire_smoke_drift_share: float = 0.35
 ## 0 = dry .. 1 = heavy rain.
 @export_range(0.0, 1.0) var rain_intensity: float = 0.0
 ## Rain loops (WeatherView): outside (World bus, so the shut hatch muffles it) and

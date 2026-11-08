@@ -21,7 +21,7 @@ var _hooked: KothMode
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # full size: text centres on the screen
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 

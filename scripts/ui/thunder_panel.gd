@@ -2,24 +2,28 @@ class_name ThunderPanel
 extends Control
 ## Top-centre ThunderRoad panel: round and role, checkpoint, the attackers' time bank,
 ## lives and next wave, capture progress, the own respawn, a warning outside the own
-## corridor, and between the rounds a big VICTORY / DEFEAT banner (the round's winner;
-## after round 2 the match's). The final result is on the Scoreboard. Hidden when the
+## corridor, and between the rounds (the Scoreboard shows in the middle then) the
+## result at the top and a big countdown to the next round at the bottom; after round 2
+## a VICTORY / DEFEAT banner for the match. The final result is on the Scoreboard. Hidden when the
 ## scene has no ThunderRoadMode.
 
 @export var views: PlayerViews
-@export var font_size: int = 22
+@export var font_size: int = 20
 @export var attack_color: Color = Color(1.0, 0.75, 0.35, 1.0)
 @export var defend_color: Color = Color(0.45, 0.85, 1.0, 1.0)
 @export var text_color: Color = Color(0.92, 0.92, 0.88, 1.0)
 @export var good_color: Color = Color(0.55, 1.0, 0.5, 1.0)
 @export var warn_color: Color = Color(1.0, 0.3, 0.25, 1.0)
-## The banner between rounds: title size and its height on the screen (share).
-@export var banner_font_size: int = 110
-@export var banner_height: float = 0.36
+## Between rounds: title size and its baseline from the top (px; the Scoreboard is in
+## the middle), the countdown's size and its baseline (share of the screen height).
+@export var banner_font_size: int = 84
+@export var banner_top_px: float = 110.0
+@export var countdown_font_size: int = 54
+@export var countdown_height: float = 0.88
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # full size: text centres on the screen
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
@@ -88,26 +92,38 @@ func _draw_banner(mode: ThunderRoadMode, tank: Tank, font: Font, cx: float) -> v
 	var results: Array[Dictionary] = mode.get_results()
 	if results.is_empty():
 		return
-	var y: float = size.y * banner_height
+	var y: float = banner_top_px
+	var countdown_y: float = size.y * countdown_height
+	var seconds: int = ceili(mode.get_break_left())
 	if mode.is_decided():
 		var winner: int = mode.get_winner()
 		_text(font, Vector2(cx, y), result_title(winner, tank.team), banner_font_size,
 				result_color(winner, tank.team), 12)
-		y += font_size * 2.0
+		y += font_size * 2.2
 		for i: int in results.size():
-			_text(font, Vector2(cx, y), round_line(i + 1, results[i], tank.team, mode), font_size,
+			_text(font, Vector2(cx, y), round_line(i + 1, results[i], tank.team, mode), font_size + 4,
 					text_color)
-			y += font_size + 8.0
-		_text(font, Vector2(cx, y + 6.0), "results in %d s" % ceili(mode.get_break_left()),
-				font_size - 6, text_color)
+			y += font_size + 10.0
+		_text(font, Vector2(cx, countdown_y), "RESULTS IN %d" % seconds, countdown_font_size - 14,
+				text_color, 10)
 		return
 	var r: Dictionary = results[results.size() - 1]
+	var attacked: bool = int(r["attack_team"]) == tank.team
 	_text(font, Vector2(cx, y), "ROUND %d OVER" % mode.get_round(), banner_font_size,
-			text_color, 12)
-	y += font_size * 2.0
-	_text(font, Vector2(cx, y), round_line(mode.get_round(), r, tank.team, mode), font_size,
-			text_color)
-	y += font_size + 8.0
+			attack_color if attacked else defend_color, 12)
+	y += font_size * 2.2
+	# How it went, from this player's side: what they took, or what they let through.
+	var taken: int = int(r["checkpoints"])
+	var count: int = mode.get_checkpoint_count()
+	var how: String
+	if attacked:
+		how = "YOU TOOK %d OF %d CHECKPOINTS" % [taken, count]
+	else:
+		how = "THE ENEMY TOOK %d OF %d CHECKPOINTS" % [taken, count]
+	if bool(r["all"]):
+		how += " WITH %s LEFT" % ScorePanel._clock(float(r["time_left"]))
+	_text(font, Vector2(cx, y), how, font_size + 12, Color.WHITE, 8)
+	y += font_size + 18.0
 	var need: int = int(r["checkpoints"]) + 1
 	var we_attacked: bool = int(r["attack_team"]) == tank.team
 	var goal: String
@@ -117,11 +133,11 @@ func _draw_banner(mode: ThunderRoadMode, tank: Tank, font: Font, cx: float) -> v
 	else:
 		goal = ("hold them under %d checkpoints to win" if we_attacked
 				else "take %d checkpoints to win") % need
-	_text(font, Vector2(cx, y), goal.to_upper(), font_size + 4,
-			attack_color if not we_attacked else defend_color)
-	y += font_size + 10.0
-	_text(font, Vector2(cx, y + 6.0), "sides swap – round %d in %d s"
-			% [mode.get_round() + 1, ceili(mode.get_break_left())], font_size - 6, text_color)
+	_text(font, Vector2(cx, y), "ROUND %d: YOU %s – %s" % [mode.get_round() + 1,
+			"DEFEND" if we_attacked else "ATTACK", goal.to_upper()], font_size + 2,
+			defend_color if we_attacked else attack_color)
+	_text(font, Vector2(cx, countdown_y), "ROUND %d STARTS IN %d" % [mode.get_round() + 1, seconds],
+			countdown_font_size, Color.WHITE, 10)
 
 
 func result_title(winner: int, own_team: int) -> String:

@@ -15,9 +15,20 @@ extends Node
 ## (waves, defender respawns); NetGame starts no respawn timers then.
 ## Client: puppets for every tank (NetPuppets), its own inside a PlayerRig with turret
 ## prediction; sends its commands (NetInput).
+##
+## Team swaps and tank changes (Esc menu): the player's tank goes and a new one comes
+## (respawn_player). A switch takes a bot's place on the other team (or a free place);
+## with only players there, the player picks one to ask, who accepts or declines in
+## their Esc menu. A new tank type is a respawn at the team's spawn, at once (a loss
+## unless fresh from a spawn, TankSwitch); a knocked-out tank gets it at its respawn
+## (Tank.repaired).
+
+## The Esc menu has something new to show (swap choices or offers).
+signal menu_changed
 
 const TANK_SCENE: PackedScene = preload("res://scenes/tank/tank.tscn")
-const RIG_SCENE: PackedScene = preload("res://scenes/player/player_rig.tscn")
+## Loaded when needed, not preloaded: the rig's EscMenu refers to NetGame (a cycle).
+const RIG_SCENE_PATH: String = "res://scenes/player/player_rig.tscn"
 const PLAYER_DATA: String = "res://data/tanks/player_medium.tres"
 const RESPAWN_DELAY_S: float = 10.0
 const BOT_TEAM: int = 2
@@ -29,6 +40,8 @@ const BOT_SPAWN_OFFSET_M: float = 15.0
 const KOTH_SEND_INTERVAL_S: float = 0.5
 ## Infantry squads to clients every this many physics ticks (6 = 10 Hz, unreliable).
 const SQUAD_SEND_TICKS: int = 6
+## A team swap request stays open this long (s).
+const SWAP_OFFER_S: float = 60.0
 
 ## net_id -> Tank (every replicated tank)
 var tanks: Dictionary = {}
@@ -58,6 +71,13 @@ var _squad_tick: int = 0
 var _koth_hooked: KothMode
 var _thunder_timer: float = 0.0
 var _thunder_hooked: ThunderRoadMode
+## Host: peer -> peers who asked it to swap teams.
+var _offers: Dictionary = {}
+## Players of the other team this player may ask to swap ([[peer, name], ...]; filled
+## when the other team has no bot to give up its place).
+var swap_choices: Array = []
+## Players who asked this player to swap teams: [[peer, name, Time.get_ticks_msec()], ...].
+var swap_offers: Array = []
 
 
 func _ready() -> void:
@@ -71,6 +91,7 @@ func _ready() -> void:
 		for field: TreeField in _tree_fields():
 			field.tree_index_felled.connect(_on_tree_felled.bind(_map.get_path_to(field)))
 		teams[1] = 0
+		_names[1] = NetSession.instance.player_name
 		_spawn_player(1)
 	else:
 		_puppets = NetPuppets.new()
@@ -166,6 +187,11 @@ func _register(tank: Tank, owner_peer: int) -> int:
 		_wrecks.append([TankBuilder.spec_of(tank), at, yaw, pitch])
 		if _wrecks.size() > Tank.MAX_WRECKS:
 			_wrecks.pop_front())
+	# Before rpc_struck on the same channel, so the client hears the mine call first.
+	tank.mine_hit.connect(func() -> void:
+		var owner_id: int = int(owners.get(net_id, 0))
+		if owner_id > 1 and multiplayer.get_peers().has(owner_id):
+			NetSession.instance.rpc_id(owner_id, "rpc_mine_hit"))
 	tank.struck.connect(func(outcome: int, direction: Vector3) -> void:
 		var owner_id: int = int(owners.get(net_id, 0))
 		if owner_id > 1 and multiplayer.get_peers().has(owner_id):
@@ -205,6 +231,11 @@ func _register(tank: Tank, owner_peer: int) -> int:
 				NetSession.instance.rpc("rpc_squad_shot", net_id, kind, from, velocity)
 				NetSession.instance.count_out(32))
 	if owner_peer != 0:
+		# Back from a knock-out with another tank type picked meanwhile: that one now.
+		tank.repaired.connect(func() -> void:
+			var peer: int = int(owners.get(net_id, 0))
+			if peer != 0 and TankSwitch.wants_other(tank, _config_of(peer)):
+				respawn_player.call_deferred(peer))
 		tank.knocked_out.connect(func() -> void:
 			if ThunderRoadMode.instance == null:   # ThunderRoad brings tanks back itself
 				_respawn_timers[net_id] = RESPAWN_DELAY_S)
@@ -212,21 +243,21 @@ func _register(tank: Tank, owner_peer: int) -> int:
 
 
 ## Host: creates the tank for a player (the host's own in a PlayerRig).
-func _spawn_player(peer: int) -> void:
+func _spawn_player(peer: int) -> Tank:
 	var team: int = teams.get(peer, 1)
 	var xform: Transform3D = _spawn_for(team, null)
 	var tank: Tank
 	if peer == 1:
-		_my_rig = RIG_SCENE.instantiate()
+		_my_rig = (load(RIG_SCENE_PATH) as PackedScene).instantiate()
 		tank = _my_rig.get_node("Tank")
-		tank.config = TankConfigs.get_selected()
+		tank.config = _config_of(1)
 		tank.display_label = NetSession.instance.player_name
 		tank.team = team
 		_map.add_child(_my_rig)
 	else:
 		tank = TANK_SCENE.instantiate()
 		tank.data = load(PLAYER_DATA)
-		tank.config = _configs.get(peer)
+		tank.config = _config_of(peer)
 		tank.display_label = _names.get(peer, "Player %d" % peer)
 		tank.team = team
 		var rc := RemoteController.new()
@@ -239,6 +270,170 @@ func _spawn_player(peer: int) -> void:
 	var net_id: int = _register(tank, peer)
 	for p: int in multiplayer.get_peers():
 		_send_spawn(p, net_id)
+	return tank
+
+
+## The tank config `peer` drives (the host's from its garage; null = PLAYER_DATA).
+func _config_of(peer: int) -> TankConfig:
+	return TankConfigs.get_selected() if peer == 1 else _configs.get(peer)
+
+
+## Host: `peer`'s tank goes (a knocked-out one leaves its wreck) and a new one comes at
+## the spawn of its team in teams, of the type it chose. Stats go with it.
+func respawn_player(peer: int) -> void:
+	if not teams.has(peer):
+		return
+	var old: Tank = tank_of_peer(peer)
+	if old != null:
+		remove_tank(old)
+	if peer == 1 and is_instance_valid(_my_rig):
+		_my_rig.name = "PlayerRigOld"
+		_my_rig.queue_free()
+		_my_rig = null
+	var tank: Tank = _spawn_player(peer)
+	if old != null:
+		TankSwitch.carry_stats(old, tank)
+
+
+## Tanks on `team` (players and bots).
+func _team_count(team: int) -> int:
+	var n: int = 0
+	for net_id: int in tanks:
+		var t: Tank = tanks[net_id]
+		if is_instance_valid(t) and not t.is_queued_for_deletion() and t.team == team:
+			n += 1
+	return n
+
+
+func _name_of(peer: int) -> String:
+	return str(_names.get(peer, "Player %d" % peer))
+
+
+## Host: a message to `peer` (the host itself handled here).
+func _send_to(peer: int, method: String, args: Array) -> void:
+	if peer == 1:
+		callv("on_" + method.trim_prefix("rpc_"), args)
+	elif multiplayer.get_peers().has(peer):
+		NetSession.instance.callv("rpc_id", [peer, method] + args)
+
+
+func _notify(peer: int, text: String) -> void:
+	_send_to(peer, "rpc_notice", [text, 4.0])
+
+
+# --- Team swap and tank change (Esc menu) --------------------------------------------
+
+## Any machine: ask to switch team (with_peer 0: take a bot's or a free place, else
+## get the list of players to ask) or ask the player `with_peer` to swap.
+func request_team_switch(with_peer: int) -> void:
+	if NetRole.is_host():
+		on_team_switch(1, with_peer)
+	else:
+		NetSession.instance.rpc_id(1, "rpc_team_switch", with_peer)
+
+
+## Any machine: answer `from_peer`'s swap request.
+func answer_swap(from_peer: int, accept: bool) -> void:
+	swap_offers = swap_offers.filter(func(o: Array) -> bool: return int(o[0]) != from_peer)
+	menu_changed.emit()
+	if NetRole.is_host():
+		on_swap_answer(1, from_peer, accept)
+	else:
+		NetSession.instance.rpc_id(1, "rpc_swap_answer", from_peer, accept)
+
+
+## Any machine: drive `cfg` (a respawn now; knocked out: at the respawn).
+func change_tank(cfg: TankConfig) -> void:
+	TankConfigs.select(cfg)
+	if NetRole.is_host():
+		on_change_tank(1, cfg.key(), cfg.display_name)
+	else:
+		NetSession.instance.rpc_id(1, "rpc_change_tank", cfg.key(), cfg.display_name)
+
+
+## Host: `peer` wants the other team. A bot there gives up its place (or the other team
+## is smaller): at once. Otherwise with with_peer 0 the player gets the other team's
+## players to choose from; with a player's peer, that player is asked.
+func on_team_switch(peer: int, with_peer: int) -> void:
+	var tank: Tank = tank_of_peer(peer)
+	var from_team: int = int(teams.get(peer, -1))
+	if tank == null or from_team < 0 or from_team > 1:
+		return
+	var to_team: int = 1 - from_team
+	if with_peer > 0:
+		if int(teams.get(with_peer, -1)) != to_team or tank_of_peer(with_peer) == null:
+			_notify(peer, "%s is not on the other team any more" % _name_of(with_peer))
+			return
+		var asked: Array = _offers.get(with_peer, [])
+		if not asked.has(peer):
+			asked.append(peer)
+		_offers[with_peer] = asked
+		_send_to(with_peer, "rpc_swap_offer", [peer, _name_of(peer)])
+		_notify(peer, "Asked %s to swap teams" % _name_of(with_peer))
+		return
+	var director: Node = _bots_director()
+	var bot_tank: Tank = director.make_room(to_team) if director != null else null
+	if bot_tank != null or _team_count(to_team) < _team_count(from_team):
+		if bot_tank != null:
+			remove_tank(bot_tank)
+		teams[peer] = to_team
+		respawn_player(peer)
+		if director != null:
+			director.refill.call_deferred()   # a bot takes the place left behind
+		_notify(peer, "Switched team")
+		return
+	var choices: Array = []
+	for p: int in teams:
+		if p != peer and int(teams[p]) == to_team and tank_of_peer(p) != null:
+			choices.append([p, _name_of(p)])
+	if choices.is_empty():
+		_notify(peer, "No place on the other team")
+		return
+	_send_to(peer, "rpc_team_choices", [choices])
+
+
+## Host: `peer` answered `from_peer`'s swap request. Accepted, both change teams at once.
+func on_swap_answer(peer: int, from_peer: int, accept: bool) -> void:
+	var asked: Array = _offers.get(peer, [])
+	if not asked.has(from_peer):
+		return
+	asked.erase(from_peer)
+	if not accept:
+		_notify(from_peer, "%s declined the team swap" % _name_of(peer))
+		return
+	var a: int = int(teams.get(peer, -1))
+	var b: int = int(teams.get(from_peer, -1))
+	if a < 0 or b < 0 or a > 1 or b > 1 or a == b or tank_of_peer(peer) == null \
+			or tank_of_peer(from_peer) == null:
+		_notify(peer, "The team swap is no longer possible")
+		return
+	teams[peer] = b
+	teams[from_peer] = a
+	_offers.erase(peer)
+	_offers.erase(from_peer)
+	respawn_player(peer)
+	respawn_player(from_peer)
+	_notify(peer, "Swapped teams with %s" % _name_of(from_peer))
+	_notify(from_peer, "Swapped teams with %s" % _name_of(peer))
+
+
+## Host: `peer` picked another tank type.
+func on_change_tank(peer: int, config_key: String, tank_name: String) -> void:
+	var cfg: TankConfig = TankConfig.from_key(config_key)
+	if cfg == null or TankBuilder.build(cfg) == null:
+		return
+	cfg.display_name = tank_name.strip_edges().left(24)
+	if peer != 1:
+		_configs[peer] = cfg   # the host's own is its garage choice (TankConfigs)
+	var tank: Tank = tank_of_peer(peer)
+	if tank == null or not TankSwitch.wants_other(tank, cfg):
+		return
+	if tank.is_knocked_out():
+		_notify(peer, "%s at the respawn" % cfg.display_name)
+		return
+	TankSwitch.count_change(tank)
+	respawn_player(peer)
+	_notify(peer, "Now driving %s" % cfg.display_name)
 
 
 ## Where a player of `team` (re)spawns: the King of the Hill spawn for the current zone
@@ -294,6 +489,9 @@ func on_client_ready(peer: int) -> void:
 
 func on_client_left(peer: int) -> void:
 	teams.erase(peer)
+	_offers.erase(peer)
+	for p: Variant in _offers:
+		(_offers[p] as Array).erase(peer)
 	_configs.erase(peer)
 	_names.erase(peer)
 	for net_id: int in owners.keys():
@@ -369,13 +567,16 @@ func _on_shot_landed(result: HitResult, tank: Tank) -> void:
 		NetSession.instance.count_out(text.length() + 8)
 
 
-func _on_spotted(point: Vector3, tank: Tank) -> void:
+func _on_spotted(target: Node3D, point: Vector3, tank: Tank) -> void:
+	var key: int = SpotMarks.key_of(target)
+	if key == 0:
+		return
 	for peer: int in teams:
 		if peer > 1 and teams[peer] == tank.team:
-			NetSession.instance.rpc_id(peer, "rpc_team_spot", point)
+			NetSession.instance.rpc_id(peer, "rpc_team_spot", key, point)
 	# The host's own marks: its SpotMarks listens to its own tank; teammates' spots too.
 	if teams.get(1, -1) == tank.team and owners.get(tank.net_id, 0) != 1:
-		on_team_spot(point)
+		on_team_spot(key, point)
 
 
 func _on_tree_felled(index: int, direction: Vector3, field: NodePath) -> void:
@@ -433,11 +634,10 @@ func _update_thunder(delta: float) -> void:
 		mode.checkpoint_taken.connect(func(_i: int) -> void: _thunder_timer = 0.0)
 		mode.round_over.connect(func(_n: int, _r: Dictionary) -> void: _thunder_timer = 0.0)
 		mode.match_over.connect(func(_w: int) -> void: _send_thunder_state(mode))
-		mode.round_started.connect(func(n: int, _t: int) -> void:
-			_thunder_timer = 0.0
-			if n > 1:
-				_felled.clear()   # the map was reset: trees stand, wrecks are gone
-				_wrecks.clear())
+		mode.round_started.connect(func(_n: int, _t: int) -> void: _thunder_timer = 0.0)
+		mode.map_reset.connect(func() -> void:
+			_felled.clear()   # trees stand, wrecks are gone
+			_wrecks.clear())
 	_thunder_timer -= delta
 	if _thunder_timer <= 0.0:
 		_thunder_timer = KOTH_SEND_INTERVAL_S
@@ -614,7 +814,7 @@ func on_spawn_tank(net_id: int, owner_peer: int, team: int, data_path: String, x
 		return
 	var tank: Tank
 	if owner_peer == NetSession.instance.my_id():
-		_my_rig = RIG_SCENE.instantiate()
+		_my_rig = (load(RIG_SCENE_PATH) as PackedScene).instantiate()
 		tank = _my_rig.get_node("Tank")
 		TankBuilder.apply_spec(tank, data_path, PLAYER_DATA)
 		tank.set_net_puppet(true)
@@ -654,6 +854,11 @@ func on_wreck(spec: String, at: Transform3D, turret_yaw: float, gun_pitch: float
 func on_despawn_tank(net_id: int) -> void:
 	print_verbose("net: despawn tank %d" % net_id)
 	var tank: Tank = tanks.get(net_id)
+	# The own tank (team swap, other tank type): its rig goes too; the new one follows.
+	if int(owners.get(net_id, 0)) == NetSession.instance.my_id() and is_instance_valid(_my_rig):
+		_my_rig.name = "PlayerRigOld"
+		_my_rig.queue_free()
+		_my_rig = null
 	tanks.erase(net_id)
 	owners.erase(net_id)
 	if _puppets != null:
@@ -706,16 +911,51 @@ func on_hit_record(data: Array) -> void:
 
 
 ## Client: a gun round hit the own tank (shake, ping, driving keys cancelled).
+func on_mine_hit() -> void:
+	var tank: Tank = _my_rig.get_node_or_null("Tank") as Tank if _my_rig != null else null
+	if tank != null:
+		tank.net_mine_hit()
+
+
 func on_struck(outcome: int, direction: Vector3) -> void:
 	var tank: Tank = _my_rig.get_node_or_null("Tank") as Tank if _my_rig != null else null
 	if tank != null:
 		tank.net_struck(outcome, direction)
 
 
-func on_team_spot(point: Vector3) -> void:
+func on_team_spot(key: int, point: Vector3) -> void:
 	var marks: SpotMarks = _my_rig.get_node_or_null("SpotMarks") as SpotMarks if _my_rig != null else null
 	if marks != null:
-		marks.add_mark(point)
+		marks.add_mark(key, point)
+
+
+## The other team's players to ask for a swap (no bot there to give up its place).
+func on_team_choices(choices: Array) -> void:
+	swap_choices = choices
+	menu_changed.emit()
+
+
+## `from_peer` asks to swap teams with this player.
+func on_swap_offer(from_peer: int, from_name: String) -> void:
+	swap_offers = swap_offers.filter(func(o: Array) -> bool: return int(o[0]) != from_peer)
+	swap_offers.append([from_peer, from_name, Time.get_ticks_msec()])
+	on_notice("%s wants to swap teams with you, esc to respond" % from_name, SWAP_OFFER_S)
+	menu_changed.emit()
+
+
+## Swap requests still open (older than SWAP_OFFER_S are dropped).
+func get_swap_offers() -> Array:
+	var now: int = Time.get_ticks_msec()
+	swap_offers = swap_offers.filter(func(o: Array) -> bool:
+		return now - int(o[2]) < int(SWAP_OFFER_S * 1000.0))
+	return swap_offers
+
+
+func on_notice(text: String, seconds: float) -> void:
+	var notice: MatchNotice = _my_rig.get_node_or_null("HUD/MatchNotice") as MatchNotice \
+			if is_instance_valid(_my_rig) else null
+	if notice != null:
+		notice.show_text(text, seconds)
 
 
 func on_tree_felled(field: NodePath, index: int, direction: Vector3) -> void:

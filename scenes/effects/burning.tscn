@@ -1,5 +1,7 @@
 [gd_scene format=3]
 
+[ext_resource type="Script" path="res://scripts/effects/burning.gd" id="1_burn"]
+
 [sub_resource type="StandardMaterial3D" id="Material_smoke"]
 transparency = 1
 shading_mode = 0
@@ -22,6 +24,7 @@ point_count = 2
 colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
 
 [node name="Burning" type="Node3D"]
+script = ExtResource("1_burn")
 
 [node name="Smoke" type="CPUParticles3D" parent="."]
 amount = 40

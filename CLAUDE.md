@@ -140,7 +140,9 @@ shows on the minimap. This is what we test first.
   there, the nearest soldier kneels `mine_lay_time_s` and lays it; one carried
   (`mines_carried`, refilled `mine_refill_s` on the tank), at most `max_mines_out` (another
   removes the oldest; on a road it lies on the visible surface, `RoadSurface`: road meshes have no collision). An enemy track over it (host, `Mine._track_over`) is thrown
-  (`Tank.on_mine` -> `TankDamage.apply_mine`; never a knock-out, nobody scores); own team
+  (`Tank.on_mine` -> `TankDamage.apply_mine`; never a knock-out, nobody scores; signal
+  `Tank.mine_hit`, clients `rpc_mine_hit`: the crew calls "Mina! Bandet utslaget!",
+  `CrewVoiceData.mine`, instead of "Vi är träffade!"); own team
   drives over safely. Gun rounds of another team landing within `destroy_by_gun_m` (HE
   `destroy_by_he_m`) destroy it (`Mine.shell_landed` from `Shell._on_hit`). Visible but
   discreet (a sunk disc); enemy soldiers within `spot_range_m` in sight find it after
@@ -181,8 +183,9 @@ shows on the minimap. This is what we test first.
   `rpc_hit_record`). On the own knock-out `Killcam` (player rig, `data/ui/killcam.tres`)
   replays the killing round (`HitRecord.kill_of`: killing hit, else the one that lit the
   fire, else the last penetration) with a chase camera (`PlayerViews.set_killcam` hides
-  the optics), any key skips; then `KillcamPanel` shows the hit picture (Swedish text,
-  top and side view of all hits this life) until the respawn. Abandon: none.
+  the optics), any key skips; then `KillcamPanel` shows the hit picture (English text;
+  the tank's own model rendered top and side in two small SubViewports, turret and gun as
+  they were, all hits this life drawn on it) until the respawn. Abandon: none.
 - Smoke: `TankCommand.smoke` (key X; bots when too exposed, see below) fires a salvo,
   `TankData.smoke_salvos` (3) per life, `smoke_cooldown_s` (20) apart for players and bots: `smoke_clouds_per_salvo` `SmokeCloud`s
   ahead of the turret. Clients send it (and abandon) by `rpc_tank_action`; the host sends the
@@ -191,7 +194,7 @@ shows on the minimap. This is what we test first.
   trying to drive without getting `abandon_stuck_m` away): a knock-out nobody scores.
   `Tank.repair()` (respawn) puts everything back as at the first spawn, squad included
   (`Squad.restore_on_tank`).
-- Crew shouts: `TankData.crew_voice` (`CrewVoiceData`) "Vi är träffade!" on `Tank.struck`,
+- Crew shouts: `TankData.crew_voice` (`CrewVoiceData`) "Vi är träffade!" on `Tank.struck` (a mine: "Mina! Bandet utslaget!"),
   "Närträff!" on `Tank.near_missed` (clients by `rpc_near_miss`), "Föraren/Skytten träffad!" on a
   crew wound, "Vagnchef träffad!" on `Tank.commander_wounded`, played by `SquadRadio`.
   MG/rifle results are `HitResult.bullet`: no hit text for the shooter.
@@ -211,7 +214,7 @@ shows on the minimap. This is what we test first.
   Bots also spot faster the more of 4 hull points (+ exposed commander) they see.
   A tank's own signature (`Concealment.tank_cover`/`tank_spot_time_factor`, values in
   ConcealmentData "Signature"): a main-gun shot (`Tank.get_fire_reveal`, flash plus a
-  `GunSmoke` cloud) and heavy exhaust (`TankExhaust`, `ExhaustData`, `Tank.get_exhaust_load`:
+  `GunSmoke` cloud), MG fire (weaker, `Tank.get_mg_reveal`, `mg_reveal_*`) and heavy exhaust (`TankExhaust`, `ExhaustData`, `Tank.get_exhaust_load`:
   thin at idle, dark under load, a puff on a throttle kick) make cover count less and
   spotting quicker. Players just see the smoke.
 - Telling teams apart (`TeamLook`, `scripts/world/team_look.gd`): seen from THIS machine's
@@ -363,11 +366,16 @@ shows on the minimap. This is what we test first.
   a spot mark for the other team every `outside_mark_s`, `Tank.wound_commander()` after
   `outside_grace_s`. Round 1 team 0 attacks, round 2 sides swap; more checkpoints wins,
   then more time left. Taking every checkpoint should be rare: the match is meant to be
-  won on the count. The `round_break_s` pause blocks all fire; `ThunderPanel` shows ROUND 1
-  OVER with the count to beat (`get_target`, also in the HUD in round 2), after round 2 a
-  big VICTORY/DEFEAT, then the `Scoreboard` (also on Tab: the rounds, KO/losses from
-  `ThunderRoadMode.get_stats`). Round 2 starts on
-  a fresh map (`_reset_map`: wrecks, mines, smoke go, `TreeField.restore_all`). The first round waits for `ThunderRoadBots` to fill the teams
+  won on the count. The `round_break_s` (10 s) pause blocks all fire; after round 1 the
+  tanks go to round 2's starts at once (`_setup_round`, repaired, map reset) and stand locked
+  (`Tank.move_blocked`: no driving, turret/optics free; bots wait) for the countdown.
+  `ThunderPanel` shows ROUND 1 OVER and how it went at the top, the `Scoreboard` in the
+  middle (shown through every break) and "ROUND 2 STARTS IN n" at the bottom (the count
+  to beat, `get_target`, is also in the HUD in round 2); after round 2 a big
+  VICTORY/DEFEAT, then the final `Scoreboard` (also on Tab: the rounds, KO/losses from
+  `ThunderRoadMode.get_stats`). The fresh map (`_reset_map`: wrecks, mines, smoke go,
+  `TreeField.restore_all`, signal `map_reset`) comes with the break; clients reset 1.5 s
+  after the round's end. The first round waits for `ThunderRoadBots` to fill the teams
   (`hold_start`/`release_start`). Bots: attackers to a `find_position` spot in the next
   checkpoint; defenders take posts beyond it in their corridor, move when the front
   moves, and send their squad to mine the road towards the attackers
@@ -455,22 +463,37 @@ shows on the minimap. This is what we test first.
   collision), `RainGlass` (drops on the optics, `rain_glass.gdshader`, under the optics
   mask), loops from `tools/audio/make_rain.sh` (outside on World, roof drumming on Own,
   louder with the hatch shut), wet terrain (Terrain3D texture assets, put back on exit),
-  `hearing_db` turns World/Blast down (HatchMuffle). Wind drifts clouds, exhaust and gun
-  smoke, not `SmokeCloud`s. Squad smoke grenades are 65 % of a tank's cloud.
+  `hearing_db` turns World/Blast down (HatchMuffle). Wind drifts clouds, exhaust, gun smoke,
+  fire smoke (`burning.gd`, `fire_smoke_drift_share`) and `SmokeCloud`s
+  (`WeatherData.smoke_drift_share`: they follow the ground and stretch downwind; host and
+  clients drift by the same rule, nothing sent). Squad smoke grenades are 65 % of a tank's cloud.
 - Vegetation that matters for gameplay is real scenes (`tree.tscn`, `bush.tscn`),
   placed with the `Scatter` tool node, not the Terrain3D instancer (no collision).
 
 ## Controls
 
 - Driving: **WASD**, controlled directly by the player.
-- Main gun: mouse 1 in the gunner's sight. In the commander view mouse 1 spots
-  (red mark on the minimap, cooldown `TankData.spot_cooldown_s`, marks fade per
-  `data/world/spotting.tres`). Commander view: turret holds its hull-relative
+- Main gun: mouse 1 in the gunner's sight. In the commander view mouse 1 spots an
+  enemy, not a place: `Tank.find_spotted` takes the enemy tank or soldier nearest the
+  point within `TankData.spot_snap_deg`/`spot_snap_min_m` that the commander or own squad
+  leader can see; nothing near = no mark (cooldown `TankData.spot_cooldown_s` either way).
+  `Tank.spotted(target, point)`; `SpotMarks` keeps one mark per enemy (`SpotMarks.key_of`:
+  net id / instance id, squads negative; `rpc_team_spot(key, point)`), moved and renewed by
+  any new spot, gone when the tank is knocked out; tanks a diamond, squads a ring. Marks fade per
+  `data/world/spotting.tres`. Commander view: turret holds its hull-relative
   direction; T lays it on the view. MG: mouse 2 (roof MG in the commander view with the hatch
   open, coaxial otherwise). Binoculars: B. Hatch: H.
 - Scoreboard: Tab (King of the Hill). Big map: M (view only). Squad orders map: Q (`SquadMap`, 1 km round the tank with
   the 300 m ring; frees the mouse; left click sends the squad, right click lays a mine). Recall squad: G. Squad leader's eyes: V (look and spot only). Network statistics: F3.
-- Smoke: X. Esc: frees the mouse and opens `EscMenu` (resume, abandon tank, main menu).
+- Smoke: X. Esc: frees the mouse and opens `EscMenu` (resume, change tank, switch team
+  (online), answer a swap request, abandon tank, main menu). Change tank (`TankSwitch`) =
+  a respawn at the team's spawn in the new type (a fresh tank can't be rebuilt in place:
+  offline a new PlayerRig, online `NetGame.respawn_player`); a loss unless within
+  `TankSwitch.FRESH_S` of spawning and unhit; knocked out, it comes at the respawn
+  (`Tank.repaired`). Stats follow (`carry_stats`). Switch team (host, `NetGame.on_team_switch`):
+  takes a bot's place on the other team (the director refills), else the player picks one
+  of the other team to ask (`rpc_team_choices`/`rpc_swap_offer`, notice in `MatchNotice`),
+  who accepts or declines in the Esc menu; both respawn on the other side at once.
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 
 ## Checking for errors (run these yourself)

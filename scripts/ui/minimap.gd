@@ -42,11 +42,11 @@ func _draw() -> void:
 			size.x / view_range_m)
 	var font: Font = get_theme_default_font()
 	_draw_text(font, Vector2(size.x * 0.5 - 5.0, font_size + 2.0), "N", font_size, text_color)
-	_draw_text(font, Vector2(6.0, size.y - 6.0), "grid %d m" % roundi(grid_step_m),
+	_draw_text(font, Vector2(12.0, size.y - 8.0), "grid %d m" % roundi(grid_step_m),
 			font_size - 4, Color(text_color, 0.8))
 	var cooldown: float = tank.get_spot_cooldown_remaining()
 	if cooldown > 0.0:
-		_draw_text(font, Vector2(6.0, font_size + 2.0), "SPOT %.1f s" % cooldown,
+		_draw_text(font, Vector2(12.0, font_size + 6.0), "SPOT %.1f s" % cooldown,
 				font_size - 2, cooldown_color)
 
 

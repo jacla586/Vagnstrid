@@ -82,7 +82,15 @@ func draw_map(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 				continue
 			var color: Color = mark_color
 			color.a *= spot_marks.get_alpha(mark)
-			draw_arc(p, mark_radius_px, 0.0, TAU, 24, color, 2.0, true)
+			if mark.is_tank():
+				# A tank: a diamond (one per spotted tank, SpotMarks).
+				var r: float = mark_radius_px * 1.15
+				draw_polyline(PackedVector2Array([p + Vector2(0.0, -r), p + Vector2(r, 0.0),
+						p + Vector2(0.0, r), p + Vector2(-r, 0.0), p + Vector2(0.0, -r)]),
+						color, 2.0, true)
+			else:
+				# Infantry: a ring.
+				draw_arc(p, mark_radius_px, 0.0, TAU, 24, color, 2.0, true)
 			draw_circle(p, 1.5, color)
 	var tank: Tank = get_tank()
 	if tank != null:

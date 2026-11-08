@@ -14,6 +14,8 @@ extends Node3D
 signal checkpoint_taken(index: int)
 ## A round began (1 or 2); the attackers are `attack_team`.
 signal round_started(round_number: int, attack_team: int)
+## The map was cleared for the next round (wrecks, mines, smoke gone; trees stand).
+signal map_reset
 ## A round ended: how far the attackers got.
 signal round_over(round_number: int, result: Dictionary)
 ## The match is over: the winning team (-1 = draw).
@@ -64,6 +66,8 @@ var _check_left: float = 0.0
 var _connected: Dictionary = {}          # tank instance id -> true
 var _results: Array[Dictionary] = []
 var _break_left: float = -1.0
+## The round already set up during the break before it (0: none).
+var _prepared: int = 0
 ## Bot directors still filling the teams: the first round waits for them.
 var _start_holds: int = 0
 var _over: bool = false
@@ -74,6 +78,8 @@ var _decided: bool = false
 var _stats: Dictionary = {}
 ## Client: the host's stats rows and per-tank state (net_id -> [waiting, respawn, outside]).
 var _net_stats: Array = []
+## Stats rows waiting for a player's new tank (carry_stats), by its instance id.
+var _carried: Dictionary = {}
 var _net_tanks: Dictionary = {}
 ## Client: seconds until the new round's map reset (the old wrecks appear late here).
 var _net_reset_left: float = -1.0
@@ -386,8 +392,6 @@ func apply_net_state(state: Dictionary) -> void:
 		for r: Variant in results:
 			_results.append(r as Dictionary)
 		_break_left = break_left
-		if _round > 1:
-			_net_reset_left = NET_RESET_DELAY_S   # the host cleared its map for the new round
 		round_started.emit(_round, _attack_team)
 		return
 	while _next_cp < next_cp:
@@ -401,6 +405,8 @@ func apply_net_state(state: Dictionary) -> void:
 	_break_left = break_left
 	if finished:
 		round_over.emit(_round, _results[_results.size() - 1])
+		if not _decided:
+			_net_reset_left = NET_RESET_DELAY_S   # the host cleared its map for the next round
 	var over: bool = state.get("over", false)
 	if over and not _over:
 		_over = true
@@ -489,9 +495,26 @@ func _physics_process(delta: float) -> void:
 		_end_round()
 
 
+## Starts round `number`: sets it up (unless the break before it already did) and lets
+## the tanks go.
 func _start_round(number: int) -> void:
+	if _prepared != number:
+		_setup_round(number)
+	_prepared = 0
 	_break_left = -1.0
 	_round = number
+	for tank: Tank in _team_tanks(0) + _team_tanks(1):
+		tank.move_blocked = false
+		if tank.is_knocked_out():   # abandoned during the countdown
+			_place(tank, _attacker_spawn(tank) if tank.team == _attack_team else _defender_spawn(tank))
+	round_started.emit(number, _attack_team)
+
+
+## Round `number`'s state, the tanks at their sides' starts (repaired) and, after round
+## 1, a fresh map. Between the rounds this runs as the break starts, so the countdown
+## is spent at the new start, standing still (Tank.move_blocked).
+func _setup_round(number: int) -> void:
+	_prepared = number
 	_attack_team = 0 if number == 1 else 1
 	_next_cp = 0
 	_front_s = data.start_front_m
@@ -510,7 +533,6 @@ func _start_round(number: int) -> void:
 		_place(tank, _defender_spawn(tank, data.defender_start_checkpoints))
 	if number > 1:
 		_reset_map()   # after the tanks left their wrecks
-	round_started.emit(number, _attack_team)
 
 
 ## A fresh map for the next round: wrecks (thrown turrets too), mines and smoke go,
@@ -529,6 +551,7 @@ func _reset_map() -> void:
 			fields.append(node)
 	for field: TreeField in fields:   # restoring frees falling trees: not while listing
 		field.restore_all()
+	map_reset.emit()
 
 
 func _end_round() -> void:
@@ -546,6 +569,12 @@ func _end_round() -> void:
 		tank.fire_blocked = true
 	round_over.emit(_round, result)
 	_break_left = data.round_break_s
+	if not _decided:
+		# Sides swap now: everyone to the next round's start, locked for the countdown.
+		_setup_round(_round + 1)
+		for tank: Tank in _team_tanks(0) + _team_tanks(1):
+			tank.move_blocked = true
+			tank.fire_blocked = true
 
 
 func _end_match() -> void:
@@ -700,7 +729,7 @@ func _check_corridors(dt: float) -> void:
 func _mark_for_enemies(tank: Tank) -> void:
 	for other: Tank in _team_tanks(1 - tank.team):
 		if not other.is_knocked_out():
-			other.spotted.emit(tank.global_position)
+			other.spotted.emit(tank, tank.global_position)
 			return
 
 
@@ -783,7 +812,9 @@ func _connect_new_tanks() -> void:
 		if tank == null or _connected.has(tank.get_instance_id()):
 			continue
 		_connected[tank.get_instance_id()] = true
-		_stats[tank.get_instance_id()] = [tank.get_display_label(), tank.team, 0, 0]
+		_stats[tank.get_instance_id()] = _carried.get(tank.get_instance_id(),
+				[tank.get_display_label(), tank.team, 0, 0])
+		_carried.erase(tank.get_instance_id())
 		tank.knocked_out.connect(_on_knocked_out.bind(tank))
 		tank.shot_landed.connect(_on_shot_landed.bind(tank))
 		# A tank added mid-round (a bot filling a team) waits for its side's respawn.
@@ -792,6 +823,23 @@ func _connect_new_tanks() -> void:
 				_place(tank, _attacker_spawn(tank))
 			else:
 				_place(tank, _defender_spawn(tank))
+
+
+## A player left a live tank for another type mid-fight (TankSwitch): a loss, like
+## abandoning it; nobody scores.
+func count_loss(tank: Tank) -> void:
+	var row: Array = _stats.get(tank.get_instance_id(), [])
+	if not row.is_empty():
+		row[3] = int(row[3]) + 1
+
+
+## A player's new tank (other type or team, TankSwitch / NetGame) keeps their stats.
+## Call before the new tank's first physics frame.
+func carry_stats(from: Tank, to: Tank) -> void:
+	var id: int = from.get_instance_id()
+	if _stats.has(id):
+		_carried[to.get_instance_id()] = _stats[id]
+		_stats.erase(id)
 
 
 func _team_tanks(team: int) -> Array[Tank]:

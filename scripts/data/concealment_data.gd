@@ -29,6 +29,11 @@ extends Resource
 @export var fire_reveal_spot_time_factor: float = 0.35
 ## ...and cover around the tank counts only this share.
 @export_range(0.0, 1.0) var fire_reveal_cover_share: float = 0.3
+## Machine-gun fire (coaxial or roof) gives the tank away less: for this long (s),
+## fading, spotting takes this share of the time and cover counts this share.
+@export var mg_reveal_s: float = 4.0
+@export var mg_reveal_spot_time_factor: float = 0.75
+@export_range(0.0, 1.0) var mg_reveal_cover_share: float = 0.75
 ## Full-load exhaust smoke (driving hard) rises over cover: spotting takes this share of
 ## the time and cover counts this share (idle smoke ~no effect).
 @export var exhaust_spot_time_factor: float = 0.8

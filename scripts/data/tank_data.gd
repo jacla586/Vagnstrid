@@ -107,6 +107,11 @@ extends Resource
 @export var commander_wound_time_s: float = 90.0
 ## Time between two spots by the commander (s).
 @export var spot_cooldown_s: float = 5.0
+## A spot picks the enemy (tank, or a squad's soldier) nearest the marked point within
+## this angle seen from the tank, at least spot_snap_min_m; it must be in sight of the
+## commander or the own squad's leader. Nothing near: nothing is marked.
+@export var spot_snap_deg: float = 2.0
+@export var spot_snap_min_m: float = 6.0
 
 @export_group("Armour")
 @export var armour: ArmourData

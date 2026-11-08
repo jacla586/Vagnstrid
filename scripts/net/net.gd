@@ -284,6 +284,12 @@ func rpc_hit_record(data: Array) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 2)
+func rpc_mine_hit() -> void:
+	if game != null:
+		game.on_mine_hit()
+
+
+@rpc("authority", "call_remote", "reliable", 2)
 func rpc_struck(outcome: int, direction: Vector3) -> void:
 	if game != null:
 		game.on_struck(outcome, direction)
@@ -315,15 +321,56 @@ func rpc_wreck(spec: String, at: Transform3D, turret_yaw: float, gun_pitch: floa
 
 
 @rpc("authority", "call_remote", "reliable", 2)
-func rpc_team_spot(point: Vector3) -> void:
+func rpc_team_spot(key: int, point: Vector3) -> void:
 	if game != null:
-		game.on_team_spot(point)
+		game.on_team_spot(key, point)
 
 
 @rpc("authority", "call_remote", "reliable", 2)
 func rpc_tree_felled(field: NodePath, index: int, direction: Vector3) -> void:
 	if game != null:
 		game.on_tree_felled(field, index, direction)
+
+
+## Client -> host: switch team (0: a bot's or a free place, else ask that player).
+@rpc("any_peer", "call_remote", "reliable", 2)
+func rpc_team_switch(with_peer: int) -> void:
+	if NetRole.is_host() and game != null:
+		game.on_team_switch(multiplayer.get_remote_sender_id(), with_peer)
+
+
+## Client -> host: the answer to `from_peer`'s team swap request.
+@rpc("any_peer", "call_remote", "reliable", 2)
+func rpc_swap_answer(from_peer: int, accept: bool) -> void:
+	if NetRole.is_host() and game != null:
+		game.on_swap_answer(multiplayer.get_remote_sender_id(), from_peer, accept)
+
+
+## Client -> host: the player picked another tank (TankConfig key).
+@rpc("any_peer", "call_remote", "reliable", 2)
+func rpc_change_tank(config_key: String, tank_name: String) -> void:
+	if NetRole.is_host() and game != null:
+		game.on_change_tank(multiplayer.get_remote_sender_id(), config_key, tank_name)
+
+
+## Host -> client: players of the other team to ask for a swap: [[peer, name], ...].
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_team_choices(choices: Array) -> void:
+	if game != null:
+		game.on_team_choices(choices)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_swap_offer(from_peer: int, from_name: String) -> void:
+	if game != null:
+		game.on_swap_offer(from_peer, from_name)
+
+
+## Host -> client: a short line on screen (MatchNotice).
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_notice(text: String, seconds: float) -> void:
+	if game != null:
+		game.on_notice(text, seconds)
 
 
 ## Client -> host: a one-shot tank action (RemoteController.ACTION_*: smoke, abandon).

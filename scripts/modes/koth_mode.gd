@@ -67,6 +67,8 @@ var _connected: Dictionary = {}  # tank instance id -> true (shot_landed connect
 ## the host's list (as an Array) in the net state.
 var _stats: Dictionary = {}
 var _net_stats: Array = []
+## Stats rows waiting for a player's new tank (carry_stats), by its instance id.
+var _carried: Dictionary = {}
 var _zone_tanks: Dictionary = {}  # team -> Array of tanks in the zone at the last count
 ## 0-based number of the open zone, or of the last closed one during a gap.
 var _zone_index: int = 0
@@ -722,6 +724,23 @@ func get_stats() -> Array:
 	return out
 
 
+## A player left a live tank for another type mid-fight (TankSwitch): a loss, like
+## abandoning it; nobody scores.
+func count_loss(tank: Tank) -> void:
+	var row: Array = _stats.get(tank.get_instance_id(), [])
+	if not row.is_empty():
+		row[3] = int(row[3]) + 1
+
+
+## A player's new tank (other type or team, TankSwitch / NetGame) keeps their stats.
+## Call before the new tank's first physics frame.
+func carry_stats(from: Tank, to: Tank) -> void:
+	var id: int = from.get_instance_id()
+	if _stats.has(id):
+		_carried[to.get_instance_id()] = _stats[id]
+		_stats.erase(id)
+
+
 func _stat_add(tank: Tank, field: int, amount: float) -> void:
 	var row: Array = _stats.get(tank.get_instance_id(), [])
 	if not row.is_empty():
@@ -736,7 +755,9 @@ func _connect_new_tanks() -> void:
 			continue
 		_connected[tank.get_instance_id()] = true
 		tank.shot_landed.connect(_on_shot_landed.bind(tank))
-		_stats[tank.get_instance_id()] = [tank.get_display_label(), tank.team, 0, 0, 0.0]
+		_stats[tank.get_instance_id()] = _carried.get(tank.get_instance_id(),
+				[tank.get_display_label(), tank.team, 0, 0, 0.0])
+		_carried.erase(tank.get_instance_id())
 		tank.knocked_out.connect(func() -> void:
 			if not _over:
 				_stat_add(tank, 3, 1))

@@ -7,6 +7,9 @@
 
 [node name="VidingsjoKoth" unique_id=574312908 instance=ExtResource("1_base")]
 
+[node name="Objects" parent="." index="3" unique_id=1714118398]
+visible = false
+
 [node name="KothZone" type="Node3D" parent="." index="9" unique_id=1146002731]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1180, 70, 1450)
 script = ExtResource("2_koth")

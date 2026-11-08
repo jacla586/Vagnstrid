@@ -167,6 +167,9 @@ var _last_known: Dictionary = {}
 
 func _ready() -> void:
 	_rng.randomize()
+	if bot_data != null and unstick_after_s <= 0.0:
+		unstick_after_s = bot_data.unstick_after_s
+		unstick_reverse_s = bot_data.unstick_reverse_s
 	if bot_data != null:
 		# Bots look round at different ticks: all at once makes one very slow frame.
 		_scan_timer = _rng.randf() * bot_data.scan_interval_s
@@ -399,6 +402,11 @@ func _physics_process(delta: float) -> void:
 	_command.fire_mg = false
 	_command.mg_use_roof = false
 	_command.has_aim = false
+	if tank.move_blocked:
+		# Locked by the game mode (a countdown): stand and wait; no stuck or abandon checks.
+		_update_hatch(delta)
+		tank.set_command(_command)
+		return
 	_alert_timer = maxf(_alert_timer - delta, 0.0)
 	if _target != null or _alert_timer > 0.0 or _hit_close_timer > 0.0:
 		_since_contact = 0.0
@@ -447,7 +455,8 @@ func _physics_process(delta: float) -> void:
 	tank.set_command(_command)
 
 
-## Trying to drive (orders, no target, nothing broken) but getting nowhere for
+## Trying to drive (orders, nothing broken; a target in sight too, when not halting to
+## fire) but getting nowhere for
 ## BotData.abandon_stuck_s: hung on a rock or wedged in, so the crew abandons the tank.
 func _update_abandon(delta: float, repairing: bool) -> void:
 	var here: Vector3 = tank.global_position
@@ -455,7 +464,7 @@ func _update_abandon(delta: float, repairing: bool) -> void:
 		_progress_at = here
 		_no_progress_s = 0.0
 		return
-	var trying: bool = has_orders_left() and _target == null and not repairing and not _halting \
+	var trying: bool = has_orders_left() and not repairing and not _halting \
 			and _scout_wait <= 0.0 and not tank.is_immobilised() and not tank.is_burning() \
 			and absf(_command.throttle) > 0.05
 	if not trying:

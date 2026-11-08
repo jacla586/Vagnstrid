@@ -15,7 +15,25 @@ func _ready() -> void:
 	if tank == null:
 		return
 	_start = tank.global_transform
-	tank.knocked_out.connect(func() -> void: _timer = delay_s)
+	tank.knocked_out.connect(_on_knocked_out)
+
+
+## Where the tank started (and comes back outside King of the Hill).
+func get_start() -> Transform3D:
+	return _start
+
+
+## Looks after `new_tank` instead (the player changed tank type: TankSwitch); same start.
+func set_tank(new_tank: Tank) -> void:
+	if is_instance_valid(tank) and tank.knocked_out.is_connected(_on_knocked_out):
+		tank.knocked_out.disconnect(_on_knocked_out)
+	tank = new_tank
+	_timer = -1.0
+	tank.knocked_out.connect(_on_knocked_out)
+
+
+func _on_knocked_out() -> void:
+	_timer = delay_s
 
 
 func _physics_process(delta: float) -> void:

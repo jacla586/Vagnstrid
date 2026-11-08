@@ -30,8 +30,8 @@ extends RigidBody3D
 ## Machine guns: the command's fire_mg fires the roof MG (aimed at mg_aim_point; only
 ## with the hatch fully open and the commander unhurt) or the coaxial MG (aims with
 ## the gun). Bullets are Shells like the main gun's, with the MG data's spread.
-## Spotting: the command's spot marks spot_point (emits `spotted`), then waits the
-## data's spot cooldown.
+## Spotting: the command's spot picks the enemy nearest spot_point that is in sight
+## (find_spotted; emits `spotted`), then waits the data's spot cooldown (also on a miss).
 ## Smoke: the command's smoke fires a salvo (TankData.smoke_*: a screen ahead of the
 ## turret), smoke_salvos per life, smoke_cooldown_s apart. Abandon: the crew bails out (stuck for good): the tank
 ## counts as knocked out (no one scores it) and respawns like one.
@@ -63,20 +63,27 @@ signal shell_threat(direction: Vector3, hit: bool)
 signal module_changed(id: StringName, state: int)
 ## Emitted for every machine-gun bullet fired.
 signal mg_fired(bullet: Shell, roof: bool)
-## Emitted when the commander spots: `point` is the world position he marked. Also
-## for marks the tank's infantry squad makes (report_squad_spot).
-signal spotted(point: Vector3)
+## Emitted when the commander spots an enemy: `target` is the Tank or Squad, `point`
+## where it was (one map mark per target, SpotMarks). Also for the tank's infantry
+## squad's sightings (report_squad_spot) and game-mode marks.
+signal spotted(target: Node3D, point: Vector3)
 ## Emitted when the tank's squad spots an enemy (a Tank or a Squad) at `at`.
 signal squad_contact(enemy: Node3D, at: Vector3)
 ## A gun round passed or landed within NEAR_MISS_M without hitting (the crew shouts).
 ## Host/offline from the shell, network clients for their own tank (net_near_miss).
 signal near_missed(direction: Vector3)
+## A track ran over a mine (host/offline; the owner's client by rpc_mine_hit). Comes
+## just before the `struck` it also gives.
+signal mine_hit
 ## A gun round struck this tank (host; the owner's client gets it by rpc_hit_record).
 signal hit_recorded(record: HitRecord)
 ## A smoke salvo went off: the clouds' ground points (the host sends them to clients).
 signal smoke_launched(points: PackedVector3Array)
 ## Host: an ammo explosion threw the turret (start velocity and spin; clients copy it).
 signal turret_tossed(velocity: Vector3, spin: Vector3)
+## Brought back by repair() (a respawn): a player who picked another tank type gets it
+## now (TankSwitch, NetGame).
+signal repaired
 
 ## Rounds of at least this calibre count as a threat to bots (shell_threat); MG and
 ## rifle bullets don't (mm).
@@ -184,6 +191,9 @@ var net_id: int = 0
 var net_puppet: bool = false
 ## Game mode rule (ThunderRoad: outside the corridor): the gun and MGs don't fire.
 var fire_blocked: bool = false
+## Game mode rule (ThunderRoad's countdown between rounds): the tracks don't drive; the
+## turret, optics and hatch still work.
+var move_blocked: bool = false
 ## The turret was thrown off by an ammo explosion (hidden here, flying as its own body).
 var _turret_tossed: bool = false
 ## Client's own tank: turret, gun, hatch and roof MG follow the local command at once.
@@ -192,6 +202,8 @@ var _net_velocity: Vector3 = Vector3.ZERO
 var _net_command: TankCommand = TankCommand.new()
 ## Time since the main gun fired: the recoil shove doesn't count as moving for repairs.
 var _since_fired: float = 999.0
+## Time since a machine gun last fired (it gives the tank away a little, Concealment).
+var _since_mg_fired: float = 999.0
 ## Slow enough for repairs, as of the last check before a shot's shove.
 var _at_rest: bool = false
 var _fire_effect: Node3D
@@ -793,6 +805,7 @@ func on_mine(track: StringName, point: Vector3, mine_data: MineData) -> void:
 	if _knocked_out or net_puppet:
 		return
 	_damage.apply_mine(track)
+	mine_hit.emit()
 	struck.emit(HitResult.Outcome.HIT, Vector3.UP)
 	apply_impulse(Vector3.UP * mass * mine_data.jolt_speed_mps, point - global_position)
 
@@ -844,6 +857,7 @@ func repair() -> void:
 	_smoke_ready_ms = 0
 	_mg_shot_timer = 0.0
 	_since_fired = 999.0
+	_since_mg_fired = 999.0
 	_at_rest = false
 	_rock = 0.0
 	_rock_slow = 0.0
@@ -859,6 +873,12 @@ func repair() -> void:
 		_turret.visible = true
 		for cs: CollisionShape3D in _turret_shapes:
 			cs.disabled = false
+	repaired.emit()
+
+
+## Seconds since this tank (re)spawned.
+func get_life_seconds() -> float:
+	return _life_clock
 
 
 func _knock_out() -> void:
@@ -1013,6 +1033,7 @@ func _set_fire_effect(on: bool) -> void:
 
 func _update_damage(delta: float) -> void:
 	_since_fired += delta
+	_since_mg_fired += delta
 	_life_clock += delta
 	# The gun's recoil shoves the hull past the speed limit for a moment: repairs go on
 	# through a shot, with the verdict from just before it.
@@ -1259,7 +1280,7 @@ func get_spot_cooldown_remaining() -> float:
 ## The squad saw `enemy` at `at`: a mark for the team (like a commander's spot) and a
 ## contact for the crew (bots use it).
 func report_squad_spot(enemy: Node3D, at: Vector3) -> void:
-	spotted.emit(at)
+	spotted.emit(enemy, at)
 	squad_contact.emit(enemy, at)
 
 
@@ -1273,7 +1294,59 @@ func _update_spotting(delta: float) -> void:
 	_spot_cooldown_remaining = maxf(_spot_cooldown_remaining - delta, 0.0)
 	if _command.spot and _spot_cooldown_remaining <= 0.0:
 		_spot_cooldown_remaining = data.spot_cooldown_s
-		spotted.emit(_command.spot_point)
+		var found: Array = find_spotted(_command.spot_point)
+		if not found.is_empty():
+			spotted.emit(found[0], found[1])
+
+
+## The enemy a spot at `point` means: [Tank or Squad, its position], or [] if none is
+## near enough (TankData.spot_snap_*) and in sight of the commander or the own squad's
+## leader. Nearest first; only the closest few candidates are ray-checked.
+func find_spotted(point: Vector3) -> Array:
+	var eye: Vector3 = get_commander_eye_position()
+	var reach: float = maxf(data.spot_snap_min_m,
+			eye.distance_to(point) * tan(deg_to_rad(data.spot_snap_deg)))
+	var candidates: Array = []  # [distance, target, sight points, collider]
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var other := node as Tank
+		if other == null or not is_enemy_of(other) or other.is_knocked_out():
+			continue
+		# Measured to the hull, not its centre: a click on a long tank's end counts.
+		var d: float = maxf(other.global_position.distance_to(point) - other.data.hull_size.z * 0.5, 0.0)
+		if d <= reach:
+			var pts: Array[Vector3] = []
+			for local: Vector3 in other.get_spot_points():
+				pts.append(other.to_global(local))
+			candidates.append([d, other, pts, other])
+	for node: Node in get_tree().get_nodes_in_group("squads"):
+		var enemy := node as Squad
+		if enemy == null or enemy.get_team() == team or enemy.get_team() < 0 or not enemy.is_out():
+			continue
+		for hb: SoldierHitbox in enemy.get_hitboxes():
+			if not enemy.is_soldier_exposed(hb.index):
+				continue
+			var at: Vector3 = hb.get_aim_point()
+			var d: float = at.distance_to(point)
+			if d <= reach:
+				candidates.append([d, enemy, [at] as Array[Vector3], hb])
+	if candidates.is_empty():
+		return []
+	candidates.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	var eyes: Array[Vector3] = [eye]
+	var exclude: Array[RID] = [get_rid(), get_commander_hitbox().get_rid()]
+	if squad != null and is_instance_valid(squad) and squad.is_out():
+		eyes.append(squad.get_leader_eye())
+		for hb: SoldierHitbox in squad.get_hitboxes():
+			exclude.append(hb.get_rid())
+	var world: World3D = get_world_3d()
+	for i: int in mini(candidates.size(), 3):
+		var c: Array = candidates[i]
+		var pts: Array[Vector3] = c[2]
+		for from: Vector3 in eyes:
+			for p: Vector3 in pts:
+				if Vision.has_line_of_sight(world, from, p, c[3] as CollisionObject3D, exclude):
+					return [c[1], pts[0] if c[1] is Squad else (c[1] as Node3D).global_position]
+	return []
 
 
 ## Smoke salvos left this life.
@@ -1410,6 +1483,11 @@ func get_exhaust_load() -> float:
 	return _exhaust.get_spot_load() if _exhaust != null else 0.0
 
 
+## 1 just after an MG burst, falling to 0 over `duration_s` (muzzle flash, noise).
+func get_mg_reveal(duration_s: float) -> float:
+	return clampf(1.0 - _since_mg_fired / maxf(duration_s, 0.01), 0.0, 1.0)
+
+
 ## 1 just after a main-gun shot, falling to 0 over `duration_s` (flash, smoke, dust).
 func get_fire_reveal(duration_s: float) -> float:
 	return clampf(1.0 - _since_fired / maxf(duration_s, 0.01), 0.0, 1.0)
@@ -1479,6 +1557,11 @@ func net_set_pose(xform: Transform3D, turret_yaw: float, gun_pitch: float, hatch
 	_hatch_hinge.rotation.x = deg_to_rad(HATCH_OPEN_ANGLE_DEG) * _hatch_progress
 	_roof_mg.rotation.y = roof_yaw
 	_roof_mg_pitch.rotation.x = roof_pitch
+
+
+## Network client, own tank: it ran over a mine on the host.
+func net_mine_hit() -> void:
+	mine_hit.emit()
 
 
 ## Puppet: flags and (own tank) hp/modules/reload from the newest snapshot.
@@ -1565,6 +1648,7 @@ func _fire_bullet(mg: MachineGunData, muzzle: Marker3D, roof: bool) -> void:
 	var carry: Vector3 = _net_velocity if net_puppet else linear_velocity
 	bullet.launch(mg.bullet, muzzle.global_position,
 			direction * mg.bullet.muzzle_velocity_mps + carry, self, net_puppet)
+	_since_mg_fired = 0.0
 	mg_fired.emit(bullet, roof)
 
 
@@ -1624,7 +1708,7 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	var up: Vector3 = global_basis.y
 
 	# Longitudinal: chase the target speed, limited by acceleration / braking.
-	var throttle: float = clampf(_command.throttle, -1.0, 1.0)
+	var throttle: float = 0.0 if move_blocked else clampf(_command.throttle, -1.0, 1.0)
 	var top_speed_kmh: float = data.max_forward_speed_kmh if throttle >= 0.0 else data.max_reverse_speed_kmh
 	var target_speed: float = throttle * top_speed_kmh * KMH_TO_MS * _damage.speed_factor()
 	var speed: float = linear_velocity.dot(forward)
@@ -1648,7 +1732,7 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 			* (_rock * data.pitch_rock_lever_m + (_rock - _rock_slow) * data.pitch_rock_kick_lever_m))
 
 	# Yaw: chase the target turn rate. Positive yaw (around +Y) turns left.
-	var steering: float = clampf(_command.steering, -1.0, 1.0)
+	var steering: float = 0.0 if move_blocked else clampf(_command.steering, -1.0, 1.0)
 	var target_yaw_rate: float = -steering * deg_to_rad(data.max_turn_rate_deg) * _damage.turn_factor()
 	var yaw_rate: float = angular_velocity.dot(up)
 	var turn_limit: float = deg_to_rad(data.turn_acceleration_deg)

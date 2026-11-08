@@ -61,11 +61,13 @@ static func range_factor(cover_amount: float, data: ConcealmentData) -> float:
 	return lerpf(1.0, data.cover_range_factor, cover_amount)
 
 
-## Cover of a tank, made smaller by its own signature (just fired, heavy exhaust).
+## Cover of a tank, made smaller by its own signature (just fired the gun or an MG,
+## heavy exhaust).
 static func tank_cover(world: World3D, target: Tank, data: ConcealmentData) -> float:
 	var fired: float = target.get_fire_reveal(data.fire_reveal_s)
 	var share: float = lerpf(1.0, data.exhaust_cover_share, target.get_exhaust_load()) \
-			* lerpf(1.0, data.fire_reveal_cover_share, fired)
+			* lerpf(1.0, data.fire_reveal_cover_share, fired) \
+			* lerpf(1.0, data.mg_reveal_cover_share, target.get_mg_reveal(data.mg_reveal_s))
 	return cover(world, target, data) * share
 
 
@@ -74,5 +76,6 @@ static func tank_spot_time_factor(target: Tank, cover_amount: float,
 		data: ConcealmentData) -> float:
 	var factor: float = spot_time_factor(cover_amount, target.linear_velocity.length(), data)
 	factor *= lerpf(1.0, data.exhaust_spot_time_factor, target.get_exhaust_load())
+	factor *= lerpf(1.0, data.mg_reveal_spot_time_factor, target.get_mg_reveal(data.mg_reveal_s))
 	return factor * lerpf(1.0, data.fire_reveal_spot_time_factor,
 			target.get_fire_reveal(data.fire_reveal_s))

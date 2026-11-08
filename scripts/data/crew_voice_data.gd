@@ -3,7 +3,8 @@ extends Resource
 ## The own crew's shouts on the intercom (data/tanks/crew_voice_sv.tres), played to the
 ## player with the squad's radio (SquadRadio) and shown as a subtitle: a gun round
 ## hits the tank, or lands or passes close (Tank.struck / Tank.near_missed), or a crew
-## member is wounded (Tank.module_changed for driver/gunner, Tank.commander_wounded).
+## member is wounded (Tank.module_changed for driver/gunner, Tank.commander_wounded),
+## or a track runs over a mine (Tank.mine_hit; said instead of "Vi är träffade!").
 
 @export var hit: AudioStream
 @export var hit_text: String = "Vi är träffade!"
@@ -15,6 +16,8 @@ extends Resource
 @export var gunner_hit_text: String = "Skytten träffad!"
 @export var commander_hit: AudioStream
 @export var commander_hit_text: String = "Vagnchef träffad!"
+@export var mine: AudioStream
+@export var mine_text: String = "Mina! Bandet utslaget!"
 @export var volume_db: float = 2.0
 ## The same call isn't repeated within this long (s).
 @export var repeat_cooldown_s: float = 4.0

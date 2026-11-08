@@ -63,6 +63,11 @@ extends Resource
 ## crew abandons the tank (hung on a rock) and it respawns, like a player can.
 @export var abandon_stuck_m: float = 8.0
 @export var abandon_stuck_s: float = 60.0
+## Driving with throttle but covering less than 0.5 m/s over this long (s) counts as
+## stuck: the bot reverses unstick_reverse_s (s), then plans round the spot. Used when
+## the controller's own unstick_after_s is 0 (the KotH scenarios' bots).
+@export var unstick_after_s: float = 3.0
+@export var unstick_reverse_s: float = 2.5
 
 @export_group("Machine gun")
 ## Fires MGs at an exposed commander within this range (m).

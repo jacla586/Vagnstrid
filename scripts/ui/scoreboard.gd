@@ -2,7 +2,8 @@ class_name Scoreboard
 extends Control
 ## Scoreboard for King of the Hill (knock-outs, losses, points) and ThunderRoad (the
 ## rounds so far with who won them, knock-outs, losses). Shown while the scoreboard
-## key (Tab) is held, and for good when the match ends: then with the result, the
+## key (Tab) is held, during ThunderRoad's break between rounds, and for good when the
+## match ends: then with the result, the
 ## mouse freed and buttons to play again (offline) or go back to the menu. Hidden when
 ## the scene has neither mode.
 
@@ -24,10 +25,10 @@ var _was_over: bool = false
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # full size: centred table
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(center)
 	_panel = PanelContainer.new()
@@ -68,7 +69,8 @@ func _process(delta: float) -> void:
 		visible = false
 		return
 	var over: bool = koth.is_over() if koth != null else thunder.is_over()
-	var show: bool = over or Input.is_action_pressed("scoreboard")
+	var in_break: bool = thunder != null and thunder.is_in_break()
+	var show: bool = over or in_break or Input.is_action_pressed("scoreboard")
 	if over and not _was_over:
 		_was_over = true
 		_buttons.visible = true

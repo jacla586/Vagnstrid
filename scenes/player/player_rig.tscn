@@ -30,6 +30,7 @@
 [ext_resource type="Script" path="res://scripts/control/hit_reaction.gd" id="31_hit_reaction"]
 [ext_resource type="Resource" path="res://data/sounds/ping.tres" id="32_ping"]
 [ext_resource type="Script" path="res://scripts/ui/esc_menu.gd" id="33_esc_menu"]
+[ext_resource type="Script" path="res://scripts/ui/match_notice.gd" id="91_match_notice"]
 [ext_resource type="Script" path="res://scripts/ui/fire_haze.gd" id="34_fire_haze"]
 [ext_resource type="Script" path="res://scripts/world/weather_view.gd" id="35_weather_view"]
 [ext_resource type="Script" path="res://scripts/world/rain_field.gd" id="36_rain_field"]
@@ -239,6 +240,9 @@ spot_marks = NodePath("../../SpotMarks")
 big_map = NodePath("../BigMap")
 grid_step_m = 100.0
 font_size = 20
+
+[node name="MatchNotice" type="Label" parent="HUD"]
+script = ExtResource("91_match_notice")
 
 [node name="EscMenu" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
 layout_mode = 3

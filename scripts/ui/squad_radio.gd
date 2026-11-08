@@ -52,12 +52,15 @@ func _process(delta: float) -> void:
 				_tank.module_changed.disconnect(_on_module_changed)
 			if _tank.commander_wounded.is_connected(_on_commander_wounded):
 				_tank.commander_wounded.disconnect(_on_commander_wounded)
+			if _tank.mine_hit.is_connected(_on_mine_hit):
+				_tank.mine_hit.disconnect(_on_mine_hit)
 		_tank = tank
 		if _tank != null:
 			_tank.struck.connect(_on_struck)
 			_tank.near_missed.connect(_on_near_miss)
 			_tank.module_changed.connect(_on_module_changed)
 			_tank.commander_wounded.connect(_on_commander_wounded)
+			_tank.mine_hit.connect(_on_mine_hit)
 	var squad: Squad = tank.squad if tank != null and is_instance_valid(tank.squad) else null
 	if squad != _squad:
 		if _squad != null and is_instance_valid(_squad) and _squad.radio.is_connected(_on_radio):
@@ -152,6 +155,15 @@ func _on_struck(_outcome: int, _direction: Vector3) -> void:
 	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
 	if v != null:
 		_crew_call("hit", v.hit, v.hit_text, v)
+
+
+## A mine: its own call, and the "hit" call the struck right after would give is held back.
+func _on_mine_hit() -> void:
+	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
+	if v == null or v.mine == null:
+		return
+	_crew_call("mine", v.mine, v.mine_text, v)
+	_last["crew/hit"] = _time
 
 
 func _on_near_miss(_direction: Vector3) -> void:
