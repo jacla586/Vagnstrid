@@ -36,6 +36,8 @@ const SEA_LEVEL_LIMIT_M: float = 0.5
 ## Spawns put the tank's origin (mid-hull) this far above the ground, so it drops onto
 ## its suspension instead of starting inside the terrain (m).
 const SPAWN_LIFT_M: float = 1.5
+## Tanks and wrecks a ground ray may pass through before it gives up.
+const GROUND_RAY_TRIES: int = 16
 ## Steepest ground a spawn may stand on (degrees).
 const SPAWN_MAX_SLOPE_DEG: float = 15.0
 ## Slots tried at a spawn for a free, clear one: rows of SPAWN_ROW_SLOTS side by side
@@ -348,11 +350,24 @@ func _side_of(team: int) -> int:
 
 
 ## Ray straight down at (x, z): the ground hit (world layer), or empty.
+## The ground straight below/above `point`: the first hit on layer 1 that isn't a tank
+## or a wreck (those stand on the ground; counting them stacked respawns on top of the
+## wreck left there, tower after tower).
 static func ground_hit(world: World3D, point: Vector3) -> Dictionary:
 	var query := PhysicsRayQueryParameters3D.create(Vector3(point.x, 2000.0, point.z),
 			Vector3(point.x, -500.0, point.z))
 	query.collision_mask = 1
-	return world.direct_space_state.intersect_ray(query)
+	var skip: Array[RID] = []
+	for i: int in GROUND_RAY_TRIES:
+		query.exclude = skip
+		var hit: Dictionary = world.direct_space_state.intersect_ray(query)
+		if hit.is_empty():
+			return hit
+		var body := hit["collider"] as Node
+		if body == null or not (body is Tank or body.is_in_group(&"wrecks")):
+			return hit
+		skip.append(hit["rid"] as RID)
+	return {}
 
 
 # --- Zones and spawns -----------------------------------------------------------------

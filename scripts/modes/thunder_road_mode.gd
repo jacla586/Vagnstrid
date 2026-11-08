@@ -35,6 +35,8 @@ const SLOT_ROWS: int = 6
 const SLOT_ACROSS_M: Array[float] = [0.0, 14.0, -14.0, 28.0, -28.0, 42.0, -42.0]
 ## A slot is taken with a tank this close (m).
 const SLOT_CLEAR_M: float = 10.0
+## A fallback slot (none fit) keeps this far from wrecks, so a tank never lands in one (m).
+const WRECK_CLEAR_M: float = 6.0
 ## Spawns lift the tank (origin is mid-hull) so it doesn't start in the ground (m).
 const SPAWN_LIFT_M: float = 1.5
 ## Client: the new round's map reset waits this long, so wrecks the puppets leave as
@@ -762,12 +764,24 @@ func _free_slot(s: float, facing: Vector3, tank: Tank) -> Transform3D:
 				continue
 			var at: Vector3 = (hit["position"] as Vector3) + Vector3.UP * SPAWN_LIFT_M
 			var xform := Transform3D(Basis.looking_at(facing, Vector3.UP), at)
-			if not found_first:
-				first = xform
+			if not found_first and not _wreck_near(at):
+				first = xform   # nothing fit: at least not inside a wreck
 				found_first = true
 			if _slot_ok(hit, tank):
 				return xform
+	if not found_first:
+		var hit: Dictionary = KothMode.ground_hit(get_world_3d(), point_at(s, 0.0))
+		var at: Vector3 = point_at(s, 0.0) if hit.is_empty() else hit["position"]
+		first = Transform3D(Basis.looking_at(facing, Vector3.UP), at + Vector3.UP * SPAWN_LIFT_M)
 	return first
+
+
+func _wreck_near(at: Vector3) -> bool:
+	for node: Node in get_tree().get_nodes_in_group(&"wrecks"):
+		var wreck := node as Node3D
+		if wreck != null and wreck.global_position.distance_to(at) < WRECK_CLEAR_M:
+			return true
+	return false
 
 
 func _slot_ok(hit: Dictionary, tank: Tank) -> bool:
