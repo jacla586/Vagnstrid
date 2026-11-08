@@ -55,13 +55,8 @@ func describe() -> String:
 	}[outcome]
 	if outcome == Outcome.PENETRATION:
 		return head + (mods if mods != "" else " – %s %s" % [part, face])
-	var plate: String = "%d mm" % roundi(armour_mm)
-	if unworn_mm > armour_mm + 0.5:
-		plate = "%d mm (worn from %d)" % [roundi(armour_mm), roundi(unworn_mm)]
-	var zone: String = "%s %s %s @ %d°" % [part, face, plate, roundi(angle_deg)]
-	if outcome == Outcome.RICOCHET:
-		return "%s – %s%s" % [head, zone, mods]
-	return "%s – %s = %d mm vs %d mm%s" % [head, zone, roundi(effective_mm), roundi(penetration_mm), mods]
+	# Only where it struck: no thickness, angle or penetration figures for the shooter.
+	return "%s – %s %s%s" % [head, part, face, mods]
 
 
 ## HUD name of a module id.

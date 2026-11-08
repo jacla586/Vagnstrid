@@ -41,6 +41,8 @@ var _cosmetic: bool = false
 ## Enemy tanks this shell passed close to (Tank -> flight direction) and tanks it hit.
 var _near: Dictionary = {}
 var _hit_tanks: Array[Tank] = []
+## Where the shell was fired from (world), for the struck tank's killcam.
+var _origin: Vector3 = Vector3.ZERO
 
 @onready var _tracer: MeshInstance3D = $Tracer
 
@@ -56,6 +58,7 @@ func launch(data: ShellData, start_position: Vector3, velocity: Vector3,
 	if shooter != null:
 		_exclude.append(shooter.get_rid())
 	global_position = start_position
+	_origin = start_position
 	_orient()
 	reset_physics_interpolation()   # starts at the muzzle, not where it was made
 	var material := StandardMaterial3D.new()
@@ -124,6 +127,8 @@ func _on_hit(hit: Dictionary) -> void:
 	var result: HitResult = null
 	# No friendly fire: a hit on the shooter's own team does nothing (the shell stops).
 	if collider != null and collider.has_method("on_shell_hit") and not Tank.is_friendly(_shooter, collider):
+		if collider is Tank:
+			(collider as Tank).note_incoming(_origin, _shooter)
 		result = collider.on_shell_hit(_data, point, normal, _velocity, int(hit["shape"]))
 		_report(result)
 		if collider is Tank:

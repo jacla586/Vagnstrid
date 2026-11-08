@@ -16,7 +16,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	visible = views == null or not views.is_gunner_view()
+	visible = views == null or (not views.is_gunner_view() and not views.is_killcam())
 
 
 func _draw() -> void:

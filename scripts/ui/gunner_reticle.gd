@@ -34,7 +34,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	visible = views != null and views.is_gunner_view()
+	visible = views != null and views.is_gunner_view() and not views.is_killcam()
 	if visible:
 		queue_redraw()
 

@@ -164,6 +164,10 @@ func _register(tank: Tank, owner_peer: int) -> int:
 		var owner_id: int = int(owners.get(net_id, 0))
 		if owner_id > 1 and multiplayer.get_peers().has(owner_id):
 			NetSession.instance.rpc_id(owner_id, "rpc_struck", outcome, direction))
+	tank.hit_recorded.connect(func(record: HitRecord) -> void:
+		var owner_id: int = int(owners.get(net_id, 0))
+		if owner_id > 1 and multiplayer.get_peers().has(owner_id):
+			NetSession.instance.rpc_id(owner_id, "rpc_hit_record", record.to_array()))
 	tank.near_missed.connect(func(direction: Vector3) -> void:
 		var owner_id: int = int(owners.get(net_id, 0))
 		if owner_id > 1 and multiplayer.get_peers().has(owner_id):
@@ -638,6 +642,13 @@ func on_near_miss(direction: Vector3) -> void:
 	var tank: Tank = _my_rig.get_node_or_null("Tank") as Tank if _my_rig != null else null
 	if tank != null:
 		tank.net_near_miss(direction)
+
+
+## Client: the host's record of a gun round on the own tank (killcam, hit picture).
+func on_hit_record(data: Array) -> void:
+	var tank: Tank = _my_rig.get_node_or_null("Tank") as Tank if _my_rig != null else null
+	if tank != null:
+		tank.net_hit_record(HitRecord.from_array(data))
 
 
 ## Client: a gun round hit the own tank (shake, ping, driving keys cancelled).

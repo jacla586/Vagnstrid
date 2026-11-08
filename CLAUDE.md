@@ -175,6 +175,14 @@ shows on the minimap. This is what we test first.
   `KothMode.place_tank` / a puppet's respawn jump) for the whole match.
   The host lists wrecks (`Tank.wreck_left`) and sends them to late joiners (`rpc_wreck`:
   a throw-away `wreck_only` tank of the same spec makes the copy, `make_wreck_here`).
+- Killcam: the host records every gun round (>= 20 mm) on a tank as a `HitRecord`
+  (`Tank.get_hits_this_life`, signal `hit_recorded`; origin from `Shell` via
+  `Tank.note_incoming`, killed / set-fire flags; the owner's client gets them by
+  `rpc_hit_record`). On the own knock-out `Killcam` (player rig, `data/ui/killcam.tres`)
+  replays the killing round (`HitRecord.kill_of`: killing hit, else the one that lit the
+  fire, else the last penetration) with a chase camera (`PlayerViews.set_killcam` hides
+  the optics), any key skips; then `KillcamPanel` shows the hit picture (Swedish text,
+  top and side view of all hits this life) until the respawn. Abandon: none.
 - Smoke: `TankCommand.smoke` (key X; bots when too exposed, see below) fires a salvo,
   `TankData.smoke_salvos` (3) per life, `smoke_cooldown_s` (20) apart for players and bots: `smoke_clouds_per_salvo` `SmokeCloud`s
   ahead of the turret. Clients send it (and abandon) by `rpc_tank_action`; the host sends the

@@ -278,6 +278,12 @@ func rpc_shot_result(text: String, outcome: int) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 2)
+func rpc_hit_record(data: Array) -> void:
+	if game != null:
+		game.on_hit_record(data)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
 func rpc_struck(outcome: int, direction: Vector3) -> void:
 	if game != null:
 		game.on_struck(outcome, direction)

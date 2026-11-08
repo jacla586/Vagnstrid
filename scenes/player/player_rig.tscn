@@ -34,6 +34,9 @@
 [ext_resource type="Script" path="res://scripts/world/weather_view.gd" id="35_weather_view"]
 [ext_resource type="Script" path="res://scripts/world/rain_field.gd" id="36_rain_field"]
 [ext_resource type="Script" path="res://scripts/ui/rain_glass.gd" id="37_rain_glass"]
+[ext_resource type="Script" path="res://scripts/ui/killcam.gd" id="38_killcam"]
+[ext_resource type="Script" path="res://scripts/ui/killcam_panel.gd" id="39_killcam_panel"]
+[ext_resource type="Resource" path="res://data/ui/killcam.tres" id="40_killcam_data"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -189,6 +192,13 @@ squad_map = NodePath("../SquadMap")
 grid_step_m = 500.0
 font_size = 20
 
+[node name="KillcamPanel" type="Control" parent="HUD" node_paths=PackedStringArray("views", "killcam")]
+layout_mode = 3
+mouse_filter = 2
+script = ExtResource("39_killcam_panel")
+views = NodePath("../../PlayerViews")
+killcam = NodePath("../../Killcam")
+
 [node name="DamagePanel" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
 layout_mode = 3
 mouse_filter = 2
@@ -247,3 +257,9 @@ tank = NodePath("../Tank")
 
 [node name="RainField" type="GPUParticles3D" parent="."]
 script = ExtResource("36_rain_field")
+
+[node name="Killcam" type="Node" parent="." node_paths=PackedStringArray("views", "tank")]
+script = ExtResource("38_killcam")
+views = NodePath("../PlayerViews")
+tank = NodePath("../Tank")
+data = ExtResource("40_killcam_data")

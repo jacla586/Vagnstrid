@@ -15,6 +15,7 @@ enum OverlayMode { NONE, PERISCOPE, BINOCULARS, SIGHT }
 
 var _mode: ViewMode = ViewMode.COMMANDER
 var _mode_before_debug: ViewMode = ViewMode.COMMANDER
+var _killcam: bool = false
 
 
 func _ready() -> void:
@@ -93,6 +94,8 @@ func get_aim_point() -> Vector3:
 
 
 func get_overlay_mode() -> OverlayMode:
+	if _killcam:
+		return OverlayMode.NONE
 	match _mode:
 		ViewMode.GUNNER:
 			return OverlayMode.SIGHT
@@ -133,7 +136,20 @@ func _set_mode(mode: ViewMode) -> void:
 	_apply_view()
 
 
+## Killcam (Killcam) has the screen: no view camera, no optics overlays.
+func set_killcam(active: bool) -> void:
+	_killcam = active
+	if not active:
+		_apply_view()
+
+
+func is_killcam() -> bool:
+	return _killcam
+
+
 func _apply_view() -> void:
+	if _killcam:
+		return
 	commander_camera.current = _mode == ViewMode.COMMANDER
 	gunner_camera.current = _mode == ViewMode.GUNNER
 	debug_camera.current = _mode == ViewMode.DEBUG

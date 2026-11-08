@@ -71,6 +71,8 @@ signal squad_contact(enemy: Node3D, at: Vector3)
 ## A gun round passed or landed within NEAR_MISS_M without hitting (the crew shouts).
 ## Host/offline from the shell, network clients for their own tank (net_near_miss).
 signal near_missed(direction: Vector3)
+## A gun round struck this tank (host; the owner's client gets it by rpc_hit_record).
+signal hit_recorded(record: HitRecord)
 ## A smoke salvo went off: the clouds' ground points (the host sends them to clients).
 signal smoke_launched(points: PackedVector3Array)
 ## Host: an ammo explosion threw the turret (start velocity and spin; clients copy it).
@@ -198,6 +200,11 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _audio: TankAudio
 var _exhaust: TankExhaust
 var _gun_render_layer: int = 1
+## Gun rounds that struck this tank since it last (re)spawned (killcam, hit picture).
+var _hits_this_life: Array[HitRecord] = []
+var _incoming_origin: Vector3 = Vector3.ZERO
+var _incoming_shooter: Node = null
+var _life_clock: float = 0.0
 ## The infantry squad riding on this tank (null when the data has none).
 var squad: Squad
 
@@ -688,6 +695,27 @@ func on_commander_hit(_shell_data: ShellData, _point: Vector3) -> HitResult:
 	return result
 
 
+## Shell, just before on_shell_hit: where the round came from and who fired it.
+func note_incoming(origin: Vector3, shooter: Node) -> void:
+	_incoming_origin = origin
+	_incoming_shooter = shooter
+
+
+func get_hits_this_life() -> Array[HitRecord]:
+	return _hits_this_life
+
+
+## The hit the knock-out goes on (null: none to show).
+func get_kill_record() -> HitRecord:
+	return HitRecord.kill_of(_hits_this_life)
+
+
+## Network client, own tank: a gun round struck it on the host.
+func net_hit_record(record: HitRecord) -> void:
+	_hits_this_life.append(record)
+	hit_recorded.emit(record)
+
+
 ## Called by Shell when a shell hits this tank. Returns what happened.
 func on_shell_hit(shell_data: ShellData, point: Vector3, normal: Vector3,
 		velocity: Vector3, shape: int = -1) -> HitResult:
@@ -718,10 +746,45 @@ func on_shell_hit(shell_data: ShellData, point: Vector3, normal: Vector3,
 	var dir: Vector3 = velocity.normalized()
 	var hull_basis: Basis = global_basis.orthonormalized().inverse()
 	var turret_basis: Basis = _turret.global_basis.orthonormalized().inverse()
-	if _damage.apply_hit(shell_data, result, part, face, local_point, to_local(point),
-			hull_basis * dir, _turret.to_local(point), turret_basis * dir):
+	var was_burning: bool = _damage.is_burning()
+	var was_out: bool = _knocked_out
+	var killed: bool = _damage.apply_hit(shell_data, result, part, face, local_point,
+			to_local(point), hull_basis * dir, _turret.to_local(point), turret_basis * dir)
+	if shell_data.caliber_mm >= THREAT_MIN_CALIBER_MM and not was_out:
+		_record_hit(shell_data, result, point, hull_basis * dir, killed,
+				_damage.is_burning() and not was_burning)
+	if killed:
 		_knock_out()
 	return result
+
+
+func _record_hit(shell_data: ShellData, result: HitResult, point: Vector3, hull_dir: Vector3,
+		killed: bool, set_fire: bool) -> void:
+	var r := HitRecord.new()
+	r.time_s = _life_clock
+	r.outcome = result.outcome
+	r.part = result.part
+	r.face = result.face
+	r.local_point = to_local(point)
+	r.local_dir = hull_dir
+	r.armour_mm = result.armour_mm
+	r.effective_mm = result.effective_mm
+	r.penetration_mm = result.penetration_mm
+	r.angle_deg = result.angle_deg
+	r.modules = result.modules.duplicate()
+	r.shell_name = shell_data.short_name
+	r.calibre_mm = shell_data.caliber_mm
+	r.origin = _incoming_origin if _incoming_origin != Vector3.ZERO else point
+	r.impact = point
+	var shooter: Tank = _incoming_shooter as Tank if is_instance_valid(_incoming_shooter) else null
+	r.shooter_label = shooter.get_display_label() if shooter != null else ""
+	r.distance_m = r.origin.distance_to(point)
+	r.killed = killed
+	r.set_fire = set_fire
+	_incoming_origin = Vector3.ZERO
+	_incoming_shooter = null
+	_hits_this_life.append(r)
+	hit_recorded.emit(r)
 
 
 ## Host: a mine went off under track `track`: the track is thrown (the tank stands until
@@ -766,6 +829,8 @@ func repair() -> void:
 		_wreck_pending_no_turret = _turret_tossed
 	_knocked_out = false
 	_damage.reset()
+	_hits_this_life.clear()
+	_life_clock = 0.0
 	# As at the first spawn: the commander unhurt and inside, gun loaded with the first
 	# ammo, full smoke, no cooldowns; the squad full and on the tank.
 	_commander_wound_remaining = 0.0
@@ -948,6 +1013,7 @@ func _set_fire_effect(on: bool) -> void:
 
 func _update_damage(delta: float) -> void:
 	_since_fired += delta
+	_life_clock += delta
 	# The gun's recoil shoves the hull past the speed limit for a moment: repairs go on
 	# through a shot, with the verdict from just before it.
 	if _since_fired > RECOIL_SETTLE_S:

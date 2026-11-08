@@ -1,0 +1,6 @@
+[gd_resource type="Resource" script_class="KillcamData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/killcam_data.gd" id="1_killcam"]
+
+[resource]
+script = ExtResource("1_killcam")
