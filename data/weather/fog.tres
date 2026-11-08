@@ -8,6 +8,7 @@ display_name = "Fog"
 sun_elevation_deg = 30.0
 sun_azimuth_deg = 200.0
 sun_color = Color(0.9, 0.9, 0.9, 1)
+sun_shadows = false
 sun_energy = 0.35
 sun_disc_scale = 0.0
 sun_halo = 0.0

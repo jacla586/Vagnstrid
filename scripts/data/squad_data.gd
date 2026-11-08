@@ -190,7 +190,9 @@ extends Resource
 @export var contact_resume_s: float = 4.0
 ## No new smoke or withdrawal within this long of the last (s).
 @export var withdraw_cooldown_s: float = 15.0
-@export var smoke_radius_m: float = 9.0
+## Grenade smoke: smaller than a tank's salvo cloud (~65 %: TankData.smoke_radius_m/height_m).
+@export var smoke_radius_m: float = 6.5
+@export var smoke_height_m: float = 5.2
 @export var smoke_lifetime_s: float = 30.0
 
 @export_group("Losses")

@@ -13,6 +13,8 @@ extends Resource
 @export_range(0.0, 360.0) var sun_azimuth_deg: float = 200.0
 @export var sun_color: Color = Color(1.0, 0.96, 0.88)
 @export var sun_energy: float = 1.25
+## Sharp sun shadows (off under a full cloud cover).
+@export var sun_shadows: bool = true
 ## Sun disc size on the sky (1 = the light's own angular size).
 @export var sun_disc_scale: float = 2.5
 ## Glow round the sun.
@@ -65,6 +67,15 @@ extends Resource
 @export var wind_mps: Vector2 = Vector2(2.0, 0.8)
 ## 0 = dry .. 1 = heavy rain.
 @export_range(0.0, 1.0) var rain_intensity: float = 0.0
+## Rain loops (WeatherView): outside (World bus, so the shut hatch muffles it) and
+## drumming on the roof (Own bus, loudest with the hatch shut). Volumes in dB.
+@export var rain_outside: AudioStream
+@export var rain_outside_db: float = -4.0
+@export var rain_roof: AudioStream
+@export var rain_roof_db: float = -17.0
+## Wet ground: terrain texture roughness offset (-1..1; lower = shinier) and colour share.
+@export_range(-1.0, 1.0) var wet_roughness: float = 0.0
+@export_range(0.0, 1.0) var wet_darken: float = 1.0
 
 
 ## Fog density for the exponential fog: ~95 % fogged at visibility_m.

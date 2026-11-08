@@ -4,11 +4,22 @@ extends Node
 ## shader, the sun's angle, colour and energy, AgX tone mapping, SSAO, glow and fog
 ## (density from WeatherData.visibility_m, so it matches what bots can see). The map's
 ## WorldEnvironment and Sun get copies of their resources; the map files never change.
+## Rain: the rain loops (outside on World, muffled by the shut hatch; drumming on the
+## roof on Own, loudest shut) and wet terrain (Terrain3D texture assets, put back on exit).
 
 const SKY_SHADER: Shader = preload("res://assets/shaders/sky.gdshader")
 ## Cloud drift on the sky shader per m/s of wind (uv/s).
 const CLOUD_DRIFT_PER_MPS: float = 0.0012
 const APPLIED_META: StringName = &"weather_applied"
+## The roof drumming this much quieter with the hatch fully open (dB).
+const ROOF_OPEN_DB: float = -14.0
+
+@export var tank: Tank
+
+var _outside: AudioStreamPlayer
+var _roof: AudioStreamPlayer
+## Terrain texture assets made wet: [asset, roughness, albedo colour] to put back.
+var _wet: Array = []
 
 
 func _ready() -> void:
@@ -31,6 +42,60 @@ func apply() -> void:
 		world_env.set_meta(APPLIED_META, weather)
 	if sun != null:
 		_set_sun(sun, weather)
+	if weather.rain_intensity > 0.0:
+		_start_rain(weather)
+		_wet_terrain(scene, weather)
+
+
+func _process(_delta: float) -> void:
+	if _roof == null or tank == null or not is_instance_valid(tank):
+		return
+	var open: float = smoothstep(0.0, 1.0, tank.get_hatch_progress())
+	_roof.volume_db = Weather.current().rain_roof_db + ROOF_OPEN_DB * open
+
+
+func _exit_tree() -> void:
+	for entry: Array in _wet:
+		var asset: Terrain3DTextureAsset = entry[0]
+		asset.roughness = entry[1]
+		asset.albedo_color = entry[2]
+	_wet.clear()
+
+
+func _start_rain(w: WeatherData) -> void:
+	if w.rain_outside != null and _outside == null:
+		_outside = _loop_player(w.rain_outside, w.rain_outside_db, SoundFx.WORLD_BUS)
+	if w.rain_roof != null and _roof == null:
+		_roof = _loop_player(w.rain_roof, w.rain_roof_db, HatchMuffle.OWN_BUS)
+
+
+func _loop_player(stream: AudioStream, volume_db: float, bus_name: StringName) -> AudioStreamPlayer:
+	if stream is AudioStreamOggVorbis:
+		(stream as AudioStreamOggVorbis).loop = true
+	var p := AudioStreamPlayer.new()
+	p.stream = stream
+	p.volume_db = volume_db
+	p.bus = bus_name
+	add_child(p)
+	p.play()
+	return p
+
+
+## Shinier, darker ground in the rain (the assets are shared: _exit_tree puts them back).
+func _wet_terrain(scene: Node, w: WeatherData) -> void:
+	if not _wet.is_empty():
+		return
+	var terrain: Node = _find(scene, "Terrain3D")
+	var assets: Terrain3DAssets = terrain.get("assets") as Terrain3DAssets if terrain != null else null
+	if assets == null:
+		return
+	for i: int in assets.get_texture_count():
+		var asset: Terrain3DTextureAsset = assets.get_texture_asset(i)
+		if asset == null:
+			continue
+		_wet.append([asset, asset.roughness, asset.albedo_color])
+		asset.roughness = clampf(asset.roughness + w.wet_roughness, -1.0, 1.0)
+		asset.albedo_color = asset.albedo_color * Color(w.wet_darken, w.wet_darken, w.wet_darken, 1.0)
 
 
 static func _set_environment(env: Environment, w: WeatherData) -> void:
@@ -92,7 +157,7 @@ static func _set_sun(sun: DirectionalLight3D, w: WeatherData) -> void:
 	sun.global_basis = Basis.looking_at(-to_sun, up)
 	sun.light_color = w.sun_color
 	sun.light_energy = w.sun_energy
-	sun.shadow_enabled = true
+	sun.shadow_enabled = w.sun_shadows
 	sun.directional_shadow_blend_splits = true
 
 

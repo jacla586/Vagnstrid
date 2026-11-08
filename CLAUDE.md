@@ -437,6 +437,12 @@ shows on the minimap. This is what we test first.
   bots' and squads' view ranges are cut to `visibility_m` (`Weather.view_range`), spotting
   takes `spot_time_factor` longer (`Concealment.spot_time_factor`, soldiers too). Own gun
   smoke (`GunSmoke`) is on the gun's render layer, so the own gunner's sight sees through it.
+  Rain (`rain.tres`, `rain_intensity`): `RainField` (streaks round the camera, no
+  collision), `RainGlass` (drops on the optics, `rain_glass.gdshader`, under the optics
+  mask), loops from `tools/audio/make_rain.sh` (outside on World, roof drumming on Own,
+  louder with the hatch shut), wet terrain (Terrain3D texture assets, put back on exit),
+  `hearing_db` turns World/Blast down (HatchMuffle). Wind drifts clouds, exhaust and gun
+  smoke, not `SmokeCloud`s. Squad smoke grenades are 65 % of a tank's cloud.
 - Vegetation that matters for gameplay is real scenes (`tree.tscn`, `bush.tscn`),
   placed with the `Scatter` tool node, not the Terrain3D instancer (no collision).
 

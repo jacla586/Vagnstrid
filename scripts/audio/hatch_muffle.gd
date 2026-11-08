@@ -3,6 +3,7 @@ extends Node
 ## Player rig: with the own hatch closed the outside world sounds dull and distant
 ## (bus "World": low-pass and lower volume, from data/world/audio.tres); opening the
 ## hatch brings it back. The own tank's sounds move to bus "Own" and stay clear.
+## Bad weather (WeatherData.hearing_db, rain) turns World and Blast down as well.
 
 const AUDIO: AudioData = preload("res://data/world/audio.tres")
 const WORLD_BUS: StringName = &"World"
@@ -36,6 +37,9 @@ func _process(_delta: float) -> void:
 func _exit_tree() -> void:
 	if _bus >= 0:
 		_apply(1.0)
+		AudioServer.set_bus_volume_db(_bus, 0.0)   # no weather outside the match
+	if _blast_bus >= 0:
+		AudioServer.set_bus_volume_db(_blast_bus, 0.0)
 
 
 ## open: 0 = hatch closed (muffled) .. 1 = open (clear).
@@ -52,7 +56,8 @@ static func _muffle(bus: int, filter: AudioEffectLowPassFilter, cutoff_hz: float
 		# Ears hear pitch logarithmically: sweep the cutoff exponentially.
 		var ratio: float = AUDIO.open_cutoff_hz / maxf(cutoff_hz, 1.0)
 		filter.cutoff_hz = cutoff_hz * pow(ratio, open)
-	AudioServer.set_bus_volume_db(bus, lerpf(volume_db, 0.0, open))
+	# Rain drowns other sounds (Weather: hearing_db), hatch open or not.
+	AudioServer.set_bus_volume_db(bus, lerpf(volume_db, 0.0, open) + Weather.current().hearing_db)
 
 
 static func _find_filter(bus: int) -> AudioEffectLowPassFilter:

@@ -32,6 +32,8 @@
 [ext_resource type="Script" path="res://scripts/ui/esc_menu.gd" id="33_esc_menu"]
 [ext_resource type="Script" path="res://scripts/ui/fire_haze.gd" id="34_fire_haze"]
 [ext_resource type="Script" path="res://scripts/world/weather_view.gd" id="35_weather_view"]
+[ext_resource type="Script" path="res://scripts/world/rain_field.gd" id="36_rain_field"]
+[ext_resource type="Script" path="res://scripts/ui/rain_glass.gd" id="37_rain_glass"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -76,6 +78,16 @@ debug_camera = NodePath("../OrbitCamera")
 squad_camera = NodePath("../SquadCamera")
 
 [node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="RainGlass" type="ColorRect" parent="HUD" node_paths=PackedStringArray("views")]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("37_rain_glass")
+views = NodePath("../../PlayerViews")
 
 [node name="ViewOverlay" type="ColorRect" parent="HUD" node_paths=PackedStringArray("views")]
 material = SubResource("ShaderMaterial_mask")
@@ -229,5 +241,9 @@ mouse_filter = 2
 script = ExtResource("33_esc_menu")
 views = NodePath("../../PlayerViews")
 
-[node name="WeatherView" type="Node" parent="."]
+[node name="WeatherView" type="Node" parent="." node_paths=PackedStringArray("tank")]
 script = ExtResource("35_weather_view")
+tank = NodePath("../Tank")
+
+[node name="RainField" type="GPUParticles3D" parent="."]
+script = ExtResource("36_rain_field")

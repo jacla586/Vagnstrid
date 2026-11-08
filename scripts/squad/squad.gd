@@ -1446,6 +1446,7 @@ func _find_cover(threat: Vector3) -> Vector3:
 func throw_smoke(at: Vector3) -> void:
 	var cloud := SmokeCloud.new()
 	cloud.radius_m = data.smoke_radius_m
+	cloud.height_m = data.smoke_height_m
 	cloud.lifetime_s = data.smoke_lifetime_s
 	get_parent().add_child(cloud)
 	cloud.global_position = Vector3(at.x, _ground_height(at, global_position.y), at.z)

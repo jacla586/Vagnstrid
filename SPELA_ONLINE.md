@@ -33,6 +33,8 @@ Tailscale måste värden öppna UDP 24680 i routern och ge kompisen sin publika 
 - **Bots** (kryssruta vid Host) lägger till kartans botar som ett tredje lag mot alla.
 - Utslagen vagn kommer tillbaka vid lagets start efter 10 s.
 - Spotting (vänsterklick i chefsvyn) syns på minimappen för hela laget.
+- Vädret väljer värden i huvudmenyn ("Weather"). Den som ansluter får alltid värdens
+  väder, oavsett vad den själv valt.
 - **F3** visar nätverksstatistik: roll, ping, kB/s in och ut, snapshots per sekund.
 
 ## Kommandorad (för test och skript)

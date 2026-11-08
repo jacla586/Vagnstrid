@@ -8,7 +8,7 @@ extends RefCounted
 const RANDOM: String = "random"
 const DIR: String = "res://data/weather/"
 ## Menu order; "random" picks among these.
-const PRESETS: PackedStringArray = ["clear", "overcast", "dawn", "dusk", "fog"]
+const PRESETS: PackedStringArray = ["clear", "overcast", "dawn", "dusk", "fog", "rain"]
 const DEFAULT_ID: String = "clear"
 
 static var _current: WeatherData

@@ -53,7 +53,15 @@ Voices from elevenlabs.io.
 | radio/infantry_1–12.ogg | ElevenLabs | Skyttar! + Klockan ett … tolv! |
 | radio/crew_hit.ogg | ElevenLabs | Vi är träffade! |
 | radio/crew_near_miss.ogg | ElevenLabs | Närträff! |
+| radio/crew_driver_hit.ogg | ElevenLabs | Föraren träffad! |
+| radio/crew_gunner_hit.ogg | ElevenLabs | Skytten träffad! |
+| radio/crew_commander_hit.ogg | ElevenLabs | Vagnchef träffad! |
 
 Sources in `geodata/sound/` (`ElevenLabs_*.mp3`; the clock hours cut into
 `geodata/sound/klockan/`), filtered with `tools/audio/make_elevenlabs.sh`.
 `make_radio.sh` (Piper) made the earlier versions and would overwrite these.
+
+## Weather
+
+`weather/rain_outside.ogg`, `weather/rain_roof.ogg`: made from generated noise by
+`tools/audio/make_rain.sh` (ffmpeg only, no recordings): CC0.
