@@ -131,7 +131,7 @@ shows on the minimap. This is what we test first.
   `SquadData.mine*`): Q map right click (`squad_mine`) = `Squad.ORDER_MINE`: the squad walks
   there, the nearest soldier kneels `mine_lay_time_s` and lays it; one carried
   (`mines_carried`, refilled `mine_refill_s` on the tank), at most `max_mines_out` (another
-  removes the oldest). An enemy track over it (host, `Mine._track_over`) is thrown
+  removes the oldest; on a road it lies on the visible surface, `RoadSurface`: road meshes have no collision). An enemy track over it (host, `Mine._track_over`) is thrown
   (`Tank.on_mine` -> `TankDamage.apply_mine`; never a knock-out, nobody scores); own team
   drives over safely. Gun rounds of another team landing within `destroy_by_gun_m` (HE
   `destroy_by_he_m`) destroy it (`Mine.shell_landed` from `Shell._on_hit`). Visible but

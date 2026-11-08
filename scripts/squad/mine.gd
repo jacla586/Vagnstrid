@@ -38,7 +38,8 @@ var _tick: int = 0
 var _done: bool = false
 
 
-## Host: a new mine for `team` at ground point `at`, added under `parent`.
+## Host: a new mine for `team` at ground point `at`, added under `parent`. On a road it
+## lies on the visible surface (road meshes have no collision; RoadSurface).
 static func lay(parent: Node, mine_data: MineData, mine_team: int, at: Vector3) -> Mine:
 	var mine := Mine.new()
 	mine.data = mine_data
@@ -46,7 +47,7 @@ static func lay(parent: Node, mine_data: MineData, mine_team: int, at: Vector3) 
 	mine.net_id = _next_id
 	_next_id += 1
 	parent.add_child(mine)
-	mine.global_position = at
+	mine.global_position = RoadSurface.on_road(parent.get_tree(), at)
 	return mine
 
 
