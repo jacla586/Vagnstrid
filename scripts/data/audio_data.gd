@@ -9,6 +9,10 @@ extends Resource
 @export var muffled_cutoff_hz: float = 900.0
 ## ...and turned down by this much (dB).
 @export var muffled_volume_db: float = -8.0
+## Loud blasts (SoundSetData.pierces_hull: cannon shots) go to bus "Blast" instead,
+## which the closed hatch muffles only this much: they carry through the hull (Hz, dB).
+@export var blast_muffled_cutoff_hz: float = 3500.0
+@export var blast_muffled_volume_db: float = -2.0
 ## Own hatch open: the low-pass sits here (Hz, ~no effect).
 @export var open_cutoff_hz: float = 20000.0
 ## Godot dulls 3D sounds with distance (attenuation filter, default -24 dB). Weaker

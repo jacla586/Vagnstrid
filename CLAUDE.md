@@ -58,6 +58,14 @@ shows on the minimap. This is what we test first.
   takes its full time), then hp creeps back to `repair_hp_max_fraction`. The player sees own hp/modules
   (`DamagePanel`: a see-through top-down tank icon bottom left with the turret turned and
   modules green/yellow/red), never the enemy's; bots stop to repair when they have no target.
+  Crew modules (`ModuleData.crew`: `driver` front left in the hull, `gunner` in the turret) are
+  only ever wounded (never destroyed or a knock-out), heal `heal_time_s` (60) after the last
+  wound whatever the tank does, and don't count for repairs. Wounded, they answer late
+  (`CrewLag`, applied by Tank on the host, so bots too; `Tank.get_command()` is the
+  controller's command): driver `TankData.driver_wounded_lag_*` (0.5-1.5 s per change),
+  gunner `gunner_wounded_lag_*` (0.3-0.8 s, drifting) on aim, gun and coax fire; the own
+  client follows the host's turret then instead of predicting. HUD: a WOUNDED line in
+  `DamagePanel`.
 - Infantry squads (`Squad`, `scripts/squad/`; data `SquadData`, `data/squads/`,
   `TankData.squad`): one unit of 4 soldiers per tank, made by the tank and living in
   the map beside it. Orders only via `TankCommand.squad_order`/`squad_target`
@@ -176,7 +184,8 @@ shows on the minimap. This is what we test first.
   `Tank.repair()` (respawn) puts everything back as at the first spawn, squad included
   (`Squad.restore_on_tank`).
 - Crew shouts: `TankData.crew_voice` (`CrewVoiceData`) "Vi är träffade!" on `Tank.struck`,
-  "Närträff!" on `Tank.near_missed` (clients by `rpc_near_miss`), played by `SquadRadio`.
+  "Närträff!" on `Tank.near_missed` (clients by `rpc_near_miss`), "Föraren/Skytten träffad!" on a
+  crew wound, "Vagnchef träffad!" on `Tank.commander_wounded`, played by `SquadRadio`.
   MG/rifle results are `HitResult.bullet`: no hit text for the shooter.
 - Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
   only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
@@ -192,6 +201,11 @@ shows on the minimap. This is what we test first.
   (layer 5: bushes, tree crowns, laser-tree crowns) around a target, and standing
   still, make it slower and shorter-ranged to spot; moving fast makes it easier.
   Bots also spot faster the more of 4 hull points (+ exposed commander) they see.
+  A tank's own signature (`Concealment.tank_cover`/`tank_spot_time_factor`, values in
+  ConcealmentData "Signature"): a main-gun shot (`Tank.get_fire_reveal`, flash plus a
+  `GunSmoke` cloud) and heavy exhaust (`TankExhaust`, `ExhaustData`, `Tank.get_exhaust_load`:
+  thin at idle, dark under load, a puff on a throttle kick) make cover count less and
+  spotting quicker. Players just see the smoke.
 - Telling teams apart (`TeamLook`, `scripts/world/team_look.gd`): seen from THIS machine's
   player (`TeamLook.viewer_team`, set by PlayerViews from the own tank), tanks and soldiers
   of the same team show UN blue (blue bands round hull and turret and a roof panel =
@@ -362,7 +376,8 @@ shows on the minimap. This is what we test first.
   `SoundFx.play_at()` plays one-shots delayed by distance / speed of sound
   (`data/world/audio.tres`). Buses (`default_bus_layout.tres`): `World` is muffled
   while the own hatch is closed (`HatchMuffle` in the player rig), the own tank uses
-  `Own`. Files in `assets/audio/` (CC0, see `CREDITS.md`; made with `tools/audio/`).
+  `Own`; cannon shots (`SoundSetData.pierces_hull`) go from World to bus `Blast`, only lightly
+  muffled (`AudioData.blast_*`). Files in `assets/audio/` (CC0, see `CREDITS.md`; made with `tools/audio/`).
   Headless runs report "leaked at exit" for any playing AudioStreamPlayer: harmless.
 - Prototype graphics: simple shapes (boxes, cylinders). Only free, correctly licensed
   assets (Kenney, Sketchfab CC with attribution). Never assets from other games.

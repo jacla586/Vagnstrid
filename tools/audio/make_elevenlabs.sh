@@ -65,7 +65,7 @@ for h in $(seq 1 12); do
   trim "$T/k.wav" "$S/klockan/klockan_$h.wav"
 done
 
-for n in under-anfall avsittning uppsittning på-plats skott-kommer träff miss pansar skyttar träffade närträff; do
+for n in under-anfall avsittning uppsittning på-plats skott-kommer träff miss pansar skyttar träffade närträff föraren-träffad skytten-träffad vagnchef-träffad; do
   trim "$S/ElevenLabs_$n.mp3" "$T/$n.wav"
 done
 ffmpeg -loglevel error -y -f lavfi -t 0.12 -i "anullsrc=r=22050:cl=mono" "$T/gap.wav"
@@ -87,4 +87,7 @@ for h in $(seq 1 12); do
 done
 intercom crew_hit "$T/träffade.wav" -13
 intercom crew_near_miss "$T/närträff.wav" -16
+intercom crew_driver_hit "$T/föraren-träffad.wav" -14
+intercom crew_gunner_hit "$T/skytten-träffad.wav" -14
+intercom crew_commander_hit "$T/vagnchef-träffad.wav" -14
 rm -rf "$T"

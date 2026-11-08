@@ -16,6 +16,9 @@ extends RefCounted
 ## damaged one slows it and makes it turn worse. A burning tank stands still. A damaged
 ## engine halves the speed, a destroyed one stops the tank; the turret ring slows the
 ## traverse (damaged / destroyed shares in TankData).
+## Crew modules (ModuleData.crew: driver, gunner) are only ever wounded, never destroyed
+## and never a knock-out; they heal on their own heal_time_s after the last wound,
+## moving or not, and don't count for repairs. Tank delays their commands (CrewLag).
 
 enum State { OK, DAMAGED, DESTROYED }
 
@@ -42,6 +45,8 @@ var _repair_started: Dictionary = {}
 ## Client puppets: repair time left and total from the host (s); total < 0 = not set.
 var _net_repair_left: float = 0.0
 var _net_repair_total: float = -1.0
+## Crew id -> time left until he gets over his wound (s).
+var _heal_left: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 
 
@@ -63,6 +68,7 @@ func reset() -> void:
 	_wear.clear()
 	_repair_needed.clear()
 	_net_repair_total = -1.0
+	_heal_left.clear()
 	for id: StringName in _modules:
 		_module_hp[id] = (_modules[id] as ModuleData).hp
 
@@ -100,7 +106,7 @@ func is_burning() -> bool:
 
 func needs_repair() -> bool:
 	for id: StringName in _modules:
-		if state(id) != State.OK:
+		if state(id) != State.OK and not (_modules[id] as ModuleData).crew:
 			return true
 	return hp < data.structure_hp * data.repair_hp_max_fraction - 0.01
 
@@ -112,7 +118,7 @@ func repair_total() -> float:
 		return _net_repair_total
 	var total: float = 0.0
 	for id: StringName in _modules:
-		if state(id) != State.OK:
+		if state(id) != State.OK and not (_modules[id] as ModuleData).crew:
 			total = maxf(total, _repair_done_at(id))
 	return total if total > 0.0 else data.repair_time_s
 
@@ -147,6 +153,16 @@ func is_immobilised() -> bool:
 
 
 # --- Effects read by Tank -------------------------------------------------------
+
+## A crew member (driver, gunner) is wounded.
+func is_wounded(id: StringName) -> bool:
+	return _modules.has(id) and (_modules[id] as ModuleData).crew and state(id) != State.OK
+
+
+## Seconds until a wounded crew member is fit again (0 when he is).
+func heal_time_left(id: StringName) -> float:
+	return float(_heal_left.get(id, 0.0)) if is_wounded(id) else 0.0
+
 
 ## Top speed share: engine (damaged = data share, destroyed = 0), fire (the crew
 ## fights it standing still), a damaged track.
@@ -286,23 +302,50 @@ func apply_fragment(id: StringName, shell: ShellData) -> void:
 
 
 func _rank(id: StringName) -> int:
-	return [&"ammo", &"fuel", &"engine", &"turret_ring", &"track_left", &"track_right"].find(id)
+	return [&"ammo", &"fuel", &"engine", &"turret_ring", &"track_left", &"track_right",
+			&"driver", &"gunner"].find(id)
 
 
 func _damage_module(id: StringName, amount: float) -> void:
 	if amount <= 0.0:
 		return
+	var m: ModuleData = _modules[id]
+	if m.crew:
+		_wound(id)
+		return
 	var before: State = state(id)
 	_module_hp[id] = maxf(float(_module_hp[id]) - amount, 0.0)
 	var after: State = state(id)
 	if after != before:
-		var m: ModuleData = _modules[id]
 		var needed: float = data.repair_time_s
 		if after == State.DESTROYED and m.repair_time_max_s > 0.0:
 			needed = _rng.randf_range(m.repair_time_min_s, maxf(m.repair_time_max_s, m.repair_time_min_s))
 		_repair_needed[id] = maxf(float(_repair_needed.get(id, 0.0)), needed)
 		_repair_started[id] = repair_time
 		module_changed.emit(id, after)
+
+
+## Any hit on a crew member wounds him (never worse) and starts his healing over.
+func _wound(id: StringName) -> void:
+	var m: ModuleData = _modules[id]
+	var before: State = state(id)
+	_module_hp[id] = m.hp * m.damaged_below * 0.5
+	_heal_left[id] = m.heal_time_s
+	if state(id) != before:
+		module_changed.emit(id, state(id))
+
+
+## Wounded crew get better with time, whatever the tank does (also on clients, for the HUD).
+func tick_heal(delta: float) -> void:
+	for id: StringName in _heal_left.keys():
+		var left: float = float(_heal_left[id]) - delta
+		if left > 0.0:
+			_heal_left[id] = left
+			continue
+		_heal_left.erase(id)
+		if _net_repair_total < 0.0 and state(id) != State.OK:
+			_module_hp[id] = (_modules[id] as ModuleData).hp
+			module_changed.emit(id, State.OK)
 
 
 func point_in_module(id: StringName, local_point: Vector3, margin: float) -> bool:
@@ -358,6 +401,12 @@ func set_net(hp_frac: float, states: PackedInt32Array, burning: bool, repair_lef
 			State.DAMAGED: _module_hp[id] = m.hp * m.damaged_below * 0.5
 			_: _module_hp[id] = 0.0
 		if state(id) != before:
+			if m.crew:
+				# The host doesn't send heal times: count down from the wound here.
+				if state(id) != State.OK:
+					_heal_left[id] = m.heal_time_s
+				else:
+					_heal_left.erase(id)
 			module_changed.emit(id, state(id))
 
 
@@ -371,6 +420,7 @@ func set_net_burning(burning: bool) -> void:
 func tick(delta: float, still: bool) -> void:
 	if knocked_out:
 		return
+	tick_heal(delta)
 	if fire_left > 0.0:
 		fire_left = maxf(fire_left - delta, 0.0)
 		hp -= data.fire_hp_per_s * delta
@@ -384,7 +434,7 @@ func tick(delta: float, still: bool) -> void:
 	repair_time += delta
 	var all_ok: bool = true
 	for id: StringName in _modules:
-		if state(id) == State.OK:
+		if state(id) == State.OK or (_modules[id] as ModuleData).crew:
 			continue
 		if repair_time < _repair_done_at(id):
 			all_ok = false

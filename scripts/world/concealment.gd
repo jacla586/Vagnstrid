@@ -57,3 +57,20 @@ static func spot_time_factor(cover_amount: float, speed: float, data: Concealmen
 ## Share of the normal spotting range at which a target with this cover can be spotted.
 static func range_factor(cover_amount: float, data: ConcealmentData) -> float:
 	return lerpf(1.0, data.cover_range_factor, cover_amount)
+
+
+## Cover of a tank, made smaller by its own signature (just fired, heavy exhaust).
+static func tank_cover(world: World3D, target: Tank, data: ConcealmentData) -> float:
+	var fired: float = target.get_fire_reveal(data.fire_reveal_s)
+	var share: float = lerpf(1.0, data.exhaust_cover_share, target.get_exhaust_load()) \
+			* lerpf(1.0, data.fire_reveal_cover_share, fired)
+	return cover(world, target, data) * share
+
+
+## spot_time_factor for a tank: also quicker while it smokes hard or has just fired.
+static func tank_spot_time_factor(target: Tank, cover_amount: float,
+		data: ConcealmentData) -> float:
+	var factor: float = spot_time_factor(cover_amount, target.linear_velocity.length(), data)
+	factor *= lerpf(1.0, data.exhaust_spot_time_factor, target.get_exhaust_load())
+	return factor * lerpf(1.0, data.fire_reveal_spot_time_factor,
+			target.get_fire_reveal(data.fire_reveal_s))

@@ -1010,9 +1010,14 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 		time_factor = soldier.squad.soldier_spot_time_factor(soldier.index, eye, data.concealment)
 		range_factor = soldier.squad.soldier_spot_range_factor(soldier.index, data.concealment)
 	elif data.concealment != null:
-		var cover: float = Concealment.cover(get_world_3d(), target, data.concealment)
-		var speed: float = (target as Tank).linear_velocity.length() if target is Tank else 0.0
-		time_factor = Concealment.spot_time_factor(cover, speed, data.concealment)
+		var cover: float
+		if target is Tank:
+			cover = Concealment.tank_cover(get_world_3d(), target as Tank, data.concealment)
+			time_factor = Concealment.tank_spot_time_factor(target as Tank, cover,
+					data.concealment)
+		else:
+			cover = Concealment.cover(get_world_3d(), target, data.concealment)
+			time_factor = Concealment.spot_time_factor(cover, 0.0, data.concealment)
 		range_factor = Concealment.range_factor(cover, data.concealment)
 	if target is Tank:
 		time_factor *= (target as Tank).data.camo_spot_factor

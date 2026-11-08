@@ -11,3 +11,4 @@ unit_size_m = 20.0
 max_distance_m = 1500.0
 pitch_scale = 1.6
 pitch_variance = 0.05
+pierces_hull = true

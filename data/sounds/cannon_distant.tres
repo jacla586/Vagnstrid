@@ -11,3 +11,4 @@ volume_db = 4.0
 unit_size_m = 200.0
 max_distance_m = 6000.0
 pitch_variance = 0.1
+pierces_hull = true

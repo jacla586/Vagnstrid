@@ -54,6 +54,23 @@ size = Vector3(1.4, 0.6, 0.6)
 hp = 1.0
 damaged_below = 1.0
 
+[sub_resource type="Resource" id="Module_driver"]
+script = ExtResource("2_module")
+id = &"driver"
+center = Vector3(-0.6, 0.05, -2.2)
+size = Vector3(0.7, 0.9, 0.9)
+damaged_below = 1.0
+crew = true
+
+[sub_resource type="Resource" id="Module_gunner"]
+script = ExtResource("2_module")
+id = &"gunner"
+frame = &"turret"
+center = Vector3(-0.45, -0.1, -0.2)
+size = Vector3(0.6, 0.9, 0.7)
+damaged_below = 1.0
+crew = true
+
 [resource]
 script = ExtResource("1_layout")
-modules = Array[ExtResource("2_module")]([SubResource("Module_engine"), SubResource("Module_fuel"), SubResource("Module_track_left"), SubResource("Module_track_right"), SubResource("Module_turret_ring"), SubResource("Module_ammo")])
+modules = Array[ExtResource("2_module")]([SubResource("Module_engine"), SubResource("Module_fuel"), SubResource("Module_track_left"), SubResource("Module_track_right"), SubResource("Module_turret_ring"), SubResource("Module_ammo"), SubResource("Module_driver"), SubResource("Module_gunner")])

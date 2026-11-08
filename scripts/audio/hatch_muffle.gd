@@ -12,6 +12,8 @@ const OWN_BUS: StringName = &"Own"
 
 var _bus: int = -1
 var _filter: AudioEffectLowPassFilter
+var _blast_bus: int = -1
+var _blast_filter: AudioEffectLowPassFilter
 
 
 func _ready() -> void:
@@ -20,10 +22,10 @@ func _ready() -> void:
 		push_warning("HatchMuffle: no '%s' audio bus or no tank" % WORLD_BUS)
 		set_process(false)
 		return
-	for i: int in AudioServer.get_bus_effect_count(_bus):
-		var effect: AudioEffect = AudioServer.get_bus_effect(_bus, i)
-		if effect is AudioEffectLowPassFilter:
-			_filter = effect
+	_filter = _find_filter(_bus)
+	_blast_bus = AudioServer.get_bus_index(SoundFx.BLAST_BUS)
+	if _blast_bus >= 0:
+		_blast_filter = _find_filter(_blast_bus)
 	tank.set_audio_bus(OWN_BUS)
 
 
@@ -38,8 +40,24 @@ func _exit_tree() -> void:
 
 ## open: 0 = hatch closed (muffled) .. 1 = open (clear).
 func _apply(open: float) -> void:
-	if _filter != null:
+	_muffle(_bus, _filter, AUDIO.muffled_cutoff_hz, AUDIO.muffled_volume_db, open)
+	if _blast_bus >= 0:
+		_muffle(_blast_bus, _blast_filter, AUDIO.blast_muffled_cutoff_hz,
+				AUDIO.blast_muffled_volume_db, open)
+
+
+static func _muffle(bus: int, filter: AudioEffectLowPassFilter, cutoff_hz: float,
+		volume_db: float, open: float) -> void:
+	if filter != null:
 		# Ears hear pitch logarithmically: sweep the cutoff exponentially.
-		var ratio: float = AUDIO.open_cutoff_hz / maxf(AUDIO.muffled_cutoff_hz, 1.0)
-		_filter.cutoff_hz = AUDIO.muffled_cutoff_hz * pow(ratio, open)
-	AudioServer.set_bus_volume_db(_bus, lerpf(AUDIO.muffled_volume_db, 0.0, open))
+		var ratio: float = AUDIO.open_cutoff_hz / maxf(cutoff_hz, 1.0)
+		filter.cutoff_hz = cutoff_hz * pow(ratio, open)
+	AudioServer.set_bus_volume_db(bus, lerpf(volume_db, 0.0, open))
+
+
+static func _find_filter(bus: int) -> AudioEffectLowPassFilter:
+	for i: int in AudioServer.get_bus_effect_count(bus):
+		var effect: AudioEffect = AudioServer.get_bus_effect(bus, i)
+		if effect is AudioEffectLowPassFilter:
+			return effect
+	return null

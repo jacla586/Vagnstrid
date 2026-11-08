@@ -527,9 +527,8 @@ func _look_at(other: Tank, dt: float) -> void:
 	if _within_view_range(other.global_position):
 		var conceal: ConcealmentData = bot_data.concealment
 		if conceal != null:
-			cover = Concealment.cover(tank.get_world_3d(), other, conceal)
-			time_factor = Concealment.spot_time_factor(cover, other.linear_velocity.length(),
-					conceal)
+			cover = Concealment.tank_cover(tank.get_world_3d(), other, conceal)
+			time_factor = Concealment.tank_spot_time_factor(other, cover, conceal)
 			range_factor = Concealment.range_factor(cover, conceal)
 		time_factor *= other.data.camo_spot_factor
 		for local: Vector3 in samples:

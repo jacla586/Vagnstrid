@@ -9,8 +9,9 @@
 script = ExtResource("1_script")
 streams = Array[AudioStream]([ExtResource("2_s"), ExtResource("3_s")])
 volume_db = 13.0
-unit_size_m = 80.0
+unit_size_m = 130.0
 max_distance_m = 4000.0
 distant_from_m = 900.0
 pitch_scale = 0.75
 distant = ExtResource("90_distant")
+pierces_hull = true

@@ -6,6 +6,7 @@ extends AudioStreamPlayer3D
 
 const AUDIO: AudioData = preload("res://data/world/audio.tres")
 const WORLD_BUS: StringName = &"World"
+const BLAST_BUS: StringName = &"Blast"
 
 static var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
@@ -34,11 +35,21 @@ static func play_at(context: Node, sounds: SoundSetData, at: Vector3,
 	fx.stream = stream
 	chosen.apply_to(fx, AUDIO)
 	fx.pitch_scale = chosen.random_pitch(_rng)
-	fx.bus = chosen.bus if chosen.bus != &"" else bus_name
+	fx.bus = bus_for(chosen, bus_name)
 	fx._delay = distance / maxf(AUDIO.speed_of_sound_mps, 1.0)
 	context.get_tree().root.add_child(fx)
 	fx.global_position = at
 	return fx
+
+
+## The bus a sound of `sounds` plays on when the caller asks for `bus_name`: the set's
+## own bus wins, then blasts heard from the World bus move to the Blast bus.
+static func bus_for(sounds: SoundSetData, bus_name: StringName) -> StringName:
+	if sounds.bus != &"":
+		return sounds.bus
+	if sounds.pierces_hull and bus_name == WORLD_BUS:
+		return BLAST_BUS
+	return bus_name
 
 
 func _ready() -> void:

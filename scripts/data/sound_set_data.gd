@@ -21,6 +21,9 @@ extends Resource
 ## Audio bus for one-shots of this set ("" = the caller's, usually the muffled World).
 ## "Master" is heard clearly even with the own hatch shut.
 @export var bus: StringName = &""
+## A blast loud enough to carry through a closed hull (cannon shots): heard from the
+## World bus it plays on bus "Blast", only lightly muffled (AudioData.blast_*).
+@export var pierces_hull: bool = false
 
 
 ## A random variant, or null if the set is empty.

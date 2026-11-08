@@ -138,6 +138,9 @@ var display_label: String = ""
 @export var team: int = 0
 
 var _command: TankCommand = TankCommand.new()
+## The controller's command; _command is what the crew makes of it (CrewLag when wounded).
+var _input_command: TankCommand = _command
+var _crew_lag: CrewLag = CrewLag.new()
 var _left_rays: Array[RayCast3D] = []
 var _right_rays: Array[RayCast3D] = []
 var _track_half_width: float = 1.0
@@ -193,6 +196,7 @@ var _fire_effect: Node3D
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Engine, track, gun and hatch sounds (null when the data has none).
 var _audio: TankAudio
+var _exhaust: TankExhaust
 ## The infantry squad riding on this tank (null when the data has none).
 var squad: Squad
 
@@ -274,6 +278,11 @@ func _ready() -> void:
 		_audio.name = "Audio"
 		_audio.tank = self
 		add_child(_audio)
+	if not wreck_only:
+		_exhaust = TankExhaust.new()
+		_exhaust.name = "Exhaust"
+		_exhaust.tank = self
+		add_child(_exhaust)
 
 
 ## Sizes the hull, tracks, turret and gun from the data (TankData geometry; the scene
@@ -452,6 +461,7 @@ func _align_gunner_sight() -> void:
 
 
 func set_command(command: TankCommand) -> void:
+	_input_command = command
 	_command = command
 
 
@@ -1084,6 +1094,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if _knocked_out:
 		_command = _idle_command
+	else:
+		_command = _crew_lag.apply(_input_command, delta, data, is_crew_wounded(&"driver"),
+				is_crew_wounded(&"gunner"))
 	_update_turret(delta)
 	_commander_wound_remaining = maxf(_commander_wound_remaining - delta, 0.0)
 	_update_hatch(delta)
@@ -1300,11 +1313,33 @@ func set_net_puppet(predict: bool) -> void:
 	freeze = true
 	if not predict:
 		_command = _net_command
+		_input_command = _net_command
 
 
-## The current command (the net code sends the local player's to the host).
+## The controller's command, before any wounded crew's delay (the net code sends the
+## local player's to the host).
 func get_command() -> TankCommand:
-	return _command
+	return _input_command
+
+
+## A crew member (&"driver", &"gunner") is wounded: he answers late.
+func is_crew_wounded(id: StringName) -> bool:
+	return _damage != null and _damage.is_wounded(id)
+
+
+## Seconds until a wounded crew member is fit again (0 when he is).
+func get_crew_heal_time_left(id: StringName) -> float:
+	return _damage.heal_time_left(id) if _damage != null else 0.0
+
+
+## Exhaust smoke 0 (idle) .. 1 (full load or a throttle burst): shows over cover.
+func get_exhaust_load() -> float:
+	return _exhaust.get_spot_load() if _exhaust != null else 0.0
+
+
+## 1 just after a main-gun shot, falling to 0 over `duration_s` (flash, smoke, dust).
+func get_fire_reveal(duration_s: float) -> float:
+	return clampf(1.0 - _since_fired / maxf(duration_s, 0.01), 0.0, 1.0)
 
 
 ## State for one snapshot. for_owner adds hp, modules, reload etc. (never sent to others).
@@ -1356,10 +1391,14 @@ func net_set_pose(xform: Transform3D, turret_yaw: float, gun_pitch: float, hatch
 	_net_velocity = velocity
 	if net_predict and not _knocked_out:
 		# Own tank: keep the predicted turret unless it drifted far from the host's.
-		if absf(wrapf(turret_yaw - _turret.rotation.y, -PI, PI)) > deg_to_rad(3.0):
-			_turret.rotation.y = lerp_angle(_turret.rotation.y, turret_yaw, 0.2)
-		if absf(gun_pitch - _gun_pivot.rotation.x) > deg_to_rad(3.0):
-			_gun_pivot.rotation.x = lerpf(_gun_pivot.rotation.x, gun_pitch, 0.2)
+		if is_crew_wounded(&"gunner"):
+			_turret.rotation.y = turret_yaw
+			_gun_pivot.rotation.x = gun_pitch
+		else:
+			if absf(wrapf(turret_yaw - _turret.rotation.y, -PI, PI)) > deg_to_rad(3.0):
+				_turret.rotation.y = lerp_angle(_turret.rotation.y, turret_yaw, 0.2)
+			if absf(gun_pitch - _gun_pivot.rotation.x) > deg_to_rad(3.0):
+				_gun_pivot.rotation.x = lerpf(_gun_pivot.rotation.x, gun_pitch, 0.2)
 		return
 	_turret.rotation.y = turret_yaw
 	_gun_pivot.rotation.x = gun_pitch
@@ -1410,6 +1449,7 @@ func net_show_shell(shell_index: int, from: Vector3, velocity: Vector3, flash: b
 		var fx: Node3D = MUZZLE_FLASH_SCENE.instantiate()
 		get_parent().add_child(fx)
 		fx.global_position = from
+		GunSmoke.spawn(get_parent(), from, velocity.normalized(), _gun_smoke_scale())
 		if _audio != null:
 			_audio.play_gun(from)
 	else:
@@ -1424,8 +1464,11 @@ func net_struck(outcome: int, direction: Vector3) -> void:
 
 func _puppet_process(delta: float) -> void:
 	_wreck_pending_s = maxf(_wreck_pending_s - delta, 0.0)
+	_damage.tick_heal(delta)   # the HUD's heal countdown (the host decides the state)
 	if net_predict and not _knocked_out:
-		_update_turret(delta)
+		# A wounded gunner answers late on the host: follow its turret, don't predict.
+		if not is_crew_wounded(&"gunner"):
+			_update_turret(delta)
 		_update_hatch(delta)
 		_update_roof_mg(delta)
 	_update_commander_hitbox()
@@ -1463,12 +1506,20 @@ func _fire() -> void:
 	var flash: Node3D = MUZZLE_FLASH_SCENE.instantiate()
 	get_parent().add_child(flash)
 	flash.global_position = muzzle_position
+	GunSmoke.spawn(get_parent(), muzzle_position, direction, _gun_smoke_scale())
 	if _audio != null:
 		_audio.play_gun(muzzle_position)
 	apply_impulse(-direction * data.recoil_impulse_ns, muzzle_position - global_position)
 	_reload_remaining = data.reload_time_s
 	_since_fired = 0.0
 	fired.emit(shell)
+
+
+## Gun smoke cloud size: 1 for a 75 mm gun, more for bigger ones.
+func _gun_smoke_scale() -> float:
+	var shell_data: ShellData = get_loaded_shell()
+	var calibre: float = shell_data.caliber_mm if shell_data != null else 75.0
+	return sqrt(maxf(calibre, 10.0) / 75.0)
 
 
 func _apply_suspension(state: PhysicsDirectBodyState3D, rays: Array[RayCast3D],

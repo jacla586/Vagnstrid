@@ -146,6 +146,14 @@ extends Resource
 ## A destroyed track stops the tank altogether (thrown track: no pivoting on the other
 ## one) until it is repaired.
 @export var broken_track_immobilises: bool = true
+## A wounded driver (crew module "driver") answers each throttle/steering change this
+## much later, rolled per change (s).
+@export var driver_wounded_lag_min_s: float = 0.5
+@export var driver_wounded_lag_max_s: float = 1.5
+## A wounded gunner (crew module "gunner") lays the gun and fires this much later (s; the
+## delay drifts between min and max).
+@export var gunner_wounded_lag_min_s: float = 0.3
+@export var gunner_wounded_lag_max_s: float = 0.8
 ## An ammo explosion throws the turret this high (m): min + (max - min) * u^bias with u
 ## random in 0..1, so short throws are common and long ones rare...
 @export var turret_toss_min_m: float = 3.0
@@ -219,6 +227,10 @@ extends Resource
 @export var sounds: TankSoundData
 ## The crew's shouts to the player (hit, near miss). Null = quiet crew.
 @export var crew_voice: CrewVoiceData
+
+@export_group("Looks")
+## Exhaust smoke (null = data/tanks/exhaust_default.tres).
+@export var exhaust: ExhaustData
 
 
 ## Vertical field of view through the binoculars (degrees).

@@ -48,10 +48,16 @@ func _process(delta: float) -> void:
 				_tank.struck.disconnect(_on_struck)
 			if _tank.near_missed.is_connected(_on_near_miss):
 				_tank.near_missed.disconnect(_on_near_miss)
+			if _tank.module_changed.is_connected(_on_module_changed):
+				_tank.module_changed.disconnect(_on_module_changed)
+			if _tank.commander_wounded.is_connected(_on_commander_wounded):
+				_tank.commander_wounded.disconnect(_on_commander_wounded)
 		_tank = tank
 		if _tank != null:
 			_tank.struck.connect(_on_struck)
 			_tank.near_missed.connect(_on_near_miss)
+			_tank.module_changed.connect(_on_module_changed)
+			_tank.commander_wounded.connect(_on_commander_wounded)
 	var squad: Squad = tank.squad if tank != null and is_instance_valid(tank.squad) else null
 	if squad != _squad:
 		if _squad != null and is_instance_valid(_squad) and _squad.radio.is_connected(_on_radio):
@@ -154,12 +160,33 @@ func _on_near_miss(_direction: Vector3) -> void:
 		_crew_call("near", v.near_miss, v.near_miss_text, v)
 
 
+func _on_module_changed(id: StringName, state: int) -> void:
+	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
+	if v == null or state == TankDamage.State.OK:
+		return
+	match id:
+		&"driver": _crew_call("driver", v.driver_hit, v.driver_hit_text, v, true)
+		&"gunner": _crew_call("gunner", v.gunner_hit, v.gunner_hit_text, v, true)
+
+
+func _on_commander_wounded() -> void:
+	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
+	if v != null:
+		_crew_call("commander", v.commander_hit, v.commander_hit_text, v, true)
+
+
 ## A crew shout: urgent, so it goes first; the same one not again within its cooldown.
-func _crew_call(key: String, stream: AudioStream, line: String, v: CrewVoiceData) -> void:
+## after_crew: behind the crew shouts already waiting ("Vi är träffade!" first, then who).
+func _crew_call(key: String, stream: AudioStream, line: String, v: CrewVoiceData,
+		after_crew: bool = false) -> void:
 	if _time - float(_last.get("crew/" + key, -INF)) < v.repeat_cooldown_s:
 		return
 	_last["crew/" + key] = _time
-	_queue.push_front([stream, "Besättning: " + line, v.volume_db, -1])
+	var at: int = 0
+	if after_crew:
+		while at < _queue.size() and int(_queue[at][3]) == -1:
+			at += 1
+	_queue.insert(at, [stream, "Besättning: " + line, v.volume_db, -1])
 	while _queue.size() > 3:
 		_queue.pop_back()
 

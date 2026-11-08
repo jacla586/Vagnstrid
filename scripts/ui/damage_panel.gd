@@ -3,7 +3,8 @@ extends Control
 ## Own tank's damage, bottom left above the weapon status: a see-through top-down
 ## picture of the tank (hull forward = up) with the turret turned as it is on the hull
 ## and every module in its place, coloured green OK, yellow damaged, red destroyed;
-## under it a structure bar and FIRE / REPAIRING 12 s / "stand still to repair".
+## under it a structure bar and FIRE / REPAIRING 12 s / "stand still to repair", and a
+## line for wounded crew (DRIVER WOUNDED 42 s: he answers late, heals by himself).
 ## An arrow in the middle shows where the player looks (commander's view, or the
 ## gunner's sight), like the cone on the minimap.
 ## Enemy hp is never shown. Hidden in the debug view.
@@ -39,7 +40,7 @@ func _ready() -> void:
 	offset_left = 24.0
 	offset_right = 24.0 + maxf(bar_width, icon_height_px)
 	offset_bottom = -88.0
-	offset_top = offset_bottom - (icon_height_px + 22.0 + font_size + 8.0)
+	offset_top = offset_bottom - (icon_height_px + 22.0 + (font_size + 4.0) * 2.0 + 4.0)
 
 
 func _process(delta: float) -> void:
@@ -77,11 +78,24 @@ func _draw() -> void:
 			color = Color(text_color, 0.7)
 		if tank.is_immobilised():
 			color = damaged_color
+	var y: float = bar.end.y + font_size + 4.0
 	if line != "":
-		var at := Vector2(0.0, bar.end.y + font_size + 4.0)
-		draw_string_outline(font, at, line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, 4,
-				Color(0.0, 0.0, 0.0, 0.8))
-		draw_string(font, at, line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+		_draw_line_text(font, y, line, color)
+		y += font_size + 4.0
+	if not tank.is_knocked_out():
+		var wounded: PackedStringArray = []
+		for pair: Array in [[&"driver", "DRIVER"], [&"gunner", "GUNNER"]]:
+			if tank.is_crew_wounded(pair[0]):
+				wounded.append("%s %d s" % [pair[1], ceili(tank.get_crew_heal_time_left(pair[0]))])
+		if not wounded.is_empty():
+			_draw_line_text(font, y, "WOUNDED: " + ", ".join(wounded), damaged_color)
+
+
+func _draw_line_text(font: Font, y: float, line: String, color: Color) -> void:
+	var at := Vector2(0.0, y)
+	draw_string_outline(font, at, line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, 4,
+			Color(0.0, 0.0, 0.0, 0.8))
+	draw_string(font, at, line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
 
 
 ## The tank from above: hull, tracks and hull modules fixed, turret (with its modules

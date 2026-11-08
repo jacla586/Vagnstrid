@@ -4,7 +4,14 @@
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_hit.ogg" id="2_hit"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_near_miss.ogg" id="3_near"]
 
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_driver_hit.ogg" id="4_driver"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_gunner_hit.ogg" id="5_gunner"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_commander_hit.ogg" id="6_commander"]
+
 [resource]
 script = ExtResource("1_crew")
 hit = ExtResource("2_hit")
 near_miss = ExtResource("3_near")
+driver_hit = ExtResource("4_driver")
+gunner_hit = ExtResource("5_gunner")
+commander_hit = ExtResource("6_commander")

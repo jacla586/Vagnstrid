@@ -11,8 +11,9 @@ const FLAG_MG_ROOF: int = 8
 const FLAG_WOUNDED: int = 16
 const FLAG_OWNER_DATA: int = 128
 ## Module order in the owner data (2 bits each).
+## 2 bits each in a u16: at most 8.
 const MODULES: Array[StringName] = [&"engine", &"fuel", &"track_left", &"track_right",
-		&"turret_ring", &"ammo"]
+		&"turret_ring", &"ammo", &"driver", &"gunner"]
 const ANGLE_SCALE: float = 32767.0 / PI
 const VELOCITY_SCALE: float = 100.0   # cm/s
 

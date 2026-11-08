@@ -22,3 +22,14 @@ extends Resource
 @export var fast_speed_mps: float = 4.0
 ## Moving fast multiplies the spotting time by this.
 @export var moving_fast_spot_time_factor: float = 0.7
+@export_group("Signature")
+## After a main-gun shot (flash, smoke, dust) the tank shows for this long (s), fading out.
+@export var fire_reveal_s: float = 8.0
+## Just after the shot: spotting takes this share of the time...
+@export var fire_reveal_spot_time_factor: float = 0.35
+## ...and cover around the tank counts only this share.
+@export_range(0.0, 1.0) var fire_reveal_cover_share: float = 0.3
+## Full-load exhaust smoke (driving hard) rises over cover: spotting takes this share of
+## the time and cover counts this share (idle smoke ~no effect).
+@export var exhaust_spot_time_factor: float = 0.8
+@export_range(0.0, 1.0) var exhaust_cover_share: float = 0.65
