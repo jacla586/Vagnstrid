@@ -394,6 +394,12 @@ func rpc_koth_state(state: Dictionary) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 2)
+func rpc_thunder_state(state: Dictionary) -> void:
+	if game != null:
+		game.on_thunder_state(state)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
 func rpc_koth_bonus(team: int, points: float) -> void:
 	if game != null:
 		game.on_koth_bonus(team, points)

@@ -7,7 +7,8 @@ extends Node3D
 ## shows on the other team's maps and its commander is wounded after a while. Two
 ## rounds, sides swap; more checkpoints wins (then more time left).
 ## Children: "Route" (Path3D along the road) and "Checkpoints" (Marker3Ds, projected
-## onto the route). Offline / host only for now.
+## onto the route). Runs offline and on the host; clients get its state
+## (get_net_state / apply_net_state via NetGame) and run the clocks on in between.
 
 ## The next checkpoint fell (index, 0-based).
 signal checkpoint_taken(index: int)
@@ -34,6 +35,9 @@ const SLOT_ACROSS_M: Array[float] = [0.0, 14.0, -14.0, 28.0, -28.0, 42.0, -42.0]
 const SLOT_CLEAR_M: float = 10.0
 ## Spawns lift the tank (origin is mid-hull) so it doesn't start in the ground (m).
 const SPAWN_LIFT_M: float = 1.5
+## Client: the new round's map reset waits this long, so wrecks the puppets leave as
+## they jump to the new spawns go too (s).
+const NET_RESET_DELAY_S: float = 1.5
 
 @export var data: ThunderRoadData
 
@@ -68,6 +72,11 @@ var _winner: int = -1
 var _decided: bool = false
 ## Tank instance id -> [name, team, knock-outs, losses], over the whole match.
 var _stats: Dictionary = {}
+## Client: the host's stats rows and per-tank state (net_id -> [waiting, respawn, outside]).
+var _net_stats: Array = []
+var _net_tanks: Dictionary = {}
+## Client: seconds until the new round's map reset (the old wrecks appear late here).
+var _net_reset_left: float = -1.0
 
 
 func _enter_tree() -> void:
@@ -96,6 +105,7 @@ func _ready() -> void:
 	_rng.randomize()
 	_read_route()
 	set_physics_process(not NetRole.is_client())
+	set_process(NetRole.is_client())
 
 
 # --- Route ---------------------------------------------------------------------------
@@ -226,16 +236,27 @@ func get_wave_left() -> float:
 
 
 func is_waiting_for_wave(tank: Tank) -> bool:
+	if NetRole.is_client():
+		return bool(_net_tank(tank)[0])
 	return _waiting.has(tank)
 
 
 func get_respawn_left(tank: Tank) -> float:
+	if NetRole.is_client():
+		return float(_net_tank(tank)[1])
 	return float(_def_respawn.get(tank, 0.0))
 
 
 ## Seconds `tank` has been outside its corridor (0 = inside).
 func outside_time(tank: Tank) -> float:
+	if NetRole.is_client():
+		return float(_net_tank(tank)[2])
 	return float(_outside.get(tank, 0.0))
+
+
+func _net_tank(tank: Tank) -> Array:
+	var row: Array = _net_tanks.get(tank.net_id if tank != null else -1, [])
+	return row if row.size() >= 3 else [false, 0.0, 0.0]
 
 
 func half_width(role: Role) -> float:
@@ -276,6 +297,8 @@ func is_decided() -> bool:
 
 ## Every tank's [name, team, knock-outs, losses], most knock-outs first.
 func get_stats() -> Array:
+	if NetRole.is_client():
+		return _net_stats
 	var out: Array = []
 	for id: int in _stats:
 		var tank := instance_from_id(id) as Tank
@@ -316,6 +339,107 @@ func is_inside(p: Vector3, role: Role) -> bool:
 	if at.y > half_width(role):
 		return false
 	return role != Role.DEFEND or at.x >= _front_s
+
+
+# --- Network -------------------------------------------------------------------------
+
+## Host: everything clients show (panel, maps, scoreboard).
+func get_net_state() -> Dictionary:
+	var per_tank: Dictionary = {}
+	for tank: Tank in _team_tanks(0) + _team_tanks(1):
+		if tank.net_id <= 0:
+			continue
+		var row: Array = [_waiting.has(tank), float(_def_respawn.get(tank, 0.0)),
+				float(_outside.get(tank, 0.0))]
+		if row[0] or row[1] > 0.0 or row[2] > 0.0:
+			per_tank[tank.net_id] = row
+	return {
+		"go": _started, "r": _round, "at": _attack_team, "cp": _next_cp, "f": _front_s,
+		"p": _progress, "c": _contested, "t": _time_left, "l": _lives, "w": _wave_left,
+		"b": _break_left, "res": _results, "over": _over, "win": _winner, "dec": _decided,
+		"st": get_stats(), "tk": per_tank,
+	}
+
+
+## Client: takes over the host's state, with the same signals as on the host.
+func apply_net_state(state: Dictionary) -> void:
+	_started = state.get("go", _started)
+	var round_number: int = state.get("r", _round)
+	var next_cp: int = state.get("cp", _next_cp)
+	var break_left: float = state.get("b", _break_left)
+	var results: Array = state.get("res", [])
+	_attack_team = state.get("at", _attack_team)
+	_front_s = state.get("f", _front_s)
+	_progress = state.get("p", _progress)
+	_contested = state.get("c", _contested)
+	_time_left = state.get("t", _time_left)
+	_lives = state.get("l", _lives)
+	_wave_left = state.get("w", _wave_left)
+	_decided = state.get("dec", _decided)
+	_winner = state.get("win", _winner)
+	_net_stats = (state.get("st", []) as Array).duplicate(true)
+	_net_tanks = (state.get("tk", {}) as Dictionary).duplicate(true)
+	if round_number != _round:
+		_round = round_number
+		_next_cp = next_cp
+		_results.clear()
+		for r: Variant in results:
+			_results.append(r as Dictionary)
+		_break_left = break_left
+		if _round > 1:
+			_net_reset_left = NET_RESET_DELAY_S   # the host cleared its map for the new round
+		round_started.emit(_round, _attack_team)
+		return
+	while _next_cp < next_cp:
+		checkpoint_taken.emit(_next_cp)
+		_next_cp += 1
+	_next_cp = next_cp
+	var finished: bool = results.size() > _results.size()
+	_results.clear()
+	for r: Variant in results:
+		_results.append(r as Dictionary)
+	_break_left = break_left
+	if finished:
+		round_over.emit(_round, _results[_results.size() - 1])
+	var over: bool = state.get("over", false)
+	if over and not _over:
+		_over = true
+		match_over.emit(_winner)
+
+
+## Client: the clocks run on between the host's packets.
+func _process(delta: float) -> void:
+	if _net_reset_left >= 0.0:
+		_net_reset_left -= delta
+		if _net_reset_left < 0.0:
+			_reset_map()
+	if not _started or _over:
+		return
+	if _break_left >= 0.0:
+		_break_left = maxf(_break_left - delta, 0.0)
+		return
+	_time_left = maxf(_time_left - delta, 0.0)
+	_wave_left = maxf(_wave_left - delta, 0.0)
+	for id: Variant in _net_tanks:
+		var row: Array = _net_tanks[id]
+		row[1] = maxf(float(row[1]) - delta, 0.0)
+		if float(row[2]) > 0.0:
+			row[2] = float(row[2]) + delta
+
+
+## Host (NetGame): where a tank joining now first goes: its side's spawn in a running
+## round, else the start of the road for its team (the round start places it anyway).
+func spawn_for_new(team: int, tank: Tank) -> Transform3D:
+	if _round == 0 or _over:
+		var s: float = maxf(data.start_front_m - data.attacker_spawn_back_m, 30.0)
+		if team != 0:
+			s = minf(get_checkpoint_s(mini(data.defender_start_checkpoints, _cp_s.size() - 1))
+					+ data.defender_spawn_beyond_m, get_length() - 10.0)
+			return _free_slot(s, -tangent_at(s), tank)
+		return _free_slot(s, tangent_at(s), tank)
+	if team == _attack_team:
+		return _attacker_spawn(tank)
+	return _defender_spawn(tank)
 
 
 ## ThunderRoadBots: the first round waits until release_start() (teams being filled).

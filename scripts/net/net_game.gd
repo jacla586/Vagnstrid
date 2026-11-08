@@ -11,6 +11,8 @@ extends Node
 ## and forwards events: shells and ricochets, hit results to the shooter, spots to the
 ## shooter's team, felled trees. With King of the Hill in the map, players spawn at
 ## its zone spawns and its state goes to the clients (twice a second and on changes).
+## ThunderRoad likewise: its state goes to the clients, and it alone brings tanks back
+## (waves, defender respawns); NetGame starts no respawn timers then.
 ## Client: puppets for every tank (NetPuppets), its own inside a PlayerRig with turret
 ## prediction; sends its commands (NetInput).
 
@@ -54,6 +56,8 @@ var _map: Node
 var _koth_timer: float = 0.0
 var _squad_tick: int = 0
 var _koth_hooked: KothMode
+var _thunder_timer: float = 0.0
+var _thunder_hooked: ThunderRoadMode
 
 
 func _ready() -> void:
@@ -122,11 +126,13 @@ func _take_spawns_and_clean() -> void:
 			# instead of being a third team that fights everyone at a shared spawn.
 			var koth: bool = _map.find_children("*", "", true, false).any(
 					func(n: Node) -> bool: return n is KothMode)
+			var two_sided: bool = koth or _map.find_children("*", "", true, false).any(
+					func(n: Node) -> bool: return n is ThunderRoadMode)
 			var bot_count: int = 0
 			for child: Node in enemies.get_children():
 				if child is Tank:
 					_register(child as Tank, 0)
-					(child as Tank).team = (1 - bot_count % 2) if koth else BOT_TEAM
+					(child as Tank).team = (1 - bot_count % 2) if two_sided else BOT_TEAM
 					bot_count += 1
 					# If the mode already put the tanks at their spawns, redo it for the
 					# bot's new team (otherwise the mode does it on its first frame).
@@ -199,7 +205,9 @@ func _register(tank: Tank, owner_peer: int) -> int:
 				NetSession.instance.rpc("rpc_squad_shot", net_id, kind, from, velocity)
 				NetSession.instance.count_out(32))
 	if owner_peer != 0:
-		tank.knocked_out.connect(func() -> void: _respawn_timers[net_id] = RESPAWN_DELAY_S)
+		tank.knocked_out.connect(func() -> void:
+			if ThunderRoadMode.instance == null:   # ThunderRoad brings tanks back itself
+				_respawn_timers[net_id] = RESPAWN_DELAY_S)
 	return net_id
 
 
@@ -236,6 +244,8 @@ func _spawn_player(peer: int) -> void:
 ## Where a player of `team` (re)spawns: the King of the Hill spawn for the current zone
 ## if there is one, else the map's start for the team.
 func _spawn_for(team: int, tank: Tank) -> Transform3D:
+	if ThunderRoadMode.instance != null:
+		return ThunderRoadMode.instance.spawn_for_new(team, tank)
 	var mode: KothMode = KothMode.instance
 	if mode != null and mode.has_started():
 		return mode.get_free_spawn(team, tank)
@@ -263,8 +273,9 @@ func on_client_hello(peer: int, player_name: String, config_key: String) -> void
 
 func on_client_ready(peer: int) -> void:
 	# A team filled up with bots: one leaves to make room for the player.
-	if KothBots.instance != null:
-		var bot_tank: Tank = KothBots.instance.make_room(int(teams.get(peer, 1)))
+	var director: Node = _bots_director()
+	if director != null:
+		var bot_tank: Tank = director.make_room(int(teams.get(peer, 1)))
 		if bot_tank != null:
 			remove_tank(bot_tank)
 	for net_id: int in tanks:
@@ -295,8 +306,16 @@ func on_client_left(peer: int) -> void:
 				tank.queue_free()
 			NetSession.instance.rpc("rpc_despawn_tank", net_id)
 	# Bots take the empty place again.
+	var director: Node = _bots_director()
+	if director != null:
+		director.refill.call_deferred()
+
+
+## The mode's bot director (KothBots or ThunderRoadBots: make_room, refill), or null.
+func _bots_director() -> Node:
 	if KothBots.instance != null:
-		KothBots.instance.refill.call_deferred()
+		return KothBots.instance
+	return ThunderRoadBots.instance
 
 
 ## Host: a bot tank KothBots added during the match: replicate it like the rest.
@@ -369,6 +388,7 @@ func _physics_process(delta: float) -> void:
 	if not NetRole.is_host():
 		return
 	_update_koth(delta)
+	_update_thunder(delta)
 	_send_squads()
 	for net_id: int in _respawn_timers.keys():
 		_respawn_timers[net_id] -= delta
@@ -400,6 +420,35 @@ func _update_koth(delta: float) -> void:
 	if _koth_timer <= 0.0:
 		_koth_timer = KOTH_SEND_INTERVAL_S
 		_send_koth_state(mode)
+
+
+## Host: ThunderRoad state to every client, twice a second and at once on checkpoints,
+## rounds and the end. A new round also empties the late-joiner lists of round 1.
+func _update_thunder(delta: float) -> void:
+	var mode: ThunderRoadMode = ThunderRoadMode.instance
+	if mode == null:
+		return
+	if mode != _thunder_hooked:
+		_thunder_hooked = mode
+		mode.checkpoint_taken.connect(func(_i: int) -> void: _thunder_timer = 0.0)
+		mode.round_over.connect(func(_n: int, _r: Dictionary) -> void: _thunder_timer = 0.0)
+		mode.match_over.connect(func(_w: int) -> void: _send_thunder_state(mode))
+		mode.round_started.connect(func(n: int, _t: int) -> void:
+			_thunder_timer = 0.0
+			if n > 1:
+				_felled.clear()   # the map was reset: trees stand, wrecks are gone
+				_wrecks.clear())
+	_thunder_timer -= delta
+	if _thunder_timer <= 0.0:
+		_thunder_timer = KOTH_SEND_INTERVAL_S
+		_send_thunder_state(mode)
+
+
+func _send_thunder_state(mode: ThunderRoadMode) -> void:
+	if multiplayer.get_peers().is_empty() or not mode.has_started():
+		return
+	NetSession.instance.rpc("rpc_thunder_state", mode.get_net_state())
+	NetSession.instance.count_out(220)
 
 
 func _send_koth_state(mode: KothMode) -> void:
@@ -542,6 +591,11 @@ func on_squad_shot(net_id: int, kind: int, from: Vector3, velocity: Vector3) -> 
 func on_koth_state(state: Dictionary) -> void:
 	if KothMode.instance != null:
 		KothMode.instance.apply_net_state(state)
+
+
+func on_thunder_state(state: Dictionary) -> void:
+	if ThunderRoadMode.instance != null:
+		ThunderRoadMode.instance.apply_net_state(state)
 
 
 func on_koth_bonus(team: int, points: float) -> void:

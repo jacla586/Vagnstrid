@@ -32,6 +32,10 @@ Tailscale måste värden öppna UDP 24680 i routern och ge kompisen sin publika 
 - Lag 0 startar där spelarens vagn står i kartan, lag 1 vid kartans första fiendevagn.
 - **Bots** (kryssruta vid Host) lägger till kartans botar som ett tredje lag mot alla.
 - Utslagen vagn kommer tillbaka vid lagets start efter 10 s.
+- **Lägen:** King of the Hill (`*_koth`) och ThunderRoad (`vidingsjo_thunder_*`) går att
+  spela online. Där fyller botarna båda lagen (antal per lag i menyn) och en spelare som
+  ansluter tar en bots plats. I ThunderRoad bestämmer läget när man kommer tillbaka
+  (anfallarna i vågor, försvararna efter en stund), inte de 10 sekunderna ovan.
 - Spotting (vänsterklick i chefsvyn) syns på minimappen för hela laget.
 - Vädret väljer värden i huvudmenyn ("Weather"). Den som ansluter får alltid värdens
   väder, oavsett vad den själv valt.

@@ -10,6 +10,8 @@ extends Node
 
 @export var mode: ThunderRoadMode
 
+static var instance: ThunderRoadBots
+
 ## An attacker is "at" the checkpoint inside this share of its capture radius.
 const AT_CHECKPOINT_SHARE: float = 0.8
 ## Bots leave their spawn one by one this far apart (s).
@@ -50,6 +52,15 @@ var _urgent: Dictionary = {}         # next order is urgent (respawned)
 var _back_in: Dictionary = {}        # seconds since it was ordered back into the corridor
 
 
+func _enter_tree() -> void:
+	instance = self
+
+
+func _exit_tree() -> void:
+	if instance == self:
+		instance = null
+
+
 func _ready() -> void:
 	_rng.randomize()
 	if NetRole.is_client() or mode == null:
@@ -62,6 +73,12 @@ func _ready() -> void:
 
 
 func _find_bots() -> void:
+	if NetRole.is_host():
+		# The map loads first, NetGame a frame or more later: it sorts the map's bots
+		# into teams (or removes them), and must know of every bot added here.
+		while NetSession.instance.game == null:
+			await get_tree().process_frame
+		await get_tree().process_frame   # the map's own PlayerRig (freed by NetGame) is gone
 	_remember_template()
 	_fill_teams()
 	for node: Node in get_tree().current_scene.find_children("*", "", true, false):
@@ -115,11 +132,7 @@ func _fill_teams() -> void:
 			var bot: BotController = _bot_of_team(team)
 			if bot == null:
 				break
-			var tank: Tank = bot.tank
-			bot.queue_free()
-			if tank.squad != null and is_instance_valid(tank.squad):
-				tank.squad.queue_free()
-			tank.queue_free()
+			_remove_bot(bot)
 			extra -= 1
 		for i: int in range(-extra):
 			_add_bot(team, tanks.size() + i)
@@ -152,6 +165,62 @@ func _add_bot(team: int, index: int) -> void:
 	bot.tank = tank
 	bot.waypoints = []
 	parent.add_child(bot)
+	var game: NetGame = NetSession.instance.game if NetRole.is_host() else null
+	if game != null:
+		game.add_bot_tank(tank)
+
+
+## Takes a bot and its tank (and squad) out of the match (everywhere, when hosting).
+func _remove_bot(bot: BotController) -> void:
+	var tank: Tank = bot.tank
+	_bots.erase(bot)
+	_forget(bot)
+	bot.queue_free()
+	var game: NetGame = NetSession.instance.game if NetRole.is_host() else null
+	if game != null:
+		game.remove_tank(tank)
+	else:
+		tank.leave_wreck()
+		if tank.squad != null and is_instance_valid(tank.squad):
+			tank.squad.queue_free()
+		tank.queue_free()
+
+
+## Host: a player joins `team`. If the team is full a bot leaves to make room (a
+## knocked-out one if any). Returns its tank, out of the bot lists and without its
+## controller; the caller (NetGame) removes it from the game.
+func make_room(team: int) -> Tank:
+	MatchSettings.load_settings()
+	var size: int = MatchSettings.team_size
+	if size <= 0 or _team_tanks(team).size() < size:
+		return null
+	var pick: BotController = null
+	for bot: BotController in _bots:
+		if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.team != team:
+			continue
+		pick = bot
+		if bot.tank.is_knocked_out():
+			break
+	if pick == null:
+		return null
+	var tank: Tank = pick.tank
+	_bots.erase(pick)
+	_forget(pick)
+	pick.queue_free()
+	return tank
+
+
+## Host: a player left; bots fill the teams up again.
+func refill() -> void:
+	if _template == null:
+		return
+	var before: Array[BotController] = _bots.duplicate()
+	_fill_teams()
+	for node: Node in get_tree().current_scene.find_children("*", "", true, false):
+		var bot := node as BotController
+		if bot != null and bot.tank != null and not before.has(bot) and not bot.is_queued_for_deletion():
+			_adopt(bot)
+			_urgent[bot] = true
 
 
 # --- Orders ------------------------------------------------------------------------------

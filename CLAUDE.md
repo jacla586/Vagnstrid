@@ -372,8 +372,14 @@ shows on the minimap. This is what we test first.
   checkpoint; defenders take posts beyond it in their corridor, move when the front
   moves, and send their squad to mine the road towards the attackers
   (`BotController.order_squad`). HUD `ThunderPanel`; `MapView._draw_route` draws road,
-  own corridor and checkpoints. `RespawnAtStart` leaves respawns to the mode. Offline only
-  so far (no NetGame support). Missions: `vidingsjo_thunder_red` (Haningeleden) and
+  own corridor and checkpoints. `RespawnAtStart` leaves respawns to the mode. Online: the
+  host runs it, clients get `ThunderRoadMode.get_net_state()` (`rpc_thunder_state`, 2 Hz and
+  on checkpoints/rounds/end; per-tank wave/respawn/outside by net_id, stats rows), emit the
+  same signals and run the clocks on; round 2's map reset runs on clients too (1.5 s late, so
+  puppets' wrecks go). NetGame starts no respawn timers with ThunderRoad and spawns joiners
+  by `spawn_for_new`; `ThunderRoadBots` has `make_room`/`refill` like KothBots
+  (`NetGame._bots_director`). Both bot directors wait a frame after NetGame so the map's
+  own PlayerRig isn't counted when filling teams. Missions: `vidingsjo_thunder_red` (Haningeleden) and
   `vidingsjo_thunder_orange` (Ålerydsvägen + Haningeleden), made by
   `tools/thunder_route_from_osm.py` (named OSM roads between two points -> scene; rerun
   overwrites checkpoint moves; `--join=M` across roundabouts).

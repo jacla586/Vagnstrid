@@ -163,6 +163,7 @@ func _find_bots() -> void:
 		# into teams (or removes them), and must know of every bot added here.
 		while NetSession.instance.game == null:
 			await get_tree().process_frame
+		await get_tree().process_frame   # the map's own PlayerRig (freed by NetGame) is gone
 	_remember_template()
 	_fill_teams()
 	var per_team: Dictionary = {}
