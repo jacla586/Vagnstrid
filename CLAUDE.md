@@ -427,6 +427,10 @@ shows on the minimap. This is what we test first.
   (`MapImageData`). The HUD finds it from the Terrain3D data directory name. Rerun
   after map changes. Spot marks live in `SpotMarks` (player rig), drawn by `MapView`. The own tank shows
   as a hull arrow plus a cone for where the player looks (`PlayerViews.get_view_camera`).
+- Weather (`WeatherData`, presets `data/weather/*.tres`; `Weather.current()` statics):
+  `WeatherView` in the player rig dresses the map at runtime (own sky shader
+  `assets/shaders/sky.gdshader` with clouds, sun angle/colour, AgX, SSAO, glow, fog density
+  from `visibility_m`) on copies of the map's Environment; map scenes are not edited.
 - Vegetation that matters for gameplay is real scenes (`tree.tscn`, `bush.tscn`),
   placed with the `Scatter` tool node, not the Terrain3D instancer (no collision).
 
