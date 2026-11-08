@@ -4,6 +4,9 @@ extends Node3D
 ## `lifetime_s` and thins out at the end. Blocks sight like bushes do (an area on the
 ## vision_blocker layer, so Vision and Concealment see it); shells fly through.
 
+## Every cloud is in this group (a new round clears them).
+const GROUP: StringName = &"smoke_clouds"
+
 var radius_m: float = 9.0
 var height_m: float = 7.0
 var lifetime_s: float = 30.0
@@ -20,6 +23,7 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
 func _ready() -> void:
+	add_to_group(GROUP)
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # moved in _process
 	_rng.randomize()
 	_area = Area3D.new()

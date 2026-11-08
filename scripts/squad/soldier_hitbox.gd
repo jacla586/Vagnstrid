@@ -29,7 +29,16 @@ func _ready() -> void:
 func set_size(height: float, radius: float) -> void:
 	_capsule.height = maxf(height, radius * 2.0)
 	_capsule.radius = radius
+	_shape.rotation = Vector3.ZERO
 	_shape.position = Vector3(0.0, height * 0.5, 0.0)
+
+
+## Lying down: a capsule `length` long along the ground ahead of his feet (-Z), `radius`.
+func set_lying(length: float, radius: float) -> void:
+	_capsule.height = maxf(length, radius * 2.0)
+	_capsule.radius = radius
+	_shape.rotation = Vector3(PI * 0.5, 0.0, 0.0)
+	_shape.position = Vector3(0.0, radius, -length * 0.5)
 
 
 func set_active(on: bool) -> void:
@@ -41,7 +50,7 @@ func get_team() -> int:
 
 
 func get_aim_point() -> Vector3:
-	return global_position + _shape.position
+	return to_global(_shape.position)
 
 
 func is_fragment_target_active() -> bool:

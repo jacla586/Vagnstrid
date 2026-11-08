@@ -282,6 +282,25 @@ func rpc_struck(outcome: int, direction: Vector3) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 2)
+func rpc_mine_laid(id: int, data_path: String, at: Vector3, team: int,
+		known_by: PackedInt32Array) -> void:
+	if game != null:
+		game.on_mine_laid(id, data_path, at, team, known_by)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_mine_known(id: int, team: int) -> void:
+	if game != null:
+		game.on_mine_known(id, team)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_mine_gone(id: int, exploded: bool) -> void:
+	if game != null:
+		game.on_mine_gone(id, exploded)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
 func rpc_wreck(spec: String, at: Transform3D, turret_yaw: float, gun_pitch: float) -> void:
 	if game != null:
 		game.on_wreck(spec, at, turret_yaw, gun_pitch)
@@ -304,6 +323,12 @@ func rpc_tree_felled(field: NodePath, index: int, direction: Vector3) -> void:
 func rpc_tank_action(kind: int) -> void:
 	if NetRole.is_host() and game != null:
 		game.on_tank_action(multiplayer.get_remote_sender_id(), kind)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_turret_toss(net_id: int, velocity: Vector3, spin: Vector3) -> void:
+	if game != null:
+		game.on_turret_toss(net_id, velocity, spin)
 
 
 @rpc("authority", "call_remote", "reliable", 2)

@@ -68,6 +68,23 @@ extends Resource
 @export var soldier_height_m: float = 1.8
 @export var soldier_radius_m: float = 0.3
 
+@export_group("Ambush")
+## Holding this long (s) the squad lies down in ambush (each at his covered spot)...
+@export var ambush_after_s: float = 4.0
+## ...and holds rifle fire beyond this (m) until it has fired or lost a man.
+@export var ambush_rifle_range_m: float = 100.0
+## Lying: height of the body (m), the eyes above the ground and ahead of the feet (m),
+## time to get down or up (s).
+@export var prone_height_m: float = 0.45
+@export var eye_height_prone_m: float = 0.35
+@export var prone_eye_forward_m: float = 1.5
+@export var prone_change_s: float = 1.0
+## No prone animation: this pose (from model_animations) is tipped forward this much
+## (degrees) round the feet and lifted this much (m) so the chest is above the ground.
+@export var anim_prone: StringName = &"idle"
+@export var prone_pitch_deg: float = 85.0
+@export var prone_lift_m: float = 0.12
+
 @export_group("Spotting")
 ## Sees enemy tanks and soldiers this far (m), all round while holding still...
 @export var view_range_m: float = 500.0
@@ -82,6 +99,24 @@ extends Resource
 ## Enemy soldiers are small: this many times longer to spot.
 @export var soldier_spot_factor: float = 2.5
 @export var concealment: ConcealmentData
+
+@export_group("Being spotted")
+## How these soldiers are seen by others (bots and squads; the player only by eye).
+## On top of soldier_spot_factor and cover (the viewer's ConcealmentData): the uniform...
+@export var camo_spot_factor: float = 1.3
+## ...on the move (standing still: the viewer's ConcealmentData stationary factor)...
+@export var moving_spot_factor: float = 1.0
+## ...kneeling and lying down (times longer)...
+@export var kneel_spot_factor: float = 1.5
+@export var prone_spot_factor: float = 3.0
+## ...and distance: normal up to soldier_easy_range_m, then this much longer per 100 m.
+@export var soldier_easy_range_m: float = 150.0
+@export var soldier_spot_per_100m: float = 0.8
+## A soldier who just fired shows: for this long after a rifle shot / an AT round (back
+## blast) (s) the factor is only reveal_spot_factor (no cover, stance or distance).
+@export var reveal_rifle_s: float = 3.0
+@export var reveal_at_s: float = 8.0
+@export var reveal_spot_factor: float = 1.0
 ## An enemy still in sight is marked again for the team this often (s).
 @export var mark_interval_s: float = 8.0
 ## How often the squad looks around (s).
@@ -130,6 +165,18 @@ extends Resource
 ## Model meshes of the rifle, hidden while he holds the launcher (find_children pattern).
 @export var rifle_mesh_pattern: String = "M4*"
 @export var at_sound: SoundSetData
+
+@export_group("Mines")
+## The mine the squad lays (null = none). It carries mines_carried, at most
+## max_mines_out lie out at a time (another removes the oldest)...
+@export var mine: MineData
+@export var mines_carried: int = 1
+@export var max_mines_out: int = 2
+## ...takes this long to lay one (s), kneeling (animation from model_animations)...
+@export var mine_lay_time_s: float = 6.0
+@export var anim_lay_mine: StringName = &"kneel"
+## ...and gets a new one on the tank after this long (s).
+@export var mine_refill_s: float = 60.0
 
 @export_group("Smoke and withdrawal")
 ## Smoke grenades per sortie (refilled on the tank).

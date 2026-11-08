@@ -24,6 +24,15 @@ extends Control
 @export var spawn_color: Color = Color(0.45, 0.85, 1.0, 0.8)
 ## Own team's infantry squads (dismounted), and the line to where they are going.
 @export var squad_color: Color = Color(0.55, 1.0, 0.45, 1.0)
+## ThunderRoad: the road, the own corridor's edges and the checkpoints (taken, next, later).
+@export var route_color: Color = Color(1.0, 0.85, 0.2, 0.6)
+@export var corridor_color: Color = Color(1.0, 1.0, 1.0, 0.55)
+@export var checkpoint_taken_color: Color = Color(0.6, 0.6, 0.6, 0.9)
+@export var checkpoint_later_color: Color = Color(1.0, 1.0, 1.0, 0.8)
+## Mines: enemy mines the own team has found (small red crosses), own team's mines.
+@export var enemy_mine_color: Color = Color(1.0, 0.15, 0.1, 1.0)
+@export var own_mine_color: Color = Color(0.55, 1.0, 0.45, 0.9)
+@export var mine_cross_px: float = 3.5
 ## Teammates' tanks (the own tank is drawn bigger in own_color).
 @export var friend_color: Color = Color(0.3, 0.6, 1.0, 1.0)
 ## Own tank: the way the player is looking (commander or gunner view), a cone as wide
@@ -62,7 +71,9 @@ func draw_map(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 				false)
 	_draw_grid(rect, centre, scale_px)
 	_draw_zone(rect, centre, scale_px)
+	_draw_route(rect, centre, scale_px)
 	_draw_squads(rect, centre, scale_px)
+	_draw_mines(rect, centre, scale_px)
 	_draw_friends(rect, centre, scale_px)
 	if spot_marks != null:
 		for mark: SpotMarks.Mark in spot_marks.get_marks():
@@ -112,6 +123,72 @@ func _draw_squads(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 		if rect.has_point(p):
 			draw_circle(p, 4.0, Color.BLACK)
 			draw_circle(p, 3.0, squad_color)
+
+
+## ThunderRoad: the road, the own corridor (edges every ~40 m along), the checkpoints.
+func _draw_route(rect: Rect2, centre: Vector2, scale_px: float) -> void:
+	var mode: ThunderRoadMode = ThunderRoadMode.instance
+	var tank: Tank = get_tank()
+	if mode == null or tank == null or mode.get_round() == 0 or mode.is_over():
+		return
+	var role: ThunderRoadMode.Role = mode.role_of(tank.team)
+	var w: float = mode.half_width(role)
+	var start: float = mode.get_front_s() if role == ThunderRoadMode.Role.DEFEND else 0.0
+	var length: float = mode.get_length()
+	var road := PackedVector2Array()
+	var left := PackedVector2Array()
+	var right := PackedVector2Array()
+	var steps: int = maxi(ceili(length / 40.0), 2)
+	for i: int in steps + 1:
+		var s: float = length * i / steps
+		var p: Vector3 = mode.point_at(s)
+		road.append(_to_screen(Vector2(p.x, p.z), rect, centre, scale_px))
+		if s >= start:
+			var l: Vector3 = mode.point_at(s, -w)
+			var r: Vector3 = mode.point_at(s, w)
+			left.append(_to_screen(Vector2(l.x, l.z), rect, centre, scale_px))
+			right.append(_to_screen(Vector2(r.x, r.z), rect, centre, scale_px))
+	draw_polyline(road, route_color, 2.0, true)
+	if left.size() >= 2:
+		draw_polyline(left, corridor_color, 1.5, true)
+		draw_polyline(right, corridor_color, 1.5, true)
+		draw_line(left[0], right[0], corridor_color, 1.5, true)
+	var next: int = mode.get_next_checkpoint()
+	for i: int in mode.get_checkpoint_count():
+		var c3: Vector3 = mode.get_checkpoint_point(i)
+		var c: Vector2 = _to_screen(Vector2(c3.x, c3.z), rect, centre, scale_px)
+		if not rect.grow(40.0).has_point(c):
+			continue
+		if i < next:
+			draw_circle(c, 4.0, checkpoint_taken_color)
+		elif i == next:
+			var corners := PackedVector2Array()
+			for p: Vector3 in mode.get_checkpoint_corners(i):
+				corners.append(_to_screen(Vector2(p.x, p.z), rect, centre, scale_px))
+			draw_colored_polygon(corners, zone_fill_color)
+			corners.append(corners[0])
+			draw_polyline(corners, zone_color, 2.0, true)
+		else:
+			draw_arc(c, 5.0, 0.0, TAU, 16, checkpoint_later_color, 1.5, true)
+
+
+## Mines the own team knows of: its own and the enemy's it has found (small crosses).
+func _draw_mines(rect: Rect2, centre: Vector2, scale_px: float) -> void:
+	var tank: Tank = get_tank()
+	if tank == null:
+		return
+	var k: float = mine_cross_px
+	for node: Node in get_tree().get_nodes_in_group(Mine.GROUP):
+		var mine := node as Mine
+		if mine == null or not mine.is_known_by(tank.team):
+			continue
+		var p: Vector2 = _to_screen(Vector2(mine.global_position.x, mine.global_position.z),
+				rect, centre, scale_px)
+		if not rect.has_point(p):
+			continue
+		var color: Color = own_mine_color if mine.team == tank.team else enemy_mine_color
+		draw_line(p + Vector2(-k, -k), p + Vector2(k, k), color, 2.0, true)
+		draw_line(p + Vector2(-k, k), p + Vector2(k, -k), color, 2.0, true)
 
 
 ## King of the Hill (if the scene has one): the open zone filled, or the announced next

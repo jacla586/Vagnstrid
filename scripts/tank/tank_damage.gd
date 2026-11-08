@@ -25,6 +25,8 @@ signal module_changed(id: StringName, state: State)
 var data: TankData
 var hp: float = 0.0
 var knocked_out: bool = false
+## The knock-out was the ammo going up (the turret is thrown).
+var ammo_exploded: bool = false
 var fire_left: float = 0.0
 var repair_time: float = 0.0
 ## id -> remaining module hp
@@ -55,6 +57,7 @@ func _init(tank_data: TankData) -> void:
 func reset() -> void:
 	hp = data.structure_hp
 	knocked_out = false
+	ammo_exploded = false
 	fire_left = 0.0
 	_restart_repair()
 	_wear.clear()
@@ -255,6 +258,7 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 				hit.append(m.id)
 				if m.id == &"ammo" and not shell.cannot_knock_out:
 					knocked_out = true
+					ammo_exploded = true
 				elif m.id == &"fuel" and state(&"fuel") != State.OK:
 					fire_left = data.fire_duration_s
 	if hp <= 0.0:
@@ -264,6 +268,14 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 		result.modules.append(String(id))
 	result.knocked_out = knocked_out
 	return knocked_out
+
+
+## A mine under track `id`: thrown (destroyed), and repairs start over.
+func apply_mine(id: StringName) -> void:
+	if knocked_out or not _modules.has(id):
+		return
+	_restart_repair()
+	_damage_module(id, float(_module_hp[id]))
 
 
 ## HE fragments reaching an external module.

@@ -119,6 +119,8 @@ func _on_hit(hit: Dictionary) -> void:
 		_play_hit_sound(collider, point)
 		queue_free()
 		return
+	# Gun rounds landing near enemy mines destroy them.
+	Mine.shell_landed(get_tree(), point, _data, Tank.team_of(_shooter))
 	var result: HitResult = null
 	# No friendly fire: a hit on the shooter's own team does nothing (the shell stops).
 	if collider != null and collider.has_method("on_shell_hit") and not Tank.is_friendly(_shooter, collider):

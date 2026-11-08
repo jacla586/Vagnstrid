@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="MineData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/mine_data.gd" id="1_mine"]
+[ext_resource type="Resource" path="res://data/sounds/he_explosion.tres" id="2_sound"]
+
+[resource]
+script = ExtResource("1_mine")
+trigger_margin_m = 0.3
+arm_time_s = 3.0
+jolt_speed_mps = 0.6
+destroy_by_gun_m = 2.0
+destroy_by_he_m = 6.0
+spot_range_m = 25.0
+spot_time_s = 3.0
+disc_radius_m = 0.17
+disc_height_m = 0.09
+sink_m = 0.05
+color = Color(0.2, 0.22, 0.16, 1)
+effect_scale = 3.0
+sound_explosion = ExtResource("2_sound")

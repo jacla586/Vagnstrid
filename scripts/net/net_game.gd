@@ -171,6 +171,9 @@ func _register(tank: Tank, owner_peer: int) -> int:
 	tank.smoke_launched.connect(func(points: PackedVector3Array) -> void:
 		if not multiplayer.get_peers().is_empty():
 			NetSession.instance.rpc("rpc_tank_smoke", net_id, points))
+	tank.turret_tossed.connect(func(velocity: Vector3, spin: Vector3) -> void:
+		if not multiplayer.get_peers().is_empty():
+			NetSession.instance.rpc("rpc_turret_toss", net_id, velocity, spin))
 	if tank.squad != null:
 		var squad: Squad = tank.squad
 		squad.soldier_down.connect(func(index: int, screamed: bool) -> void:
@@ -186,6 +189,7 @@ func _register(tank: Tank, owner_peer: int) -> int:
 		squad.at_aiming.connect(func(index: int, point: Vector3) -> void:
 			if not multiplayer.get_peers().is_empty():
 				NetSession.instance.rpc("rpc_squad_aim", net_id, index, point))
+		squad.mine_laid.connect(_on_mine_laid)
 		squad.fired_round.connect(func(kind: int, from: Vector3, velocity: Vector3) -> void:
 			if not multiplayer.get_peers().is_empty():
 				NetSession.instance.rpc("rpc_squad_shot", net_id, kind, from, velocity)
@@ -265,6 +269,11 @@ func on_client_ready(peer: int) -> void:
 		NetSession.instance.rpc_id(peer, "rpc_tree_felled", f[0], f[1], f[2])
 	for w: Array in _wrecks:
 		NetSession.instance.rpc_id(peer, "rpc_wreck", w[0], w[1], w[2], w[3])
+	for node: Node in get_tree().get_nodes_in_group(Mine.GROUP):
+		var mine := node as Mine
+		if mine != null and not mine.is_queued_for_deletion():
+			NetSession.instance.rpc_id(peer, "rpc_mine_laid", mine.net_id, mine.data.resource_path,
+					mine.global_position, mine.team, mine.get_known_teams())
 	_spawn_player(peer)
 
 
@@ -429,6 +438,19 @@ func on_tank_action(peer: int, kind: int) -> void:
 		rc.request_action(kind)
 
 
+## Host: a squad laid a mine: clients get it, and its finding and removal later.
+func _on_mine_laid(mine: Mine) -> void:
+	mine.known.connect(func(team: int) -> void:
+		if not multiplayer.get_peers().is_empty():
+			NetSession.instance.rpc("rpc_mine_known", mine.net_id, team))
+	mine.gone.connect(func(exploded: bool) -> void:
+		if not multiplayer.get_peers().is_empty():
+			NetSession.instance.rpc("rpc_mine_gone", mine.net_id, exploded))
+	if not multiplayer.get_peers().is_empty():
+		NetSession.instance.rpc("rpc_mine_laid", mine.net_id, mine.data.resource_path,
+				mine.global_position, mine.team, mine.get_known_teams())
+
+
 func on_squad_order(peer: int, kind: int, target: Vector3) -> void:
 	var tank: Tank = tank_of_peer(peer)
 	if tank != null and tank.squad != null and is_instance_valid(tank.squad):
@@ -466,6 +488,34 @@ func on_squad_down(net_id: int, index: int, screamed: bool) -> void:
 	var squad: Squad = _squad_of(net_id)
 	if squad != null:
 		squad.net_soldier_down(index, screamed)
+
+
+func on_mine_laid(id: int, data_path: String, at: Vector3, team: int,
+		known_by: PackedInt32Array) -> void:
+	if Mine.find(get_tree(), id) != null:
+		return
+	var mine_data := load(data_path) as MineData
+	if mine_data == null:
+		return
+	var mine: Mine = Mine.make_puppet(get_tree().current_scene, mine_data, team, at, id)
+	for t: int in known_by:
+		mine.mark_known(t)
+
+
+func on_mine_known(id: int, team: int) -> void:
+	var mine: Mine = Mine.find(get_tree(), id)
+	if mine != null:
+		mine.mark_known(team)
+
+
+func on_mine_gone(id: int, exploded: bool) -> void:
+	var mine: Mine = Mine.find(get_tree(), id)
+	if mine == null:
+		return
+	if exploded:
+		mine.blow_up()
+	else:
+		mine.remove()
 
 
 func on_squad_smoke(net_id: int, at: Vector3) -> void:
@@ -567,6 +617,13 @@ func on_shot_result(text: String, outcome: int) -> void:
 	var fb: HitFeedback = _my_rig.get_node_or_null("HUD/HitFeedback") as HitFeedback if _my_rig != null else null
 	if fb != null:
 		fb.show_text(text, outcome)
+
+
+## Client: an ammo explosion threw a tank's turret.
+func on_turret_toss(net_id: int, velocity: Vector3, spin: Vector3) -> void:
+	var tank: Tank = tanks.get(net_id)
+	if is_instance_valid(tank):
+		tank.toss_turret(velocity, spin)
 
 
 ## Client: a tank (any) fired smoke.

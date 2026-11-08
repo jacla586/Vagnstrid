@@ -46,6 +46,9 @@ func _ready() -> void:
 		squad_map.squad_order_requested.connect(func(point: Vector3) -> void:
 			_squad_order = Squad.ORDER_MOVE
 			_squad_target = point)
+		squad_map.squad_mine_requested.connect(func(point: Vector3) -> void:
+			_squad_order = Squad.ORDER_MINE
+			_squad_target = point)
 	if esc_menu != null:
 		esc_menu.abandon_requested.connect(func() -> void: _abandon_requested = true)
 ## Last aim point in the hull's local space (used in the commander view).

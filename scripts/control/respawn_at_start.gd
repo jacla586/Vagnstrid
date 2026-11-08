@@ -25,6 +25,8 @@ func _physics_process(delta: float) -> void:
 	if _timer > 0.0:
 		return
 	_timer = -1.0
+	if ThunderRoadMode.instance != null:
+		return   # ThunderRoad brings tanks back itself (waves, respawn points)
 	var mode: KothMode = KothMode.instance
 	KothMode.place_tank(tank, mode.get_free_spawn(tank.team, tank) if mode != null else _start)
 	tank.repair()

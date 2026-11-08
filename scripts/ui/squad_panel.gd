@@ -44,7 +44,10 @@ func _process(_delta: float) -> void:
 	var where: String = ""
 	if squad.is_out():
 		where = "  %d m" % roundi(Squad._flat(squad.global_position - tank.global_position).length())
-	text = "SQUAD %s  AT %d  SMOKE %d  %s%s" % [men, squad.get_at_rounds_left(),
-			squad.get_smoke_left(), doing, where]
+	var mines: String = ""
+	if squad.data.mine != null:
+		mines = "  MINE %d (%d out)" % [squad.get_mines_carried(), squad.get_mines_out()]
+	text = "SQUAD %s  AT %d  SMOKE %d%s  %s%s" % [men, squad.get_at_rounds_left(),
+			squad.get_smoke_left(), mines, doing, where]
 	add_theme_color_override("font_color", warn_color if squad.get_state() == Squad.State.WIPED
 			or alive < count else ok_color)

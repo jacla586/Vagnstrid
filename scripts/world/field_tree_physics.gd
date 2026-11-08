@@ -85,6 +85,12 @@ func tip_canopy(chunk: int, shape_index: int, tree: int, foot: Vector3, tilt: Ba
 	PhysicsServer3D.area_set_shape_transform(_areas[chunk], shape_index, tipped)
 
 
+## A felled tree stands again: trunk collider back on, crown upright.
+func restore(chunk: int, shape_index: int, tree: int) -> void:
+	PhysicsServer3D.body_set_shape_disabled(_bodies[chunk], shape_index, false)
+	PhysicsServer3D.area_set_shape_transform(_areas[chunk], shape_index, _canopy_transforms[tree])
+
+
 func free_all() -> void:
 	for rid: RID in _bodies:
 		PhysicsServer3D.free_rid(rid)

@@ -1,9 +1,10 @@
 class_name Scoreboard
 extends Control
-## King of the Hill scoreboard: both teams' tanks with knock-outs, losses and points.
-## Shown while the scoreboard key (Tab) is held, and for good when the match ends:
-## then with the result, the mouse freed and buttons to play again (offline) or go
-## back to the menu. Hidden when the scene has no KothMode.
+## Scoreboard for King of the Hill (knock-outs, losses, points) and ThunderRoad (the
+## rounds so far with who won them, knock-outs, losses). Shown while the scoreboard
+## key (Tab) is held, and for good when the match ends: then with the result, the
+## mouse freed and buttons to play again (offline) or go back to the menu. Hidden when
+## the scene has neither mode.
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const REFRESH_S: float = 0.5
@@ -60,12 +61,13 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	var mode: KothMode = KothMode.instance
+	var koth: KothMode = KothMode.instance
+	var thunder: ThunderRoadMode = ThunderRoadMode.instance
 	var tank: Tank = views.get_tank() if views != null else null
-	if mode == null or tank == null:
+	if (koth == null and thunder == null) or tank == null:
 		visible = false
 		return
-	var over: bool = mode.is_over()
+	var over: bool = koth.is_over() if koth != null else thunder.is_over()
 	var show: bool = over or Input.is_action_pressed("scoreboard")
 	if over and not _was_over:
 		_was_over = true
@@ -83,20 +85,51 @@ func _process(delta: float) -> void:
 	_refresh -= delta
 	if _refresh <= 0.0:
 		_refresh = REFRESH_S
-		_rebuild(mode, tank)
+		if koth != null:
+			_rebuild(koth, tank)
+		else:
+			_rebuild_thunder(thunder, tank)
+
+
+func _set_title(over: bool, winner: int, own_team: int) -> void:
+	_title.visible = over
+	if not over:
+		return
+	_title.text = "DRAW" if winner < 0 else ("VICTORY" if winner == own_team else "DEFEAT")
+	_title.add_theme_color_override("font_color",
+			Color.WHITE if winner < 0 else (own_color if winner == own_team else enemy_color))
+
+
+## ThunderRoad: every round played (who won it), the round going on, the tanks.
+func _rebuild_thunder(mode: ThunderRoadMode, tank: Tank) -> void:
+	_set_title(mode.is_over(), mode.get_winner(), tank.team)
+	var lines: PackedStringArray = PackedStringArray()
+	var results: Array[Dictionary] = mode.get_results()
+	for i: int in results.size():
+		lines.append(ThunderPanel.round_line(i + 1, results[i], tank.team, mode))
+	if not mode.is_over() and not mode.is_in_break() and mode.get_round() > 0:
+		var attacking: bool = mode.role_of(tank.team) == ThunderRoadMode.Role.ATTACK
+		var now: String = "ROUND %d (now): you %s – %d/%d taken" % [mode.get_round(),
+				"attack" if attacking else "defend", mode.get_next_checkpoint(),
+				mode.get_checkpoint_count()]
+		if mode.get_target() > 0:
+			now += ", %d to win" % mini(mode.get_target(), mode.get_checkpoint_count())
+		lines.append(now)
+	_subtitle.text = "\n".join(lines)
+	for child: Node in _tables.get_children():
+		child.queue_free()
+	var stats: Array = mode.get_stats()
+	var headers: Array[String] = ["KO", "Lost"]
+	_tables.add_child(_table("Your team", stats, func(t: int) -> bool: return t == tank.team,
+			own_color, headers))
+	_tables.add_child(_table("Enemy", stats, func(t: int) -> bool: return t != tank.team,
+			enemy_color, headers))
 
 
 func _rebuild(mode: KothMode, tank: Tank) -> void:
 	var own: int = roundi(mode.get_score(tank.team))
 	var enemy: int = roundi(mode.get_best_other_score(tank.team))
-	if mode.is_over():
-		var winner: int = mode.get_winner()
-		_title.text = "DRAW" if winner < 0 else ("VICTORY" if winner == tank.team else "DEFEAT")
-		_title.add_theme_color_override("font_color",
-				Color.WHITE if winner < 0 else (own_color if winner == tank.team else enemy_color))
-		_title.visible = true
-	else:
-		_title.visible = false
+	_set_title(mode.is_over(), mode.get_winner(), tank.team)
 	_subtitle.text = "%d  –  %d   (first to %d)" % [own, enemy, roundi(mode.data.score_to_win)]
 	for child: Node in _tables.get_children():
 		child.queue_free()
@@ -105,20 +138,21 @@ func _rebuild(mode: KothMode, tank: Tank) -> void:
 	_tables.add_child(_table("Enemy", stats, func(t: int) -> bool: return t != tank.team, enemy_color))
 
 
-func _table(caption: String, stats: Array, include: Callable, color: Color) -> Control:
+## Rows are [name, team, value per header...].
+func _table(caption: String, stats: Array, include: Callable, color: Color,
+		headers: Array[String] = ["KO", "Lost", "Points"]) -> Control:
 	var grid := GridContainer.new()
-	grid.columns = 4
+	grid.columns = headers.size() + 1
 	grid.add_theme_constant_override("h_separation", 18)
 	grid.add_child(_label(caption, font_size + 2, color))
-	for h: String in ["KO", "Lost", "Points"]:
+	for h: String in headers:
 		grid.add_child(_label(h, font_size, Color(0.7, 0.7, 0.7)))
 	for row: Array in stats:
 		if not include.call(int(row[1])):
 			continue
 		grid.add_child(_label(String(row[0]), font_size, color))
-		grid.add_child(_label("%d" % int(row[2]), font_size, Color.WHITE))
-		grid.add_child(_label("%d" % int(row[3]), font_size, Color.WHITE))
-		grid.add_child(_label("%d" % int(row[4]), font_size, Color.WHITE))
+		for i: int in headers.size():
+			grid.add_child(_label("%d" % int(row[2 + i]), font_size, Color.WHITE))
 	return grid
 
 

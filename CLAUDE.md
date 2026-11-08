@@ -118,6 +118,29 @@ shows on the minimap. This is what we test first.
   sends all squads in a 10 Hz unreliable packet (`PACKET_SQUADS`, `Squad.write_net_state`,
   31 B + 4 B per soldier offset) and soldier-down/smoke/shot events by RPC; client
   squads are puppets.
+  Being seen (`Squad.soldier_spot_time_factor`/`soldier_spot_range_factor`, used by bots
+  and squads alike; the player only by eye): cover as for tanks (viewer's ConcealmentData),
+  still or moving (`moving_spot_factor`: running men aren't tanks at speed), uniform
+  (`camo_spot_factor`), kneeling/lying (`kneel_/prone_spot_factor`), distance beyond
+  `soldier_easy_range_m`; a soldier who just fired shows for `reveal_rifle_s`/`reveal_at_s`
+  (back blast) at `reveal_spot_factor`. Ambush is automatic: holding `ambush_after_s` the
+  squad lies down (`Squad.is_lying`; no prone animation: the `anim_prone` pose tipped
+  `prone_pitch_deg` round the feet, hitbox `SoldierHitbox.set_lying`) and holds rifle fire
+  beyond `ambush_rifle_range_m` until it fired or lost a man; moving ends it. Mines
+  (`Mine`, `scripts/squad/mine.gd`, data `MineData`/`data/squads/mine.tres`,
+  `SquadData.mine*`): Q map right click (`squad_mine`) = `Squad.ORDER_MINE`: the squad walks
+  there, the nearest soldier kneels `mine_lay_time_s` and lays it; one carried
+  (`mines_carried`, refilled `mine_refill_s` on the tank), at most `max_mines_out` (another
+  removes the oldest). An enemy track over it (host, `Mine._track_over`) is thrown
+  (`Tank.on_mine` -> `TankDamage.apply_mine`; never a knock-out, nobody scores); own team
+  drives over safely. Gun rounds of another team landing within `destroy_by_gun_m` (HE
+  `destroy_by_he_m`) destroy it (`Mine.shell_landed` from `Shell._on_hit`). Visible but
+  discreet (a sunk disc); enemy soldiers within `spot_range_m` in sight find it after
+  `spot_time_s` (`Mine.mark_known`): small red crosses on that team's maps (own mines green,
+  `MapView._draw_mines`); soldiers can't clear mines. Bots avoid cells round known enemy
+  mines (`BotController._known_mine_cells`) and re-plan when one is found near
+  (`Mine.version`). Network: `rpc_mine_laid/known/gone` (late joiners get all mines);
+  the squad packet's flags byte carries lying, mines carried and out (size unchanged).
   Bots: see and MG enemy squads (no tank target); use their own squad via the command
   only after standing `SQUAD_MIN_STAND_S` near a fight (known enemy within 600 m, alert, or
   `fight_focus`, the zone, within 450 m), not within 45 s of a recall (towards the fight,
@@ -137,6 +160,9 @@ shows on the minimap. This is what we test first.
   read `*_interpolated` poses and are themselves excluded, anything moved in `_process`
   sets its mode OFF, teleports call `reset_physics_interpolation()`, puppets move in
   `_physics_process`.
+  An ammo knock-out (`TankDamage.ammo_exploded`) throws the turret (`Tank.toss_turret`: a
+  charred RigidBody in group `wrecks`, frozen at rest; height `TankData.turret_toss_*`,
+  min + span·u^bias, so mostly short; clients by `rpc_turret_toss`); the wreck has no turret.
   Knocked-out tanks leave a static charred wreck (`Tank.leave_wreck`, group `wrecks`, from
   `KothMode.place_tank` / a puppet's respawn jump) for the whole match.
   The host lists wrecks (`Tank.wreck_left`) and sends them to late joiners (`rpc_wreck`:
@@ -301,6 +327,34 @@ shows on the minimap. This is what we test first.
   (wait <= `assembly_wait_max_s`; respawns don't wait), then bound towards their axis'
   entry point; `support_per_team` bots watch from outside and don't hunt. The gap is not
   a hurry then.
+- ThunderRoad (a gauntlet; `ThunderRoadMode` node `ThunderRoad` in a scenario with children
+  `Route` (Path3D along a road) and `Checkpoints` (Marker3Ds, projected onto the route;
+  movable), rules in `data/modes/thunder_road.tres` (`ThunderRoadData`), bots by
+  `ThunderRoadBots`). Attackers take the next checkpoint by outnumbering the defender tanks
+  inside its zone (`ThunderRoadMode.is_in_checkpoint`: a rectangle square to the road,
+  `capture_half_width_m` across, `capture_half_length_m` along); each capture moves the front, tops up the time bank and the
+  attackers' shared lives and brings a wave. Knocked-out attackers wait for the wave (on a
+  capture or every `wave_interval_s`, a life each, behind the front); defenders come back
+  after `defender_respawn_s` `defender_spawn_checkpoints` past the next checkpoint (at the round start `defender_start_checkpoints`, closer; the route has no checkpoint in its first spacing, a free drive to the fight).
+  Corridors: defenders within `defender_half_width_m` of the road and ahead of the front,
+  attackers within `attacker_half_width_m`. Outside: `Tank.fire_blocked` (no gun or MG),
+  a spot mark for the other team every `outside_mark_s`, `Tank.wound_commander()` after
+  `outside_grace_s`. Round 1 team 0 attacks, round 2 sides swap; more checkpoints wins,
+  then more time left. Taking every checkpoint should be rare: the match is meant to be
+  won on the count. The `round_break_s` pause blocks all fire; `ThunderPanel` shows ROUND 1
+  OVER with the count to beat (`get_target`, also in the HUD in round 2), after round 2 a
+  big VICTORY/DEFEAT, then the `Scoreboard` (also on Tab: the rounds, KO/losses from
+  `ThunderRoadMode.get_stats`). Round 2 starts on
+  a fresh map (`_reset_map`: wrecks, mines, smoke go, `TreeField.restore_all`). The first round waits for `ThunderRoadBots` to fill the teams
+  (`hold_start`/`release_start`). Bots: attackers to a `find_position` spot in the next
+  checkpoint; defenders take posts beyond it in their corridor, move when the front
+  moves, and send their squad to mine the road towards the attackers
+  (`BotController.order_squad`). HUD `ThunderPanel`; `MapView._draw_route` draws road,
+  own corridor and checkpoints. `RespawnAtStart` leaves respawns to the mode. Offline only
+  so far (no NetGame support). Missions: `vidingsjo_thunder_red` (Haningeleden) and
+  `vidingsjo_thunder_orange` (Ålerydsvägen + Haningeleden), made by
+  `tools/thunder_route_from_osm.py` (named OSM roads between two points -> scene; rerun
+  overwrites checkpoint moves; `--join=M` across roundabouts).
 - Sound: `SoundSetData` (`data/sounds/*.tres`, random variant, optional `distant` set
   far away) on `TankData.sounds` (`TankSoundData`: engine, tracks, gun, hatch),
   `ShellData` (hit armour/ground, ricochet; explosive shells add `sound_explosion` on every impact) and `MachineGunData.sound_shot` (one per bullet, `GunfireSound`, polyphonic).
@@ -370,7 +424,7 @@ shows on the minimap. This is what we test first.
   direction; T lays it on the view. MG: mouse 2 (roof MG in the commander view with the hatch
   open, coaxial otherwise). Binoculars: B. Hatch: H.
 - Scoreboard: Tab (King of the Hill). Big map: M (view only). Squad orders map: Q (`SquadMap`, 1 km round the tank with
-  the 300 m ring; frees the mouse; left click sends the squad). Recall squad: G. Squad leader's eyes: V (look and spot only). Network statistics: F3.
+  the 300 m ring; frees the mouse; left click sends the squad, right click lays a mine). Recall squad: G. Squad leader's eyes: V (look and spot only). Network statistics: F3.
 - Smoke: X. Esc: frees the mouse and opens `EscMenu` (resume, abandon tank, main menu).
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 

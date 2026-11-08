@@ -12,6 +12,7 @@
 [ext_resource type="AnimationLibrary" path="res://assets/models/soldier/soldier_anims.res" id="10_anims"]
 
 [ext_resource type="Resource" path="res://data/squads/radio_sv.tres" id="90_radio"]
+[ext_resource type="Resource" path="res://data/squads/mine.tres" id="11_mine"]
 
 [resource]
 script = ExtResource("1_squad")
@@ -33,12 +34,30 @@ eye_height_standing_m = 1.65
 eye_height_kneeling_m = 0.9
 view_fov_deg = 70.0
 binocular_fov_deg = 10.0
+ambush_after_s = 4.0
+ambush_rifle_range_m = 100.0
+prone_height_m = 0.45
+eye_height_prone_m = 0.35
+prone_eye_forward_m = 1.5
+prone_change_s = 1.0
+anim_prone = &"idle"
+prone_pitch_deg = 85.0
+prone_lift_m = 0.12
 view_range_m = 500.0
 see_through_ranges_m = PackedFloat32Array(500, 300)
 moving_view_cone_deg = 240.0
 spot_time_s = 2.0
 soldier_spot_factor = 2.5
 concealment = ExtResource("3_conceal")
+camo_spot_factor = 1.3
+moving_spot_factor = 1.0
+kneel_spot_factor = 1.5
+prone_spot_factor = 3.0
+soldier_easy_range_m = 150.0
+soldier_spot_per_100m = 0.8
+reveal_rifle_s = 3.0
+reveal_at_s = 8.0
+reveal_spot_factor = 1.0
 mark_interval_s = 8.0
 scan_interval_s = 0.5
 rifle_bullet = ExtResource("4_rifle")
@@ -63,6 +82,12 @@ at_launcher_length_m = 1.1
 at_launcher_radius_m = 0.06
 rifle_mesh_pattern = "M4*"
 at_sound = ExtResource("7_at_snd")
+mine = ExtResource("11_mine")
+mines_carried = 1
+max_mines_out = 2
+mine_lay_time_s = 6.0
+anim_lay_mine = &"kneel"
+mine_refill_s = 60.0
 smoke_grenades = 1
 smoke_ahead_m = 8.0
 fallback_m = 80.0

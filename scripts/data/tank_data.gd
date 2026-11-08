@@ -146,6 +146,14 @@ extends Resource
 ## A destroyed track stops the tank altogether (thrown track: no pivoting on the other
 ## one) until it is repaired.
 @export var broken_track_immobilises: bool = true
+## An ammo explosion throws the turret this high (m): min + (max - min) * u^bias with u
+## random in 0..1, so short throws are common and long ones rare...
+@export var turret_toss_min_m: float = 3.0
+@export var turret_toss_max_m: float = 15.0
+@export var turret_toss_bias: float = 3.0
+## ...a little to the side (up to m/s) and tumbling (up to rad/s per axis).
+@export var turret_toss_side_mps: float = 2.5
+@export var turret_toss_spin_rad_s: float = 2.0
 
 @export_group("Armament")
 ## Main-gun ammunition types, in selection-key order (1, 2, ...). The first is

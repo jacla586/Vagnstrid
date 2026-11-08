@@ -1,0 +1,691 @@
+class_name ThunderRoadMode
+extends Node3D
+## ThunderRoad (a gauntlet, ThunderRoadData): attackers clear a road checkpoint by
+## checkpoint; defenders hold a corridor along it, ahead of the last checkpoint taken.
+## Attackers have a time bank and a shared pool of lives and come back in waves;
+## defenders come back a few checkpoints on. Outside its corridor a tank can't fire,
+## shows on the other team's maps and its commander is wounded after a while. Two
+## rounds, sides swap; more checkpoints wins (then more time left).
+## Children: "Route" (Path3D along the road) and "Checkpoints" (Marker3Ds, projected
+## onto the route). Offline / host only for now.
+
+## The next checkpoint fell (index, 0-based).
+signal checkpoint_taken(index: int)
+## A round began (1 or 2); the attackers are `attack_team`.
+signal round_started(round_number: int, attack_team: int)
+## A round ended: how far the attackers got.
+signal round_over(round_number: int, result: Dictionary)
+## The match is over: the winning team (-1 = draw).
+signal match_over(winner_team: int)
+## A tank came back (start of a round, a wave or a defender's respawn).
+signal tank_placed(tank: Tank)
+
+enum Role { NONE, ATTACK, DEFEND }
+
+static var instance: ThunderRoadMode
+
+## Corridor checks run this often (s).
+const CHECK_INTERVAL_S: float = 0.25
+## Spawn slots: rows this far apart along the road, at these offsets across it (m).
+const SLOT_ROW_M: float = 18.0
+const SLOT_ROWS: int = 6
+const SLOT_ACROSS_M: Array[float] = [0.0, 14.0, -14.0, 28.0, -28.0, 42.0, -42.0]
+## A slot is taken with a tank this close (m).
+const SLOT_CLEAR_M: float = 10.0
+## Spawns lift the tank (origin is mid-hull) so it doesn't start in the ground (m).
+const SPAWN_LIFT_M: float = 1.5
+
+@export var data: ThunderRoadData
+
+var _route: PackedVector3Array = PackedVector3Array()
+var _along: PackedFloat32Array = PackedFloat32Array()   # metres along at each route point
+var _cp_s: Array[float] = []
+var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+
+var _started: bool = false
+var _round: int = 0
+var _attack_team: int = 0
+var _next_cp: int = 0
+var _front_s: float = 0.0
+var _progress: float = 0.0
+var _contested: bool = false
+var _time_left: float = 0.0
+var _lives: int = 0
+var _wave_left: float = 0.0
+var _waiting: Array[Tank] = []           # knocked-out attackers waiting for the wave
+var _def_respawn: Dictionary = {}        # Tank -> seconds to its respawn
+var _outside: Dictionary = {}            # Tank -> seconds outside its corridor
+var _mark_left: Dictionary = {}          # Tank -> seconds to its next map mark
+var _check_left: float = 0.0
+var _connected: Dictionary = {}          # tank instance id -> true
+var _results: Array[Dictionary] = []
+var _break_left: float = -1.0
+## Bot directors still filling the teams: the first round waits for them.
+var _start_holds: int = 0
+var _over: bool = false
+var _winner: int = -1
+## The match result is known (end of round 2), shown in the last break before _over.
+var _decided: bool = false
+## Tank instance id -> [name, team, knock-outs, losses], over the whole match.
+var _stats: Dictionary = {}
+
+
+func _enter_tree() -> void:
+	instance = self
+	_give_bots_configs()
+
+
+func _exit_tree() -> void:
+	if instance == self:
+		instance = null
+
+
+## Before any tank is ready: bots without a config get a random one (as KothMode does).
+func _give_bots_configs() -> void:
+	if data == null or data.bot_configs.is_empty() or get_parent() == null:
+		return
+	for node: Node in get_parent().find_children("*", "", true, false):
+		var tank := node as Tank
+		if tank != null and not tank.is_node_ready() and tank.config == null \
+				and not tank.use_player_config:
+			tank.config = data.bot_configs[randi() % data.bot_configs.size()]
+
+
+func _ready() -> void:
+	assert(data != null, "ThunderRoadMode needs ThunderRoadData")
+	_rng.randomize()
+	_read_route()
+	set_physics_process(not NetRole.is_client())
+
+
+# --- Route ---------------------------------------------------------------------------
+
+func _read_route() -> void:
+	var path := get_node_or_null("Route") as Path3D
+	if path == null or path.curve == null or path.curve.point_count < 2:
+		push_error("ThunderRoad needs a Route (Path3D) with points")
+		return
+	var total: float = 0.0
+	for i: int in path.curve.point_count:
+		var p: Vector3 = path.to_global(path.curve.get_point_position(i))
+		if not _route.is_empty():
+			total += _flat(p - _route[_route.size() - 1]).length()
+		_route.append(p)
+		_along.append(total)
+	var cps := get_node_or_null("Checkpoints")
+	if cps != null:
+		for child: Node in cps.get_children():
+			if child is Node3D:
+				_cp_s.append(project((child as Node3D).global_position).x)
+	_cp_s.sort()
+	if _cp_s.is_empty():
+		_cp_s.append(total)
+
+
+func get_length() -> float:
+	return _along[_along.size() - 1] if not _along.is_empty() else 0.0
+
+
+## Where `p` lies by the road: x = metres along it, y = distance from it (flat).
+func project(p: Vector3) -> Vector2:
+	var best := Vector2(0.0, INF)
+	for i: int in _route.size() - 1:
+		var a: Vector3 = _route[i]
+		var ab: Vector3 = _flat(_route[i + 1] - a)
+		var len2: float = ab.length_squared()
+		var t: float = clampf(_flat(p - a).dot(ab) / len2, 0.0, 1.0) if len2 > 0.0 else 0.0
+		var d: float = _flat(p - (a + ab * t)).length()
+		if d < best.y:
+			best = Vector2(_along[i] + (_along[i + 1] - _along[i]) * t, d)
+	return best
+
+
+## The road point `s` metres along, moved `across` metres to its right (left < 0).
+func point_at(s: float, across: float = 0.0) -> Vector3:
+	s = clampf(s, 0.0, get_length())
+	var i: int = _segment_at(s)
+	var seg: float = _along[i + 1] - _along[i]
+	var t: float = (s - _along[i]) / seg if seg > 0.0 else 0.0
+	var p: Vector3 = _route[i].lerp(_route[i + 1], t)
+	return p + tangent_at(s).cross(Vector3.UP) * across
+
+
+## The road's direction at `s` (flat unit vector, towards the end).
+func tangent_at(s: float) -> Vector3:
+	var i: int = _segment_at(clampf(s, 0.0, get_length()))
+	var d: Vector3 = _flat(_route[i + 1] - _route[i])
+	return d.normalized() if d.length() > 0.001 else Vector3.FORWARD
+
+
+func _segment_at(s: float) -> int:
+	for i: int in _along.size() - 1:
+		if s <= _along[i + 1]:
+			return i
+	return maxi(_along.size() - 2, 0)
+
+
+# --- Queries -------------------------------------------------------------------------
+
+func has_started() -> bool:
+	return _started
+
+
+func role_of(team: int) -> Role:
+	if _round == 0:
+		return Role.NONE
+	return Role.ATTACK if team == _attack_team else Role.DEFEND
+
+
+func get_attack_team() -> int:
+	return _attack_team
+
+
+func get_round() -> int:
+	return _round
+
+
+func get_checkpoint_count() -> int:
+	return _cp_s.size()
+
+
+func get_checkpoint_s(index: int) -> float:
+	return _cp_s[clampi(index, 0, _cp_s.size() - 1)]
+
+
+func get_checkpoint_point(index: int) -> Vector3:
+	return point_at(get_checkpoint_s(index))
+
+
+## Index of the checkpoint the attackers go for (== count once all are taken).
+func get_next_checkpoint() -> int:
+	return _next_cp
+
+
+func get_front_s() -> float:
+	return _front_s
+
+
+func get_capture_progress() -> float:
+	return _progress
+
+
+func is_contested() -> bool:
+	return _contested
+
+
+func get_time_left() -> float:
+	return _time_left
+
+
+func get_lives() -> int:
+	return _lives
+
+
+func get_wave_left() -> float:
+	return _wave_left
+
+
+func is_waiting_for_wave(tank: Tank) -> bool:
+	return _waiting.has(tank)
+
+
+func get_respawn_left(tank: Tank) -> float:
+	return float(_def_respawn.get(tank, 0.0))
+
+
+## Seconds `tank` has been outside its corridor (0 = inside).
+func outside_time(tank: Tank) -> float:
+	return float(_outside.get(tank, 0.0))
+
+
+func half_width(role: Role) -> float:
+	return data.attacker_half_width_m if role == Role.ATTACK else data.defender_half_width_m
+
+
+func is_in_break() -> bool:
+	return _break_left >= 0.0
+
+
+func get_break_left() -> float:
+	return _break_left
+
+
+func get_results() -> Array[Dictionary]:
+	return _results
+
+
+## Round 2: checkpoints the attackers must take to win (round 1's count + 1), else -1.
+func get_target() -> int:
+	if _round < 2 or _results.is_empty():
+		return -1
+	return int(_results[0]["checkpoints"]) + 1
+
+
+func is_over() -> bool:
+	return _over
+
+
+func get_winner() -> int:
+	return _winner
+
+
+## The match result is known (in the break after round 2, and once over).
+func is_decided() -> bool:
+	return _decided
+
+
+## Every tank's [name, team, knock-outs, losses], most knock-outs first.
+func get_stats() -> Array:
+	var out: Array = []
+	for id: int in _stats:
+		var tank := instance_from_id(id) as Tank
+		if not is_instance_valid(tank):
+			continue
+		var row: Array = (_stats[id] as Array).duplicate()
+		row[0] = tank.get_display_label()
+		row[1] = tank.team
+		out.append(row)
+	out.sort_custom(func(a: Array, b: Array) -> bool:
+		return int(a[2]) > int(b[2]) or (int(a[2]) == int(b[2]) and int(a[3]) < int(b[3])))
+	return out
+
+
+## Inside checkpoint `index`'s zone: a rectangle square to the road at the checkpoint,
+## capture_half_width_m across it and capture_half_length_m along it.
+func is_in_checkpoint(p: Vector3, index: int) -> bool:
+	var s: float = get_checkpoint_s(index)
+	var d: Vector3 = _flat(p - point_at(s))
+	var along: Vector3 = tangent_at(s)
+	return absf(d.dot(along)) <= data.capture_half_length_m \
+			and absf(d.dot(along.cross(Vector3.UP))) <= data.capture_half_width_m
+
+
+## The zone's corners (for the maps), going round.
+func get_checkpoint_corners(index: int) -> PackedVector3Array:
+	var s: float = get_checkpoint_s(index)
+	var c: Vector3 = point_at(s)
+	var along: Vector3 = tangent_at(s) * data.capture_half_length_m
+	var across: Vector3 = tangent_at(s).cross(Vector3.UP) * data.capture_half_width_m
+	return PackedVector3Array([c + along + across, c + along - across, c - along - across,
+			c - along + across])
+
+
+## Inside `role`'s corridor: near the road, and for defenders ahead of the front.
+func is_inside(p: Vector3, role: Role) -> bool:
+	var at: Vector2 = project(p)
+	if at.y > half_width(role):
+		return false
+	return role != Role.DEFEND or at.x >= _front_s
+
+
+## ThunderRoadBots: the first round waits until release_start() (teams being filled).
+func hold_start() -> void:
+	_start_holds += 1
+
+
+func release_start() -> void:
+	_start_holds = maxi(_start_holds - 1, 0)
+
+
+# --- Match ---------------------------------------------------------------------------
+
+func _physics_process(delta: float) -> void:
+	if _route.size() < 2:
+		return
+	_connect_new_tanks()
+	if not _started:
+		if _start_holds > 0:
+			return
+		_started = true
+		_start_round(1)
+		return
+	if _break_left >= 0.0:
+		_break_left -= delta
+		if _break_left < 0.0 and not _over:
+			if _round == 1:
+				_start_round(2)
+			else:
+				_end_match()
+		return
+	if _over:
+		return
+	_time_left = maxf(_time_left - delta, 0.0)
+	_update_capture(delta)
+	_update_waves(delta)
+	_update_defender_respawns(delta)
+	_check_left -= delta
+	if _check_left <= 0.0:
+		_check_left = CHECK_INTERVAL_S
+		_check_corridors(CHECK_INTERVAL_S)
+	if _next_cp >= _cp_s.size():
+		_end_round()
+	elif _time_left <= 0.0:
+		_end_round()
+	elif _lives <= 0 and _alive_count(_attack_team) == 0:
+		_end_round()
+
+
+func _start_round(number: int) -> void:
+	_break_left = -1.0
+	_round = number
+	_attack_team = 0 if number == 1 else 1
+	_next_cp = 0
+	_front_s = data.start_front_m
+	_progress = 0.0
+	_contested = false
+	_time_left = data.start_time_s
+	_lives = data.start_lives_per_tank * _team_tanks(_attack_team).size()
+	_wave_left = data.wave_interval_s
+	_waiting.clear()
+	_def_respawn.clear()
+	_outside.clear()
+	_mark_left.clear()
+	for tank: Tank in _team_tanks(_attack_team):
+		_place(tank, _attacker_spawn(tank))
+	for tank: Tank in _team_tanks(1 - _attack_team):
+		_place(tank, _defender_spawn(tank, data.defender_start_checkpoints))
+	if number > 1:
+		_reset_map()   # after the tanks left their wrecks
+	round_started.emit(number, _attack_team)
+
+
+## A fresh map for the next round: wrecks (thrown turrets too), mines and smoke go,
+## felled trees stand again.
+func _reset_map() -> void:
+	for node: Node in get_tree().get_nodes_in_group(&"wrecks"):
+		node.queue_free()
+	for node: Node in get_tree().get_nodes_in_group(Mine.GROUP):
+		(node as Mine).remove()
+	for node: Node in get_tree().get_nodes_in_group(SmokeCloud.GROUP):
+		node.queue_free()
+	var root: Node = get_tree().current_scene if get_tree().current_scene != null else get_parent()
+	var fields: Array[TreeField] = []
+	for node: Node in root.find_children("*", "", true, false):
+		if node is TreeField:
+			fields.append(node)
+	for field: TreeField in fields:   # restoring frees falling trees: not while listing
+		field.restore_all()
+
+
+func _end_round() -> void:
+	var result := {
+		"attack_team": _attack_team,
+		"checkpoints": _next_cp,
+		"all": _next_cp >= _cp_s.size(),
+		"time_left": _time_left,
+	}
+	_results.append(result)
+	if _round >= 2:
+		_decide_winner()
+	# A pause to read the result: nobody fires until the next round places the tanks.
+	for tank: Tank in _team_tanks(0) + _team_tanks(1):
+		tank.fire_blocked = true
+	round_over.emit(_round, result)
+	_break_left = data.round_break_s
+
+
+func _end_match() -> void:
+	_over = true
+	if not _decided:
+		_decide_winner()
+	match_over.emit(_winner)
+
+
+func _decide_winner() -> void:
+	_decided = true
+	_winner = -1
+	if _results.size() >= 2:
+		var a: Dictionary = _results[0]
+		var b: Dictionary = _results[1]
+		if int(a["checkpoints"]) != int(b["checkpoints"]):
+			_winner = int(a["attack_team"]) if int(a["checkpoints"]) > int(b["checkpoints"]) \
+					else int(b["attack_team"])
+		elif bool(a["all"]) and float(a["time_left"]) != float(b["time_left"]):
+			_winner = int(a["attack_team"]) if float(a["time_left"]) > float(b["time_left"]) \
+					else int(b["attack_team"])
+
+
+func _update_capture(delta: float) -> void:
+	if _next_cp >= _cp_s.size():
+		return
+	var attackers: int = 0
+	var defenders: int = 0
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var tank := node as Tank
+		if tank == null or tank.is_knocked_out() or (tank.team != 0 and tank.team != 1):
+			continue
+		if not is_in_checkpoint(tank.global_position, _next_cp):
+			continue
+		if tank.team == _attack_team:
+			attackers += 1
+		else:
+			defenders += 1
+	# More attackers than defenders there take it, the faster the bigger the edge.
+	_contested = defenders > 0 and attackers > 0 and attackers <= defenders
+	var rate: float = 1.0 / maxf(data.capture_time_s, 0.1)
+	if attackers > defenders:
+		_progress += rate * minf(float(attackers - defenders), data.capture_speed_max) * delta
+	elif attackers == 0:
+		_progress = maxf(_progress - rate * data.capture_decay_factor * delta, 0.0)
+	if _progress >= 1.0:
+		_take_checkpoint()
+
+
+func _take_checkpoint() -> void:
+	var index: int = _next_cp
+	_front_s = _cp_s[index]
+	_next_cp += 1
+	_progress = 0.0
+	_contested = false
+	_time_left += data.time_per_capture_s
+	_lives += data.lives_per_capture
+	checkpoint_taken.emit(index)
+	if _next_cp < _cp_s.size():
+		_wave()
+
+
+func _update_waves(delta: float) -> void:
+	_wave_left -= delta
+	if _wave_left <= 0.0:
+		_wave()
+
+
+## Knocked-out attackers come back together, a life each, while lives last.
+func _wave() -> void:
+	_wave_left = data.wave_interval_s
+	for tank: Tank in _waiting.duplicate():
+		if _lives <= 0:
+			break
+		if not is_instance_valid(tank):
+			_waiting.erase(tank)
+			continue
+		_lives -= 1
+		_waiting.erase(tank)
+		_place(tank, _attacker_spawn(tank))
+
+
+func _update_defender_respawns(delta: float) -> void:
+	for tank: Variant in _def_respawn.keys():
+		if not is_instance_valid(tank):
+			_def_respawn.erase(tank)
+			continue
+		var left: float = float(_def_respawn[tank]) - delta
+		if left > 0.0:
+			_def_respawn[tank] = left
+			continue
+		_def_respawn.erase(tank)
+		_place(tank, _defender_spawn(tank))
+
+
+func _on_knocked_out(tank: Tank) -> void:
+	if _round == 0 or _over or _break_left >= 0.0:
+		return
+	_stat_add(tank, 3)
+	_outside.erase(tank)
+	if tank.team == _attack_team:
+		if not _waiting.has(tank):
+			_waiting.append(tank)
+	else:
+		_def_respawn[tank] = data.defender_respawn_s
+
+
+## A knock-out by `shooter` of an enemy counts for him.
+func _on_shot_landed(result: HitResult, shooter: Tank) -> void:
+	if _round == 0 or _over or _break_left >= 0.0 or result == null or not result.knocked_out:
+		return
+	var victim := result.target as Tank
+	if victim != null and is_instance_valid(shooter) and shooter.is_enemy_of(victim):
+		_stat_add(shooter, 2)
+
+
+func _stat_add(tank: Tank, field: int) -> void:
+	var row: Array = _stats.get(tank.get_instance_id(), [])
+	if not row.is_empty():
+		row[field] = int(row[field]) + 1
+
+
+## Outside the corridor: no fire at once, a mark on the other team's maps every
+## outside_mark_s, the commander wounded after outside_grace_s (again when it heals).
+func _check_corridors(dt: float) -> void:
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var tank := node as Tank
+		if tank == null or (tank.team != 0 and tank.team != 1):
+			continue
+		if tank.is_knocked_out():
+			tank.fire_blocked = false
+			continue
+		var role: Role = role_of(tank.team)
+		if is_inside(tank.global_position, role):
+			_outside.erase(tank)
+			_mark_left.erase(tank)
+			tank.fire_blocked = false
+			continue
+		tank.fire_blocked = true
+		var out: float = float(_outside.get(tank, 0.0)) + dt
+		_outside[tank] = out
+		var mark: float = float(_mark_left.get(tank, 0.0)) - dt
+		if mark <= 0.0:
+			mark = data.outside_mark_s
+			_mark_for_enemies(tank)
+		_mark_left[tank] = mark
+		if out >= data.outside_grace_s and not tank.is_commander_wounded():
+			tank.wound_commander()
+
+
+## Shows `tank` on the other team's maps: a spot mark from one of its living tanks.
+func _mark_for_enemies(tank: Tank) -> void:
+	for other: Tank in _team_tanks(1 - tank.team):
+		if not other.is_knocked_out():
+			other.spotted.emit(tank.global_position)
+			return
+
+
+# --- Spawns --------------------------------------------------------------------------
+
+func _attacker_spawn(tank: Tank) -> Transform3D:
+	var s: float = maxf(_front_s - data.attacker_spawn_back_m, 30.0)
+	return _free_slot(s, tangent_at(s), tank)
+
+
+## Past the next checkpoint by `ahead` checkpoints (-1: defender_spawn_checkpoints).
+func _defender_spawn(tank: Tank, ahead: int = -1) -> Transform3D:
+	if ahead < 0:
+		ahead = data.defender_spawn_checkpoints
+	var index: int = mini(_next_cp + ahead, _cp_s.size() - 1)
+	var s: float = minf(_cp_s[index] + data.defender_spawn_beyond_m, get_length() - 10.0)
+	return _free_slot(s, -tangent_at(s), tank)
+
+
+## A free, flat slot near the road at `s` (rows going back along `facing`), facing it.
+func _free_slot(s: float, facing: Vector3, tank: Tank) -> Transform3D:
+	var back: float = -signf(facing.dot(tangent_at(s)))
+	var first := Transform3D()
+	var found_first: bool = false
+	for row: int in SLOT_ROWS:
+		for across: float in SLOT_ACROSS_M:
+			var p: Vector3 = point_at(s + back * row * SLOT_ROW_M, across)
+			var hit: Dictionary = KothMode.ground_hit(get_world_3d(), p)
+			if hit.is_empty():
+				continue
+			var at: Vector3 = (hit["position"] as Vector3) + Vector3.UP * SPAWN_LIFT_M
+			var xform := Transform3D(Basis.looking_at(facing, Vector3.UP), at)
+			if not found_first:
+				first = xform
+				found_first = true
+			if _slot_ok(hit, tank):
+				return xform
+	return first
+
+
+func _slot_ok(hit: Dictionary, tank: Tank) -> bool:
+	var at: Vector3 = hit["position"]
+	if (hit["normal"] as Vector3).angle_to(Vector3.UP) > deg_to_rad(KothMode.SPAWN_MAX_SLOPE_DEG):
+		return false
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+	if map != null and map.is_blocked(at):
+		return false
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var other := node as Tank
+		if other != null and other != tank and other.global_position.distance_to(at) < SLOT_CLEAR_M:
+			return false
+	var box := BoxShape3D.new()
+	box.size = KothMode.SPAWN_BOX_M
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = box
+	query.collision_mask = 1
+	query.transform = Transform3D(Basis(), at + Vector3.UP * (KothMode.SPAWN_BOX_M.y * 0.5
+			+ KothMode.SPAWN_BOX_CLEARANCE_M))
+	if tank != null:
+		query.exclude = [tank.get_rid()]
+	for h: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 8):
+		var collider: Object = h["collider"]
+		if not (collider is Terrain3D) and not (collider is Tank and collider == tank):
+			return false
+	return true
+
+
+func _place(tank: Tank, xform: Transform3D) -> void:
+	KothMode.place_tank(tank, xform)
+	tank.repair()
+	tank.fire_blocked = false
+	tank_placed.emit(tank)
+
+
+# --- Helpers -------------------------------------------------------------------------
+
+func _connect_new_tanks() -> void:
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var tank := node as Tank
+		if tank == null or _connected.has(tank.get_instance_id()):
+			continue
+		_connected[tank.get_instance_id()] = true
+		_stats[tank.get_instance_id()] = [tank.get_display_label(), tank.team, 0, 0]
+		tank.knocked_out.connect(_on_knocked_out.bind(tank))
+		tank.shot_landed.connect(_on_shot_landed.bind(tank))
+		# A tank added mid-round (a bot filling a team) waits for its side's respawn.
+		if _round > 0 and _break_left < 0.0 and not _over:
+			if tank.team == _attack_team:
+				_place(tank, _attacker_spawn(tank))
+			else:
+				_place(tank, _defender_spawn(tank))
+
+
+func _team_tanks(team: int) -> Array[Tank]:
+	var out: Array[Tank] = []
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var tank := node as Tank
+		if tank != null and tank.team == team and not tank.is_queued_for_deletion():
+			out.append(tank)
+	return out
+
+
+func _alive_count(team: int) -> int:
+	var n: int = 0
+	for tank: Tank in _team_tanks(team):
+		if not tank.is_knocked_out():
+			n += 1
+	return n
+
+
+static func _flat(v: Vector3) -> Vector3:
+	return Vector3(v.x, 0.0, v.z)

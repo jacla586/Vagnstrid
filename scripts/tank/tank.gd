@@ -73,6 +73,8 @@ signal squad_contact(enemy: Node3D, at: Vector3)
 signal near_missed(direction: Vector3)
 ## A smoke salvo went off: the clouds' ground points (the host sends them to clients).
 signal smoke_launched(points: PackedVector3Array)
+## Host: an ammo explosion threw the turret (start velocity and spin; clients copy it).
+signal turret_tossed(velocity: Vector3, spin: Vector3)
 
 ## Rounds of at least this calibre count as a threat to bots (shell_threat); MG and
 ## rifle bullets don't (mm).
@@ -88,6 +90,11 @@ const BURNING_SCENE: PackedScene = preload("res://scenes/effects/burning.tscn")
 ## Normals steeper than this (Y in local space) count as roof/belly.
 const ROOF_NORMAL_Y: float = 0.94
 const CHARRED_COLOR: Color = Color(0.08, 0.08, 0.075)
+## A thrown turret (Tank.toss_turret): its mass (kg), how long it ignores its own hull
+## (s), and when it is frozen at the latest (s).
+const TURRET_WRECK_MASS_KG: float = 4000.0
+const TURRET_WRECK_EXCEPTION_S: float = 0.6
+const TURRET_WRECK_FREEZE_S: float = 12.0
 ## Wrecks left on the map (group "wrecks"); beyond this many the oldest goes.
 const MAX_WRECKS: int = 150
 ## A knocked-out puppet that jumps this far has respawned (m)...
@@ -147,6 +154,8 @@ var wreck_only: bool = false
 ## to wait for the jump (s).
 var _wreck_pending_xform: Transform3D
 var _wreck_pending_s: float = 0.0
+## The pending wreck lost its turret (thrown by an ammo explosion).
+var _wreck_pending_no_turret: bool = false
 ## Smoothed drive effort that pitches the hull (-1 full braking .. 1 full throttle), and
 ## a slow copy of it: the difference is the kick while the effort changes.
 var _rock: float = 0.0
@@ -168,6 +177,10 @@ var _damage: TankDamage
 var net_id: int = 0
 ## Client side: this tank is shown from the host's snapshots, not simulated here.
 var net_puppet: bool = false
+## Game mode rule (ThunderRoad: outside the corridor): the gun and MGs don't fire.
+var fire_blocked: bool = false
+## The turret was thrown off by an ammo explosion (hidden here, flying as its own body).
+var _turret_tossed: bool = false
 ## Client's own tank: turret, gun, hatch and roof MG follow the local command at once.
 var net_predict: bool = false
 var _net_velocity: Vector3 = Vector3.ZERO
@@ -629,6 +642,18 @@ func get_commander_hitbox_position() -> Vector3:
 	return _commander_hitbox.global_position
 
 
+## The commander is hurt without a hit (ThunderRoad: too long outside the corridor):
+## as a commander hit, the hatch shut for commander_wound_time_s.
+func wound_commander() -> void:
+	if _knocked_out:
+		return
+	_commander_wound_remaining = data.commander_wound_time_s
+	_hatch_progress = 0.0
+	_update_hatch(0.0)
+	_update_commander_hitbox()
+	commander_wounded.emit()
+
+
 ## Called by the commander hitbox when something hits the exposed commander.
 func on_commander_hit(_shell_data: ShellData, _point: Vector3) -> HitResult:
 	if not is_commander_exposed():
@@ -682,6 +707,16 @@ func on_shell_hit(shell_data: ShellData, point: Vector3, normal: Vector3,
 	return result
 
 
+## Host: a mine went off under track `track`: the track is thrown (the tank stands until
+## it is repaired), the hull is kicked up. Never a knock-out, nobody scores.
+func on_mine(track: StringName, point: Vector3, mine_data: MineData) -> void:
+	if _knocked_out or net_puppet:
+		return
+	_damage.apply_mine(track)
+	struck.emit(HitResult.Outcome.HIT, Vector3.UP)
+	apply_impulse(Vector3.UP * mass * mine_data.jolt_speed_mps, point - global_position)
+
+
 ## Called by a ModuleFragmentTarget when HE fragments reach an external module.
 func on_module_fragment(id: StringName, shell_data: ShellData) -> HitResult:
 	if _knocked_out or shell_data.fragment_module_damage <= 0.0:
@@ -711,6 +746,7 @@ func repair() -> void:
 	if net_puppet and _knocked_out and not _wreck_left:
 		_wreck_pending_xform = global_transform
 		_wreck_pending_s = WRECK_PENDING_S
+		_wreck_pending_no_turret = _turret_tossed
 	_knocked_out = false
 	_damage.reset()
 	# As at the first spawn: the commander unhurt and inside, gun loaded with the first
@@ -736,6 +772,11 @@ func repair() -> void:
 		_burning.queue_free()
 		_burning = null
 	_apply_paint(false)
+	if _turret_tossed:
+		_turret_tossed = false
+		_turret.visible = true
+		for cs: CollisionShape3D in _turret_shapes:
+			cs.disabled = false
 
 
 func _knock_out() -> void:
@@ -745,7 +786,76 @@ func _knock_out() -> void:
 	add_child(_burning)
 	_burning.position = _turret.position
 	_apply_paint(true)
+	if _damage.ammo_exploded and not net_puppet:
+		_toss_turret_random()
 	knocked_out.emit()
+
+
+## Host: the ammo went up: throws the turret turret_toss_min_m..max_m high, short
+## throws far more often than long ones.
+func _toss_turret_random() -> void:
+	var span: float = maxf(data.turret_toss_max_m - data.turret_toss_min_m, 0.0)
+	var height: float = data.turret_toss_min_m + span * pow(_rng.randf(), data.turret_toss_bias)
+	var g: float = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
+	var side := Vector3(_rng.randf_range(-1.0, 1.0), 0.0, _rng.randf_range(-1.0, 1.0))
+	var velocity: Vector3 = linear_velocity + Vector3.UP * sqrt(2.0 * g * height) \
+			+ side.limit_length(1.0) * data.turret_toss_side_mps
+	var spin: Vector3 = Vector3(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0),
+			_rng.randf_range(-1.0, 1.0)) * data.turret_toss_spin_rad_s
+	toss_turret(velocity, spin)
+	turret_tossed.emit(velocity, spin)
+
+
+## Hides the turret and throws a charred copy of it (a rigid body in group "wrecks")
+## with `velocity` and `spin`; it freezes where it comes to rest. Also on clients
+## (cosmetic, from the host's event). repair() puts the turret back.
+func toss_turret(velocity: Vector3, spin: Vector3) -> void:
+	if _turret_tossed or not is_inside_tree():
+		return
+	_turret_tossed = true
+	var root: Node = get_tree().current_scene if get_tree().current_scene != null else get_parent()
+	var body := RigidBody3D.new()
+	body.name = "TurretWreck"
+	body.collision_layer = 1
+	body.collision_mask = 1
+	body.mass = TURRET_WRECK_MASS_KG
+	body.continuous_cd = true
+	body.add_to_group(&"wrecks")
+	body.add_collision_exception_with(self)   # it starts sitting on the hull
+	root.add_child(body)
+	body.global_transform = Transform3D(_turret.global_basis.orthonormalized(),
+			_turret.global_position)
+	body.reset_physics_interpolation()
+	var to_body: Transform3D = body.global_transform.affine_inverse()
+	for mi: MeshInstance3D in _turret.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh == null or not mi.is_visible_in_tree():
+			continue
+		var copy := MeshInstance3D.new()
+		copy.mesh = mi.mesh
+		copy.material_override = _charred_material
+		body.add_child(copy)
+		copy.transform = to_body * mi.global_transform
+	for cs: CollisionShape3D in _turret_shapes:
+		if cs.shape == null:
+			continue
+		var shape := CollisionShape3D.new()
+		shape.shape = cs.shape.duplicate()
+		body.add_child(shape)
+		shape.transform = to_body * cs.global_transform
+		cs.set_deferred("disabled", true)
+	_turret.visible = false
+	body.linear_velocity = velocity
+	body.angular_velocity = spin
+	# Back on the hull it may land on it; at rest it turns static (cheap, stays put).
+	get_tree().create_timer(TURRET_WRECK_EXCEPTION_S).timeout.connect(func() -> void:
+		if is_instance_valid(body) and is_instance_valid(self):
+			body.remove_collision_exception_with(self))
+	body.sleeping_state_changed.connect(func() -> void:
+		if body.sleeping:
+			body.set_deferred("freeze", true))
+	get_tree().create_timer(TURRET_WRECK_FREEZE_S).timeout.connect(func() -> void:
+		if is_instance_valid(body):
+			body.freeze = true)
 
 
 ## Leaves a burnt-out copy of the tank where it stands, for the rest of the match: solid
@@ -771,7 +881,7 @@ func make_wreck_here(turret_yaw: float, gun_pitch: float) -> void:
 	queue_free()
 
 
-func _make_wreck(at: Transform3D) -> void:
+func _make_wreck(at: Transform3D, no_turret: bool = false) -> void:
 	var to_tank: Transform3D = global_transform.affine_inverse()
 	var wreck := StaticBody3D.new()
 	wreck.name = "Wreck"
@@ -785,6 +895,8 @@ func _make_wreck(at: Transform3D) -> void:
 	for mi: MeshInstance3D in _visual.find_children("*", "MeshInstance3D", true, false):
 		if mi.mesh == null or not mi.is_visible_in_tree():
 			continue
+		if no_turret and _turret.is_ancestor_of(mi):
+			continue
 		var copy := MeshInstance3D.new()
 		copy.mesh = mi.mesh
 		copy.material_override = _charred_material
@@ -793,6 +905,8 @@ func _make_wreck(at: Transform3D) -> void:
 	for child: Node in get_children():
 		var cs := child as CollisionShape3D
 		if cs == null or cs.disabled or cs.shape == null:
+			continue
+		if no_turret and _turret_shapes.has(cs):
 			continue
 		var shape := CollisionShape3D.new()
 		shape.shape = cs.shape.duplicate()
@@ -1047,7 +1161,7 @@ func _update_gun(delta: float) -> void:
 		_ammo_index = wanted
 		_reload_remaining = data.reload_time_s
 	_reload_remaining = maxf(_reload_remaining - delta, 0.0)
-	if _command.fire and is_loaded() and get_loaded_shell() != null:
+	if _command.fire and not fire_blocked and is_loaded() and get_loaded_shell() != null:
 		_fire()
 
 
@@ -1163,7 +1277,7 @@ func _update_roof_mg(delta: float) -> void:
 func _update_mg(delta: float) -> void:
 	var roof: bool = _command.mg_use_roof and can_use_roof_mg()
 	var mg: MachineGunData = data.roof_mg if roof else data.coax_mg
-	if not _command.fire_mg or mg == null or mg.bullet == null:
+	if not _command.fire_mg or fire_blocked or mg == null or mg.bullet == null:
 		_mg_shot_timer = 0.0
 		return
 	_mg_shot_timer -= delta
@@ -1208,7 +1322,7 @@ func get_net_state(for_owner: bool) -> TankNetState:
 	if _knocked_out: s.flags |= TankNetState.FLAG_KNOCKED_OUT
 	if _damage.is_burning(): s.flags |= TankNetState.FLAG_BURNING
 	var roof: bool = _command.mg_use_roof and can_use_roof_mg()
-	if _command.fire_mg and not _knocked_out and get_active_mg(roof) != null:
+	if _command.fire_mg and not fire_blocked and not _knocked_out and get_active_mg(roof) != null:
 		s.flags |= TankNetState.FLAG_MG_FIRING
 	if roof: s.flags |= TankNetState.FLAG_MG_ROOF
 	if is_commander_wounded(): s.flags |= TankNetState.FLAG_WOUNDED
@@ -1235,7 +1349,7 @@ func net_set_pose(xform: Transform3D, turret_yaw: float, gun_pitch: float, hatch
 			leave_wreck()
 		elif _wreck_pending_s > 0.0:
 			_wreck_pending_s = 0.0
-			_make_wreck(_wreck_pending_xform)
+			_make_wreck(_wreck_pending_xform, _wreck_pending_no_turret)
 		global_transform = xform
 		reset_physics_interpolation()   # a jump, not a glide across the map
 	global_transform = xform

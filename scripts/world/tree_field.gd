@@ -64,6 +64,8 @@ var _trunk_diameter: PackedFloat32Array = PackedFloat32Array()
 var _type: PackedByteArray = PackedByteArray()
 var _chunk_of: PackedInt32Array = PackedInt32Array()
 var _felled: PackedByteArray = PackedByteArray()
+## Felled tree -> its standing MultiMesh transform (to stand it up again, restore_all).
+var _felled_drawn: Dictionary = {}
 var _physics: FieldTreePhysics = null
 var _push_time: Dictionary = {}  # "tank id:tree" -> seconds pushed slowly
 
@@ -166,6 +168,7 @@ func fell_tree(tree: int, direction: Vector3) -> void:
 	_physics.disable_trunk(chunk, shape_index)
 	var multimesh: MultiMesh = _multimeshes[chunk]
 	var drawn: Transform3D = multimesh.get_instance_transform(shape_index)
+	_felled_drawn[tree] = drawn
 	multimesh.set_instance_transform(shape_index,
 			Transform3D(Basis().scaled(Vector3.ZERO), drawn.origin))
 	var falling := FallingTree.new()
@@ -179,6 +182,23 @@ func fell_tree(tree: int, direction: Vector3) -> void:
 			_physics.tip_canopy(chunk, shape_index, tree, foot, tilt))
 	tree_felled.emit(get_tree_position(tree), direction)
 	tree_index_felled.emit(tree, direction)
+
+
+## Stands every felled tree up again (a new round on the same map): trunk, crown and
+## look as at the start.
+func restore_all() -> void:
+	for child: Node in get_children(true):
+		if child is FallingTree:
+			child.free()   # no late "landed" tipping a restored crown
+	for tree: int in _felled_drawn:
+		var chunk: int = _chunk_of[tree]
+		var shape_index: int = tree - _chunk_first[chunk]
+		_multimeshes[chunk].set_instance_transform(shape_index, _felled_drawn[tree])
+		if _physics != null:
+			_physics.restore(chunk, shape_index, tree)
+		_felled[tree] = 0
+	_felled_drawn.clear()
+	_push_time.clear()
 
 
 func _build_chunks(chunks: Array, floats: PackedFloat32Array, per_tree: int) -> void:

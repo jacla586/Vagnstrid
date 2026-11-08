@@ -36,6 +36,8 @@ const DETOUR_SIDE_M: float = 25.0
 const DETOUR_AHEAD_M: float = 10.0
 ## Infantry: the bot thinks about its squad this often (s)...
 const SQUAD_THINK_S: float = 3.0
+## A known enemy mine within this (m) makes a bot on a planned path plan again.
+const MINE_REPLAN_M: float = 250.0
 ## ...sends it to look about this far ahead / towards a threat (m)...
 const SQUAD_LOOK_AHEAD_M: float = 150.0
 ## ...moves it on once the look point has moved this far (m)...
@@ -56,8 +58,6 @@ const SQUAD_FOCUS_RANGE_M: float = 450.0
 const SQUAD_MIN_STAND_S: float = 6.0
 ## ...and not again this soon after it was called back (s).
 const SQUAD_RESEND_COOLDOWN_S: float = 45.0
-## Enemy soldiers: spotted with this many times the time a tank takes (small, low).
-const SOLDIER_SPOT_FACTOR: float = 2.5
 ## Shoot and scoot: hidden backing out of sight, or returning to fire.
 enum Scoot { NONE, HIDING, RETURNING }
 ## Hide spot candidates: angles off straight back from the target (degrees).
@@ -136,6 +136,9 @@ var _no_progress_s: float = 0.0
 var _smoke_pending: bool = false
 ## Where the fighting is for this bot's squad (KothBots sets the zone); INF = none.
 var fight_focus: Vector3 = Vector3.INF
+## A squad order from outside (a game mode's bot director), sent in the bot's next frame.
+var _pending_squad_order: int = 0
+var _pending_squad_target: Vector3 = Vector3.ZERO
 ## Enemy squads: seconds looked at, and the one being fired on.
 var _squad_awareness: Dictionary = {}  # Squad -> seconds
 var _squad_target: Squad
@@ -151,6 +154,8 @@ var _relocate_hold: float = 0.0
 var _clock: float = 0.0
 ## Grid cells where this tank got stuck on something (newest last).
 var _avoid_cells: Array[Vector2i] = []
+## Mine.version when the bot last looked at known enemy mines (re-plans on a change).
+var _mine_version: int = -1
 ## Seconds since the last contact (enemy seen, reported or a hit).
 var _since_contact: float = INF
 ## Enemies reported by the group: spotted in half the time (the crew knows where to look).
@@ -289,11 +294,40 @@ func _plan_path(goal: Vector3, from: Vector3 = Vector3.INF) -> Array[Vector3]:
 	if from == Vector3.INF:
 		from = tank.global_position
 	if map != null:
-		for p: Vector3 in map.find_path(from, goal, _avoid_cells):
+		for p: Vector3 in map.find_path(from, goal, _avoid_cells + _known_mine_cells(map)):
 			points.append(p)
 	if points.is_empty():
 		points.append(goal)
 	return points
+
+
+## Grid cells round enemy mines the team knows of (the mine's cell and its neighbours).
+func _known_mine_cells(map: TacticalMap) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for node: Node in get_tree().get_nodes_in_group(Mine.GROUP):
+		var mine := node as Mine
+		if mine == null or mine.team == tank.team or not mine.is_known_by(tank.team):
+			continue
+		var c: Vector2i = map.grid.cell_of(mine.global_position)
+		for dx: int in range(-1, 2):
+			for dy: int in range(-1, 2):
+				cells.append(c + Vector2i(dx, dy))
+	return cells
+
+
+## A mine was found or went: on a planned path with a known enemy mine near, plan again.
+func _check_mines() -> void:
+	if Mine.version == _mine_version:
+		return
+	_mine_version = Mine.version
+	if _path_goal == Vector3.INF or _order_index >= _orders.size() or _tactical_map() == null:
+		return
+	for node: Node in get_tree().get_nodes_in_group(Mine.GROUP):
+		var mine := node as Mine
+		if mine != null and mine.team != tank.team and mine.is_known_by(tank.team) \
+				and mine.global_position.distance_to(tank.global_position) <= MINE_REPLAN_M:
+			order_path(_path_goal, _path_throttle, true)
+			return
 
 
 func _tactical_map() -> TacticalMap:
@@ -389,6 +423,9 @@ func _physics_process(delta: float) -> void:
 		_look_ahead_or_at_threat()
 	_command.squad_order = Squad.ORDER_NONE
 	_update_squad(delta)
+	if _pending_squad_order != Squad.ORDER_NONE:
+		_squad_order(_pending_squad_order, _pending_squad_target)
+		_pending_squad_order = Squad.ORDER_NONE
 	_update_team_spot()
 	if _scoot != Scoot.NONE:
 		_update_scoot(delta)
@@ -459,6 +496,7 @@ func _scan(dt: float) -> void:
 		_look_wait.erase(other)
 		_look_at(other, dt * scans)
 	_scan_squads(dt)
+	_check_mines()
 	_pick_target()
 	if _target != null:
 		_update_superelevation(_target)
@@ -756,7 +794,7 @@ func _look_ahead_or_at_threat() -> void:
 # --- Infantry ----------------------------------------------------------------------
 
 ## Enemy squads: the same sight rules as for tanks, on the soldiers (small: slow to make
-## out). The nearest spotted one in MG range is fired on when there is no tank target.
+## out; Squad.soldier_spot_time_factor adds cover, stance, distance and firing). The nearest spotted one in MG range is fired on when there is no tank target.
 func _scan_squads(dt: float) -> void:
 	var best: Squad = null
 	var best_d: float = INF
@@ -773,19 +811,26 @@ func _scan_squads(dt: float) -> void:
 			continue
 		var seen: int = 0
 		var total: int = 0
+		# The easiest of the soldiers in sight decides (cover, stance, distance, firing).
+		var easiest: float = INF
+		var eye: Vector3 = tank.get_commander_eye_position()
 		for hb: SoldierHitbox in enemy.get_hitboxes():
 			if not enemy.is_soldier_exposed(hb.index):
 				continue
 			total += 1
-			if _can_see_point(hb.get_aim_point(), hb):
+			var range_factor: float = enemy.soldier_spot_range_factor(hb.index, bot_data.concealment)
+			if _can_see_point(hb.get_aim_point(), hb, range_factor):
 				seen += 1
+				easiest = minf(easiest,
+						enemy.soldier_spot_time_factor(hb.index, eye, bot_data.concealment))
 		var aware: float = float(_squad_awareness.get(enemy, 0.0))
 		if seen == 0:
 			aware = maxf(aware - dt, 0.0)
 		else:
 			aware += dt
 		_squad_awareness[enemy] = aware
-		var needed: float = _spot_time() * SOLDIER_SPOT_FACTOR / maxf(float(seen) / maxf(total, 1), MIN_SHOWN_SHARE)
+		var needed: float = _spot_time() * enemy.data.soldier_spot_factor * easiest \
+				/ maxf(float(seen) / maxf(total, 1), MIN_SHOWN_SHARE)
 		if seen > 0 and aware >= needed and d <= mg_range and d < best_d:
 			best = enemy
 			best_d = d
@@ -870,6 +915,12 @@ func _update_squad(delta: float) -> void:
 		return
 	_squad_look = look
 	_squad_order(Squad.ORDER_MOVE, look)
+
+
+## Orders the own squad (via the command, like a player) in the next frame.
+func order_squad(kind: int, target: Vector3) -> void:
+	_pending_squad_order = kind
+	_pending_squad_target = target
 
 
 func _squad_order(kind: int, target: Vector3) -> void:

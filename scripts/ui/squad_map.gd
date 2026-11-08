@@ -8,6 +8,8 @@ extends MapView
 
 ## Emitted on a "squad_order" click on the map: the world point (x, z; y = 0).
 signal squad_order_requested(point: Vector3)
+## Emitted on a "squad_mine" click (right button): lay a mine there.
+signal squad_mine_requested(point: Vector3)
 
 ## World distance across the map (m).
 @export var view_range_m: float = 1000.0
@@ -32,11 +34,15 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_squad_map"):
 		set_open(not _open)
-	elif _open and event.is_action_pressed("squad_order") and event is InputEventMouseButton:
+	elif _open and event is InputEventMouseButton and (event.is_action_pressed("squad_order")
+			or event.is_action_pressed("squad_mine")):
 		var at: Vector2 = (event as InputEventMouseButton).position
 		if _map_rect.has_point(at):
 			var world: Vector2 = _map_centre + (at - _map_rect.get_center()) / _map_scale
-			squad_order_requested.emit(Vector3(world.x, 0.0, world.y))
+			if event.is_action_pressed("squad_mine"):
+				squad_mine_requested.emit(Vector3(world.x, 0.0, world.y))
+			else:
+				squad_order_requested.emit(Vector3(world.x, 0.0, world.y))
 		get_viewport().set_input_as_handled()   # not a click that captures the mouse
 
 
@@ -69,8 +75,11 @@ func _draw() -> void:
 		var r: float = tank.squad.data.max_distance_from_tank_m * scale_px
 		draw_arc(rect.get_center(), r, 0.0, TAU, 96, leash_color, 1.5, true)
 	var font: Font = get_theme_default_font()
+	var mines: String = ""
+	if tank.squad != null and is_instance_valid(tank.squad) and tank.squad.data.mine != null:
+		mines = "   right click: lay mine (%d)" % tank.squad.get_mines_carried()
 	draw_string(font, Vector2(rect.get_center().x - 6.0, rect.position.y - 8.0), "N",
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size + 4, text_color)
 	draw_string(font, Vector2(rect.position.x, rect.end.y + font_size + 6.0),
-			"SQUAD ORDERS   click: send squad   [G] recall   [Q] close   grid %d m" % roundi(grid_step_m),
+			"SQUAD ORDERS   click: send squad%s   [G] recall   [Q] close   grid %d m" % [mines, roundi(grid_step_m)],
 			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
