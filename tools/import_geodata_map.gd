@@ -6,6 +6,8 @@ extends SceneTree
 ## Reads <out dir>/ (heightmap.r16, heightmap_info.json, landcover_color.png, *_objekt.glb,
 ## trees.bin, trees_info.json, trad_*.glb) and writes terrain/<name>/. Rerun after
 ## rebuilding the geodata; it overwrites any sculpting or painting in terrain/<name>/.
+## material.tres and assets.tres are only made when missing, so edits made to them in the
+## editor (textures, meshes, shader settings) survive a rebuild; delete them to start over.
 ##
 ## Coordinates follow geodata/CLAUDE.md: origin at the heightmap's NW corner, x east,
 ## z south, y metres above sea level, pixel (column j, row i) at (j * RES, i * RES).
@@ -55,8 +57,8 @@ func _initialize() -> void:
 
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_directory))
 	_clear_old_regions()
-	_save_keeping_uid(_make_material(), _directory + "/material.tres")
-	_save_keeping_uid(_make_assets(), _directory + "/assets.tres")
+	_save_if_missing(_make_material(), _directory + "/material.tres")
+	_save_if_missing(_make_assets(), _directory + "/assets.tres")
 	_copy_files()
 
 	_terrain = Terrain3D.new()
@@ -167,10 +169,10 @@ func _texture(asset_name: String, file: String) -> Terrain3DTextureAsset:
 	return texture
 
 
-## Saves a resource but keeps the UID the file already had, so scenes that refer to it
-## by UID (the editor adds those) don't get a stale reference after a rebuild.
-func _save_keeping_uid(resource: Resource, path: String) -> void:
-	var uid: int = ResourceLoader.get_resource_uid(path) if FileAccess.file_exists(path) else ResourceUID.INVALID_ID
+## Saves a resource only if the file doesn't exist yet: an existing one may hold editor
+## changes (and its UID, which scenes refer to), so it is kept as it is.
+func _save_if_missing(resource: Resource, path: String) -> void:
+	if FileAccess.file_exists(path):
+		print("  keeping %s" % path)
+		return
 	ResourceSaver.save(resource, path)
-	if uid != ResourceUID.INVALID_ID:
-		ResourceSaver.set_uid(path, uid)
