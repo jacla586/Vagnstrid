@@ -14,6 +14,7 @@ var _status: Label
 var _maps: PackedStringArray = []
 var _tank: OptionButton
 var _team_size: SpinBox
+var _weather: OptionButton
 var _tank_configs: Array[TankConfig] = []
 
 
@@ -68,6 +69,19 @@ func _ready() -> void:
 	_team_size.value = MatchSettings.team_size
 	_team_size.value_changed.connect(func(v: float) -> void: MatchSettings.set_team_size(roundi(v)))
 	box.add_child(_team_size)
+	box.add_child(_label("Weather"))
+	_weather = OptionButton.new()
+	box.add_child(_weather)
+	var ids: PackedStringArray = [Weather.RANDOM]
+	ids.append_array(Weather.PRESETS)
+	for i: int in ids.size():
+		var preset: WeatherData = Weather.load_preset(ids[i]) if ids[i] != Weather.RANDOM else null
+		_weather.add_item(preset.display_name if preset != null else "Random", i)
+		_weather.set_item_metadata(i, ids[i])
+		if ids[i] == MatchSettings.weather:
+			_weather.select(i)
+	_weather.item_selected.connect(func(i: int) -> void:
+		MatchSettings.set_weather(str(_weather.get_item_metadata(i))))
 	_bots = CheckBox.new()
 	_bots.text = "Bots (host)"
 	box.add_child(_bots)
@@ -135,6 +149,7 @@ func _selected_map() -> String:
 
 func _on_host() -> void:
 	NetSession.instance.player_name = _name.text
+	Weather.resolve()
 	NetSession.instance.host(_selected_map(), _bots.button_pressed)
 
 
@@ -144,4 +159,5 @@ func _on_join() -> void:
 
 
 func _on_single() -> void:
+	Weather.resolve()
 	get_tree().change_scene_to_file(_selected_map())

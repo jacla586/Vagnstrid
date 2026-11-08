@@ -1,22 +1,47 @@
 class_name Weather
 extends RefCounted
-## The match's weather (WeatherData). Set from the main menu's choice (offline, host) or
-## by the host (clients, Net.rpc_welcome); read by WeatherView (looks) and by the rules
+## The match's weather (WeatherData). Chosen in the main menu (MatchSettings.weather,
+## "random" or a preset) and fixed for the match by resolve() (offline, host), or set by
+## the host (clients, Net.rpc_welcome). Read by WeatherView (looks) and by the rules
 ## everybody plays by (view ranges, spotting, hearing, wind).
 
-const DEFAULT_PATH: String = "res://data/weather/clear.tres"
+const RANDOM: String = "random"
+const DIR: String = "res://data/weather/"
+## Menu order; "random" picks among these.
+const PRESETS: PackedStringArray = ["clear", "overcast", "dawn", "dusk", "fog"]
+const DEFAULT_ID: String = "clear"
 
 static var _current: WeatherData
 
 
+## The match's weather; resolves the menu choice the first time (F5/F6 in the editor too).
 static func current() -> WeatherData:
 	if _current == null:
-		_current = load(DEFAULT_PATH) as WeatherData
+		resolve()
 	return _current
+
+
+## Fixes the weather from the menu choice (a random preset for "random").
+static func resolve() -> void:
+	MatchSettings.load_settings()
+	var id: String = MatchSettings.weather
+	if id == RANDOM or not PRESETS.has(id):
+		id = PRESETS[randi() % PRESETS.size()] if id == RANDOM else DEFAULT_ID
+	_current = load_preset(id)
 
 
 static func set_current(weather: WeatherData) -> void:
 	_current = weather
+
+
+## Clients: the host's preset by path (falls back to the default).
+static func set_by_path(path: String) -> void:
+	var w: WeatherData = load(path) as WeatherData if ResourceLoader.exists(path) else null
+	_current = w if w != null else load_preset(DEFAULT_ID)
+
+
+static func load_preset(id: String) -> WeatherData:
+	return load(DIR + id + ".tres") as WeatherData
 
 
 ## A view range cut to what the weather lets anyone see (m).

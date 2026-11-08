@@ -376,7 +376,7 @@ func get_leader_eye() -> Vector3:
 func soldier_spot_time_factor(index: int, viewer: Vector3, conceal: ConcealmentData) -> float:
 	if _revealed[index] > 0.0:
 		return data.reveal_spot_factor
-	var factor: float = data.camo_spot_factor
+	var factor: float = data.camo_spot_factor * Weather.current().spot_time_factor
 	if conceal != null:
 		# Cover as for tanks; still as for tanks, but a running man is no tank at speed.
 		var cover: float = Concealment.cover(get_world_3d(), _hitboxes[index], conceal)
@@ -1001,7 +1001,8 @@ func _scan(dt: float) -> void:
 ## One look at `target` through its `points` ([world point, collider] pairs).
 func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: float,
 		seen_now: Dictionary) -> void:
-	if eye.distance_to(target.global_position) > data.view_range_m + VIEW_RANGE_MARGIN_M:
+	if eye.distance_to(target.global_position) > Weather.view_range(data.view_range_m) \
+			+ VIEW_RANGE_MARGIN_M:
 		return   # cover only ever shortens the range
 	var time_factor: float = 1.0
 	var range_factor: float = 1.0
@@ -1021,7 +1022,7 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 		range_factor = Concealment.range_factor(cover, data.concealment)
 	if target is Tank:
 		time_factor *= (target as Tank).data.camo_spot_factor
-	var view_range: float = data.view_range_m * range_factor
+	var view_range: float = Weather.view_range(data.view_range_m) * range_factor
 	var seen: int = 0
 	for pair: Array in points:
 		var p: Vector3 = pair[0]

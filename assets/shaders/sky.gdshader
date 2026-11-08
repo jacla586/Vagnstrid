@@ -66,7 +66,7 @@ void sky() {
 	col += sun_col * (pow(c0, 64.0) * sun_halo + pow(c0, 6.0) * sun_halo * 0.2 * (0.4 + low_sun));
 	float disc_r = max(LIGHT0_SIZE * 0.5 * sun_disc_scale, 0.004);
 	float ang = acos(clamp(cosang, -1.0, 1.0));
-	float disc = 1.0 - smoothstep(disc_r * 0.75, disc_r, ang);
+	float disc = sun_disc_scale > 0.0 ? 1.0 - smoothstep(disc_r * 0.75, disc_r, ang) : 0.0;
 	if (!AT_CUBEMAP_PASS && dir.y > 0.0) {
 		vec2 uv = dir.xz / (dir.y + 0.1) * cloud_scale;
 		vec2 w = cloud_wind * TIME;

@@ -197,6 +197,7 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Engine, track, gun and hatch sounds (null when the data has none).
 var _audio: TankAudio
 var _exhaust: TankExhaust
+var _gun_render_layer: int = 1
 ## The infantry squad riding on this tank (null when the data has none).
 var squad: Squad
 
@@ -413,10 +414,16 @@ func _apply_model() -> void:
 ## Puts the gun and mantlet meshes on render layer `layer` alone. The gunner's sight
 ## moves its own tank's gun to a layer it doesn't render (GunnerCamera), others stay on 1.
 func set_gun_render_layer(layer: int) -> void:
+	_gun_render_layer = layer
 	for path: String in ["Visual/Turret/GunPivot/Mantlet", "Visual/Turret/GunPivot/Gun"]:
 		var mesh := get_node_or_null(path) as MeshInstance3D
 		if mesh != null:
 			mesh.layers = 1 << (layer - 1)
+
+
+## Render layer of the gun (and of its own gun smoke, GunSmoke).
+func get_gun_render_layer() -> int:
+	return _gun_render_layer
 
 
 ## Plain box tanks: a UN-blue band round the round turret and a roof panel (TeamLook).
@@ -1449,7 +1456,8 @@ func net_show_shell(shell_index: int, from: Vector3, velocity: Vector3, flash: b
 		var fx: Node3D = MUZZLE_FLASH_SCENE.instantiate()
 		get_parent().add_child(fx)
 		fx.global_position = from
-		GunSmoke.spawn(get_parent(), from, velocity.normalized(), _gun_smoke_scale())
+		GunSmoke.spawn(get_parent(), from, velocity.normalized(), _gun_smoke_scale(),
+				_gun_render_layer)
 		if _audio != null:
 			_audio.play_gun(from)
 	else:
@@ -1506,7 +1514,8 @@ func _fire() -> void:
 	var flash: Node3D = MUZZLE_FLASH_SCENE.instantiate()
 	get_parent().add_child(flash)
 	flash.global_position = muzzle_position
-	GunSmoke.spawn(get_parent(), muzzle_position, direction, _gun_smoke_scale())
+	GunSmoke.spawn(get_parent(), muzzle_position, direction, _gun_smoke_scale(),
+			_gun_render_layer)
 	if _audio != null:
 		_audio.play_gun(muzzle_position)
 	apply_impulse(-direction * data.recoil_impulse_ns, muzzle_position - global_position)

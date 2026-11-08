@@ -232,15 +232,17 @@ func _on_packet(id: int, packet: PackedByteArray) -> void:
 @rpc("any_peer", "call_remote", "reliable", 2)
 func rpc_hello(name_: String, config_key: String) -> void:
 	if NetRole.is_host():
-		rpc_id(multiplayer.get_remote_sender_id(), "rpc_welcome", map_path, bots)
+		rpc_id(multiplayer.get_remote_sender_id(), "rpc_welcome", map_path, bots,
+				Weather.current().resource_path)
 		if game != null:
 			game.on_client_hello(multiplayer.get_remote_sender_id(), name_, config_key)
 
 
 @rpc("authority", "call_remote", "reliable", 2)
-func rpc_welcome(map: String, with_bots: bool) -> void:
+func rpc_welcome(map: String, with_bots: bool, weather_path: String) -> void:
 	map_path = map
 	bots = with_bots
+	Weather.set_by_path(weather_path)   # the host's weather, whatever this menu says
 	_load_map(map)
 
 

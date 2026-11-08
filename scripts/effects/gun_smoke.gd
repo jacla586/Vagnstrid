@@ -10,7 +10,10 @@ const SPEED_MPS: float = 5.0
 
 
 ## A cloud at `at`, pushed out along the bore `direction` (world, unit).
-static func spawn(parent: Node, at: Vector3, direction: Vector3, calibre_scale: float) -> void:
+## render_layer: the shooting tank's gun layer (Tank.get_gun_render_layer): the own
+## gunner's sight doesn't render it, so he sees where his round goes (others see the cloud).
+static func spawn(parent: Node, at: Vector3, direction: Vector3, calibre_scale: float,
+		render_layer: int = 1) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
 	var smoke := GunSmoke.new()
@@ -26,7 +29,8 @@ static func spawn(parent: Node, at: Vector3, direction: Vector3, calibre_scale: 
 	process.initial_velocity_max = SPEED_MPS * size
 	process.damping_min = 2.0
 	process.damping_max = 3.0
-	process.gravity = Vector3(0.0, 0.3, 0.0)
+	process.gravity = Vector3(0.0, 0.3, 0.0) + Weather.wind() * 0.2
+	p.layers = 1 << (clampi(render_layer, 1, 20) - 1)
 	smoke.add_child(p)
 	parent.add_child(smoke)
 	smoke.global_position = at

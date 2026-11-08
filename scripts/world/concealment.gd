@@ -45,8 +45,10 @@ static func _query_cover(world: World3D, target: Node3D, data: ConcealmentData) 
 
 
 ## How many times longer than normal it takes to spot a target with this cover and speed.
+## Includes the weather (Weather.current().spot_time_factor: rain, mist).
 static func spot_time_factor(cover_amount: float, speed: float, data: ConcealmentData) -> float:
-	var factor: float = 1.0 + cover_amount * data.cover_spot_time_factor
+	var factor: float = (1.0 + cover_amount * data.cover_spot_time_factor) \
+			* Weather.current().spot_time_factor
 	if speed <= data.stationary_speed_mps:
 		factor *= data.stationary_spot_time_factor
 	elif speed >= data.fast_speed_mps:

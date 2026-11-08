@@ -31,10 +31,13 @@ func _ready() -> void:
 		p.amount = maxi(int(ceil(_data.full_rate * _data.burst_factor * _data.lifetime_s)), 1)
 		var process := p.process_material as ParticleProcessMaterial
 		process.direction = Vector3.UP
-		process.spread = 25.0
-		process.initial_velocity_min = _data.rise_mps * 0.6
+		process.spread = _data.cone_deg
+		process.initial_velocity_min = _data.rise_mps * 0.8
 		process.initial_velocity_max = _data.rise_mps * 1.2
-		process.gravity = Vector3(0.0, _data.rise_mps * 0.2, 0.0)
+		process.damping_min = 0.3
+		process.damping_max = 0.6
+		# Rises on, drifting with the wind.
+		process.gravity = Vector3(0.0, _data.rise_mps * 0.15, 0.0) + Weather.wind() * 0.15
 		process.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
 		process.emission_sphere_radius = 0.15
 		process.turbulence_enabled = true

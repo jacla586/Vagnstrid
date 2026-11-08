@@ -80,7 +80,7 @@ static func _set_environment(env: Environment, w: WeatherData) -> void:
 	env.volumetric_fog_enabled = w.mist_density > 0.0
 	if env.volumetric_fog_enabled:
 		env.volumetric_fog_density = w.mist_density
-		env.volumetric_fog_albedo = w.fog_color
+		env.volumetric_fog_albedo = w.fog_color.lerp(Color.WHITE, 0.6)
 		env.volumetric_fog_length = 200.0
 	env.adjustment_enabled = not is_equal_approx(w.saturation, 1.0)
 	env.adjustment_saturation = w.saturation

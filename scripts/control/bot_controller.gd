@@ -566,7 +566,8 @@ func _look_at(other: Tank, dt: float) -> void:
 ## whatever cover or camouflage: cover only ever shortens the range.
 func _within_view_range(point: Vector3) -> bool:
 	var open: bool = tank.get_hatch_progress() >= 1.0
-	var view_range: float = bot_data.view_range_open_m if open else bot_data.view_range_closed_m
+	var view_range: float = Weather.view_range(bot_data.view_range_open_m if open
+			else bot_data.view_range_closed_m)
 	if tank.is_burning():
 		view_range *= tank.data.fire_view_range_factor   # smoke from the own fire
 	return tank.get_commander_eye_position().distance_to(point) <= view_range + VIEW_RANGE_MARGIN_M
@@ -578,8 +579,8 @@ func _can_see_point(point: Vector3, collider: CollisionObject3D,
 		range_factor: float = 1.0) -> bool:
 	var eye: Vector3 = tank.get_commander_eye_position()
 	var open: bool = tank.get_hatch_progress() >= 1.0
-	var view_range: float = range_factor * (bot_data.view_range_open_m if open
-			else bot_data.view_range_closed_m)
+	var view_range: float = range_factor * Weather.view_range(bot_data.view_range_open_m
+			if open else bot_data.view_range_closed_m)
 	if eye.distance_to(point) > view_range:
 		return false
 	if not open:

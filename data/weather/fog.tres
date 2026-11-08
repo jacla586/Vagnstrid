@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="WeatherData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/weather_data.gd" id="1_weather"]
+
+[resource]
+script = ExtResource("1_weather")
+display_name = "Fog"
+sun_elevation_deg = 30.0
+sun_azimuth_deg = 200.0
+sun_color = Color(0.9, 0.9, 0.9, 1)
+sun_energy = 0.35
+sun_disc_scale = 0.0
+sun_halo = 0.0
+zenith_color = Color(0.62, 0.64, 0.66, 1)
+horizon_color = Color(0.72, 0.73, 0.74, 1)
+cloud_coverage = 1.0
+cloud_opacity = 1.0
+cloud_color = Color(0.75, 0.76, 0.77, 1)
+cloud_shade_color = Color(0.6, 0.61, 0.62, 1)
+exposure = 1.15
+ambient_energy = 1.3
+saturation = 0.85
+visibility_m = 400.0
+fog_color = Color(0.72, 0.73, 0.74, 1)
+fog_sun_scatter = 0.0
+fog_sky_affect = 1.0
+fog_aerial_perspective = 0.0
+spot_time_factor = 1.3
+wind_mps = Vector2(0.5, 0.2)

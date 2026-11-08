@@ -431,6 +431,12 @@ shows on the minimap. This is what we test first.
   `WeatherView` in the player rig dresses the map at runtime (own sky shader
   `assets/shaders/sky.gdshader` with clouds, sun angle/colour, AgX, SSAO, glow, fog density
   from `visibility_m`) on copies of the map's Environment; map scenes are not edited.
+  Presets: clear, overcast, dawn, dusk, fog (`Weather.PRESETS`); main menu "Weather"
+  (`MatchSettings.weather`, "random" default) is fixed per match by `Weather.resolve()`
+  (Single player / Host); clients get the host's in `rpc_welcome`. Rules for all:
+  bots' and squads' view ranges are cut to `visibility_m` (`Weather.view_range`), spotting
+  takes `spot_time_factor` longer (`Concealment.spot_time_factor`, soldiers too). Own gun
+  smoke (`GunSmoke`) is on the gun's render layer, so the own gunner's sight sees through it.
 - Vegetation that matters for gameplay is real scenes (`tree.tscn`, `bush.tscn`),
   placed with the `Scatter` tool node, not the Terrain3D instancer (no collision).
 
