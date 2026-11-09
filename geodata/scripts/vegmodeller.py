@@ -81,16 +81,44 @@ def _normalisera(m):
 BARK = (92, 70, 52); TALLBARK = (150, 92, 58); BJORKBARK = (226, 224, 214)
 
 
+def _krans(r, y0, y1, rng, sektioner=14, hang=0.35, tagg=0.28):
+    """En grankrans: kon vars bas är en stjärna (grenspetsar ut, mellanrum in) och vars
+    spetsar hänger ner `hang` av kransens höjd. Ger taggig siluett i stället för slät kon."""
+    m = trimesh.creation.cone(radius=1.0, height=1.0, sections=sektioner)
+    v = np.asarray(m.vertices).copy()        # bas z=0, spets z=1
+    bas = v[:, 2] < 0.5
+    vinkel = np.arctan2(v[:, 1], v[:, 0])
+    steg = 2 * math.pi / sektioner
+    udda = (np.round(vinkel / steg).astype(int) % 2) == 1
+    fakt = np.where(udda, 1.0 - tagg, 1.0) * (1 + rng.uniform(-0.08, 0.08, len(v)))
+    v[bas, 0] *= r * fakt[bas]
+    v[bas, 1] *= r * fakt[bas]
+    h = y1 - y0
+    z = y0 + v[:, 2] * h
+    z = np.where(bas & ~udda, z - hang * h, z)   # spetsarna hänger
+    m.vertices = np.c_[v[:, 0], z, v[:, 1]]
+    m.faces = np.asarray(m.faces)[:, ::-1]
+    m.apply_transform(trimesh.transformations.rotation_matrix(rng.uniform(0, 2 * math.pi), [0, 1, 0]))
+    return m
+
+
+GRAN_MORK = (30, 58, 38); GRAN_LJUS = (44, 76, 46)
+
+
 def gran(rng):
-    delar = [_farga(_cyl(0.05, 0.035, 0, 0.22), BARK, rng)]
-    n = int(rng.integers(4, 7))
+    """Smal gran: kort synlig stam, 8-11 taggiga, hängande kransar som smalnar av uppåt och
+    en tunn topp. Kransarna överlappar så att skogen ser tät ut."""
+    delar = [_farga(_cyl(0.045, 0.03, 0, 0.3), BARK, rng)]
+    n = int(rng.integers(8, 12))
     for i in range(n):
         t = i / (n - 1)
-        r = 1.0 - 0.78 * t + rng.uniform(-0.05, 0.05)
-        y0 = 0.10 + 0.70 * t
-        delar.append(_farga(_kon(r, y0, y0 + 0.34 - 0.08 * t, rng, sektioner=int(rng.integers(7, 10))),
-                            (34 + 8 * t, 66 + 14 * t, 40 + 6 * t), rng, mork_nere=0.25))
-    delar.append(_farga(_kon(0.12, 0.88, 1.0, rng), (44, 82, 46), rng))
+        r = (1.0 - 0.85 * t) * rng.uniform(0.9, 1.06)
+        y0 = 0.08 + 0.78 * t
+        hojd = 0.2 - 0.08 * t
+        farg = tuple(int(a + (b - a) * t) for a, b in zip(GRAN_MORK, GRAN_LJUS))
+        delar.append(_farga(_krans(r, y0, y0 + hojd, rng, sektioner=int(rng.integers(12, 17)),
+                                   hang=0.45 - 0.2 * t), farg, rng, variation=0.07, mork_nere=0.35))
+    delar.append(_farga(_kon(0.07, 0.9, 1.0, rng, sektioner=6), GRAN_LJUS, rng))
     return _normalisera(trimesh.util.concatenate(delar))
 
 
@@ -159,40 +187,88 @@ def tall(rng):
     return _normalisera(trimesh.util.concatenate([d for d in delar if d is not None]))
 
 
-def bjork(rng):
-    stam = _farga(_cyl(0.035, 0.02, 0, 0.75), BJORKBARK, rng, variation=0.02)
+BJORK_LOV = (108, 150, 66); BJORK_LOV_LJUS = (128, 166, 78)
+EK_LOV = (62, 98, 46); EK_LOV_LJUS = (78, 114, 54)
+
+
+def _flackig_stam(stam, rng, andel=0.25):
+    """Björkstam: vit med svarta fläckar (vertexfärger)."""
     col = np.asarray(stam.visual.vertex_colors).copy()
-    flack = rng.random(len(col)) < 0.25
+    flack = rng.random(len(col)) < andel
     col[flack, :3] = 40
     stam.visual = trimesh.visual.ColorVisuals(stam, vertex_colors=col)
-    delar = [stam]
-    for _ in range(int(rng.integers(6, 9))):
-        a = rng.uniform(0, 2 * math.pi); d = rng.uniform(0.0, 0.32)
-        y = rng.uniform(0.42, 0.9)
-        delar.append(_farga(_klump([math.cos(a) * d, y, math.sin(a) * d], rng.uniform(0.2, 0.3),
-                                   rng.uniform(0.16, 0.24), rng.uniform(0.2, 0.3), rng),
-                            (104, 146, 62), rng, variation=0.08, mork_nere=0.25))
-    return _normalisera(trimesh.util.concatenate(delar))
+    return stam
+
+
+def bjork(rng):
+    """Björk, byggd i meter (16 m hög) och normaliserad sist: smal, lite lutande vit stam med
+    svarta fläckar, 4-6 uppåtriktade grenar och en luftig, hög krona av 14-20 mindre tussar
+    (stammen syns mellan dem)."""
+    H = 16.0
+    luta = np.array([rng.uniform(-0.4, 0.4), 0.0, rng.uniform(-0.4, 0.4)])
+    topp = np.array([0.0, H * 0.82, 0.0]) + luta
+    delar = [_flackig_stam(_gren([0, 0, 0], topp * 0.5, 0.18, rng, BJORKBARK), rng),
+             _flackig_stam(_gren(topp * 0.5, topp, 0.11, rng, BJORKBARK), rng)]
+    fasten = []
+    for _ in range(int(rng.integers(4, 7))):
+        y = rng.uniform(0.35, 0.7)
+        bas = topp * y
+        a = rng.uniform(0, 2 * math.pi); d = rng.uniform(1.4, 2.6)
+        spets = bas + [math.cos(a) * d, rng.uniform(1.8, 3.2), math.sin(a) * d]
+        delar.append(_gren(bas, spets, 0.06, rng, BJORKBARK))
+        fasten.append(spets)
+    fasten.append(topp)
+    for k in range(int(rng.integers(14, 21))):
+        a = rng.uniform(0, 2 * math.pi)
+        if rng.random() < 0.6:
+            c = fasten[int(rng.integers(len(fasten)))] + [math.cos(a) * rng.uniform(0.2, 1.4),
+                                                          rng.uniform(-1.0, 0.8), math.sin(a) * rng.uniform(0.2, 1.4)]
+        else:
+            y = rng.uniform(0.45, 0.95)
+            c = topp * y + [math.cos(a) * rng.uniform(0.8, 2.6), rng.uniform(-0.5, 0.5), math.sin(a) * rng.uniform(0.8, 2.6)]
+        r = rng.uniform(0.9, 1.6)
+        farg = BJORK_LOV if rng.random() < 0.6 else BJORK_LOV_LJUS
+        delar.append(_farga(_klump(c, r, r * rng.uniform(0.7, 0.95), r * rng.uniform(0.85, 1.1), rng, jitter=0.2),
+                            farg, rng, variation=0.08, mork_nere=0.3))
+    return _normalisera(trimesh.util.concatenate([d for d in delar if d is not None]))
 
 
 def ek(rng):
-    delar = [_farga(_cyl(0.08, 0.05, 0, 0.45), BARK, rng, mork_nere=0.3)]
-    for _ in range(int(rng.integers(5, 8))):
-        a = rng.uniform(0, 2 * math.pi); d = rng.uniform(0.15, 0.5)
-        y = rng.uniform(0.5, 0.82)
-        delar.append(_farga(_klump([math.cos(a) * d, y, math.sin(a) * d], rng.uniform(0.32, 0.45),
-                                   rng.uniform(0.2, 0.28), rng.uniform(0.32, 0.45), rng),
-                            (66, 102, 48), rng, variation=0.08, mork_nere=0.3))
-    return _normalisera(trimesh.util.concatenate(delar))
+    """Ek, byggd i meter (15 m hög) och normaliserad sist: grov kort stam som delar sig i 2-3
+    tjocka, utåtlutande grenar vid ca 35 %, och en bred, klumpig krona av 12-16 stora tussar."""
+    H = 15.0
+    gaffel = np.array([rng.uniform(-0.3, 0.3), H * rng.uniform(0.3, 0.4), rng.uniform(-0.3, 0.3)])
+    delar = [_gren([0, 0, 0], gaffel, 0.42, rng, BARK)]
+    lemmar = []
+    for j in range(int(rng.integers(2, 4))):
+        a = rng.uniform(0, 2 * math.pi) if j == 0 else lemmar_a + (2 * math.pi / 3) * j + rng.uniform(-0.4, 0.4)
+        if j == 0:
+            lemmar_a = a
+        d = rng.uniform(2.5, 4.0)
+        spets = gaffel + [math.cos(a) * d, rng.uniform(3.0, 4.5), math.sin(a) * d]
+        delar.append(_gren(gaffel, spets, 0.24, rng, BARK))
+        lemmar.append(spets)
+    for k in range(int(rng.integers(12, 17))):
+        a = rng.uniform(0, 2 * math.pi)
+        bas = lemmar[k % len(lemmar)]
+        c = bas + [math.cos(a) * rng.uniform(0.5, 2.4), rng.uniform(-0.6, 2.4), math.sin(a) * rng.uniform(0.5, 2.4)]
+        r = rng.uniform(1.6, 2.6)
+        farg = EK_LOV if rng.random() < 0.6 else EK_LOV_LJUS
+        delar.append(_farga(_klump(c, r, r * rng.uniform(0.65, 0.85), r * rng.uniform(0.85, 1.1), rng, jitter=0.2),
+                            farg, rng, variation=0.08, mork_nere=0.35))
+    return _normalisera(trimesh.util.concatenate([d for d in delar if d is not None]))
 
 
 def buske(rng):
+    """Buske: 7-11 oregelbundna tussar i en låg, bred hög (ljusare upptill)."""
     delar = []
-    for _ in range(int(rng.integers(3, 6))):
-        a = rng.uniform(0, 2 * math.pi); d = rng.uniform(0.0, 0.45)
-        delar.append(_farga(_klump([math.cos(a) * d, rng.uniform(0.3, 0.55), math.sin(a) * d],
-                                   rng.uniform(0.35, 0.55), rng.uniform(0.3, 0.45), rng.uniform(0.35, 0.55), rng),
-                            (70, 106, 50), rng, variation=0.08, mork_nere=0.35))
+    for _ in range(int(rng.integers(7, 12))):
+        a = rng.uniform(0, 2 * math.pi); d = rng.uniform(0.0, 0.55)
+        r = rng.uniform(0.28, 0.45)
+        delar.append(_farga(_klump([math.cos(a) * d, rng.uniform(0.25, 0.6), math.sin(a) * d],
+                                   r, r * rng.uniform(0.75, 1.0), r * rng.uniform(0.85, 1.1), rng, jitter=0.22),
+                            (70, 106, 50) if rng.random() < 0.6 else (84, 120, 58), rng,
+                            variation=0.08, mork_nere=0.4))
     return _normalisera(trimesh.util.concatenate(delar))
 
 
