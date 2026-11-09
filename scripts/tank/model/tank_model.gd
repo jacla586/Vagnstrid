@@ -448,10 +448,14 @@ func _details(style: StringName) -> void:
 	# Measures for StowageModel (rack behind the turret, cans on the rear deck).
 	out["stow"] = {"back_z": _turret_back, "top": top, "half_w": R * 0.72 * k,
 			"deck_z": _deck_end_z, "deck_half_w": _deck_half_w, "deck_y": yt}
-	# Antenna at the back right: a base and a thin whip.
+	# Antenna at the back right: a base on the turret, the whip its own mesh so it can
+	# sway (Tank "Antenna", TankLooks).
 	var foot := Vector3(R * 0.5 * k, top, R * 0.6 * k)
 	turret.cylinder(foot, foot + Vector3(0.0, 0.08, 0.0), 0.045, 0.035, 8, dark)
-	turret.cylinder(foot + Vector3(0.0, 0.08, 0.0), foot + Vector3(0.0, 1.9, 0.0), 0.01, 0.006, 4, dark)
+	var whip := MeshKit.new()
+	whip.cylinder(Vector3.ZERO, Vector3(0.0, 1.82, 0.0), 0.01, 0.006, 4, dark)
+	out["antenna"] = whip.build()
+	out["antenna_foot"] = foot + Vector3(0.0, 0.08, 0.0)
 
 
 ## A point on the front plate at x, `share` of the way from its foot up to the roof,
@@ -500,8 +504,16 @@ func _tracks(rw: float, wheels: int, span: float, sprocket_front: bool, rollers:
 
 func _wheel(s: float, z: float, y: float, r: float) -> void:
 	var xo: float = s * W * 0.5
+	# The wheel turns (tank_wheel.gdshader): bolts round the hub show it.
+	hull.spin = Vector4(y, z, 1.0 / maxf(r, 0.01), 1.0)
 	hull.cylinder(Vector3(xo - s * 0.14, y, z), Vector3(xo + s * 0.03, y, z), r, r, 14, MeshKit.Mat.WHEEL)
-	hull.cylinder(Vector3(xo + s * 0.03, y, z), Vector3(xo + s * 0.07, y, z), r * 0.35, r * 0.3, 8, MeshKit.Mat.DARK)
+	hull.cylinder(Vector3(xo + s * 0.03, y, z), Vector3(xo + s * 0.07, y, z), r * 0.35, r * 0.3, 8, MeshKit.Mat.WHEEL)
+	for i: int in 5:
+		var a: float = TAU * float(i) / 5.0
+		var c := Vector3(xo + s * 0.04, y + cos(a) * r * 0.62, z + sin(a) * r * 0.62)
+		hull.box(c, Vector3(0.04, r * 0.16, r * 0.16), MeshKit.Mat.WHEEL)
+	hull.spin = Vector4.ZERO
+	hull.cylinder(Vector3(xo + s * 0.07, y, z), Vector3(xo + s * 0.075, y, z), r * 0.12, r * 0.12, 6, MeshKit.Mat.DARK)
 
 
 ## The hull between the tracks, from the floor to the track tops; sloped lower plates.

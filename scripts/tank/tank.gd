@@ -440,6 +440,14 @@ func _apply_model() -> void:
 	($Visual/Turret/GunPivot/Muzzle as Node3D).position = Vector3(0.0, 0.0, m["muzzle_z"])
 	_add_number_labels(m.get("number_spots", []))
 	_add_stowage(m)
+	var antenna := $Visual/Turret.get_node_or_null("Antenna") as MeshInstance3D
+	if antenna == null:
+		antenna = MeshInstance3D.new()
+		antenna.name = "Antenna"
+		antenna.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # swayed in _process
+		($Visual/Turret as Node3D).add_child(antenna)
+	antenna.mesh = m.get("antenna")
+	antenna.position = m.get("antenna_foot", Vector3.ZERO)
 	var track_x: float = m["track_x"]
 	for child: Node in ($Suspension as Node3D).get_children():
 		var ray := child as RayCast3D
@@ -1206,6 +1214,10 @@ static func paint_visual(visual: Node3D, friend: bool, charred: Material = null)
 
 
 ## Speed along the hull's forward axis (m/s), negative when reversing.
+func get_track_half_width() -> float:
+	return _track_half_width
+
+
 func get_forward_speed() -> float:
 	return linear_velocity.dot(-global_basis.z)
 

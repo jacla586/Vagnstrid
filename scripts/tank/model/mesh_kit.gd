@@ -15,23 +15,35 @@ const EPS: float = 0.0005
 static var _materials: Dictionary = {}
 
 var xform: Transform3D = Transform3D.IDENTITY
+## Set while adding a wheel: (centre y, centre z, 1/radius, 1) goes into every vertex's
+## CUSTOM0, so tank_wheel.gdshader can turn it. Zero = doesn't turn.
+var spin: Vector4 = Vector4.ZERO
 var _verts: Dictionary = {}    # Mat -> PackedVector3Array
 var _normals: Dictionary = {}  # Mat -> PackedVector3Array
 var _groups: Dictionary = {}   # group name -> PackedVector3Array
+var _customs: Dictionary = {}  # Mat -> PackedFloat32Array (4 per vertex), see `spin`
+var _spun: Dictionary = {}     # Mat -> true once a spinning solid used it
 
 
-## The shared materials. PAINT is the one a team colour replaces.
-static func material(m: Mat) -> StandardMaterial3D:
+## The shared materials. PAINT is the one a team colour replaces. WHEEL turns
+## (tank_wheel.gdshader) and TRACK shows moving links (tank_track.gdshader).
+static func material(m: Mat) -> Material:
 	if _materials.is_empty():
 		_materials[Mat.PAINT] = _mat(Color(0.36, 0.4, 0.27), 0.85)
-		_materials[Mat.TRACK] = _mat(Color(0.13, 0.12, 0.11), 1.0)
-		_materials[Mat.WHEEL] = _mat(Color(0.2, 0.21, 0.18), 0.9)
+		_materials[Mat.TRACK] = _shader_mat(preload("res://assets/shaders/tank_track.gdshader"))
+		_materials[Mat.WHEEL] = _shader_mat(preload("res://assets/shaders/tank_wheel.gdshader"))
 		_materials[Mat.DARK] = _mat(Color(0.08, 0.08, 0.08), 0.6)
 		_materials[Mat.DETAIL] = _mat(Color(0.28, 0.31, 0.21), 0.9)
 		_materials[Mat.MARK] = _mat(Color(0.29, 0.57, 0.86), 0.6)
 		_materials[Mat.SKIN] = _mat(Color(0.78, 0.6, 0.48), 0.8)
 		_materials[Mat.CANVAS] = _mat(Color(0.42, 0.38, 0.27), 1.0)
 	return _materials[m]
+
+
+static func _shader_mat(shader: Shader) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = shader
+	return m
 
 
 static func _mat(c: Color, rough: float) -> StandardMaterial3D:
@@ -139,7 +151,11 @@ func build() -> ArrayMesh:
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = _verts[m]
 		arrays[Mesh.ARRAY_NORMAL] = _normals[m]
-		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		var flags: int = 0
+		if _spun.has(m):
+			arrays[Mesh.ARRAY_CUSTOM0] = _customs[m]
+			flags = Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
 		mesh.surface_set_material(mesh.get_surface_count() - 1, material(m))
 	return mesh
 
@@ -177,6 +193,12 @@ func _tri(a: Vector3, b: Vector3, c: Vector3, out: Vector3, mat: Mat) -> void:
 	nn.append_array([wn, wn, wn])
 	_verts[mat] = v
 	_normals[mat] = nn
+	var cu: PackedFloat32Array = _customs.get(mat, PackedFloat32Array())
+	for k: int in 3:
+		cu.append_array([spin.x, spin.y, spin.z, spin.w])
+	_customs[mat] = cu
+	if spin.w > 0.0:
+		_spun[mat] = true
 
 
 func _collect(pts: PackedVector3Array, group: String) -> void:

@@ -250,7 +250,13 @@ shows on the minimap. This is what we test first.
   in order per team), hidden when knocked out. Stowage (`StowageModel`, made in `Tank._add_stowage`): a rack
   behind the turret with tarp rolls, packs, crates and jerrycans, and jerrycans on the rear
   deck; `VARIANTS` per tank type, picked from net_id (online) or the node name.
-  `MeshKit.Mat.CANVAS` for tarps and packs.
+  `MeshKit.Mat.CANVAS` for tarps and packs. Moving parts (TankLooks, read from how the tank moves, so
+  puppets too): each track's travel (hull forward travel ± turn × track half width, at the
+  physics rate, blended between ticks) turns the wheels (`tank_wheel.gdshader`: MeshKit
+  `spin` puts each wheel's centre and 1/radius in CUSTOM0; bolts show the turning) and
+  moves the track links (`tank_track.gdshader`, instance uniforms `wheel_dist_l/r`,
+  `track_dist_l/r`); the antenna whip is its own mesh ("Antenna", TankModel "antenna") and
+  sways on a damped spring pushed by the tank's acceleration.
   Each machine decides for itself, nothing is sent; tanks/squads repaint when
   `TeamLook.version` or their team changes. `Tank.paint_color` is no longer used.
 - Tank models (`scripts/tank/model/`): `TankModel.build(data)` makes the look AND the
