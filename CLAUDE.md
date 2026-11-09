@@ -422,6 +422,12 @@ shows on the minimap. This is what we test first.
   `Own`; cannon shots (`SoundSetData.pierces_hull`) go from World to bus `Blast`, only lightly
   muffled (`AudioData.blast_*`). Files in `assets/audio/` (CC0, see `CREDITS.md`; made with `tools/audio/`).
   Headless runs report "leaked at exit" for any playing AudioStreamPlayer: harmless.
+- Per-frame cost (measured 2026-11-09, 10 v 10 ThunderRoad: ~7 ms CPU headless, ~11 ms with a
+  window): HUD code must not call `add_theme_*_override` or rebuild text every frame when
+  nothing changed (it re-lays the control out); route/path lookups that run per frame use
+  binary search (`ThunderRoadMode._segment_at`); collision shape transforms are only set when
+  they change (`Tank._sync_turret_shapes`). Trees are full models to `visibility_end_m`
+  (no LOD yet): ~13 M of ~19 M triangles a frame.
 - Prototype graphics: simple shapes (boxes, cylinders). Only free, correctly licensed
   assets (Kenney, Sketchfab CC with attribution). Never assets from other games.
 

@@ -8,6 +8,9 @@ extends Label
 @export var loaded_color: Color = Color(0.75, 1.0, 0.7, 1.0)
 @export var reloading_color: Color = Color(1.0, 0.8, 0.45, 1.0)
 
+## The colour shown: 1 loaded, 0 reloading, -1 none yet.
+var _shown_loaded: int = -1
+
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -29,9 +32,9 @@ func _process(_delta: float) -> void:
 	var smoke_wait: float = tank.get_smoke_cooldown()
 	if smoke != "" and smoke_wait > 0.0 and tank.get_smoke_left() > 0:
 		smoke += " (%d s)" % ceili(smoke_wait)
-	if tank.is_loaded():
-		text = prefix + "LOADED" + smoke
-		add_theme_color_override("font_color", loaded_color)
-	else:
-		text = prefix + "RELOADING %.1f s" % tank.get_reload_remaining() + smoke
-		add_theme_color_override("font_color", reloading_color)
+	var loaded: bool = tank.is_loaded()
+	text = prefix + ("LOADED" if loaded else "RELOADING %.1f s" % tank.get_reload_remaining()) + smoke
+	# A theme override re-lays the label out even when unchanged: only on a change.
+	if int(loaded) != _shown_loaded:
+		_shown_loaded = int(loaded)
+		add_theme_color_override("font_color", loaded_color if loaded else reloading_color)

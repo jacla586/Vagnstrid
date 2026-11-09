@@ -9,6 +9,8 @@ extends Label
 @export var ok_color: Color = Color(0.7, 1.0, 0.65, 1.0)
 @export var warn_color: Color = Color(1.0, 0.75, 0.4, 1.0)
 
+var _color: Color = Color(0.0, 0.0, 0.0, 0.0)
+
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -47,7 +49,13 @@ func _process(_delta: float) -> void:
 	var mines: String = ""
 	if squad.data.mine != null:
 		mines = "  MINE %d (%d out)" % [squad.get_mines_carried(), squad.get_mines_out()]
-	text = "SQUAD %s  AT %d  SMOKE %d%s  %s%s" % [men, squad.get_at_rounds_left(),
+	var line: String = "SQUAD %s  AT %d  SMOKE %d%s  %s%s" % [men, squad.get_at_rounds_left(),
 			squad.get_smoke_left(), mines, doing, where]
-	add_theme_color_override("font_color", warn_color if squad.get_state() == Squad.State.WIPED
-			or alive < count else ok_color)
+	# Only on a change: setting a Label's text or a theme override re-lays it out.
+	if line != text:
+		text = line
+	var color: Color = warn_color if squad.get_state() == Squad.State.WIPED or alive < count \
+			else ok_color
+	if color != _color:
+		_color = color
+		add_theme_color_override("font_color", color)

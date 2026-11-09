@@ -165,21 +165,25 @@ func point_at(s: float, across: float = 0.0) -> Vector3:
 	var seg: float = _along[i + 1] - _along[i]
 	var t: float = (s - _along[i]) / seg if seg > 0.0 else 0.0
 	var p: Vector3 = _route[i].lerp(_route[i + 1], t)
-	return p + tangent_at(s).cross(Vector3.UP) * across
+	if across == 0.0:
+		return p
+	return p + _segment_tangent(i).cross(Vector3.UP) * across
 
 
 ## The road's direction at `s` (flat unit vector, towards the end).
 func tangent_at(s: float) -> Vector3:
-	var i: int = _segment_at(clampf(s, 0.0, get_length()))
+	return _segment_tangent(_segment_at(clampf(s, 0.0, get_length())))
+
+
+func _segment_tangent(i: int) -> Vector3:
 	var d: Vector3 = _flat(_route[i + 1] - _route[i])
 	return d.normalized() if d.length() > 0.001 else Vector3.FORWARD
 
 
+## The first segment whose end lies at or beyond `s` (binary search: the minimap and
+## the bots ask this hundreds of times a frame).
 func _segment_at(s: float) -> int:
-	for i: int in _along.size() - 1:
-		if s <= _along[i + 1]:
-			return i
-	return maxi(_along.size() - 2, 0)
+	return clampi(_along.bsearch(s, true) - 1, 0, maxi(_along.size() - 2, 0))
 
 
 # --- Queries -------------------------------------------------------------------------

@@ -475,8 +475,11 @@ static func _set_convex(cs: CollisionShape3D, points: PackedVector3Array) -> voi
 
 ## Turret armour shapes turn with the turret (plain round turrets don't mind).
 func _sync_turret_shapes() -> void:
+	# Only when the turret moved: a shape transform rebuilds the body's compound shape.
+	var xform: Transform3D = _turret.transform
 	for cs: CollisionShape3D in _turret_shapes:
-		cs.transform = _turret.transform
+		if cs.transform != xform:
+			cs.transform = xform
 
 
 ## Put at a spawn: turret and gun straight ahead, and the views follow (placed_version).
