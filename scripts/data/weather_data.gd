@@ -44,6 +44,18 @@ extends Resource
 @export var ssao: bool = true
 @export var glow: bool = true
 @export_range(0.0, 2.0) var saturation: float = 1.05
+## Ambient occlusion strength, times GraphicsData.ssao_intensity (more under a flat,
+## shadowless sky, where it is what grounds things).
+@export var ssao_intensity_factor: float = 1.0
+
+@export_group("Grading")
+@export_range(0.5, 1.5) var contrast: float = 1.0
+@export_range(0.5, 1.5) var brightness: float = 1.0
+## Split toning: dark tones are tinted towards grade_shadow_color, light tones towards
+## grade_highlight_color (white = no tint), by grade_strength.
+@export var grade_shadow_color: Color = Color(1.0, 1.0, 1.0)
+@export var grade_highlight_color: Color = Color(1.0, 1.0, 1.0)
+@export_range(0.0, 1.0) var grade_strength: float = 0.0
 
 @export_group("Fog and visibility")
 ## How far anyone can see (m): the fog is ~95 % thick there, and bots' and squads'

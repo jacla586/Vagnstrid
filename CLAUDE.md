@@ -505,6 +505,10 @@ shows on the minimap. This is what we test first.
   `WeatherView` in the player rig dresses the map at runtime (own sky shader
   `assets/shaders/sky.gdshader` with clouds, sun angle/colour, AgX, SSAO, glow, fog density
   from `visibility_m`) on copies of the map's Environment; map scenes are not edited.
+  Per preset also colour grading (`contrast`, `brightness`, split toning `grade_*` as a 1D
+  colour-correction curve) and `ssao_intensity_factor`; settings common to all weathers
+  (sun shadow distance/cascades, SSAO, glow) are in `GraphicsData` (`data/world/graphics.tres`,
+  `WeatherView.graphics`; shadows 300 m: 450 m cost ~0.4-0.9 ms GPU for little to see).
   Presets: clear, overcast, dawn, dusk, fog (`Weather.PRESETS`); main menu "Weather"
   (`MatchSettings.weather`, "random" default) is fixed per match by `Weather.resolve()`
   (Single player / Host); clients get the host's in `rpc_welcome`. Rules for all:

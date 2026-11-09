@@ -5,3 +5,7 @@
 [resource]
 script = ExtResource("1_weather")
 display_name = "Clear"
+contrast = 1.04
+grade_shadow_color = Color(0.9, 0.95, 1.06, 1)
+grade_highlight_color = Color(1.04, 1.0, 0.93, 1)
+grade_strength = 0.5

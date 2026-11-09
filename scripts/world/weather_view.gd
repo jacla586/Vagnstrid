@@ -1,8 +1,9 @@
 class_name WeatherView
 extends Node
 ## Player rig: dresses the map in the match's weather (Weather.current()): our own sky
-## shader, the sun's angle, colour and energy, AgX tone mapping, SSAO, glow and fog
-## (density from WeatherData.visibility_m, so it matches what bots can see). The map's
+## shader, the sun's angle, colour and energy, AgX tone mapping, SSAO, glow, fog
+## (density from WeatherData.visibility_m, so it matches what bots can see) and colour
+## grading; shadows, SSAO and glow settings from GraphicsData. The map's
 ## WorldEnvironment and Sun get copies of their resources; the map files never change.
 ## Rain: the rain loops (outside on World, muffled by the shut hatch; drumming on the
 ## roof on Own, loudest shut) and wet terrain (Terrain3D texture assets, put back on exit).
@@ -15,6 +16,7 @@ const APPLIED_META: StringName = &"weather_applied"
 const ROOF_OPEN_DB: float = -14.0
 
 @export var tank: Tank
+@export var graphics: GraphicsData = preload("res://data/world/graphics.tres")
 
 var _outside: AudioStreamPlayer
 var _roof: AudioStreamPlayer
@@ -37,11 +39,11 @@ func apply() -> void:
 			and world_env.get_meta(APPLIED_META) == weather):
 		var env: Environment = world_env.environment.duplicate() if world_env.environment != null \
 				else Environment.new()
-		_set_environment(env, weather)
+		_set_environment(env, weather, graphics)
 		world_env.environment = env
 		world_env.set_meta(APPLIED_META, weather)
 	if sun != null:
-		_set_sun(sun, weather)
+		_set_sun(sun, weather, graphics)
 	if weather.rain_intensity > 0.0:
 		_start_rain(weather)
 		_wet_terrain(scene, weather)
@@ -98,7 +100,7 @@ func _wet_terrain(scene: Node, w: WeatherData) -> void:
 		asset.albedo_color = asset.albedo_color * Color(w.wet_darken, w.wet_darken, w.wet_darken, 1.0)
 
 
-static func _set_environment(env: Environment, w: WeatherData) -> void:
+static func _set_environment(env: Environment, w: WeatherData, g: GraphicsData) -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = SKY_SHADER
 	mat.set_shader_parameter(&"zenith_color", w.zenith_color)
@@ -128,12 +130,14 @@ static func _set_environment(env: Environment, w: WeatherData) -> void:
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
 	env.tonemap_exposure = w.exposure
 	env.ssao_enabled = w.ssao
-	env.ssao_radius = 1.5
-	env.ssao_intensity = 1.6
+	env.ssao_radius = g.ssao_radius
+	env.ssao_intensity = g.ssao_intensity * w.ssao_intensity_factor
+	env.ssao_power = g.ssao_power
+	env.ssao_light_affect = g.ssao_light_affect
 	env.glow_enabled = w.glow
-	env.glow_intensity = 0.35
-	env.glow_bloom = 0.03
-	env.glow_hdr_threshold = 1.3
+	env.glow_intensity = g.glow_intensity
+	env.glow_bloom = g.glow_bloom
+	env.glow_hdr_threshold = g.glow_hdr_threshold
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 	env.fog_light_color = w.fog_color
@@ -147,11 +151,30 @@ static func _set_environment(env: Environment, w: WeatherData) -> void:
 		env.volumetric_fog_density = w.mist_density
 		env.volumetric_fog_albedo = w.fog_color.lerp(Color.WHITE, 0.6)
 		env.volumetric_fog_length = 200.0
-	env.adjustment_enabled = not is_equal_approx(w.saturation, 1.0)
+	env.adjustment_enabled = true
 	env.adjustment_saturation = w.saturation
+	env.adjustment_contrast = w.contrast
+	env.adjustment_brightness = w.brightness
+	env.adjustment_color_correction = _grading_curve(w) if w.grade_strength > 0.0 else null
 
 
-static func _set_sun(sun: DirectionalLight3D, w: WeatherData) -> void:
+## Split toning as a per-channel curve (Environment colour correction with a 1D texture):
+## dark tones lean towards grade_shadow_color, light tones towards grade_highlight_color.
+static func _grading_curve(w: WeatherData) -> GradientTexture1D:
+	var gradient := Gradient.new()
+	gradient.offsets = PackedFloat32Array([0.0, 0.25, 0.75, 1.0])
+	var dark: Color = Color.WHITE.lerp(w.grade_shadow_color, w.grade_strength)
+	var light: Color = Color.WHITE.lerp(w.grade_highlight_color, w.grade_strength)
+	gradient.colors = PackedColorArray([Color.BLACK, Color(dark * 0.25, 1.0),
+			Color(light * 0.75, 1.0), Color.WHITE])
+	var texture := GradientTexture1D.new()
+	texture.gradient = gradient
+	texture.width = 256
+	texture.use_hdr = false
+	return texture
+
+
+static func _set_sun(sun: DirectionalLight3D, w: WeatherData, g: GraphicsData) -> void:
 	var to_sun: Vector3 = w.sun_direction()
 	var up: Vector3 = Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.FORWARD
 	sun.global_basis = Basis.looking_at(-to_sun, up)
@@ -159,6 +182,13 @@ static func _set_sun(sun: DirectionalLight3D, w: WeatherData) -> void:
 	sun.light_energy = w.sun_energy
 	sun.shadow_enabled = w.sun_shadows
 	sun.directional_shadow_blend_splits = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_max_distance = g.shadow_max_distance_m
+	sun.directional_shadow_split_1 = g.shadow_split_1
+	sun.directional_shadow_split_2 = g.shadow_split_2
+	sun.directional_shadow_split_3 = g.shadow_split_3
+	sun.directional_shadow_fade_start = g.shadow_fade_start
+	sun.shadow_blur = g.shadow_blur
 
 
 ## The first node of `type_name` in the scene (maps keep them at the top).
