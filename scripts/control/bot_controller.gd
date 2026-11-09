@@ -386,6 +386,13 @@ func _physics_process(delta: float) -> void:
 	if tank == null or bot_data == null:
 		return
 	if tank.is_knocked_out():
+		# The tank holds this command object: an abandon left set would bail the crew
+		# out again the moment the game mode respawns the tank (a wreck per wave).
+		_command.abandon = false
+		_command.throttle = 0.0
+		_command.steering = 0.0
+		_progress_at = Vector3.INF
+		_no_progress_s = 0.0
 		_forget_all()
 		_update_respawn(delta)
 		return
