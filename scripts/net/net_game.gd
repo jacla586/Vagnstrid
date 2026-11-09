@@ -267,6 +267,7 @@ func _spawn_player(peer: int) -> Tank:
 		_map.add_child(tank)
 	tank.global_transform = xform
 	tank.reset_physics_interpolation()
+	tank.face_forward()
 	var net_id: int = _register(tank, peer)
 	for p: int in multiplayer.get_peers():
 		_send_spawn(p, net_id)
@@ -833,6 +834,7 @@ func on_spawn_tank(net_id: int, owner_peer: int, team: int, data_path: String, x
 		_map.add_child(tank)
 	tank.global_transform = xform
 	tank.reset_physics_interpolation()
+	tank.face_forward()
 	tanks[net_id] = tank
 	owners[net_id] = owner_peer
 	_puppets.register(tank)

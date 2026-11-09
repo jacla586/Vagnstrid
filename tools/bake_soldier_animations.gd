@@ -39,7 +39,7 @@ const CLIPS: Dictionary = {
 	"kneel_to_stand": ["Rifle Kneel To Stand", false, false, 0.0, -1.0],
 	"kneel_to_prone": ["Rifle Kneel To Prone", false, false, 0.0, -1.0],
 	"prone_to_kneel": ["Rifle Prone To Kneel", false, false, 0.0, -1.0],
-	"prone_to_crouch": ["Prone To Crouch", false, false, 0.0, -1.0],
+	"prone_to_crouch": ["Prone To Crouch Transition", false, false, 0.0, -1.0],
 	"kneel_to_aim": ["Rifle Kneel To Aim", false, false, 0.0, -1.0],
 	"death": ["Rifle Death", false, true, 0.0, -1.0],
 	"death_fall": ["Fall Over", false, true, 0.0, -1.0],

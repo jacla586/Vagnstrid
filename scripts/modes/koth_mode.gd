@@ -662,6 +662,7 @@ static func place_tank(tank: Tank, xform: Transform3D) -> void:
 	tank.linear_velocity = Vector3.ZERO
 	tank.angular_velocity = Vector3.ZERO
 	tank.reset_physics_interpolation()   # a jump to the spawn, not a glide
+	tank.face_forward()
 
 
 # --- Scoring --------------------------------------------------------------------------

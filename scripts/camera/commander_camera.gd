@@ -20,6 +20,9 @@ var _yaw: float = 0.0
 var _pitch: float = 0.0
 ## Extra pitch, yaw and roll (radians) while the view shakes from a hit (HitReaction).
 var shake: Vector3 = Vector3.ZERO
+## The tank and its placed_version last seen: a new spawn turns the view to the front.
+var _placed_tank: Tank
+var _placed_seen: int = -1
 
 
 func _ready() -> void:
@@ -72,6 +75,14 @@ func get_aim_point() -> Vector3:
 func _process(delta: float) -> void:
 	if tank == null:
 		return
+	if tank != _placed_tank or tank.placed_version != _placed_seen:
+		_placed_tank = tank
+		_placed_seen = tank.placed_version
+		var forward: Vector3 = -tank.global_basis.z
+		_yaw = atan2(-forward.x, -forward.z)
+		_target_yaw = _yaw
+		_pitch = 0.0
+		_target_pitch = 0.0
 	var d: TankData = tank.data
 	var target_fov: float
 	if is_hatch_view():

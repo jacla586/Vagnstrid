@@ -229,6 +229,10 @@ extends Resource
 ## Fallen soldiers drop where they fell and are gone after this long (s): long enough
 ## for the death animation, no bodies lying about.
 @export var body_time_s: float = 3.0
+## An enemy tank going at least this fast (m/s) kills soldiers under its hull...
+@export var run_over_min_speed_mps: float = 1.0
+## ...counting this much (m) round the hull's footprint.
+@export var run_over_margin_m: float = 0.3
 ## One soldier per squad is "Wilhelm": when he is hit, this chance of his scream,
 ## heard within the sound set's range (100 m, even with the hatch shut).
 @export_range(0.0, 1.0) var scream_chance: float = 0.1

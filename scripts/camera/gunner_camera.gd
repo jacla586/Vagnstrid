@@ -27,6 +27,9 @@ var _zoom_index: int = 0
 var _hidden_gun_tank: Tank
 ## Extra pitch, yaw and roll (radians) while the view shakes from a hit (HitReaction).
 var shake: Vector3 = Vector3.ZERO
+## The tank and its placed_version last seen: a new spawn lays the sight on the gun.
+var _placed_tank: Tank
+var _placed_seen: int = -1
 
 
 func _ready() -> void:
@@ -58,6 +61,10 @@ func _process(_delta: float) -> void:
 	if tank != _hidden_gun_tank:
 		_hide_own_gun()
 	if tank != null:
+		if tank != _placed_tank or tank.placed_version != _placed_seen:
+			_placed_tank = tank
+			_placed_seen = tank.placed_version
+			sync_to_gun()
 		_apply()
 		if current:
 			_limit_lead()

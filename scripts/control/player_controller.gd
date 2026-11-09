@@ -53,6 +53,8 @@ func _ready() -> void:
 		esc_menu.abandon_requested.connect(func() -> void: _abandon_requested = true)
 ## Last aim point in the hull's local space (used in the commander view).
 var _hull_local_aim: Vector3 = Vector3.ZERO
+## placed_version last seen: a new spawn lays the turret straight ahead.
+var _placed_seen: int = -1
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -76,6 +78,10 @@ func _physics_process(_delta: float) -> void:
 	if tank == null:
 		return
 	_follow_struck()
+	if tank.placed_version != _placed_seen:
+		_placed_seen = tank.placed_version
+		_hull_local_aim = Vector3(0.0, tank.get_turret_local_position().y, -1000.0)
+		_command.has_aim = true
 	_command.throttle = _drive_axis(&"move_backward", &"move_forward")
 	_command.steering = _drive_axis(&"turn_left", &"turn_right")
 	# Reversing steers like a car: the key turns the rear that way.

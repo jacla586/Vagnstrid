@@ -514,6 +514,9 @@ func _physics_process(delta: float) -> void:
 	if _state == State.MOVING or _state == State.RETURNING:
 		_walk(delta)
 	_move_soldiers(delta)
+	_check_run_over()
+	if _state == State.WIPED:
+		return
 	_update_bodies(delta)
 	_withdraw_timer = maxf(_withdraw_timer - delta, 0.0)
 	_scan_timer -= delta
@@ -1439,6 +1442,28 @@ func _first_alive() -> int:
 
 
 # --- Being hit ---------------------------------------------------------------------
+
+## Host: soldiers under a moving enemy tank's hull are run over.
+func _check_run_over() -> void:
+	var team: int = get_team()
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var other := node as Tank
+		if other == null or other.team == team or other.net_puppet \
+				or other.linear_velocity.length() < data.run_over_min_speed_mps:
+			continue
+		var half: Vector3 = other.data.hull_size * 0.5 \
+				+ Vector3(data.run_over_margin_m, data.run_over_margin_m, data.run_over_margin_m)
+		var reach_sq: float = half.length_squared() + 4.0
+		for i: int in _soldiers.size():
+			if not is_soldier_exposed(i) \
+					or _soldiers[i].global_position.distance_squared_to(other.global_position) > reach_sq:
+				continue
+			var p: Vector3 = other.to_local(_soldiers[i].global_position)
+			# Feet below the belly, head above it: count from the ground to the hull top.
+			if absf(p.x) <= half.x and absf(p.z) <= half.z and p.y <= half.y and p.y >= -half.y - 2.0:
+				soldier_hit(i)
+				if _state == State.WIPED:
+					return
 
 ## A shell, bullet or fragment hit soldier `index`: he goes down.
 func soldier_hit(index: int) -> HitResult:

@@ -198,6 +198,9 @@ var move_blocked: bool = false
 var _turret_tossed: bool = false
 ## Client's own tank: turret, gun, hatch and roof MG follow the local command at once.
 var net_predict: bool = false
+## Bumped each time the tank is put at a spawn (face_forward): the player's views and
+## aim watch it and snap to the hull's front.
+var placed_version: int = 0
 var _net_velocity: Vector3 = Vector3.ZERO
 var _net_command: TankCommand = TankCommand.new()
 ## Time since the main gun fired: the recoil shove doesn't count as moving for repairs.
@@ -474,6 +477,14 @@ static func _set_convex(cs: CollisionShape3D, points: PackedVector3Array) -> voi
 func _sync_turret_shapes() -> void:
 	for cs: CollisionShape3D in _turret_shapes:
 		cs.transform = _turret.transform
+
+
+## Put at a spawn: turret and gun straight ahead, and the views follow (placed_version).
+func face_forward() -> void:
+	_turret.rotation.y = 0.0
+	_gun_pivot.rotation.x = 0.0
+	_sync_turret_shapes()
+	placed_version += 1
 
 
 ## Boresights the gunner's sight: tilts it so its line of sight crosses the gun's
@@ -1539,6 +1550,7 @@ func net_set_pose(xform: Transform3D, turret_yaw: float, gun_pitch: float, hatch
 			_make_wreck(_wreck_pending_xform, _wreck_pending_no_turret)
 		global_transform = xform
 		reset_physics_interpolation()   # a jump, not a glide across the map
+		face_forward()
 	global_transform = xform
 	_net_velocity = velocity
 	if net_predict and not _knocked_out:

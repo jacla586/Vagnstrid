@@ -84,7 +84,8 @@ shows on the minimap. This is what we test first.
   control, no turret or guns; binoculars on B. Spotting like tank crews (sight lines,
   concealment; all round holding, a cone ahead moving): spotted enemies become team
   marks (`Tank.report_squad_spot`, also signal `squad_contact`). Soldiers have
-  `SoldierHitbox` areas (layer 3, fragment targets): any hit puts one down; one is
+  `SoldierHitbox` areas (layer 3, fragment targets): any hit puts one down, as does an enemy tank
+  driving over him (`Squad._check_run_over`, host: hull footprint, `SquadData.run_over_*`); one is
   "Wilhelm" (10 % scream, 100 m, on Master so the hatch doesn't muffle it:
   `SoundSetData.bus`). Holding still they fire rifles (`rifle_bullet.tres`,
   low accuracy) at exposed commanders and soldiers, and AT rounds (`squad_at.tres`,
@@ -354,6 +355,9 @@ shows on the minimap. This is what we test first.
   on) and kill bonuses (`rpc_koth_bonus`); NetGame (re)spawns players at the zone
   spawns, and with KotH the bots fill teams 1 and 0 alternately instead of team 2.
   Spawns lift the tank 1.5 m (origin is mid-hull) so it doesn't start in the ground.
+  Every placement calls `Tank.face_forward()` (turret and gun straight ahead, `placed_version`
+  bumped; a puppet's respawn jump too): commander view, gunner sight and the player's aim snap
+  to the hull's front.
   Rule sets: `koth_default.tres` (Vikbolandet) and `koth_tactical.tres` (Vidingsjö, Linghem:
   slower, less shrink, kill bonus for any knock-out of an enemy in the zone
   (`kill_bonus_needs_shooter_in_zone` false), `zone_placement` ROAMING and bot attack axes).
