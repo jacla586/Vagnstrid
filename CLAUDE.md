@@ -1,4 +1,4 @@
-# Stridsvagn – tank game (hobby project)
+# Vagnstrid – tank game (hobby project)
 
 Semi-realistic tank game in the spirit of War Thunder, vs bots (multiplayer later).
 Few tanks, lots of feel. Not for publication. Full spec (Swedish):

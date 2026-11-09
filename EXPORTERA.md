@@ -35,7 +35,7 @@ För varje förinställning:
 
 | Inställning | Värde |
 |---|---|
-| Export Path | `build/windows/Stridsvagn.exe` resp. `build/linux/Stridsvagn.x86_64` |
+| Export Path | `build/windows/Vagnstrid.exe` resp. `build/linux/Vagnstrid.x86_64` |
 | Runnable | på |
 | Embed PCK | av (spelet är stort, låt `.pck` ligga bredvid) |
 | Architecture | `x86_64` |
@@ -57,15 +57,15 @@ I editorn: **Project → Export… → välj förinställning → Export Project
 Eller från terminalen (projektroten):
 
 ```bash
-godot --headless --path . --export-release "Windows Desktop" build/windows/Stridsvagn.exe
-godot --headless --path . --export-release "Linux"           build/linux/Stridsvagn.x86_64
+godot --headless --path . --export-release "Windows Desktop" build/windows/Vagnstrid.exe
+godot --headless --path . --export-release "Linux"           build/linux/Vagnstrid.x86_64
 ```
 
 Mappen `build/windows/` innehåller då ungefär:
 
 ```
-Stridsvagn.exe
-Stridsvagn.pck                        <- allt spelinnehåll (kartor, modeller, ljud)
+Vagnstrid.exe
+Vagnstrid.pck                        <- allt spelinnehåll (kartor, modeller, ljud)
 libterrain.windows.release.x86_64.dll <- Terrain3D, MÅSTE följa med
 ```
 
@@ -74,7 +74,7 @@ faller genom världen.
 
 ## 4. Testa innan du skickar
 
-1. Starta `build/linux/Stridsvagn.x86_64` (eller exe-filen i Windows/Wine) två gånger.
+1. Starta `build/linux/Vagnstrid.x86_64` (eller exe-filen i Windows/Wine) två gånger.
 2. Fönster 1: **Host game**. Fönster 2: **Join game** med `127.0.0.1`.
 3. Kör en stund på Vidingsjö och testa King of the Hill.
 
@@ -88,7 +88,7 @@ cp ../SPELA_ONLINE.md windows/
 mkdir -p windows/CREDITS
 cp ../assets/models/soldier/CREDITS.md windows/CREDITS/soldat.md
 cp ../assets/audio/CREDITS.md          windows/CREDITS/ljud.md
-zip -r Stridsvagn-windows-$(git rev-parse --short HEAD).zip windows/
+zip -r Vagnstrid-windows-$(git rev-parse --short HEAD).zip windows/
 ```
 
 Zippen blir
@@ -101,7 +101,7 @@ att se att alla har samma version.
 ## 6. Till kompisarna (klistra in i chatten)
 
 > 1. Ladda ner zippen och **packa upp hela mappen** (starta inte exe-filen inifrån zippen).
-> 2. Dubbelklicka på `Stridsvagn.exe`.
+> 2. Dubbelklicka på `Vagnstrid.exe`.
 > 3. Windows SmartScreen säger "Windows skyddade datorn": klicka **Mer info → Kör ändå**
 >    (spelet är inte signerat, det är normalt för hobbyspel).
 > 4. Brandväggen frågar om nätverksåtkomst: tillåt (privata nätverk räcker med Tailscale).
@@ -114,8 +114,8 @@ att se att alla har samma version.
   efter varje ändring som rör nätet, vagnar eller kartor.
 - **Värden behöver bara spelet.** Godot behövs inte hos någon.
 - **Sparade inställningar** (vagnval, egna vagnar, lagstorlek) hamnar hos kompisarna i
-  `%APPDATA%\Godot\app_userdata\stridsvagn\` på Windows och i
-  `~/.local/share/godot/app_userdata/stridsvagn/` på Linux.
+  `%APPDATA%\Godot\app_userdata\Vagnstrid\` på Windows och i
+  `~/.local/share/godot/app_userdata/Vagnstrid/` på Linux.
 - **Grafikkort:** Windows använder D3D12. Om spelet kraschar direkt eller visar svart skärm
   kan kompisen prova Vulkan. Skapa en genväg till exe-filen och lägg till
   `--rendering-driver vulkan` sist i "Mål".
