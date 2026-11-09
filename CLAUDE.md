@@ -487,6 +487,12 @@ shows on the minimap. This is what we test first.
   (`MapImageData`). The HUD finds it from the Terrain3D data directory name. Rerun
   after map changes. Spot marks live in `SpotMarks` (player rig), drawn by `MapView`. The own tank shows
   as a hull arrow plus a cone for where the player looks (`PlayerViews.get_view_camera`).
+- Graphics before/after: `godot --path . --disable-vsync --script res://tools/render_views.gd --
+  <map> <label> [weather,...]` renders the fixed views in `tools/render_views.json` (1920x1080,
+  bots removed, HUD hidden) to `renders/views/<label>/` with frame/GPU ms, draw calls and
+  triangles in `results.txt`; `geodata/.venv/bin/python tools/compare_views.py <a> <b>` puts two
+  runs above each other. Baseline: label `before` (2026-11-09, all six weathers). Sun shadows
+  are about half the triangles (tree shadows); the far view draws ~73 M triangles, 9.5 ms GPU.
 - Weather (`WeatherData`, presets `data/weather/*.tres`; `Weather.current()` statics):
   `WeatherView` in the player rig dresses the map at runtime (own sky shader
   `assets/shaders/sky.gdshader` with clouds, sun angle/colour, AgX, SSAO, glow, fog density

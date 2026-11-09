@@ -1,0 +1,12 @@
+{
+	"_doc": "Fixed camera views per map for tools/render_views.gd. at / look_at: world x, z (m; origin NW corner, z south). height_m: camera above the ground; look_height_m: target above its ground. fov: vertical degrees.",
+	"vidingsjo": [
+		{"name": "1_field", "at": [400, 560], "height_m": 2.5, "look_at": [560, 650], "look_height_m": 2.0, "fov": 60},
+		{"name": "2_forest_edge", "at": [700, 1543], "height_m": 2.5, "look_at": [772, 1540], "look_height_m": 6.0, "fov": 60},
+		{"name": "3_town", "at": [2560, 1360], "height_m": 14.0, "look_at": [2636, 1428], "look_height_m": 0.0, "fov": 60},
+		{"name": "4_house_close", "at": [2427, 2284], "height_m": 3.0, "look_at": [2392, 2356], "look_height_m": 0.0, "fov": 60},
+		{"name": "5_far_view", "at": [986, 2588], "height_m": 6.0, "look_at": [1690, 1525], "look_height_m": -20.0, "fov": 50},
+		{"name": "6_tank_road", "at": [1690, 1522], "height_m": 3.0, "look_at": [1720, 1626], "look_height_m": 2.5, "fov": 70},
+		{"name": "7_overview", "at": [1690, 2700], "height_m": 260.0, "look_at": [1690, 1700], "look_height_m": 0.0, "fov": 55}
+	]
+}
