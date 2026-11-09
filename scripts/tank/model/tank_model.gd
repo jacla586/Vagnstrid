@@ -63,6 +63,11 @@ var _deck_end_z: float = 0.0
 var _deck_half_w: float = 0.0
 ## Turret roof details are pulled in by this much (the BT-like cone has a small roof).
 var _roof_scale: float = 1.0
+## The turret's side plate for the tactical numbers: its x at the turret ring, how far it
+## leans in from vertical (degrees) and the height for the numbers (below the blue band).
+var _side_x0: float = 0.0
+var _side_deg: float = 0.0
+var _number_y: float = 0.0
 
 
 static func build(d: TankData) -> Dictionary:
@@ -136,6 +141,9 @@ func _light() -> void:
 	var tz: float = -0.13 * L
 	out["turret_pos"] = Vector3(0.0, yt, tz)
 	_roof_scale = 0.72
+	_side_x0 = R
+	_side_deg = rad_to_deg(atan((R - R * LIGHT_TOP) / TH))
+	_number_y = TH * 0.24
 	# Turret: a low cone with a bustle at the back.
 	turret.cylinder(Vector3.ZERO, Vector3(0.0, TH, 0.0), R, R * LIGHT_TOP, 14, MeshKit.Mat.PAINT, "t_body")
 	turret.block(Vector3(-R * 0.55, TH * 0.1, R * 0.45), Vector3(R * 0.55, TH * 0.8, R * 1.25),
@@ -187,6 +195,9 @@ func _sloped() -> void:
 	]
 	turret.block(Vector3(-R, 0.0, -R * 1.05), Vector3(R, TH, R * 1.15), MeshKit.Mat.PAINT, cuts, "t_body")
 	_turret_groups.append("t_body")
+	_side_x0 = R
+	_side_deg = 25.0
+	_number_y = TH * 0.2
 	_band(turret, Vector3(-R, 0.0, -R * 1.05), Vector3(R, TH, R * 1.15), cuts, TH * 0.4, TH * 0.62)
 	_roof_panel(TH, R * 0.1)
 	if heavy_look:
@@ -272,6 +283,9 @@ func _boxy() -> void:
 		[Vector3(0, TH, -R * 0.75), Vector3(0, 1, -0.25)],
 	]
 	turret.block(Vector3(-R, 0.0, -R * 0.95), Vector3(R, TH, R * 0.95), MeshKit.Mat.PAINT, cuts, "t_body")
+	_side_x0 = R
+	_side_deg = 18.0
+	_number_y = TH * 0.22
 	_band(turret, Vector3(-R, 0.0, -R * 0.95), Vector3(R, TH, R * 0.95), cuts, TH * 0.4, TH * 0.6)
 	_roof_panel(TH, -R * 0.1)
 	# Stowage bin round the back.
@@ -322,6 +336,9 @@ func _heavy(box_turret: bool) -> void:
 			[Vector3(R * 0.95, 0, 0), _n_side(4.0, 1.0)], [Vector3(-R * 0.95, 0, 0), _n_side(4.0, -1.0)]]
 		turret.block(Vector3(-R * 0.95, 0.0, -R * 1.0), Vector3(R * 0.95, top, R * 1.2), MeshKit.Mat.PAINT, box_cuts, "t_body")
 		_turret_groups.append("t_body")
+		_side_x0 = R * 0.95
+		_side_deg = 4.0
+		_number_y = top * 0.32
 		_band(turret, Vector3(-R * 0.95, 0.0, -R * 1.0), Vector3(R * 0.95, top, R * 1.2), box_cuts, top * 0.55, top * 0.68)
 		_roof_panel(top, R * 0.05)
 		if heavy_look:
@@ -340,6 +357,9 @@ func _heavy(box_turret: bool) -> void:
 			[Vector3(0, TH, R * 0.9), Vector3(0, 1, 0.5)]]
 		turret.block(Vector3(-R, 0.0, -R * 1.0), Vector3(R, TH, R * 1.05), MeshKit.Mat.PAINT, kv_cuts, "t_body")
 		_turret_groups.append("t_body")
+		_side_x0 = R
+		_side_deg = 15.0
+		_number_y = TH * 0.24
 		_band(turret, Vector3(-R, 0.0, -R * 1.0), Vector3(R, TH, R * 1.05), kv_cuts, TH * 0.42, TH * 0.62)
 		_roof_panel(TH, 0.0)
 		if heavy_look:
@@ -407,6 +427,17 @@ func _details(style: StringName) -> void:
 		for i: int in 3:
 			var a: Vector3 = base + Vector3(0.0, 0.07, (float(i) - 1.0) * 0.085)
 			turret.cylinder(a, a + dir * 0.2, 0.033, 0.033, 8, dark)
+	# Where the tactical numbers go (Tank puts Label3Ds there): on each side plate, a little
+	# behind the turret's middle, facing out and leaning with the plate. Text runs towards
+	# the front for someone looking at that side.
+	var spots: Array = []
+	var lean: float = deg_to_rad(_side_deg)
+	for s: float in [-1.0, 1.0]:
+		var x: float = s * (_side_x0 - _number_y * tan(lean) + 0.012)
+		var n := Vector3(s * cos(lean), sin(lean), 0.0)
+		var along := Vector3(0.0, 0.0, -1.0 if s > 0.0 else 1.0)
+		spots.append(Transform3D(Basis(along, n.cross(along), n), Vector3(x, _number_y, R * 0.15)))
+	out["number_spots"] = spots
 	# Antenna at the back right: a base and a thin whip.
 	var foot := Vector3(R * 0.5 * k, top, R * 0.6 * k)
 	turret.cylinder(foot, foot + Vector3(0.0, 0.08, 0.0), 0.045, 0.035, 8, dark)

@@ -230,6 +230,8 @@ var squad: Squad
 @onready var _head_open: Marker3D = $Visual/Turret/Cupola/HeadOpen
 ## The commander seen in the open hatch (CommanderModel); made in _ready.
 var _commander_figure: MeshInstance3D
+## Tactical numbers on the turret sides (model tanks; TankLooks sets the text).
+var number_labels: Array[Label3D] = []
 @onready var _gunner_sight: Marker3D = $Visual/Turret/GunPivot/GunnerSight
 @onready var _muzzle: Marker3D = $Visual/Turret/GunPivot/Muzzle
 @onready var _visual: Node3D = $Visual
@@ -436,12 +438,35 @@ func _apply_model() -> void:
 	gun.mesh = m["gun"]
 	gun.transform = Transform3D.IDENTITY
 	($Visual/Turret/GunPivot/Muzzle as Node3D).position = Vector3(0.0, 0.0, m["muzzle_z"])
+	_add_number_labels(m.get("number_spots", []))
 	var track_x: float = m["track_x"]
 	for child: Node in ($Suspension as Node3D).get_children():
 		var ray := child as RayCast3D
 		if ray != null:
 			ray.position = Vector3(signf(ray.position.x) * track_x, -data.hull_size.y * 0.5,
 					ray.position.z * data.hull_size.z / BASE_HULL.z)
+
+
+## Painted tactical numbers on the turret's side plates (TankModel "number_spots").
+func _add_number_labels(spots: Array) -> void:
+	for old: Label3D in number_labels:
+		if is_instance_valid(old):
+			old.free()
+	number_labels.clear()
+	for spot: Transform3D in spots:
+		var label := Label3D.new()
+		label.name = "Number"
+		label.transform = spot
+		label.font_size = 64
+		label.pixel_size = 0.0045
+		label.outline_size = 0
+		label.modulate = Color(0.9, 0.9, 0.86)
+		label.shaded = true
+		label.double_sided = false
+		label.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+		label.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		($Visual/Turret as Node3D).add_child(label)
+		number_labels.append(label)
 
 
 ## The commander's figure in the cupola: rises with the hatch (see

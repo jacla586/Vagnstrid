@@ -244,7 +244,10 @@ shows on the minimap. This is what we test first.
   mud and splashes near the tracks, wet in rain. `TankLooks` (made by Tank, reads only how
   the tank moves) sets the instance uniforms: `dust_amount` grows with distance driven ×
   `WeatherData.dust_factor` (reset on repair), `wetness` = rain, `base_y` = each part's mud
-  line (none on gun, mantlet, figure, MG mount).
+  line (none on gun, mantlet, figure, MG mount). Tactical numbers: two `Label3D`s on the
+  turret side plates of model tanks (TankModel "number_spots", `Tank.number_labels`), text
+  from TankLooks: team digit + two digits (`net_id` online, so every machine agrees; offline
+  in order per team), hidden when knocked out.
   Each machine decides for itself, nothing is sent; tanks/squads repaint when
   `TeamLook.version` or their team changes. `Tank.paint_color` is no longer used.
 - Tank models (`scripts/tank/model/`): `TankModel.build(data)` makes the look AND the

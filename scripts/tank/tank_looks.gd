@@ -2,8 +2,8 @@ class_name TankLooks
 extends Node
 ## A tank's living looks, read from how it moves (so puppets look the same; nothing is
 ## sent): the paint's weathering (tank_paint.gdshader instance values: dust that builds
-## up as the tank drives, wetness in rain, where the mud line is on each part).
-## Made by Tank.
+## up as the tank drives, wetness in rain, where the mud line is on each part) and its
+## tactical number. Made by Tank.
 
 ## Dust on a clean tank, and how much more per metre driven (times the weather's
 ## dust_factor); it never quite covers the paint.
@@ -18,6 +18,11 @@ const NO_MUD_Y: float = -100.0
 const MAX_PLAUSIBLE_SPEED: float = 60.0
 
 var tank: Tank
+
+## Offline tanks have no net_id: numbered in order per team.
+static var _next_index: Dictionary = {}
+var _offline_index: int = 0
+var _number_key: String = ""
 
 var _driven_m: float = 0.0
 var _last_position: Vector3 = Vector3.ZERO
@@ -50,6 +55,7 @@ func _find_meshes() -> void:
 
 
 func _process(delta: float) -> void:
+	_update_number()
 	var now: Vector3 = tank.global_position
 	var step: float = (now - _last_position).length()
 	if delta > 0.0 and step / delta <= MAX_PLAUSIBLE_SPEED:
@@ -68,3 +74,27 @@ func _apply() -> void:
 		if is_instance_valid(mi):
 			mi.set_instance_shader_parameter(&"dust_amount", dust)
 			mi.set_instance_shader_parameter(&"wetness", wet)
+
+
+## Tactical number: team digit (1, 2, ...) and two digits per tank, the same on every
+## machine online (from net_id); hidden on a knocked-out tank.
+func _update_number() -> void:
+	if tank.number_labels.is_empty():
+		return
+	var index: int
+	if tank.net_id > 0:
+		index = tank.net_id % 99 + 1
+	else:
+		if _offline_index == 0:
+			_offline_index = int(_next_index.get(tank.team, 0)) + 1
+			_next_index[tank.team] = _offline_index
+		index = _offline_index
+	var text: String = "%d%02d" % [tank.team + 1, index]
+	var show: bool = not tank.is_knocked_out()
+	var key: String = text + ("" if show else "-")
+	if key == _number_key:
+		return
+	_number_key = key
+	for label: Label3D in tank.number_labels:
+		label.text = text
+		label.visible = show
