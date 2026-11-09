@@ -31,6 +31,9 @@ extends Control
 var _time: float = 0.0
 
 
+const REDRAW_HZ: float = 15.0
+var _redraw_clock := PackedFloat32Array([0.0])
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	anchor_left = 0.0
@@ -46,7 +49,9 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	visible = views != null and not views.is_debug_view() and views.get_tank() != null
-	queue_redraw()
+	# Redrawn REDRAW_HZ times a second, not every frame.
+	if visible and Ticks.due(_redraw_clock, delta, REDRAW_HZ):
+		queue_redraw()
 
 
 func _draw() -> void:

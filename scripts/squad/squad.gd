@@ -131,8 +131,8 @@ const WALL_CHECK_AHEAD_M: float = 0.3
 const GROUND_PROBE_UP_M: float = 1.5
 ## Walking checks walls and ground only every few ticks: one probe covers this many
 ## ticks' worth of walking and the ticks after it move along the checked stretch
-## (fewer rays; the stretch is a few dozen cm).
-const PROBE_TICKS: int = 4
+## (fewer rays; the stretch is a few dozen cm). PROBE_HZ probes a second per walker.
+const PROBE_HZ: float = 15.0
 ## A new probe comes early when the way the walker wants to go turns more than this.
 const PROBE_KEEP_DEG: float = 20.0
 
@@ -725,7 +725,7 @@ func _walk(delta: float) -> void:
 	_heading = _heading.slerp(dir, minf(delta * TURN_RATE, 1.0)).normalized()
 	var stride: float = data.run_speed_mps * delta
 	var p: Vector3 = _probed_step(global_position, dir, minf(stride, to_next.length()),
-			minf(stride * PROBE_TICKS, to_next.length()), _detour_side.size() - 1)
+			minf(stride * Ticks.every(PROBE_HZ), to_next.length()), _detour_side.size() - 1)
 	if p == global_position and delta > 0.0:
 		_blocked_time += delta
 		if _blocked_time >= BLOCKED_REPLAN_S:
@@ -737,7 +737,7 @@ func _walk(delta: float) -> void:
 
 
 ## This tick's `step` (m) from `from` towards `dir`, along a stretch checked by _step at
-## most every PROBE_TICKS ticks. A probe checks `reach` (m, >= step) ahead. A new probe
+## most PROBE_HZ times a second. A probe checks `reach` (m, >= step) ahead. A new probe
 ## comes when the stretch is used up, the wanted way turns, or `from` is no longer on
 ## it (the walker was moved or his place came closer). `who`: index in _detour_side.
 func _probed_step(from: Vector3, dir: Vector3, step: float, reach: float, who: int) -> Vector3:
@@ -754,7 +754,7 @@ func _probed_step(from: Vector3, dir: Vector3, step: float, reach: float, who: i
 		_probe_end[who] = end
 		_probe_dir[who] = dir
 		# A little random, so soldiers and squads don't all probe on the same tick.
-		_probe_ticks[who] = PROBE_TICKS + _rng.randi_range(-1, 1)
+		_probe_ticks[who] = maxi(Ticks.every(PROBE_HZ) + _rng.randi_range(-1, 1), 1)
 	_probe_ticks[who] -= 1
 	if left <= step:
 		_probe_end[who] = Vector3.INF
@@ -867,7 +867,7 @@ func _move_soldiers(delta: float) -> void:
 		elif step > 0.001:
 			# The probe reaches a full stretch ahead even when his place is close: places
 			# move with the squad, so he keeps walking that way.
-			pos = _probed_step(pos, to.normalized(), step, stride * PROBE_TICKS, i)
+			pos = _probed_step(pos, to.normalized(), step, stride * Ticks.every(PROBE_HZ), i)
 		var speed: float = _flat(pos - _last_pos[i]).length() / delta if delta > 0.0 else 0.0
 		var walking: bool = speed > STANDING_SPEED
 		_speed[i] = speed

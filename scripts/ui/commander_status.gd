@@ -16,6 +16,8 @@ var _tank: Tank
 var _flash: float = 0.0
 var _blocked_message: float = 0.0
 var _time: float = 0.0
+## Something was drawn last time (so one more redraw clears it).
+var _drawn: bool = false
 
 
 func _ready() -> void:
@@ -33,7 +35,11 @@ func _process(delta: float) -> void:
 	_time += delta
 	_flash = maxf(_flash - delta / maxf(flash_time_s, 0.01), 0.0)
 	_blocked_message = maxf(_blocked_message - delta, 0.0)
-	queue_redraw()
+	# A full-screen layer: only redrawn while it shows something (or to clear it).
+	var showing: bool = _tank != null and (_flash > 0.0 or _tank.is_commander_wounded())
+	if showing or _drawn:
+		queue_redraw()
+	_drawn = showing
 
 
 func _draw() -> void:

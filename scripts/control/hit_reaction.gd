@@ -27,6 +27,8 @@ var _ping_player: AudioStreamPlayer
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
+var _still: bool = false
+
 func _ready() -> void:
 	_rng.randomize()
 	_ping_player = AudioStreamPlayer.new()
@@ -38,6 +40,10 @@ func _process(delta: float) -> void:
 	_time += delta
 	_trauma = maxf(_trauma - delta / maxf(shake_time_s, 0.01), 0.0)
 	var amount: float = _trauma * _trauma
+	# At rest: the cameras already hold a zero shake.
+	if amount == 0.0 and _still:
+		return
+	_still = amount == 0.0
 	for cam: Camera3D in [views.commander_camera, views.gunner_camera]:
 		if cam == null:
 			continue

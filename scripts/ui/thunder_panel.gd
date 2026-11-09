@@ -22,15 +22,20 @@ extends Control
 @export var countdown_height: float = 0.88
 
 
+const REDRAW_HZ: float = 10.0
+var _redraw_clock := PackedFloat32Array([0.0])
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # full size: text centres on the screen
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var mode: ThunderRoadMode = ThunderRoadMode.instance
 	visible = mode != null and views != null and not views.is_debug_view()
-	queue_redraw()
+	# Clocks and counts: REDRAW_HZ times a second is plenty.
+	if visible and Ticks.due(_redraw_clock, delta, REDRAW_HZ):
+		queue_redraw()
 
 
 func _draw() -> void:

@@ -15,6 +15,8 @@ var _bus: int = -1
 var _filter: AudioEffectLowPassFilter
 var _blast_bus: int = -1
 var _blast_filter: AudioEffectLowPassFilter
+var _applied_open: float = -1.0
+var _applied_hearing: float = NAN
 
 
 func _ready() -> void:
@@ -31,7 +33,14 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	_apply(smoothstep(0.0, 1.0, tank.get_hatch_progress()))
+	# Bus settings only when the hatch moved: setting them locks the audio thread.
+	var open: float = smoothstep(0.0, 1.0, tank.get_hatch_progress())
+	var hearing: float = Weather.current().hearing_db
+	if is_equal_approx(open, _applied_open) and is_equal_approx(hearing, _applied_hearing):
+		return
+	_applied_open = open
+	_applied_hearing = hearing
+	_apply(open)
 
 
 func _exit_tree() -> void:

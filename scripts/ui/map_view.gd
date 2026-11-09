@@ -42,6 +42,9 @@ extends Control
 
 var _map_image: MapImageData
 var _map_looked_up: bool = false
+## Maps redraw this often, not every frame (a full map redraw costs ~2 ms of CPU).
+const REDRAW_HZ: float = 20.0
+var _redraw_clock := PackedFloat32Array([0.0])
 
 
 func _enter_tree() -> void:
@@ -49,11 +52,12 @@ func _enter_tree() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not _map_looked_up:
 		_map_looked_up = true
 		_map_image = MapImageData.find_for_scene(get_tree().current_scene)
-	queue_redraw()
+	if is_visible_in_tree() and Ticks.due(_redraw_clock, delta, REDRAW_HZ):
+		queue_redraw()
 
 
 func get_tank() -> Tank:

@@ -1,19 +1,20 @@
 class_name NetReplicator
 extends Node
-## Host: sends every client one snapshot packet per SNAPSHOT_TICKS physics ticks (20 Hz).
+## Host: sends every client one snapshot packet SNAPSHOT_HZ times a second.
 ## Built per recipient: NetRelevance picks the tanks, and the recipient's own tank adds
 ## its owner data (hp, modules, reload). Packet: type u8, tick u32, count u8, states.
 
-const SNAPSHOT_TICKS: int = 3
+const SNAPSHOT_HZ: float = 20.0
 
 var game: NetGame
 var _tick: int = 0
+var _send_clock := PackedFloat32Array([0.0])
 var _snapshot: int = 0
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	_tick += 1
-	if _tick % SNAPSHOT_TICKS != 0 or game == null:
+	if not Ticks.due(_send_clock, delta, SNAPSHOT_HZ) or game == null:
 		return
 	_snapshot += 1
 	for peer: int in multiplayer.get_peers():

@@ -38,8 +38,8 @@ const FALLBACK_SPAWN_DISTANCE_M: float = 300.0
 const BOT_SPAWN_OFFSET_M: float = 15.0
 ## King of the Hill state to clients this often (s), and at once on zone changes.
 const KOTH_SEND_INTERVAL_S: float = 0.5
-## Infantry squads to clients every this many physics ticks (6 = 10 Hz, unreliable).
-const SQUAD_SEND_TICKS: int = 6
+## Infantry squads to clients this often (unreliable).
+const SQUAD_SEND_HZ: float = 10.0
 ## A team swap request stays open this long (s).
 const SWAP_OFFER_S: float = 60.0
 
@@ -67,7 +67,7 @@ var _input: NetInput
 var _my_rig: Node
 var _map: Node
 var _koth_timer: float = 0.0
-var _squad_tick: int = 0
+var _squad_clock := PackedFloat32Array([0.0])
 var _koth_hooked: KothMode
 var _thunder_timer: float = 0.0
 var _thunder_hooked: ThunderRoadMode
@@ -661,8 +661,8 @@ func _send_koth_state(mode: KothMode) -> void:
 
 ## Host: every registered tank's squad to every client (10 Hz, one unreliable packet).
 func _send_squads() -> void:
-	_squad_tick += 1
-	if _squad_tick % SQUAD_SEND_TICKS != 0 or multiplayer.get_peers().is_empty():
+	if not Ticks.due(_squad_clock, get_physics_process_delta_time(), SQUAD_SEND_HZ) \
+			or multiplayer.get_peers().is_empty():
 		return
 	var buf := StreamPeerBuffer.new()
 	buf.put_u8(NetSession.PACKET_SQUADS)

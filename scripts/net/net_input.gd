@@ -1,20 +1,20 @@
 class_name NetInput
 extends Node
-## Client: sends the local player's TankCommand to the host every SEND_TICKS physics
-## ticks (30 Hz, unreliable). PlayerController keeps setting the command on the own
+## Client: sends the local player's TankCommand to the host SEND_HZ times a second
+## (unreliable). PlayerController keeps setting the command on the own
 ## (puppet) tank as offline, which also drives the local turret prediction; this node
 ## reads it from there. One-shot actions are latched so a lost packet doesn't drop them.
 
-const SEND_TICKS: int = 2
+const SEND_HZ: float = 30.0
 
 var tank: Tank
-var _tick: int = 0
+var _send_clock := PackedFloat32Array([0.0])
 var _wanted_ammo: int = -1
 var _spot_seq: int = 0
 var _spot_point: Vector3 = Vector3.ZERO
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if tank == null or not is_instance_valid(tank):
 		return
 	var c: TankCommand = tank.get_command()
@@ -32,8 +32,7 @@ func _physics_process(_delta: float) -> void:
 	if c.squad_order != 0:
 		# Squad orders are rare and must not get lost: reliable, not in the stream.
 		NetSession.instance.rpc_id(1, "rpc_squad_order", c.squad_order, c.squad_target)
-	_tick += 1
-	if _tick % SEND_TICKS != 0:
+	if not Ticks.due(_send_clock, delta, SEND_HZ):
 		return
 	var buf := StreamPeerBuffer.new()
 	buf.put_u8(NetSession.PACKET_COMMAND)

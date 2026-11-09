@@ -422,12 +422,39 @@ shows on the minimap. This is what we test first.
   `Own`; cannon shots (`SoundSetData.pierces_hull`) go from World to bus `Blast`, only lightly
   muffled (`AudioData.blast_*`). Files in `assets/audio/` (CC0, see `CREDITS.md`; made with `tools/audio/`).
   Headless runs report "leaked at exit" for any playing AudioStreamPlayer: harmless.
-- Per-frame cost (measured 2026-11-09, 10 v 10 ThunderRoad: ~7 ms CPU headless, ~11 ms with a
-  window): HUD code must not call `add_theme_*_override` or rebuild text every frame when
-  nothing changed (it re-lays the control out); route/path lookups that run per frame use
+- Physics runs at **30 Hz** (`physics/common/physics_ticks_per_second`; a slow tank game needs
+  no more, and every `_physics_process`, ray and body costs half; physics interpolation keeps
+  it smooth). Never count rates in ticks: use `Ticks.every(hz)` (ticks apart) or
+  `Ticks.due(clock, delta, hz)` (time-paced sends); net rates are in Hz (`SNAPSHOT_HZ` 20,
+  `NetInput.SEND_HZ` 30, `SQUAD_SEND_HZ` 10). Ballistics is Heun-integrated, so shells land
+  where the sight says at any tick rate.
+- Per-frame cost (10 v 10 ThunderRoad, 1920x1080 window: 17.2 ms at 60 Hz before 2026-11-09,
+  9.0 ms after 30 Hz and the HUD fixes): HUD code must not call `add_theme_*_override`, set
+  bus effects or camera properties, or `queue_redraw` every frame when nothing changed
+  (maps redraw at `MapView.REDRAW_HZ` 20, panels 10-15 Hz, `CommanderStatus` only while it
+  shows something, `HatchMuffle` only when the hatch moves); route/path lookups that run per frame use
   binary search (`ThunderRoadMode._segment_at`); collision shape transforms are only set when
   they change (`Tank._sync_turret_shapes`). Trees have detail levels (below): GPU time in
   the fixed views fell 35-50 % (far view 9.9 -> 5.4 ms).
+- Visual effects (cosmetic, local on every machine, nothing sent; bots see through them):
+  `EffectFx` plays `EffectData` (`data/effects/*.tres`: `BurstData` particle bursts + a fading
+  light) and makes continuous emitters from a `BurstData`; `EffectsSetData`
+  (`data/effects/effects.tres`) says which plays where. `Shell._play_impact` picks by surface
+  (armour: tanks, commander, wrecks; building: other static bodies; wood: trees; else ground),
+  bullets (< 20 mm) their small set, explosive rounds add `explosion`; size = calibre / 75.
+  `Tank._muzzle_effects`: flash plus blast dust when the muzzle is within
+  `blast_dust_height_m` of the ground. `TankDust` (made by Tank, like TankExhaust) throws dust
+  behind the tracks by speed times `WeatherData.dust_factor` (rain 0). `Burning` (burning.tscn)
+  is flames + a smoke column (`fire_flames`, `fire_smoke`). `GunSmoke` uses `gun_smoke` (8 puffs,
+  `BurstData.near_fade_m` dithers puffs near the camera out: three shots in front of the
+  commander's view cost ~0.4 ms GPU instead of ~2). `SmokeCloud` draws 20 camera-facing puffs
+  (`EffectFx.puff_texture`, `billboard_keep_scale`) up to the top of its vision-blocking
+  cylinder, so the player can't see over what blocks bots. Soft particles are unshaded,
+  tinted by the weather's light, with a noise puff texture and proximity fade.
+  `EffectFx.prewarm` (WeatherView) plays everything once below the map so shaders compile at
+  load. Pictures: `godot --path . --disable-vsync --fixed-fps 60 --script
+  res://tools/render_effects.gd -- [map] [label]` -> `renders/effects/<label>/`.
+  Measured: no frame time cost in a 10 v 10 match.
 - Prototype graphics: simple shapes (boxes, cylinders). Only free, correctly licensed
   assets (Kenney, Sketchfab CC with attribution). Never assets from other games.
 

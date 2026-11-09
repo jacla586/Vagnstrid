@@ -20,6 +20,9 @@ var _bonus_timer: float = 0.0
 var _hooked: KothMode
 
 
+const REDRAW_HZ: float = 15.0
+var _redraw_clock := PackedFloat32Array([0.0])
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # full size: text centres on the screen
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -32,7 +35,9 @@ func _process(delta: float) -> void:
 		_hooked = mode
 		mode.kill_bonus.connect(_on_kill_bonus)
 	_bonus_timer = maxf(_bonus_timer - delta, 0.0)
-	queue_redraw()
+	# Scores and clocks: REDRAW_HZ times a second is plenty.
+	if visible and Ticks.due(_redraw_clock, delta, REDRAW_HZ):
+		queue_redraw()
 
 
 func _on_kill_bonus(team: int, points: float) -> void:
