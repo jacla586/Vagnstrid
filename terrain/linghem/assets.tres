@@ -4,17 +4,84 @@
 [ext_resource type="Texture2D" path="res://assets/terrain/rock023_nrm_rgh.png" id="2_1pufu"]
 [ext_resource type="Texture2D" path="res://assets/terrain/ground037_alb_ht.png" id="3_2pvup"]
 [ext_resource type="Texture2D" path="res://assets/terrain/ground037_nrm_rgh.png" id="4_1mgjd"]
+[ext_resource type="Texture2D" path="res://assets/terrain/grass004_alb_ht.png" id="5_aghuv"]
+[ext_resource type="Texture2D" path="res://assets/terrain/grass004_nrm_rgh.png" id="6_cc0vt"]
+[ext_resource type="Texture2D" path="res://assets/terrain/ground071_alb_ht.png" id="7_xio2y"]
+[ext_resource type="Texture2D" path="res://assets/terrain/ground071_nrm_rgh.png" id="8_qh6uq"]
+[ext_resource type="Texture2D" path="res://assets/terrain/ground020_alb_ht.png" id="9_ptnxo"]
+[ext_resource type="Texture2D" path="res://assets/terrain/ground020_nrm_rgh.png" id="10_vx6dq"]
+[ext_resource type="Texture2D" path="res://assets/terrain/ground081_alb_ht.png" id="11_k1hjn"]
+[ext_resource type="Texture2D" path="res://assets/terrain/ground081_nrm_rgh.png" id="12_f3f05"]
+[ext_resource type="Texture2D" path="res://assets/terrain/grass002_alb_ht.png" id="13_qd5pa"]
+[ext_resource type="Texture2D" path="res://assets/terrain/grass002_nrm_rgh.png" id="14_aawhs"]
+[ext_resource type="Texture2D" path="res://assets/terrain/ground054_alb_ht.png" id="15_r54m7"]
+[ext_resource type="Texture2D" path="res://assets/terrain/ground054_nrm_rgh.png" id="16_157so"]
 
-[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_rfp0e"]
-name = "cliff"
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_m22x0"]
+name = "rock"
 albedo_texture = ExtResource("1_c0thr")
 normal_texture = ExtResource("2_1pufu")
+uv_scale = 0.08
+detiling_rotation = 0.3
+detiling_shift = 0.2
 
-[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_75aob"]
-name = "grass"
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_3xdqh"]
+name = "meadow"
 id = 1
 albedo_texture = ExtResource("3_2pvup")
 normal_texture = ExtResource("4_1mgjd")
+detiling_rotation = 0.4
+detiling_shift = 0.3
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_6ny28"]
+name = "lawn"
+id = 2
+albedo_texture = ExtResource("5_aghuv")
+normal_texture = ExtResource("6_cc0vt")
+uv_scale = 0.12
+detiling_rotation = 0.4
+detiling_shift = 0.3
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_vucl7"]
+name = "field"
+id = 3
+albedo_texture = ExtResource("7_xio2y")
+normal_texture = ExtResource("8_qh6uq")
+detiling_rotation = 0.3
+detiling_shift = 0.3
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_55nwf"]
+name = "forest_floor"
+id = 4
+albedo_texture = ExtResource("9_ptnxo")
+normal_texture = ExtResource("10_vx6dq")
+detiling_rotation = 0.4
+detiling_shift = 0.3
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_p8om8"]
+name = "gravel"
+id = 5
+albedo_texture = ExtResource("11_k1hjn")
+normal_texture = ExtResource("12_f3f05")
+uv_scale = 0.3
+detiling_rotation = 0.4
+detiling_shift = 0.3
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_4p788"]
+name = "wet_grass"
+id = 6
+albedo_texture = ExtResource("13_qd5pa")
+normal_texture = ExtResource("14_aawhs")
+detiling_rotation = 0.4
+detiling_shift = 0.3
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_p6duh"]
+name = "sand"
+id = 7
+albedo_texture = ExtResource("15_r54m7")
+normal_texture = ExtResource("16_157so")
+detiling_rotation = 0.3
+detiling_shift = 0.3
 
 [resource]
-texture_list = Array[Terrain3DTextureAsset]([SubResource("Terrain3DTextureAsset_rfp0e"), SubResource("Terrain3DTextureAsset_75aob")])
+texture_list = Array[Terrain3DTextureAsset]([SubResource("Terrain3DTextureAsset_m22x0"), SubResource("Terrain3DTextureAsset_3xdqh"), SubResource("Terrain3DTextureAsset_6ny28"), SubResource("Terrain3DTextureAsset_vucl7"), SubResource("Terrain3DTextureAsset_55nwf"), SubResource("Terrain3DTextureAsset_p8om8"), SubResource("Terrain3DTextureAsset_4p788"), SubResource("Terrain3DTextureAsset_p6duh")])
