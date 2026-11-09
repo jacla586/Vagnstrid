@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BurstData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/burst_data.gd" id="1_burst"]
+
+[resource]
+script = ExtResource("1_burst")
+amount = 30
+lifetime_s = 0.7
+explosiveness = 0.0
+spread_deg = 15.0
+speed_min_mps = 1.0
+speed_max_mps = 2.5
+gravity = Vector3(0, 2, 0)
+wind_share = 0.15
+damping = 0.5
+emission_radius_m = 0.8
+size_start_m = 1.4
+size_end_m = 0.4
+color_start = Color(1, 0.55, 0.16, 0.95)
+color_end = Color(1, 0.25, 0.05, 0)
+additive = true

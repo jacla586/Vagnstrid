@@ -22,7 +22,6 @@ const MAX_LIFETIME: float = 15.0
 const MIN_HEIGHT: float = -200.0
 ## Tracer grows wider with age so it stays visible at long range (fun over realism).
 const TRACER_GROWTH_PER_SECOND: float = 4.0
-const IMPACT_SCENE: PackedScene = preload("res://scenes/effects/impact.tscn")
 ## Share of speed kept after a ricochet. Tuned for a visible bounce.
 const RICOCHET_SPEED_FACTOR: float = 0.5
 
@@ -110,14 +109,8 @@ func _physics_process(delta: float) -> void:
 func _on_hit(hit: Dictionary) -> void:
 	var point: Vector3 = hit["position"]
 	var normal: Vector3 = hit["normal"]
-	var effect: Node3D = IMPACT_SCENE.instantiate()
-	get_parent().add_child(effect)
-	effect.global_position = point
-	effect.scale = Vector3.ONE * _data.impact_scale
-	var light: OmniLight3D = effect.get_node_or_null("Light") as OmniLight3D
-	if light != null:
-		light.omni_range *= _data.impact_scale
 	var collider: Object = hit["collider"]
+	_play_impact(collider, point, normal)
 	if _cosmetic:
 		_play_hit_sound(collider, point)
 		queue_free()
@@ -162,6 +155,42 @@ func _report_near_misses() -> void:
 		if is_instance_valid(key) and not _hit_tanks.has(key):
 			(key as Tank).report_near_miss(_near[key])
 	_near.clear()
+
+
+## Impact effect by what was hit (EffectsSetData): sparks on armour, dirt on the ground,
+## dust on buildings, splinters on trees; explosive rounds add their explosion. Size
+## follows the calibre (75 mm = 1); bullets have their own small set.
+func _play_impact(collider: Object, point: Vector3, normal: Vector3) -> void:
+	var fx: EffectsSetData = EffectFx.SET
+	var bullet: bool = _data.caliber_mm < Tank.THREAT_MIN_CALIBER_MM
+	var kind: StringName = _surface_of(collider)
+	var effect: EffectData
+	match kind:
+		&"armour":
+			effect = fx.bullet_armour if bullet else fx.impact_armour
+		&"building":
+			effect = fx.bullet_building if bullet else fx.impact_building
+		&"wood":
+			effect = fx.bullet_ground if bullet else fx.impact_wood
+		_:
+			effect = fx.bullet_ground if bullet else fx.impact_ground
+	var size: float = 1.0 if bullet else _data.caliber_mm / 75.0
+	EffectFx.play(effect, get_parent(), point, normal, size)
+	if _data.is_explosive():
+		EffectFx.play(fx.explosion, get_parent(), point, normal.lerp(Vector3.UP, 0.5), size)
+
+
+static func _surface_of(collider: Object) -> StringName:
+	if collider is Tank or collider is CommanderHitbox:
+		return &"armour"
+	if collider is TreeField or collider is BreakableTree or collider is TreeTrunk:
+		return &"wood"
+	var node := collider as Node
+	if node != null and node.is_in_group(&"wrecks"):
+		return &"armour"
+	if collider is StaticBody3D:
+		return &"building"
+	return &"ground"
 
 
 ## Tells the shooter what a hit did. Null results (nothing of note) aren't reported.

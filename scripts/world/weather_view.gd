@@ -47,6 +47,7 @@ func apply() -> void:
 	if weather.rain_intensity > 0.0:
 		_start_rain(weather)
 		_wet_terrain(scene, weather)
+	EffectFx.prewarm(scene)
 
 
 func _process(_delta: float) -> void:

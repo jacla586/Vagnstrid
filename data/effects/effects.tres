@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="EffectsSetData" load_steps=17 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/effects_set_data.gd" id="1_set"]
+[ext_resource type="Resource" path="res://data/effects/impact_ground.tres" id="2_impact_ground"]
+[ext_resource type="Resource" path="res://data/effects/impact_armour.tres" id="3_impact_armour"]
+[ext_resource type="Resource" path="res://data/effects/impact_building.tres" id="4_impact_building"]
+[ext_resource type="Resource" path="res://data/effects/impact_wood.tres" id="5_impact_wood"]
+[ext_resource type="Resource" path="res://data/effects/explosion.tres" id="6_explosion"]
+[ext_resource type="Resource" path="res://data/effects/bullet_ground.tres" id="7_bullet_ground"]
+[ext_resource type="Resource" path="res://data/effects/bullet_armour.tres" id="8_bullet_armour"]
+[ext_resource type="Resource" path="res://data/effects/bullet_building.tres" id="9_bullet_building"]
+[ext_resource type="Resource" path="res://data/effects/muzzle_flash.tres" id="10_muzzle_flash"]
+[ext_resource type="Resource" path="res://data/effects/muzzle_blast_dust.tres" id="11_muzzle_blast_dust"]
+[ext_resource type="Resource" path="res://data/effects/track_dust.tres" id="12_track_dust"]
+[ext_resource type="Resource" path="res://data/effects/fire_flames.tres" id="13_fire_flames"]
+[ext_resource type="Resource" path="res://data/effects/fire_smoke.tres" id="14_fire_smoke"]
+[ext_resource type="Resource" path="res://data/effects/gun_smoke.tres" id="15_gun_smoke"]
+
+[resource]
+script = ExtResource("1_set")
+impact_ground = ExtResource("2_impact_ground")
+impact_armour = ExtResource("3_impact_armour")
+impact_building = ExtResource("4_impact_building")
+impact_wood = ExtResource("5_impact_wood")
+explosion = ExtResource("6_explosion")
+bullet_ground = ExtResource("7_bullet_ground")
+bullet_armour = ExtResource("8_bullet_armour")
+bullet_building = ExtResource("9_bullet_building")
+muzzle_flash = ExtResource("10_muzzle_flash")
+muzzle_blast_dust = ExtResource("11_muzzle_blast_dust")
+track_dust = ExtResource("12_track_dust")
+fire_flames = ExtResource("13_fire_flames")
+fire_smoke = ExtResource("14_fire_smoke")
+gun_smoke = ExtResource("15_gun_smoke")

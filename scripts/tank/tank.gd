@@ -94,7 +94,6 @@ const KMH_TO_MS: float = 1.0 / 3.6
 ## After a shot the hull's speed says nothing about driving for this long (s): recoil.
 const RECOIL_SETTLE_S: float = 1.5
 const SHELL_SCENE: PackedScene = preload("res://scenes/weapons/shell.tscn")
-const MUZZLE_FLASH_SCENE: PackedScene = preload("res://scenes/effects/muzzle_flash.tscn")
 const BURNING_SCENE: PackedScene = preload("res://scenes/effects/burning.tscn")
 ## Normals steeper than this (Y in local space) count as roof/belly.
 const ROOF_NORMAL_Y: float = 0.94
@@ -306,6 +305,10 @@ func _ready() -> void:
 		_exhaust.name = "Exhaust"
 		_exhaust.tank = self
 		add_child(_exhaust)
+		var dust := TankDust.new()
+		dust.name = "Dust"
+		dust.tank = self
+		add_child(dust)
 
 
 ## Sizes the hull, tracks, turret and gun from the data (TankData geometry; the scene
@@ -1038,9 +1041,9 @@ func _make_wreck(at: Transform3D, no_turret: bool = false) -> void:
 func _set_fire_effect(on: bool) -> void:
 	if on and _fire_effect == null:
 		_fire_effect = BURNING_SCENE.instantiate()
-		add_child(_fire_effect)
 		_fire_effect.position = Vector3(0.0, 0.6, 1.1)
-		_fire_effect.scale = Vector3.ONE * 0.6
+		_fire_effect.scale = Vector3.ONE * 0.6   # before add_child: Burning sizes itself on ready
+		add_child(_fire_effect)
 	elif not on and _fire_effect != null:
 		_fire_effect.queue_free()
 		_fire_effect = null
@@ -1618,9 +1621,7 @@ func net_show_shell(shell_index: int, from: Vector3, velocity: Vector3, flash: b
 	get_parent().add_child(shell)
 	shell.launch(shell_data, from, velocity, self, true)
 	if flash:
-		var fx: Node3D = MUZZLE_FLASH_SCENE.instantiate()
-		get_parent().add_child(fx)
-		fx.global_position = from
+		_muzzle_effects(from, velocity.normalized())
 		GunSmoke.spawn(get_parent(), from, velocity.normalized(), _gun_smoke_scale(),
 				_gun_render_layer)
 		if _audio != null:
@@ -1677,9 +1678,7 @@ func _fire() -> void:
 	var shell_data: ShellData = get_loaded_shell()
 	shell.launch(shell_data, muzzle_position,
 			direction * shell_data.muzzle_velocity_mps + linear_velocity, self)
-	var flash: Node3D = MUZZLE_FLASH_SCENE.instantiate()
-	get_parent().add_child(flash)
-	flash.global_position = muzzle_position
+	_muzzle_effects(muzzle_position, direction)
 	GunSmoke.spawn(get_parent(), muzzle_position, direction, _gun_smoke_scale(),
 			_gun_render_layer)
 	if _audio != null:
@@ -1688,6 +1687,20 @@ func _fire() -> void:
 	_reload_remaining = data.reload_time_s
 	_since_fired = 0.0
 	fired.emit(shell)
+
+
+## Muzzle flash, and dust blown up from the ground under a low muzzle (EffectsSetData).
+func _muzzle_effects(at: Vector3, direction: Vector3) -> void:
+	var fx: EffectsSetData = EffectFx.SET
+	var size: float = _gun_smoke_scale()
+	EffectFx.play(fx.muzzle_flash, get_parent(), at, direction, size)
+	var query := PhysicsRayQueryParameters3D.create(at, at + Vector3.DOWN * fx.blast_dust_height_m, 1)
+	query.exclude = [get_rid()]
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		# The blast spreads out ahead of the muzzle.
+		var ground: Vector3 = hit["position"] + Vector3(direction.x, 0.0, direction.z) * 1.5
+		EffectFx.play(fx.muzzle_blast_dust, get_parent(), ground, hit["normal"], size)
 
 
 ## Gun smoke cloud size: 1 for a 75 mm gun, more for bigger ones.

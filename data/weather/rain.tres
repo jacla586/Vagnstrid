@@ -40,3 +40,4 @@ contrast = 1.06
 ssao_intensity_factor = 1.3
 grade_shadow_color = Color(0.9, 0.95, 1.05, 1)
 grade_strength = 0.4
+dust_factor = 0.0

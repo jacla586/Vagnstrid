@@ -14,6 +14,13 @@ const GROUND_PROBE_S: float = 0.5
 const GROUND_FOLLOW_MPS: float = 3.0
 ## Puffs stretch downwind for at most this long (s), so the cloud doesn't fall apart.
 const STRETCH_MAX_S: float = 15.0
+## The look: this many soft camera-facing puffs (EffectFx's cloudy texture, lit by the
+## weather's light), each this share of the radius across (random spread round it).
+const PUFFS: int = 20
+const PUFF_SIZE_SHARE: float = 1.5
+const COLOR: Color = Color(0.82, 0.82, 0.8, 0.9)
+## Puffs fade out against the ground and anything else this close behind them (m).
+const PROXIMITY_FADE_M: float = 2.0
 
 var radius_m: float = 9.0
 var height_m: float = 7.0
@@ -26,11 +33,13 @@ var _area: Area3D
 var _shape: CylinderShape3D
 var _puffs: Array[MeshInstance3D] = []
 var _offsets: Array[Vector3] = []  # per puff: (x, z) share of the radius, y share of the height
+var _sizes: Array[float] = []  # per puff: size factor
 var _stretch: Array[float] = []  # per puff: drift speed minus the cloud's, as a share
 var _drift: Vector3 = Vector3.ZERO  # m/s
 var _ground_timer: float = 0.0
 var _ground_y: float = NAN
-var _material: StandardMaterial3D
+## Two materials (one with the texture mirrored) so the puffs don't all look the same.
+var _materials: Array[StandardMaterial3D] = []
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
@@ -48,23 +57,31 @@ func _ready() -> void:
 	cs.shape = _shape
 	_area.add_child(cs)
 	add_child(_area)
-	_material = StandardMaterial3D.new()
-	_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_material.albedo_color = Color(0.78, 0.78, 0.76, 0.85)
-	_material.roughness = 1.0
-	_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	for i: int in 9:
+	var tint: Color = EffectFx.weather_light()
+	for flip: float in [1.0, -1.0]:
+		var material := StandardMaterial3D.new()
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		material.billboard_keep_scale = true
+		material.albedo_texture = EffectFx.puff_texture()
+		material.albedo_color = Color(COLOR.r * tint.r, COLOR.g * tint.g, COLOR.b * tint.b, COLOR.a)
+		material.uv1_scale = Vector3(flip, 1.0, 1.0)
+		material.proximity_fade_enabled = true
+		material.proximity_fade_distance = PROXIMITY_FADE_M
+		material.disable_receive_shadows = true
+		_materials.append(material)
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE
+	for i: int in PUFFS:
 		var puff := MeshInstance3D.new()
-		var sphere := SphereMesh.new()
-		sphere.radius = 1.0
-		sphere.height = 2.0
-		sphere.radial_segments = 12
-		sphere.rings = 6
-		puff.mesh = sphere
-		puff.material_override = _material
+		puff.mesh = quad
+		puff.material_override = _materials[i % 2]
 		puff.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		_offsets.append(Vector3(_rng.randf_range(-0.6, 0.6), _rng.randf_range(0.2, 0.7),
-				_rng.randf_range(-0.6, 0.6)))
+		puff.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+		_offsets.append(Vector3(_rng.randf_range(-0.7, 0.7), _rng.randf_range(0.2, 0.95),
+				_rng.randf_range(-0.7, 0.7)))
+		_sizes.append(_rng.randf_range(0.7, 1.2))
 		_stretch.append(_rng.randf_range(-0.25, 0.25))
 		add_child(puff)
 		_puffs.append(puff)
@@ -120,9 +137,10 @@ func _apply(age: float) -> void:
 	(_area.get_child(0) as Node3D).position = Vector3(0.0, _shape.height * 0.5, 0.0)
 	# Thin smoke stops blocking sight before it has quite gone.
 	_area.collision_layer = Vision.LAYER_VISION_BLOCKER if fade > 0.3 else 0
-	_material.albedo_color.a = 0.85 * fade
+	for material: StandardMaterial3D in _materials:
+		material.albedo_color.a = COLOR.a * fade
 	var stretch: Vector3 = _drift * minf(age, STRETCH_MAX_S)
 	for i: int in _puffs.size():
 		var o: Vector3 = _offsets[i]
-		_puffs[i].scale = Vector3.ONE * r * 0.75
+		_puffs[i].scale = Vector3.ONE * r * PUFF_SIZE_SHARE * _sizes[i]
 		_puffs[i].position = Vector3(o.x * r, o.y * height_m * grow, o.z * r) + stretch * _stretch[i]

@@ -30,3 +30,4 @@ contrast = 1.05
 grade_shadow_color = Color(0.82, 0.88, 1.08, 1)
 grade_highlight_color = Color(1.08, 0.98, 0.88, 1)
 grade_strength = 0.6
+dust_factor = 0.4

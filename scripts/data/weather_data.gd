@@ -74,6 +74,8 @@ extends Resource
 ## Other tanks' sounds this much quieter (dB; rain drowns them).
 @export var hearing_db: float = 0.0
 
+## Dust behind driving tanks (1 = dry summer, 0 = wet).
+@export_range(0.0, 1.0) var dust_factor: float = 1.0
 @export_group("Wind and rain")
 ## Wind (m/s, x east, y south): clouds, smoke and rain drift with it.
 @export var wind_mps: Vector2 = Vector2(2.0, 0.8)

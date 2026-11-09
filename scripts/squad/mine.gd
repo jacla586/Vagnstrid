@@ -16,9 +16,8 @@ signal gone(exploded: bool)
 signal triggered(tank: Tank)
 
 const GROUP: StringName = &"mines"
-const IMPACT_SCENE: PackedScene = preload("res://scenes/effects/impact.tscn")
-## Tanks are checked this often (physics ticks), staggered per mine.
-const CHECK_TICKS: int = 6
+## Tanks are checked this often (Hz), staggered per mine.
+const CHECK_HZ: float = 10.0
 ## Only tanks this close (m, centre to mine) are checked against their tracks.
 const NEAR_M: float = 8.0
 ## Without a track layout: the hull's half width and half length (m).
@@ -91,7 +90,7 @@ static func shell_landed(tree: SceneTree, point: Vector3, shell: ShellData, shoo
 
 func _ready() -> void:
 	add_to_group(GROUP)
-	_tick = randi() % CHECK_TICKS
+	_tick = randi() % Ticks.every(CHECK_HZ)
 	var disc := MeshInstance3D.new()
 	var cylinder := CylinderMesh.new()
 	cylinder.top_radius = data.disc_radius_m
@@ -138,7 +137,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_age += delta
 	_tick += 1
-	if _age < data.arm_time_s or _tick % CHECK_TICKS != 0:
+	if _age < data.arm_time_s or _tick % Ticks.every(CHECK_HZ) != 0:
 		return
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var tank := node as Tank
@@ -208,11 +207,7 @@ func remove() -> void:
 func show_blast() -> void:
 	if not is_inside_tree():
 		return
-	var effect: Node3D = IMPACT_SCENE.instantiate()
-	get_parent().add_child(effect)
-	effect.global_position = global_position
-	effect.scale = Vector3.ONE * data.effect_scale
-	var light: OmniLight3D = effect.get_node_or_null("Light") as OmniLight3D
-	if light != null:
-		light.omni_range *= data.effect_scale
+	# effect_scale was the old sphere's size (HE 75 mm = 2.5); the explosion's 1 is 75 mm.
+	EffectFx.play(EffectFx.SET.explosion, get_parent(), global_position, Vector3.UP,
+			data.effect_scale / 2.5)
 	SoundFx.play_at(self, data.sound_explosion, global_position)
