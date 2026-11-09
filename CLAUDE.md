@@ -256,7 +256,10 @@ shows on the minimap. This is what we test first.
   `spin` puts each wheel's centre and 1/radius in CUSTOM0; bolts show the turning) and
   moves the track links (`tank_track.gdshader`, instance uniforms `wheel_dist_l/r`,
   `track_dist_l/r`); the antenna whip is its own mesh ("Antenna", TankModel "antenna") and
-  sways on a damped spring pushed by the tank's acceleration.
+  sways on a damped spring pushed by the tank's acceleration. Battle marks (`BattleMarks`): every gun round
+  (>= 20 mm) striking a tank leaves a scorch Decal (soot round a bright gouge) on the hull or
+  turret, from `Shell._play_impact` on every machine (clients' cosmetic shells too, nothing
+  sent); at most 16 a tank, cleared by `Tank.repair()`.
   Each machine decides for itself, nothing is sent; tanks/squads repaint when
   `TeamLook.version` or their team changes. `Tank.paint_color` is no longer used.
 - Tank models (`scripts/tank/model/`): `TankModel.build(data)` makes the look AND the

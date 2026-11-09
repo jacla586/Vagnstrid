@@ -490,7 +490,8 @@ func _add_number_labels(spots: Array) -> void:
 		label.modulate = Color(0.9, 0.9, 0.86)
 		label.shaded = true
 		label.double_sided = false
-		label.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+		label.alpha_cut = Label3D.ALPHA_CUT_DISABLED
+		label.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		label.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		($Visual/Turret as Node3D).add_child(label)
 		number_labels.append(label)
@@ -948,6 +949,7 @@ func repair() -> void:
 		_wreck_pending_s = WRECK_PENDING_S
 		_wreck_pending_no_turret = _turret_tossed
 	_knocked_out = false
+	BattleMarks.clear(self)
 	_damage.reset()
 	_hits_this_life.clear()
 	_life_clock = 0.0

@@ -176,6 +176,8 @@ func _play_impact(collider: Object, point: Vector3, normal: Vector3) -> void:
 			effect = fx.bullet_ground if bullet else fx.impact_ground
 	var size: float = 1.0 if bullet else _data.caliber_mm / 75.0
 	EffectFx.play(effect, get_parent(), point, normal, size)
+	if not bullet and collider is Tank:
+		BattleMarks.add(collider as Tank, point, normal, _data.caliber_mm)
 	if _data.is_explosive():
 		EffectFx.play(fx.explosion, get_parent(), point, normal.lerp(Vector3.UP, 0.5), size)
 
