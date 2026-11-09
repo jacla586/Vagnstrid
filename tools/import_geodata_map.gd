@@ -249,6 +249,7 @@ func _copy_files() -> void:
 			pairs[file] = file   # tree and bush models (vegetation.json)
 	for file: String in COPY_FILES:
 		pairs[file] = file
+	_remove_extracted_images(target_dir)
 	for file: String in pairs:
 		var source: String = ProjectSettings.globalize_path(_geo_out + "/" + file)
 		if not FileAccess.file_exists(source):
@@ -256,6 +257,17 @@ func _copy_files() -> void:
 			continue
 		var err: int = DirAccess.copy_absolute(source, ProjectSettings.globalize_path(target_dir + "/" + pairs[file]))
 		print("  copy %s -> %s: %s" % [file, pairs[file], error_string(err)])
+
+
+## Godot extracts the object glb's images as <name>_objekt_<n>.png and keeps each file's
+## import settings: after a rebuild image n may be something else (a roof texture where a
+## normal map was, which then turns yellow). The old ones go, so they are made afresh.
+func _remove_extracted_images(target_dir: String) -> void:
+	var prefix: String = "%s_objekt_" % _name
+	for file: String in DirAccess.get_files_at(target_dir):
+		if file.begins_with(prefix) and (file.ends_with(".png") or file.ends_with(".png.import")):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(target_dir + "/" + file))
+			print("  removed old extracted image %s" % file)
 
 
 func _make_material() -> Terrain3DMaterial:

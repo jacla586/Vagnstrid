@@ -7,7 +7,8 @@ Atlas() gör den stiliserade (platta färger, målade fönster) och Atlas(semi=T
 semirealistiska (CC0-fototexturer från ambientCG med fönster ovanpå, plus normal- och
 roughness-karta).
 """
-import json, math, zlib
+import json
+import math, zlib
 from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
@@ -19,6 +20,8 @@ TEXTURER = ROOT / 'texturer'
 FACK_M = float(KATALOG['fack_bredd_m'])
 PAD = 6                         # px kant runt varje ruta (mot läckage i mipmaps)
 KNUT_FARG = (240, 238, 232)
+SOCKEL_FARG = (142, 142, 138)   # gjuten betongsockel
+KRON_FARG = (74, 76, 80)        # plåtkrön runt platta tak
 
 # ---------------------------------------------------------------- färger
 FARGNAMN = {
@@ -125,14 +128,16 @@ def _morkare(c, f):
 
 
 class Atlas:
-    """Fasadatlas: rutor 'fack', 'slat', 'dorr' per variant, plus 'knut' och 'skorsten_*'."""
+    """Fasadatlas: rutor 'fack', 'slat', 'dorr' per variant, plus 'knut' (även takfotsbrädor),
+    'sockel', 'kron' och 'skorsten_*'."""
 
     def __init__(self, semi=False, storlek=2048, bara=None):
         self.semi = semi
         varianter = [v for _, v in alla_varianter() if bara is None or v['id'] in bara]
         self.varianter = {v['id']: v for v in varianter}
         nycklar = [(v['id'], r) for v in varianter for r in ('fack', 'slat', 'dorr')]
-        nycklar += [('knut', 'slat'), ('skorsten_tegel', 'slat'), ('skorsten_puts', 'slat')]
+        nycklar += [('knut', 'slat'), ('sockel', 'slat'), ('kron', 'slat'),
+                    ('skorsten_tegel', 'slat'), ('skorsten_puts', 'slat')]
         self.n = math.ceil(math.sqrt(len(nycklar)))
         self.cell = storlek // self.n
         self.S = storlek
@@ -180,6 +185,10 @@ class Atlas:
         namn, ruta = k
         if namn == 'knut':
             v = dict(vagg='puts', farg=KNUT_FARG, fonster='inga', vaning_m=3.0)
+        elif namn == 'sockel':
+            v = dict(vagg='betong', farg=SOCKEL_FARG, fonster='inga', vaning_m=3.0)
+        elif namn == 'kron':
+            v = dict(vagg='betong', farg=KRON_FARG, fonster='inga', vaning_m=3.0)
         elif namn == 'skorsten_tegel':
             v = dict(vagg='tegel', farg=(150, 70, 52), fonster='inga', vaning_m=3.0)
         elif namn == 'skorsten_puts':
@@ -368,8 +377,11 @@ def tak(namn, semi):
         return _TAK_CACHE[nyckel]
     t = KATALOG['tak'][namn]
     if not semi or not t.get('semi'):
-        m = _MAT_FN(f'Tak_{namn}', tuple(t['farg']), 0.8)
-        m.uv_skala = None
+        # Stiliserat: målad textur (pannrader, plåtfalsar, våder) i takets färg.
+        alb = _tak_textur(namn, tuple(t['farg']))
+        m = trimesh.visual.material.PBRMaterial(name=f'Tak_{namn}', baseColorTexture=alb,
+                                                metallicFactor=0.0, roughnessFactor=0.85)
+        m.uv_skala = 1.0 / TAK_TEXTUR_M
     else:
         mapp = TEXTURER / t['semi']
         alb = Image.open(next(mapp.glob('*_Color.jpg'))).convert('RGB')
@@ -386,3 +398,47 @@ def tak(namn, semi):
         m.uv_skala = 1.0 / float(t.get('semi_m', 2.0))
     _TAK_CACHE[nyckel] = m
     return m
+
+
+TAK_TEXTUR_M = 2.0     # m tak per textur (u längs takfoten, v längs fallet)
+TAK_PX = 240          # px: rader (33 cm), pannor (20/25 cm), falsar och våder går jämnt upp
+
+
+def _tak_textur(namn, farg_):
+    """Målad taktextur som täcker TAK_TEXTUR_M × TAK_TEXTUR_M: pannrader (tegel, betong),
+    falsad plåt eller papp med våder. Bilden: x = längs takfoten, y = längs fallet."""
+    c = TAK_PX
+    px_m = c / TAK_TEXTUR_M
+    rng = np.random.default_rng(zlib.crc32(namn.encode()))
+    a = np.zeros((c, c, 3), float); a[:] = farg_
+    if namn.startswith('tegel') or namn.startswith('betong'):
+        rad = c // 6                                # pannrad, 33 cm
+        bredd = int(round((0.2 if namn.startswith('tegel') else 0.25) * px_m))
+        for y0 in range(0, c, rad):
+            forskj = (bredd // 2) * ((y0 // rad) % 2)
+            for x0 in range(-forskj, c, bredd):
+                ton = rng.uniform(0.92, 1.06)
+                xs = slice(max(x0, 0), min(x0 + bredd, c))
+                for dy in range(rad):
+                    y = y0 + dy
+                    if y >= c:
+                        break
+                    # Ljusare upptill, skugga där nästa rad ligger över.
+                    f = ton * (1.08 - 0.28 * (dy / rad) ** 2)
+                    a[y, xs] = np.array(farg_) * f
+                # Fog mellan pannorna i raden.
+                if 0 <= x0 < c:
+                    a[y0:y0 + rad, x0] *= 0.72
+            a[min(y0 + rad - 1, c - 1), :] *= 0.6        # skuggkant under raden
+    elif namn.startswith('plat'):
+        fals = int(0.5 * px_m)                     # falsavstånd 50 cm
+        for x0 in range(0, c, fals):
+            a[:, x0:x0 + 2] *= 1.25                # falsens ljusa kant
+            a[:, x0 + 2:x0 + 4] *= 0.7             # och dess skugga
+        a *= rng.uniform(0.97, 1.03, (1, c, 1))
+    else:                                          # papp
+        vad = int(1.0 * px_m)
+        for y0 in range(0, c, vad):
+            a[y0:y0 + 2, :] *= 0.85
+        a += rng.normal(0, 3, (c, c, 1))
+    return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))

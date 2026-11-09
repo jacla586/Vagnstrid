@@ -20,6 +20,11 @@ KNUT_UTSTICK = 0.03    # m utanför väggen (undviker z-fighting)
 SKORSTEN_SIDA = 0.55   # m
 SKORSTEN_OVER = 0.9    # m över nocken
 MIN_VANING = 1.8       # m; lägre väggar får inga fönster
+SOCKEL_H = 0.35        # m över markreferensen: grå sockel runt huset
+SOCKEL_UT = 0.04       # m utanför väggen
+TAKFOT_H = 0.2         # m hög takfotsbräda/vindskiva längs lutande taks kanter
+KRON_H = 0.3           # m hög kant (krön) runt platta tak
+KRON_B = 0.25          # m bred krönkant
 
 
 class Bygge:
@@ -107,6 +112,44 @@ class Bygge:
                 self.yta('vagg', [(P2[0], P2[1], self.hb, (u0, v0)), (Q2[0], Q2[1], self.hb, (u1, v0)),
                                   (Q2[0], Q2[1], hQ, (u1, v1)), (P2[0], P2[1], hP, (u0, v1))])
 
+    def sockel(self, horn, fasad):
+        """Grått band från väggarnas fot upp till SOCKEL_H, strax utanför väggen."""
+        u0, v0, u1, v1 = fasad['atlas'].uv('sockel', 'slat')
+        mitt = np.mean(horn, axis=0)
+        for i in range(4):
+            A = np.asarray(horn[i], float); B = np.asarray(horn[(i + 1) % 4], float)
+            d = (B - A) / max(np.linalg.norm(B - A), 1e-6)
+            o = np.array([d[1], -d[0]])
+            if np.dot(o, (A + B) / 2 - mitt) < 0:
+                o = -o
+            A2 = A + o * SOCKEL_UT - d * SOCKEL_UT; B2 = B + o * SOCKEL_UT + d * SOCKEL_UT
+            self.yta('vagg', [(A2[0], A2[1], self.hb, (u0, v0)), (B2[0], B2[1], self.hb, (u1, v0)),
+                              (B2[0], B2[1], SOCKEL_H, (u1, v1)), (A2[0], A2[1], SOCKEL_H, (u0, v1))])
+
+    def list_(self, P, Q, fall, fasad, ruta='knut'):
+        """En lodrät bräda från kanten P-Q (lokala (u, v, h)) ner `fall` m (takfotsbräda,
+        vindskiva). Vänds utåt av step3 (bort från delens mitt)."""
+        u0, v0, u1, v1 = fasad['atlas'].uv(ruta, 'slat')
+        self.yta('vagg', [(P[0], P[1], P[2] - fall, (u0, v0)), (Q[0], Q[1], Q[2] - fall, (u1, v0)),
+                          (Q[0], Q[1], Q[2], (u1, v1)), (P[0], P[1], P[2], (u0, v1))])
+
+    def kron(self, horn, h, fasad):
+        """Kant runt ett platt tak: utsida (fortsätter väggen) och ovansida."""
+        u0, v0, u1, v1 = fasad['atlas'].uv('kron', 'slat')
+        mitt = np.mean(horn, axis=0)
+        for i in range(4):
+            A = np.asarray(horn[i], float); B = np.asarray(horn[(i + 1) % 4], float)
+            self.yta('vagg', [(A[0], A[1], h - 0.05, (u0, v0)), (B[0], B[1], h - 0.05, (u1, v0)),
+                              (B[0], B[1], h + KRON_H, (u1, v1)), (A[0], A[1], h + KRON_H, (u0, v1))])
+        # Ovansidan: en ram KRON_B bred innanför ytterkanten.
+        for i in range(4):
+            A = np.asarray(horn[i], float); B = np.asarray(horn[(i + 1) % 4], float)
+            Ai = A + (mitt - A) / max(np.linalg.norm(mitt - A), 1e-6) * KRON_B * 1.41
+            Bi = B + (mitt - B) / max(np.linalg.norm(mitt - B), 1e-6) * KRON_B * 1.41
+            self.yta('kant_topp', [(A[0], A[1], h + KRON_H, (u0, v0)), (B[0], B[1], h + KRON_H, (u1, v0)),
+                                   (Bi[0], Bi[1], h + KRON_H, (u1, v1)), (Ai[0], Ai[1], h + KRON_H, (u0, v1))],
+                     tak=True)
+
     def skorsten(self, u, v, h0, h1, fasad):
         uv = fasad['atlas'].uv('skorsten_tegel', 'slat')
         s = SKORSTEN_SIDA / 2
@@ -125,6 +168,7 @@ def bygg_del(tak, to_world, mark_ref, bas, fasad):
     fasad = dict(atlas, variant, vaning_m, fack_m, dorr, knutar, skorsten)."""
     g = Bygge(tak, to_world, mark_ref, bas)
     g.grupper['vagg'] = ([], None, False)
+    g.grupper['kant_topp'] = ([], None, True)
     a, b = tak.halv_l, tak.halv_b
     e, t = tak.takfot, tak.topp
     o = UTSPRANG
@@ -153,9 +197,12 @@ def bygg_del(tak, to_world, mark_ref, bas, fasad):
         g.vagg(A, B, profil, fasad, dorr=fasad.get('dorr') and i == 0)
     if fasad.get('knutar'):
         g.knutar(hörn, topp, fasad)
+    g.sockel(hörn, fasad)
 
     if tak.modell in ('platt', 'pulpet'):
         g.yta('tak', [(u, v, topp(u, v), nul) for u, v in hörn], tak=True)
+        if tak.modell == 'platt' and t >= 3.0:
+            g.kron(hörn, t, fasad)
     elif tak.modell == 'sadel':
         if tak.nock_langs_u:
             P = lambda r, c, hh: (r, c, hh, nul); R, C = a, b
@@ -165,6 +212,10 @@ def bygg_del(tak, to_world, mark_ref, bas, fasad):
         el = e - o * k
         for s in (-1, 1):
             g.yta('tak', [P(-R - o, 0, t), P(R + o, 0, t), P(R + o, s * (C + o), el), P(-R - o, s * (C + o), el)], tak=True)
+            # Takfotsbräda längs takfoten och vindskivor längs gavlarnas takkanter.
+            g.list_(P(-R - o, s * (C + o), el)[:3], P(R + o, s * (C + o), el)[:3], TAKFOT_H, fasad)
+            for r in (-1, 1):
+                g.list_(P(r * (R + o), 0, t)[:3], P(r * (R + o), s * (C + o), el)[:3], TAKFOT_H, fasad)
         if fasad.get('skorsten'):
             r0 = 0.35 * R
             g.skorsten(*((r0, 0.0) if tak.nock_langs_u else (0.0, r0)), t - 1.2, t + SKORSTEN_OVER, fasad)
@@ -177,6 +228,11 @@ def bygg_del(tak, to_world, mark_ref, bas, fasad):
         g.yta('tak', [(A_, B_, el, nul), (-A_, B_, el, nul), (-r, 0, t, nul), (r, 0, t, nul)], tak=True)
         g.yta('tak', [(A_, -B_, el, nul), (A_, B_, el, nul), (r, 0, t, nul)], tak=True)
         g.yta('tak', [(-A_, B_, el, nul), (-A_, -B_, el, nul), (-r, 0, t, nul)], tak=True)
+        # Takfotsbrädor runt hela takfoten.
+        kant = [(-A_, -B_), (A_, -B_), (A_, B_), (-A_, B_)]
+        for i in range(4):
+            (pu, pv), (qu, qv) = kant[i], kant[(i + 1) % 4]
+            g.list_((pu, pv, el), (qu, qv, el), TAKFOT_H, fasad)
         if fasad.get('skorsten'):
             g.skorsten(r * 0.5, 0.0, t - 1.2 - k * 0.3, t + SKORSTEN_OVER, fasad)
     return np.array(g.V, float), np.array(g.UV, float), g.grupper

@@ -9,6 +9,7 @@
 		{"name": "6_tank_road", "at": [1690, 1522], "height_m": 3.0, "look_at": [1720, 1626], "look_height_m": 2.5, "fov": 70},
 		{"name": "7_overview", "at": [1690, 2700], "height_m": 260.0, "look_at": [1690, 1700], "look_height_m": 0.0, "fov": 55},
 		{"name": "8_binoculars_edge", "at": [330, 1545], "height_m": 3.0, "look_at": [772, 1540], "look_height_m": 8.0, "fov": 7},
+		{"name": "10_villas_close", "at": [2588, 1392], "height_m": 4.0, "look_at": [2630, 1420], "look_height_m": 2.0, "fov": 60},
 		{"name": "9_binoculars_far", "at": [986, 2588], "height_m": 6.0, "look_at": [1300, 2100], "look_height_m": 6.0, "fov": 6}
 	]
 }

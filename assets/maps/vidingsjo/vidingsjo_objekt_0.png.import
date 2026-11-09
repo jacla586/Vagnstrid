@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c0bq0iqkjdxbu"
+uid="uid://d0kfwee815qmf"
 path.s3tc="res://.godot/imported/vidingsjo_objekt_0.png-e3bb5e3ee53119e93c2c7fd347cae038.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "3f3d93090715a5aa585da0c69a1c6138"
+"md5": "9218173ef811626130b2bdf675e8ad3a"
 }
 
 [deps]
