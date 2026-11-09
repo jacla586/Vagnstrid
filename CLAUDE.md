@@ -247,7 +247,10 @@ shows on the minimap. This is what we test first.
   line (none on gun, mantlet, figure, MG mount). Tactical numbers: two `Label3D`s on the
   turret side plates of model tanks (TankModel "number_spots", `Tank.number_labels`), text
   from TankLooks: team digit + two digits (`net_id` online, so every machine agrees; offline
-  in order per team), hidden when knocked out.
+  in order per team), hidden when knocked out. Stowage (`StowageModel`, made in `Tank._add_stowage`): a rack
+  behind the turret with tarp rolls, packs, crates and jerrycans, and jerrycans on the rear
+  deck; `VARIANTS` per tank type, picked from net_id (online) or the node name.
+  `MeshKit.Mat.CANVAS` for tarps and packs.
   Each machine decides for itself, nothing is sent; tanks/squads repaint when
   `TeamLook.version` or their team changes. `Tank.paint_color` is no longer used.
 - Tank models (`scripts/tank/model/`): `TankModel.build(data)` makes the look AND the

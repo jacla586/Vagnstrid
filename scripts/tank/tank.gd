@@ -439,12 +439,31 @@ func _apply_model() -> void:
 	gun.transform = Transform3D.IDENTITY
 	($Visual/Turret/GunPivot/Muzzle as Node3D).position = Vector3(0.0, 0.0, m["muzzle_z"])
 	_add_number_labels(m.get("number_spots", []))
+	_add_stowage(m)
 	var track_x: float = m["track_x"]
 	for child: Node in ($Suspension as Node3D).get_children():
 		var ray := child as RayCast3D
 		if ray != null:
 			ray.position = Vector3(signf(ray.position.x) * track_x, -data.hull_size.y * 0.5,
 					ray.position.z * data.hull_size.z / BASE_HULL.z)
+
+
+## The crew's kit (StowageModel): a variant per tank, from net_id online (so every
+## machine shows the same), else from the node name.
+func _add_stowage(m: Dictionary) -> void:
+	if not m.has("stow"):
+		return
+	var seed_value: int = net_id if net_id > 0 else absi(String(name).hash())
+	var stow: Dictionary = StowageModel.build(data.get_instance_id(), m["stow"],
+			seed_value % StowageModel.VARIANTS)
+	for part: String in ["turret", "hull"]:
+		var parent: Node3D = $Visual/Turret if part == "turret" else $Visual
+		var mi := parent.get_node_or_null("Stowage") as MeshInstance3D
+		if mi == null:
+			mi = MeshInstance3D.new()
+			mi.name = "Stowage"
+			parent.add_child(mi)
+		mi.mesh = stow[part]
 
 
 ## Painted tactical numbers on the turret's side plates (TankModel "number_spots").
