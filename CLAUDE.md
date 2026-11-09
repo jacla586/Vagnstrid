@@ -516,7 +516,7 @@ shows on the minimap. This is what we test first.
   direction; T lays it on the view. MG: mouse 2 (roof MG in the commander view with the hatch
   open, coaxial otherwise). Binoculars: B. Hatch: H.
 - Scoreboard: Tab (King of the Hill). Big map: M (view only). Squad orders map: Q (`SquadMap`, 1 km round the tank with
-  the 300 m ring; frees the mouse; left click sends the squad, right click lays a mine). Recall squad: G. Squad leader's eyes: V (look and spot only). Network statistics: F3.
+  the 300 m ring; frees the mouse; left click sends the squad, right click lays a mine). Recall squad: G. Squad leader's eyes: V (look and spot only). Statistics (FPS, frame times, draw calls, network): F3.
 - Smoke: X. Esc: frees the mouse and opens `EscMenu` (resume, change tank, switch team
   (online), answer a swap request, abandon tank, main menu). Change tank (`TankSwitch`) =
   a respawn at the team's spawn in the new type (a fresh tank can't be rebuilt in place:
@@ -568,7 +568,7 @@ Host-authoritative, Godot ENet, all in `scripts/net/`:
   (`SceneMultiplayer.send_bytes`) for snapshots (host -> client, 20 Hz, unreliable) and
   commands (client -> host, 30 Hz, unreliable, `NetCommandCodec`); everything else is
   reliable RPCs on `/root/Net`. Maps load on a thread and ENet timeouts are 30–60 s, so a
-  slow map load doesn't drop the connection. F3 = net statistics.
+  slow map load doesn't drop the connection. F3 = statistics (FPS and net).
 - `NetGame` (added to the loaded map): spawns from the map (team 0 at its PlayerRig,
   team 1 at its first enemy tank), removes the map's rig/enemies (enemies stay as team-2
   bots on the host if bots are on), respawns players after 10 s, forwards events

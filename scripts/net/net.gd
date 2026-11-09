@@ -50,6 +50,12 @@ var _out_bytes: int = 0
 var _snapshots: int = 0
 var _stat_time: float = 0.0
 var _stats_label: Label
+# frame statistics for the overlay, per second: frames, slowest frame
+var fps: float = 0.0
+var frame_avg_ms: float = 0.0
+var frame_worst_ms: float = 0.0
+var _frames: int = 0
+var _frame_worst_s: float = 0.0
 
 
 func _ready() -> void:
@@ -457,7 +463,7 @@ func count_out(bytes: int) -> void:
 	_out_bytes += bytes
 
 
-# --- Statistics overlay (F3) ------------------------------------------------------------
+# --- Statistics overlay (F3): frame rate, renderer, network ---------------------------
 
 func _make_stats_overlay() -> void:
 	var layer := CanvasLayer.new()
@@ -479,22 +485,30 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	_stat_time += delta
+	_frames += 1
+	_frame_worst_s = maxf(_frame_worst_s, delta)
 	if _stat_time >= 1.0:
 		in_bps = _in_bytes / _stat_time
 		out_bps = _out_bytes / _stat_time
 		snapshots_per_s = _snapshots / _stat_time
+		fps = _frames / _stat_time
+		frame_avg_ms = _stat_time * 1000.0 / _frames
+		frame_worst_ms = _frame_worst_s * 1000.0
 		_in_bytes = 0
 		_out_bytes = 0
 		_snapshots = 0
+		_frames = 0
+		_frame_worst_s = 0.0
 		_stat_time = 0.0
 	if _stats_label.visible:
 		_stats_label.text = _stats_text()
 
 
 func _stats_text() -> String:
+	var lines: PackedStringArray = _perf_lines()
 	var role: String = ["offline", "host", "client"][NetRole.role]
-	var lines: PackedStringArray = ["NET %s  id %d  peers %d" % [role, my_id() if NetRole.is_online() else 0,
-			multiplayer.get_peers().size() if NetRole.is_online() else 0]]
+	lines.append("NET %s  id %d  peers %d" % [role, my_id() if NetRole.is_online() else 0,
+			multiplayer.get_peers().size() if NetRole.is_online() else 0])
 	lines.append("in %.1f kB/s  out %.1f kB/s" % [in_bps / 1024.0, out_bps / 1024.0])
 	if NetRole.is_client():
 		lines.append("snapshots %.0f/s  ping %d ms" % [snapshots_per_s, ping_ms()])
@@ -502,6 +516,21 @@ func _stats_text() -> String:
 		lines.append("tanks %d" % game.tanks.size())
 	lines.append(status)
 	return "\n".join(lines)
+
+
+## FPS and frame times over the last second, then what the renderer drew last frame.
+func _perf_lines() -> PackedStringArray:
+	var draw_calls: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+	var objects: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
+	var prims: float = Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
+	var vram: float = Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED)
+	var vsync: String = "on" if DisplayServer.window_get_vsync_mode() != DisplayServer.VSYNC_DISABLED else "off"
+	return PackedStringArray([
+		"FPS %.0f  frame %.1f ms  worst %.1f ms  (vsync %s)" % [fps, frame_avg_ms, frame_worst_ms, vsync],
+		"draw calls %d  objects %d  triangles %.0fk  VRAM %.0f MB" % [draw_calls, objects, prims / 1000.0,
+				vram / 1048576.0],
+		"",
+	])
 
 
 ## Round-trip time to the host in ms (client), 0 if unknown.
