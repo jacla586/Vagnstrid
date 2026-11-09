@@ -14,6 +14,10 @@ extends Camera3D
 @export var fov_sharpness: float = 15.0
 @export var tank: Tank
 
+## Render layer of the own commander's figure (Tank.set_commander_figure_layer): this
+## view doesn't draw it, everyone else's views do.
+const OWN_COMMANDER_LAYER: int = 3
+
 var _target_yaw: float = 0.0
 var _target_pitch: float = 0.0
 var _yaw: float = 0.0
@@ -23,9 +27,13 @@ var shake: Vector3 = Vector3.ZERO
 ## The tank and its placed_version last seen: a new spawn turns the view to the front.
 var _placed_tank: Tank
 var _placed_seen: int = -1
+## The tank whose commander is moved to OWN_COMMANDER_LAYER.
+var _figure_tank: Tank
 
 
 func _ready() -> void:
+	set_cull_mask_value(OWN_COMMANDER_LAYER, false)
+	_hide_own_figure()
 	if tank != null:
 		_yaw = tank.global_rotation.y
 		_target_yaw = _yaw
@@ -73,6 +81,7 @@ func get_aim_point() -> Vector3:
 
 
 func _process(delta: float) -> void:
+	_hide_own_figure()
 	if tank == null:
 		return
 	if tank != _placed_tank or tank.placed_version != _placed_seen:
@@ -113,3 +122,15 @@ func _process(delta: float) -> void:
 func _update_transform() -> void:
 	global_transform = Transform3D(Basis.from_euler(Vector3(_pitch, _yaw, 0.0))
 			* Basis.from_euler(shake), tank.get_commander_eye_position_interpolated())
+
+
+## Only this view's own tank's commander is hidden from it (a new tank: the old one shows
+## again, the new one hides).
+func _hide_own_figure() -> void:
+	if _figure_tank == tank:
+		return
+	if is_instance_valid(_figure_tank):
+		_figure_tank.set_commander_figure_layer(1)
+	_figure_tank = tank
+	if tank != null:
+		tank.set_commander_figure_layer(OWN_COMMANDER_LAYER)

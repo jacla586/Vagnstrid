@@ -7,7 +7,8 @@ extends RefCounted
 ## `xform` places what is added next (e.g. inside a turret frame).
 
 ## MARK: UN-blue friend markings (enemies get them in camouflage, see TeamLook).
-enum Mat { PAINT, TRACK, WHEEL, DARK, DETAIL, MARK }
+## SKIN: the commander's face and hands (CommanderModel).
+enum Mat { PAINT, TRACK, WHEEL, DARK, DETAIL, MARK, SKIN }
 
 const EPS: float = 0.0005
 
@@ -28,6 +29,7 @@ static func material(m: Mat) -> StandardMaterial3D:
 		_materials[Mat.DARK] = _mat(Color(0.08, 0.08, 0.08), 0.6)
 		_materials[Mat.DETAIL] = _mat(Color(0.28, 0.31, 0.21), 0.9)
 		_materials[Mat.MARK] = _mat(Color(0.29, 0.57, 0.86), 0.6)
+		_materials[Mat.SKIN] = _mat(Color(0.78, 0.6, 0.48), 0.8)
 	return _materials[m]
 
 
@@ -129,7 +131,7 @@ func extrude_x(profile: PackedVector2Array, x0: float, x1: float, mat: Mat, grou
 
 func build() -> ArrayMesh:
 	var mesh := ArrayMesh.new()
-	for m: Mat in [Mat.PAINT, Mat.TRACK, Mat.WHEEL, Mat.DARK, Mat.DETAIL, Mat.MARK]:
+	for m: Mat in [Mat.PAINT, Mat.TRACK, Mat.WHEEL, Mat.DARK, Mat.DETAIL, Mat.MARK, Mat.SKIN]:
 		if not _verts.has(m):
 			continue
 		var arrays: Array = []

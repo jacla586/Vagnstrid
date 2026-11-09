@@ -248,7 +248,13 @@ shows on the minimap. This is what we test first.
   armour shapes) to every style: headlights, spare links and driver's hatch on the front
   plate, engine grilles and tools on the deck, loader's hatch, periscopes, smoke
   dischargers and an antenna on the turret roof. The roof MG is a Browning M2-like gun on
-  every tank (`RoofMgModel`, applied by `Tank._apply_roof_mg_model`; 500 rounds/min). `MeshKit` builds flat-shaded convex
+  every tank (`RoofMgModel`, applied by `Tank._apply_roof_mg_model`; 500 rounds/min).
+  The commander is seen in the open hatch (`CommanderModel`, node `CommanderFigure` under
+  the cupola, made by `Tank._add_commander_figure`): it rises with the hatch like the
+  hitbox, turns with the roof MG, hides when shut or knocked out; uniform PAINT, helmet
+  MARK (friends olive with a UN-blue helmet, enemies camouflaged). The own commander's
+  view doesn't draw its own figure (render layer `CommanderCamera.OWN_COMMANDER_LAYER` 3,
+  `Tank.set_commander_figure_layer`); every other view does. `MeshKit.Mat.SKIN` for faces. `MeshKit` builds flat-shaded convex
   solids (blocks cut by plate planes, cylinders, extruded track profiles) with named
   point groups -> one `ConvexPolygonShape3D` per group (several hull and turret shapes;
   turret shapes follow the turret, `Tank._sync_turret_shapes`). So slopes are real: the

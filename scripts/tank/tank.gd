@@ -228,6 +228,8 @@ var squad: Squad
 @onready var _hatch_hinge: Node3D = $Visual/Turret/Cupola/HatchHinge
 @onready var _head_closed: Marker3D = $Visual/Turret/Cupola/HeadClosed
 @onready var _head_open: Marker3D = $Visual/Turret/Cupola/HeadOpen
+## The commander seen in the open hatch (CommanderModel); made in _ready.
+var _commander_figure: MeshInstance3D
 @onready var _gunner_sight: Marker3D = $Visual/Turret/GunPivot/GunnerSight
 @onready var _muzzle: Marker3D = $Visual/Turret/GunPivot/Muzzle
 @onready var _visual: Node3D = $Visual
@@ -275,6 +277,7 @@ func _ready() -> void:
 	_track_half_width = maxf(width_sum / ray_count, 0.1)
 	_align_gunner_sight()
 	_apply_roof_mg_model()
+	_add_commander_figure()
 	_setup_paint()
 	_rng.randomize()
 	_smoke_left = data.smoke_salvos
@@ -435,6 +438,23 @@ func _apply_model() -> void:
 		if ray != null:
 			ray.position = Vector3(signf(ray.position.x) * track_x, -data.hull_size.y * 0.5,
 					ray.position.z * data.hull_size.z / BASE_HULL.z)
+
+
+## The commander's figure in the cupola: rises with the hatch (see
+## _update_commander_hitbox), hidden while it's shut.
+func _add_commander_figure() -> void:
+	_commander_figure = MeshInstance3D.new()
+	_commander_figure.name = "CommanderFigure"
+	_commander_figure.mesh = CommanderModel.build()
+	_commander_figure.visible = false
+	($Visual/Turret/Cupola as Node3D).add_child(_commander_figure)
+
+
+## Puts the commander's figure on render layer `layer` alone: the own commander's view
+## (CommanderCamera) doesn't render it, so his own head isn't in the way.
+func set_commander_figure_layer(layer: int) -> void:
+	if _commander_figure != null:
+		_commander_figure.layers = 1 << (clampi(layer, 1, 20) - 1)
 
 
 ## The roof MG's look (RoofMgModel, a Browning M2-like gun) on every tank, model or not.
@@ -1291,6 +1311,12 @@ func _update_commander_hitbox() -> void:
 	_commander_hitbox.position = _head_closed.position.lerp(_head_open.position,
 			smoothstep(0.0, 1.0, _hatch_progress)) - Vector3(0.0, COMMANDER_HITBOX_DROP, 0.0)
 	_commander_hitbox_shape.disabled = not is_commander_exposed()
+	if _commander_figure != null:
+		# He stands up as the hatch opens and turns with the roof MG he mans.
+		_commander_figure.visible = _hatch_progress > 0.02 and not _knocked_out
+		_commander_figure.position = _head_closed.position.lerp(_head_open.position,
+				smoothstep(0.0, 1.0, _hatch_progress))
+		_commander_figure.rotation.y = _roof_mg.rotation.y
 
 
 func _update_gun(delta: float) -> void:
