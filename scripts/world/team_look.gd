@@ -8,6 +8,8 @@ extends RefCounted
 
 const UN_BLUE: Color = Color(0.29, 0.57, 0.86)
 const CAMO_SHADER: Shader = preload("res://assets/shaders/camo.gdshader")
+## Tanks: friends' two-tone olive or enemies' M90, both weathered (TankLooks feeds it).
+const TANK_PAINT_SHADER: Shader = preload("res://assets/shaders/tank_paint.gdshader")
 
 ## The local player's team (set by PlayerViews from the own tank); 0 until known.
 static var viewer_team: int = 0
@@ -16,6 +18,7 @@ static var version: int = 0
 
 static var _camo: Dictionary = {}   # pattern scale -> ShaderMaterial
 static var _blue: StandardMaterial3D
+static var _tank_paint: Dictionary = {}   # enemy (bool) -> ShaderMaterial
 
 
 static func set_viewer_team(team: int) -> void:
@@ -36,6 +39,16 @@ static func camo(pattern_scale: float = 0.75) -> ShaderMaterial:
 		m.set_shader_parameter("pattern_scale", pattern_scale)
 		_camo[pattern_scale] = m
 	return _camo[pattern_scale]
+
+
+## A tank's paint: friends' weathered two-tone olive, or enemies' weathered M90.
+static func tank_paint(enemy: bool) -> ShaderMaterial:
+	if not _tank_paint.has(enemy):
+		var m := ShaderMaterial.new()
+		m.shader = TANK_PAINT_SHADER
+		m.set_shader_parameter("enemy", enemy)
+		_tank_paint[enemy] = m
+	return _tank_paint[enemy]
 
 
 static func blue() -> StandardMaterial3D:

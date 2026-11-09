@@ -237,7 +237,14 @@ shows on the minimap. This is what we test first.
   get their helmet material painted blue, `SquadData.friend_blue_materials`), every other
   team is camouflaged (`assets/shaders/camo.gdshader`, an M90-like splinter pattern in
   model space, on paint, markings and uniforms: leaning, stretched Voronoi fields plus a
-  finer black layer, borders blended over a pixel; tanks at `TeamLook.camo()` 0.75 fields/m).
+  finer black layer, borders blended over a pixel, in `m90.gdshaderinc`; soldiers use
+  `camo.gdshader`). Tanks are painted with `tank_paint.gdshader` (`TeamLook.tank_paint(enemy)`,
+  `Tank.paint_visual`): friends weathered two-tone olive (soft blotches; MARK stays blue),
+  enemies weathered M90; weathering = faded patches, rain streaks, dust on upward faces,
+  mud and splashes near the tracks, wet in rain. `TankLooks` (made by Tank, reads only how
+  the tank moves) sets the instance uniforms: `dust_amount` grows with distance driven ×
+  `WeatherData.dust_factor` (reset on repair), `wetness` = rain, `base_y` = each part's mud
+  line (none on gun, mantlet, figure, MG mount).
   Each machine decides for itself, nothing is sent; tanks/squads repaint when
   `TeamLook.version` or their team changes. `Tank.paint_color` is no longer used.
 - Tank models (`scripts/tank/model/`): `TankModel.build(data)` makes the look AND the

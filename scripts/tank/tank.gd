@@ -313,6 +313,10 @@ func _ready() -> void:
 		dust.name = "Dust"
 		dust.tank = self
 		add_child(dust)
+		var looks := TankLooks.new()
+		looks.name = "Looks"
+		looks.tank = self
+		add_child(looks)
 
 
 ## Sizes the hull, tracks, turret and gun from the data (TankData geometry; the scene
@@ -1133,13 +1137,15 @@ func _apply_paint(charred: bool) -> void:
 	paint_visual(_visual, TeamLook.is_friend(team), _charred_material if charred else null)
 
 
-## Paints a tank's Visual: friends keep paint and blue markings, enemies are
-## camouflaged all over; `charred` (if given) covers everything.
+## Paints a tank's Visual: friends get weathered two-tone olive and keep their blue
+## markings, enemies are weathered M90 all over (TeamLook.tank_paint); `charred` (if
+## given) covers everything.
 static func paint_visual(visual: Node3D, friend: bool, charred: Material = null) -> void:
-	var camo: Material = TeamLook.camo()
+	var paint: Material = TeamLook.tank_paint(not friend)
+	var mark: Material = MeshKit.material(MeshKit.Mat.MARK)
 	# The hull's first surface is the paint (the scene's own on plain box tanks).
 	var hull_mesh: Mesh = (visual.get_node("Hull") as MeshInstance3D).mesh
-	var paints: Array[Material] = [MeshKit.material(MeshKit.Mat.PAINT), MeshKit.material(MeshKit.Mat.MARK)]
+	var paints: Array[Material] = [MeshKit.material(MeshKit.Mat.PAINT)]
 	if hull_mesh != null:
 		paints.append(hull_mesh.surface_get_material(0))
 	for mesh_instance: MeshInstance3D in visual.find_children("*", "MeshInstance3D", true, false):
@@ -1147,9 +1153,12 @@ static func paint_visual(visual: Node3D, friend: bool, charred: Material = null)
 		if mesh_instance.mesh == null:
 			continue
 		for i: int in mesh_instance.mesh.get_surface_count():
-			var painted: bool = paints.has(mesh_instance.mesh.surface_get_material(i))
-			mesh_instance.set_surface_override_material(i,
-					camo if painted and not friend and charred == null else null)
+			var surface: Material = mesh_instance.mesh.surface_get_material(i)
+			var override: Material = null
+			if charred == null:
+				if paints.has(surface) or (surface == mark and not friend):
+					override = paint
+			mesh_instance.set_surface_override_material(i, override)
 
 
 ## Speed along the hull's forward axis (m/s), negative when reversing.
