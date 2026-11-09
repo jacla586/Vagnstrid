@@ -6,8 +6,8 @@ extends Resource
 
 @export_group("Sun shadows")
 ## How far from the camera the sun casts shadows (m). Further costs GPU time: trees
-## within it are drawn a second time for the shadow map.
-@export var shadow_max_distance_m: float = 300.0
+## within it are drawn a second time for the shadow map (with their 1/4 mesh).
+@export var shadow_max_distance_m: float = 450.0
 ## Where the 2nd, 3rd and 4th shadow cascades start, as shares of the distance
 ## (smaller = sharper shadows close by).
 @export_range(0.0, 1.0) var shadow_split_1: float = 0.08

@@ -426,8 +426,8 @@ shows on the minimap. This is what we test first.
   window): HUD code must not call `add_theme_*_override` or rebuild text every frame when
   nothing changed (it re-lays the control out); route/path lookups that run per frame use
   binary search (`ThunderRoadMode._segment_at`); collision shape transforms are only set when
-  they change (`Tank._sync_turret_shapes`). Trees are full models to `visibility_end_m`
-  (no LOD yet): ~13 M of ~19 M triangles a frame.
+  they change (`Tank._sync_turret_shapes`). Trees have detail levels (below): GPU time in
+  the fixed views fell 35-50 % (far view 9.9 -> 5.4 ms).
 - Prototype graphics: simple shapes (boxes, cylinders). Only free, correctly licensed
   assets (Kenney, Sketchfab CC with attribution). Never assets from other games.
 
@@ -475,7 +475,14 @@ shows on the minimap. This is what we test first.
   `assets/maps/<name>/`). `tools/build_geodata_scene.gd` made each scene once; don't
   rerun it on a scene that has been edited. Buildings get collision via
   `scripts/world/mesh_collision.gd`. Laser trees (`scripts/world/tree_field.gd`,
-  `@tool`, MultiMesh per 250 m chunk, per-instance colour, models and species from the info file) follow the `BreakableTree` rules without nodes:
+  `@tool`, per-instance colour, models and species from the info file) follow the `BreakableTree` rules without nodes.
+  Drawing: each 500 m data chunk is split into `draw_cell_m` (250 m) draw cells; the tree
+  meshes get detail levels at load (`ImporterMesh.generate_lods`, lost when `_mesh_from`
+  merges a model) and Godot's mesh LOD picks one per cell by on-screen error, so binoculars
+  and the gunner's sight (camera FOV) keep full detail. Fixed distance levels were tried and
+  dropped: trunks vanished and crowns turned ugly at fighting range in the binoculars.
+  A tree's draw cell/index (`_draw_cell`, `_draw_index`) is separate from its physics chunk;
+  `_set_drawn` hides/restores it. Physics and the rest:
   tank pushes look up trees in an 8 m grid (`TREE_CELL_M`), never whole chunks;
   `FieldTreePhysics` makes one static body (trunks, layer 1) and one area (crowns,
   layer 5) per chunk in the PhysicsServer3D, with TreeField as collider; `TreePush`
@@ -499,8 +506,8 @@ shows on the minimap. This is what we test first.
   <map> <label> [weather,...]` renders the fixed views in `tools/render_views.json` (1920x1080,
   bots removed, HUD hidden) to `renders/views/<label>/` with frame/GPU ms, draw calls and
   triangles in `results.txt`; `geodata/.venv/bin/python tools/compare_views.py <a> <b>` puts two
-  runs above each other. Baseline: label `before` (2026-11-09, all six weathers). Sun shadows
-  are about half the triangles (tree shadows); the far view draws ~73 M triangles, 9.5 ms GPU.
+  runs above each other. Baselines: `before` (2026-11-09, old terrain, all six weathers),
+  `zoom_lod2` (new terrain, light, tree LOD; includes the binocular views 8 and 9).
 - Weather (`WeatherData`, presets `data/weather/*.tres`; `Weather.current()` statics):
   `WeatherView` in the player rig dresses the map at runtime (own sky shader
   `assets/shaders/sky.gdshader` with clouds, sun angle/colour, AgX, SSAO, glow, fog density
@@ -508,7 +515,7 @@ shows on the minimap. This is what we test first.
   Per preset also colour grading (`contrast`, `brightness`, split toning `grade_*` as a 1D
   colour-correction curve) and `ssao_intensity_factor`; settings common to all weathers
   (sun shadow distance/cascades, SSAO, glow) are in `GraphicsData` (`data/world/graphics.tres`,
-  `WeatherView.graphics`; shadows 300 m: 450 m cost ~0.4-0.9 ms GPU for little to see).
+  `WeatherView.graphics`; shadows 450 m, cheap since tree LOD).
   Presets: clear, overcast, dawn, dusk, fog (`Weather.PRESETS`); main menu "Weather"
   (`MatchSettings.weather`, "random" default) is fixed per match by `Weather.resolve()`
   (Single player / Host); clients get the host's in `rpc_welcome`. Rules for all:

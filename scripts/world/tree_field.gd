@@ -1,8 +1,14 @@
 @tool
 class_name TreeField
 extends Node3D
-## The laser-derived trees of a real map: drawn as MultiMeshInstance3D chunks, with
+## The laser-derived trees of a real map: drawn as MultiMeshInstance3D cells, with
 ## trunks and crowns that work like BreakableTree (tree.tscn) in game.
+##
+## Drawing: each chunk is split into draw cells of draw_cell_m. The tree meshes carry
+## detail levels (ImporterMesh LODs made at load), and Godot's mesh LOD picks one per cell
+## by the error it would show on screen (rendering/mesh_lod threshold, in pixels), so a
+## zoomed view (binoculars, gunner's sight) keeps full detail and trunks only thin out
+## when they are below a pixel.
 ##
 ## Data comes from geodata/scripts/step4_trees.py: trees.bin holds a ready MultiMesh
 ## transform (12 floats) per tree, relative to its chunk centre, sorted by chunk and
@@ -45,11 +51,21 @@ const TREE_CELL_M: float = 8.0
 ## Chunks further away than this are hidden. Fog hides the pop-in.
 @export var visibility_end_m: float = 1500.0
 @export var cast_shadows: bool = true
+## Side of a draw cell (m): mesh LOD is chosen per cell from its nearest point, so
+## smaller cells let far trees in it drop detail sooner, at more draw calls.
+@export var draw_cell_m: float = 250.0
 
 var _meshes: Array[Mesh] = []
+## Per type: the mesh with detail levels that is drawn.
+var _lod_meshes: Array[Mesh] = []
 ## FieldTreeData per type (several types can share a species).
 var _type_data: Array[FieldTreeData] = []
-var _multimeshes: Array[MultiMesh] = []
+## Per draw cell: its MultiMeshes (one) and centre.
+var _cell_multimeshes: Array = []
+var _cell_centre: PackedVector3Array = PackedVector3Array()
+## Per tree: its draw cell and its index there.
+var _draw_cell: PackedInt32Array = PackedInt32Array()
+var _draw_index: PackedInt32Array = PackedInt32Array()
 var _chunk_type: PackedByteArray = PackedByteArray()
 var _chunk_centre: PackedVector3Array = PackedVector3Array()
 var _chunk_first: PackedInt32Array = PackedInt32Array()
@@ -88,6 +104,9 @@ func _ready() -> void:
 	else:
 		for scene: PackedScene in tree_scenes:
 			_meshes.append(_mesh_from(scene))
+	_lod_meshes.clear()
+	for mesh: Mesh in _meshes:
+		_lod_meshes.append(_with_detail_levels(mesh))
 	if info.has("species"):
 		for species: String in info.species:
 			_type_data.append(load(data_dir.path_join(data_prefix + species + ".tres")))
@@ -104,7 +123,8 @@ func _ready() -> void:
 	_build_physics()
 	# Only trees with trunks can be pushed over (bushes are just sight blockers).
 	set_physics_process(_type_data.any(func(d: FieldTreeData) -> bool: return d.has_trunk))
-	print_verbose("tree_field: %d trees in %d chunks" % [_position.size(), _chunk_first.size()])
+	print_verbose("tree_field: %d trees in %d chunks, %d draw cells" % [_position.size(),
+			_chunk_first.size(), _cell_centre.size()])
 
 
 func _exit_tree() -> void:
@@ -166,14 +186,14 @@ func fell_tree(tree: int, direction: Vector3) -> void:
 	var chunk: int = _chunk_of[tree]
 	var shape_index: int = tree - _chunk_first[chunk]
 	_physics.disable_trunk(chunk, shape_index)
-	var multimesh: MultiMesh = _multimeshes[chunk]
-	var drawn: Transform3D = multimesh.get_instance_transform(shape_index)
+	var cell: int = _draw_cell[tree]
+	var drawn: Transform3D = (_cell_multimeshes[cell][0] as MultiMesh).get_instance_transform(
+			_draw_index[tree])
 	_felled_drawn[tree] = drawn
-	multimesh.set_instance_transform(shape_index,
-			Transform3D(Basis().scaled(Vector3.ZERO), drawn.origin))
+	_set_drawn(tree, Transform3D(Basis().scaled(Vector3.ZERO), drawn.origin))
 	var falling := FallingTree.new()
 	add_child(falling, false, Node.INTERNAL_MODE_BACK)
-	falling.position = _chunk_centre[chunk] + drawn.origin
+	falling.position = _cell_centre[cell] + drawn.origin
 	falling.setup(_meshes[_type[tree]], drawn.basis, direction, _type_data[_type[tree]],
 			cast_shadows)
 	var foot: Vector3 = _position[tree]
@@ -193,7 +213,7 @@ func restore_all() -> void:
 	for tree: int in _felled_drawn:
 		var chunk: int = _chunk_of[tree]
 		var shape_index: int = tree - _chunk_first[chunk]
-		_multimeshes[chunk].set_instance_transform(shape_index, _felled_drawn[tree])
+		_set_drawn(tree, _felled_drawn[tree])
 		if _physics != null:
 			_physics.restore(chunk, shape_index, tree)
 		_felled[tree] = 0
@@ -202,36 +222,99 @@ func restore_all() -> void:
 
 
 func _build_chunks(chunks: Array, floats: PackedFloat32Array, per_tree: int) -> void:
-	_multimeshes.clear()
 	_chunk_type.clear()
 	_chunk_centre.clear()
 	_chunk_first.clear()
 	_chunk_count.clear()
+	_cell_multimeshes.clear()
+	_cell_centre.clear()
+	var total: int = floats.size() / per_tree
+	_draw_cell.resize(total)
+	_draw_index.resize(total)
 	for chunk: Array in chunks:
 		var type: int = int(chunk[0])
 		var first: int = int(chunk[3])
 		var count: int = int(chunk[4])
 		var centre := Vector3(float(chunk[1]), 0.0, float(chunk[2]))
-		var multimesh := MultiMesh.new()
-		multimesh.transform_format = MultiMesh.TRANSFORM_3D
-		# 16 floats per instance: transform + colour (per-tree tint).
-		multimesh.use_colors = per_tree >= 16
-		multimesh.mesh = _meshes[type]
-		multimesh.instance_count = count
-		multimesh.buffer = floats.slice(first * per_tree, (first + count) * per_tree)
-		var instance := MultiMeshInstance3D.new()
-		instance.multimesh = multimesh
-		instance.position = centre
-		instance.visibility_range_end = visibility_end_m
-		instance.visibility_range_end_margin = 50.0
-		instance.cast_shadow = (GeometryInstance3D.SHADOW_CASTING_SETTING_ON if cast_shadows
-				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
-		add_child(instance, false, Node.INTERNAL_MODE_BACK)
-		_multimeshes.append(multimesh)
 		_chunk_type.append(type)
 		_chunk_centre.append(centre)
 		_chunk_first.append(first)
 		_chunk_count.append(count)
+		# Trees of the chunk by draw cell (foot position relative to the chunk centre).
+		var groups: Dictionary = {}
+		for i: int in range(first, first + count):
+			var o: int = i * per_tree
+			var key := Vector2i(floori(floats[o + 3] / draw_cell_m), floori(floats[o + 11] / draw_cell_m))
+			# Packed arrays are values: take it out, add, put it back.
+			var list: PackedInt32Array = groups.get(key, PackedInt32Array())
+			list.append(i)
+			groups[key] = list
+		for key: Vector2i in groups:
+			_build_cell(type, centre, groups[key], floats, per_tree)
+
+
+## One draw cell: its trees' transforms moved to the cell centre, in a MultiMesh per
+## detail level (and a shadow-only one for the near level).
+func _build_cell(type: int, chunk_centre: Vector3, trees: PackedInt32Array,
+		floats: PackedFloat32Array, per_tree: int) -> void:
+	var cell: int = _cell_centre.size()
+	var offset := Vector3.ZERO
+	for i: int in trees:
+		offset += Vector3(floats[i * per_tree + 3], 0.0, floats[i * per_tree + 11])
+	offset = (offset / trees.size()).snapped(Vector3.ONE)
+	var buffer := PackedFloat32Array()
+	buffer.resize(trees.size() * per_tree)
+	for k: int in trees.size():
+		var o: int = trees[k] * per_tree
+		for f: int in per_tree:
+			buffer[k * per_tree + f] = floats[o + f]
+		buffer[k * per_tree + 3] -= offset.x
+		buffer[k * per_tree + 11] -= offset.z
+		_draw_cell[trees[k]] = cell
+		_draw_index[trees[k]] = k
+	var shadow: GeometryInstance3D.ShadowCastingSetting = (
+			GeometryInstance3D.SHADOW_CASTING_SETTING_ON if cast_shadows
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+	var multimeshes: Array[MultiMesh] = [_add_cell_instance(_lod_meshes[type], buffer, per_tree,
+			chunk_centre + offset, shadow)]
+	_cell_multimeshes.append(multimeshes)
+	_cell_centre.append(chunk_centre + offset)
+
+
+func _add_cell_instance(mesh: Mesh, buffer: PackedFloat32Array, per_tree: int, at: Vector3,
+		shadow: GeometryInstance3D.ShadowCastingSetting) -> MultiMesh:
+	var multimesh := MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	# 16 floats per instance: transform + colour (per-tree tint).
+	multimesh.use_colors = per_tree >= 16
+	multimesh.mesh = mesh
+	multimesh.instance_count = buffer.size() / per_tree
+	multimesh.buffer = buffer
+	var instance := MultiMeshInstance3D.new()
+	instance.multimesh = multimesh
+	instance.position = at
+	instance.visibility_range_end = visibility_end_m
+	instance.visibility_range_end_margin = 50.0
+	instance.cast_shadow = shadow
+	add_child(instance, false, Node.INTERNAL_MODE_BACK)
+	return multimesh
+
+
+## Sets a tree's drawn transform (relative to its draw cell) in every detail level.
+func _set_drawn(tree: int, xform: Transform3D) -> void:
+	for multimesh: MultiMesh in _cell_multimeshes[_draw_cell[tree]]:
+		multimesh.set_instance_transform(_draw_index[tree], xform)
+
+
+## The tree model with detail levels for Godot's mesh LOD (merging the model's parts in
+## _mesh_from drops the ones the importer made).
+func _with_detail_levels(mesh: Mesh) -> Mesh:
+	var importer := ImporterMesh.new()
+	for surface: int in mesh.get_surface_count():
+		importer.add_surface(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface), [], {},
+				mesh.surface_get_material(surface))
+	importer.generate_lods(25.0, 60.0, [])
+	return importer.get_mesh()
 
 
 ## Unpacks size and position of every tree from the MultiMesh transforms.
@@ -353,6 +436,7 @@ func _mesh_from(scene: PackedScene) -> Mesh:
 		for surface: int in part.mesh.get_surface_count():
 			var tool := SurfaceTool.new()
 			tool.append_from(part.mesh, surface, relative)
+			tool.index()   # indexed, so detail levels can be made from it
 			tool.commit(out)
 			var source: Material = part.get_active_material(surface)
 			out.surface_set_material(out.get_surface_count() - 1, _material_for(source))
