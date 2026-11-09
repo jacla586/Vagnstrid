@@ -5,7 +5,7 @@ extends RefCounted
 ## reads the effects (speed, track and traverse factors) back.
 ##
 ## Penetration: takes ShellData.damage_hp, then damages every module box the shell's
-## path passes within module_reach_m. Ammo = knocked out at once; fuel = fire.
+## path passes within module_reach_m, each taking its ModuleData.structure_damage_hp more. Ammo = knocked out at once; fuel = fire.
 ## No penetration: wears the hit cell of the plate (ArmourData wear settings).
 ## External modules (tracks) are damaged by any shell landing in them and by HE fragments.
 ## Repair: standing still for repair_time_s (no fire, no penetration by a gun round, no
@@ -262,8 +262,6 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 		_wear_at(part, face, local_point, shell.wear_mm)
 	elif result.outcome == HitResult.Outcome.PENETRATION:
 		hp -= shell.damage_hp
-		if shell.cannot_knock_out:
-			hp = maxf(hp, 1.0)
 		for m: ModuleData in _modules.values():
 			if m.external or hit.has(m.id):
 				continue
@@ -271,12 +269,15 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 			var dir: Vector3 = turret_dir if m.frame == &"turret" else hull_dir
 			if _segment_hits_box(m, from, dir, shell.module_reach_m):
 				_damage_module(m.id, shell.module_damage)
+				hp -= m.structure_damage_hp
 				hit.append(m.id)
 				if m.id == &"ammo" and not shell.cannot_knock_out:
 					knocked_out = true
 					ammo_exploded = true
 				elif m.id == &"fuel" and state(&"fuel") != State.OK:
 					fire_left = data.fire_duration_s
+		if shell.cannot_knock_out:
+			hp = maxf(hp, 1.0)
 	if hp <= 0.0:
 		knocked_out = true
 	hit.sort_custom(func(a: StringName, b: StringName) -> bool: return _rank(a) < _rank(b))

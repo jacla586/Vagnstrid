@@ -37,6 +37,8 @@ extends Resource
 ## Structure hit points per tonne.
 @export var hp_per_ton: float = 3.4
 @export var min_structure_hp: float = 50.0
+## Cap, so the heaviest builds stay killable.
+@export var max_structure_hp: float = 200.0
 ## Camouflage makes the tank this many times slower to spot.
 @export var camo_spot_factor: float = 1.25
 @export var camo_cost: int = 15

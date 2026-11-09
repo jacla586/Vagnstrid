@@ -44,7 +44,8 @@ shows on the minimap. This is what we test first.
 - Damage model (`TankDamage`, owned by Tank): structure hp (`TankData.structure_hp`) and
   modules from `TankData.layout` (`ModuleLayoutData`, e.g. `data/tanks/layout_medium.tres`:
   engine, fuel, tracks, turret ring, ammo in the turret rear). A penetration takes
-  `ShellData.damage_hp` and damages modules on the shell's path (`module_reach_m`); ammo =
+  `ShellData.damage_hp` and damages modules on the shell's path (`module_reach_m`), each
+  internal module hit taking `ModuleData.structure_damage_hp` more (engine 20, fuel/ring 15, crew 10); ammo =
   knocked out, fuel = fire. Hits that don't penetrate wear their plate cell (`ArmourData`
   wear settings, `ShellData.wear_mm`). Tracks are external: a gun round landing on one breaks
   it if `ShellData.breaks_tracks` (HE, AT rounds), else damages it; HE fragments
@@ -248,7 +249,10 @@ shows on the minimap. This is what we test first.
   hit normal gives the angle (plate mm in ArmourData are true thickness; faces: roof only
   when the normal is within ~20° of vertical, `ROOF_NORMAL_Y`). Ricochet angle per
   chassis (`ArmourData.ricochet_angle_deg`: light 63, sloped 66, others 70) so angling
-  can bounce shells. `model_style` "" keeps the scene's plain boxes (player_medium,
+  can bounce shells. Overmatch: from calibre/plate (worn) ratio
+  `ArmourData.overmatch_start_ratio` (2.5) the ricochet angle rises towards 90°, and from
+  `overmatch_full_ratio` (6) a round never bounces (`Armour.ricochet_angle`). BT-like hull:
+  glacis 70°, nose 58°, sides 35°, conical turret; it bounces 37-75 mm angled ~10-20°. `model_style` "" keeps the scene's plain boxes (player_medium,
   test_medium). Paint replaces the PAINT material per surface. Pictures without the game:
   `godot --path . --script res://tools/render_tank_models.gd -- <dir> [preset...]`
   (needs a window; `renders/` is git-ignored).
@@ -259,7 +263,7 @@ shows on the minimap. This is what we test first.
   medium_h (Pz IV-like), heavy (KV-like); the tank destroyer is gone; each with its
   `GunData` 37-152 mm and `ArmourPackageData`; coefficients in
   `BuilderRules`: speed and acceleration from kW/t, turn rate from mass, traverse from
-  gun mass, hp per tonne, camouflage). The chassis' `base` TankData supplies the rest.
+  gun mass, hp per tonne capped at `max_structure_hp` 200, camouflage). The chassis' `base` TankData supplies the rest.
   Medium + 75 mm = today's tank. `Tank.apply_geometry()` sizes hull, tracks, turret,
   gun and suspension from `TankData` geometry (scene measures are the reference, consts
   `BASE_*`); `Tank.config` builds the data at start. Camouflage

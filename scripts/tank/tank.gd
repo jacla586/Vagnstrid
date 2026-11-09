@@ -744,7 +744,8 @@ func on_shell_hit(shell_data: ShellData, point: Vector3, normal: Vector3,
 	var local_point: Vector3 = frame.to_local(point)
 	var plate_mm: float = _damage.armour_mm(part, face, local_point)
 	var result: HitResult = Armour.resolve(shell_data, velocity.length(), plate_mm,
-			Armour.impact_angle(velocity, normal), data.armour.ricochet_angle_deg)
+			Armour.impact_angle(velocity, normal),
+			Armour.ricochet_angle(data.armour, shell_data.caliber_mm, plate_mm))
 	result.part = part
 	result.face = face
 	result.target = self

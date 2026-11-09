@@ -14,7 +14,7 @@
 [sub_resource type="Resource" id="Armour_light"]
 script = ExtResource("2_armour")
 hull_front_mm = 25.0
-hull_side_mm = 15.0
+hull_side_mm = 25.0
 hull_rear_mm = 13.0
 hull_roof_mm = 10.0
 turret_front_mm = 25.0

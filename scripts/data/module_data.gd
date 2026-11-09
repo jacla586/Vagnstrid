@@ -15,6 +15,9 @@ extends Resource
 @export var hp: float = 60.0
 ## The module counts as damaged below this share of its hp (destroyed at 0).
 @export_range(0.0, 1.0) var damaged_below: float = 0.75
+## Extra structure hp a penetrating round takes when it hits this (internal) module,
+## on top of ShellData.damage_hp: a module hit hurts the tank more than a clean pass.
+@export var structure_damage_hp: float = 0.0
 ## Outside the armour (tracks): hit by shells that don't penetrate and by HE fragments.
 @export var external: bool = false
 ## Own repair time when broken (s, standing still), rolled between min and max each time

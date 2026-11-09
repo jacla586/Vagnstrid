@@ -26,6 +26,19 @@ static func penetration_at(shell: ShellData, speed: float) -> float:
 	return shell.penetration_mm * speed / shell.muzzle_velocity_mps
 
 
+## Angle (degrees from the normal) above which a round of `caliber_mm` glances off a
+## plate `plate_mm` thick (worn thickness): the chassis' angle, rising towards 90° as the
+## round overmatches the plate. Above 90 = never bounces.
+static func ricochet_angle(armour: ArmourData, caliber_mm: float, plate_mm: float) -> float:
+	if plate_mm <= 0.0:
+		return armour.ricochet_angle_deg
+	var span: float = maxf(armour.overmatch_full_ratio - armour.overmatch_start_ratio, 0.001)
+	var t: float = (caliber_mm / plate_mm - armour.overmatch_start_ratio) / span
+	if t >= 1.0:
+		return 180.0
+	return lerpf(armour.ricochet_angle_deg, 90.0, clampf(t, 0.0, 1.0))
+
+
 ## Decides what a shell does to a plate. Fills everything but part, face and target.
 static func resolve(shell: ShellData, speed: float, thickness_mm: float, angle: float,
 		ricochet_angle_deg: float) -> HitResult:

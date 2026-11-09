@@ -20,11 +20,13 @@ const STYLE_SLOPED: StringName = &"sloped"
 const STYLE_BOXY: StringName = &"boxy"
 const STYLE_HEAVY: StringName = &"heavy"
 const VARIANT_BOX_TURRET: StringName = &"box_turret"
+## BT-like turret: top radius as a share of the base (a cone, sides ~22° at 0.65 m high).
+const LIGHT_TOP: float = 0.7
 
 ## Plate slopes per style (degrees from vertical) for the garage's effective armour:
 ## [hull front, hull side, turret front].
 const SLOPES: Dictionary = {
-	STYLE_LIGHT: [60.0, 25.0, 0.0],
+	STYLE_LIGHT: [65.0, 35.0, 22.0],
 	STYLE_SLOPED: [60.0, 40.0, 30.0],
 	STYLE_BOXY: [10.0, 0.0, 10.0],
 	STYLE_HEAVY: [30.0, 0.0, 20.0],
@@ -115,24 +117,24 @@ func _light() -> void:
 	_tracks(0.46 * (yk - yb), 4, 0.34 * L, false, 0)
 	var zf: float = -L * 0.5
 	var zr: float = L * 0.5 * 0.97
-	_lower_hull(zf, zr, yk, 50.0, 35.0)
-	_upper_hull(zf, zr, yk, 60.0, yk + 0.35 * (yt - yk), 40.0, 25.0)
-	_visor(zf, yk, 60.0)
+	_lower_hull(zf, zr, yk, 58.0, 35.0)
+	_upper_hull(zf, zr, yk, 65.0, yk + 0.35 * (yt - yk), 40.0, 35.0)
+	_visor(zf, yk, 65.0)
 	_exhausts(zr, 2, 0.06)
 	if heavy_look:
-		_glacis_plate(zf, yk, 60.0, 0.035)
-	var tz: float = -0.1 * L
+		_glacis_plate(zf, yk, 65.0, 0.035)
+	var tz: float = -0.13 * L
 	out["turret_pos"] = Vector3(0.0, yt, tz)
 	# Turret: a low cone with a bustle at the back.
-	turret.cylinder(Vector3.ZERO, Vector3(0.0, TH, 0.0), R, R * 0.82, 14, MeshKit.Mat.PAINT, "t_body")
+	turret.cylinder(Vector3.ZERO, Vector3(0.0, TH, 0.0), R, R * LIGHT_TOP, 14, MeshKit.Mat.PAINT, "t_body")
 	turret.block(Vector3(-R * 0.55, TH * 0.1, R * 0.45), Vector3(R * 0.55, TH * 0.8, R * 1.25),
 			MeshKit.Mat.PAINT, [[Vector3(0, TH * 0.1, R * 1.25), Vector3(0, -0.6, 1)]], "t_bustle")
 	_turret_groups.append_array(["t_body", "t_bustle"])
-	turret.cylinder(Vector3(0, TH * 0.42, 0), Vector3(0, TH * 0.68, 0), lerpf(R, R * 0.82, 0.42) + 0.015,
-			lerpf(R, R * 0.82, 0.68) + 0.015, 14, MeshKit.Mat.MARK)
+	turret.cylinder(Vector3(0, TH * 0.42, 0), Vector3(0, TH * 0.68, 0), lerpf(R, R * LIGHT_TOP, 0.42) + 0.015,
+			lerpf(R, R * LIGHT_TOP, 0.68) + 0.015, 14, MeshKit.Mat.MARK)
 	_roof_panel(TH, 0.0)
 	if heavy_look:
-		turret.cylinder(Vector3(0, TH * 0.15, 0), Vector3(0, TH * 0.85, 0), R * 1.05, R * 0.9, 14,
+		turret.cylinder(Vector3(0, TH * 0.15, 0), Vector3(0, TH * 0.85, 0), R * 1.05, R * (LIGHT_TOP + 0.08), 14,
 				MeshKit.Mat.PAINT)
 	_turret_common(Vector3(0.0, TH * 0.48, -R * 0.95), Vector3(-R * 0.35, TH, R * 0.2))
 	mantlet.block(Vector3(-R * 0.28, -TH * 0.22, -0.28), Vector3(R * 0.28, TH * 0.22, 0.05),

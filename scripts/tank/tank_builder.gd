@@ -53,7 +53,7 @@ static func build(config: TankConfig) -> TankData:
 	d.turret_traverse_speed_deg = clampf(
 			r.reference_traverse_deg * pow(r.reference_gun_mass_kg / gun.mass_kg, r.traverse_exponent),
 			r.min_traverse_deg, r.max_traverse_deg)
-	d.structure_hp = maxf(mass / 1000.0 * r.hp_per_ton, r.min_structure_hp)
+	d.structure_hp = clampf(mass / 1000.0 * r.hp_per_ton, r.min_structure_hp, r.max_structure_hp)
 	# Gun.
 	d.ammo = gun.ammo.duplicate()
 	d.reload_time_s = gun.reload_time_s

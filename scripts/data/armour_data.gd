@@ -27,6 +27,11 @@ extends Resource
 @export_group("Ricochet")
 ## Hits flatter than this (angle from the plate's normal, degrees) bounce off.
 @export var ricochet_angle_deg: float = 70.0
+## Overmatch: a round much wider than the plate bites instead of glancing off. From this
+## calibre/thickness ratio the ricochet angle rises towards 90°...
+@export var overmatch_start_ratio: float = 2.5
+## ...and at this ratio the round never bounces (e.g. 152 mm on 25 mm).
+@export var overmatch_full_ratio: float = 6.0
 
 
 ## Thickness of a zone, e.g. ("hull", "side"). 0 if the zone is unknown.
