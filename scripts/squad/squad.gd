@@ -67,6 +67,12 @@ const ORDER_MOVE: int = 1
 const ORDER_RECALL: int = 2
 ## Walk to the point and lay a mine there (SquadData.mine).
 const ORDER_MINE: int = 3
+## Close protection (F): get off if mounted, then walk a line SquadData.escort_ahead_m
+## ahead of the tank, catching up when it stops, fighting enemy infantry and exposed
+## commanders in reach and finding mines on the way (as squads always do).
+const ORDER_ESCORT: int = 4
+## Escort: its place is worked out this often (s).
+const ESCORT_UPDATE_S: float = 1.0
 ## The mine layer starts work this close to the spot (m), and lays it from this close.
 const MINE_START_M: float = 15.0
 const MINE_AT_M: float = 1.2
@@ -259,6 +265,12 @@ var _retreating: bool = false
 ## Halted on the way to fight: where it was going (INF = no such halt), and how long it
 ## still waits with nothing in reach before walking on.
 var _resume_goal: Vector3 = Vector3.INF
+## Escorting the tank (ORDER_ESCORT) until another order, a recall or the tank's loss.
+var _escort: bool = false
+var _escort_timer: float = 0.0
+## The way the escort faces (flat unit), and the client's copy of the flag.
+var _escort_dir: Vector3 = Vector3.FORWARD
+var _net_escort: bool = false
 var _resume_wait: float = 0.0
 ## Enemies (Tank / Squad) in sight when the last move order came: the order was given
 ## knowing of them, so they don't stop the walk.
@@ -435,7 +447,20 @@ func get_goal() -> Vector3:
 func order(kind: int, target: Vector3) -> void:
 	if net_puppet or not is_instance_valid(tank) or tank.is_knocked_out() or _state == State.WIPED:
 		return
+	if kind != ORDER_NONE:
+		_escort = false
 	match kind:
+		ORDER_ESCORT:
+			if _state == State.MOUNTED:
+				if get_alive_count() == 0:
+					return
+				_dismount()
+			# Escorting it fights whatever comes in reach, those in sight now too.
+			_order_known.clear()
+			_cancel_mine()
+			_escort = true
+			_escort_timer = 0.0
+			_escort_dir = _attack_direction(true)
 		ORDER_MOVE:
 			if _state == State.MOUNTED:
 				if get_alive_count() == 0:
@@ -511,6 +536,7 @@ func _physics_process(delta: float) -> void:
 		if _replan_timer <= 0.0:
 			_replan_timer = RETURN_REPLAN_S
 			_path = _plan(tank.global_position)
+	_update_escort(delta)
 	if _state == State.MOVING or _state == State.RETURNING:
 		_walk(delta)
 	_move_soldiers(delta)
@@ -659,6 +685,7 @@ func _mount() -> void:
 		_launcher_hold[i] = 0.0
 		_set_aim(i, Vector3.INF)
 	_state = State.MOUNTED
+	_escort = false
 	_path.clear()
 	_resume_goal = Vector3.INF
 	visible = false
@@ -715,7 +742,12 @@ func _walk(delta: float) -> void:
 	if _path.is_empty():
 		if _state == State.MOVING:
 			_state = State.HOLDING
-			radio.emit(RADIO_IN_POSITION, Vector3.ZERO)
+			if _escort:
+				# Escorting: in place again, no call (it would come every few metres).
+				_heading = _escort_dir
+				_spots_chosen = false
+			else:
+				radio.emit(RADIO_IN_POSITION, Vector3.ZERO)
 		return
 	var to_next: Vector3 = _flat(_path[0] - global_position)
 	if to_next.length() <= WAYPOINT_RADIUS_M:
@@ -980,8 +1012,80 @@ func _snap_soldiers() -> void:
 
 ## Each soldier gets his own spot round the squad's point: spread out all round,
 ## covered (bushes, trees, a wall) if one of a few tries finds it, never in a house.
+## True while escorting the tank (clients: as the host says).
+func is_escorting() -> bool:
+	return _net_escort if net_puppet else _escort
+
+
+## Escort: keeps the squad's place escort_ahead_m ahead of the tank in its attack
+## direction. It walks there when the place is escort_slack_m off, but not while it is
+## halted for a contact (it fights), withdrawing, firing an AT round or laying a mine.
+func _update_escort(delta: float) -> void:
+	if not _escort:
+		return
+	if tank.is_knocked_out():
+		_escort = false
+		return
+	if _state != State.HOLDING and _state != State.MOVING:
+		return
+	_escort_timer -= delta
+	if _escort_timer > 0.0:
+		return
+	_escort_timer = ESCORT_UPDATE_S
+	if _withdraw_timer > 0.0 or _resume_goal != Vector3.INF or _at_aim_left > 0.0 \
+			or _mine_goal != Vector3.INF:
+		return
+	_escort_dir = _attack_direction(false)
+	var place: Vector3 = tank.global_position + _escort_dir * data.escort_ahead_m
+	place.y = _ground_height(place, tank.global_position.y)
+	var map: TacticalMap = _tactical_map()
+	if map != null and map.is_blocked(place):
+		place = tank.global_position + _escort_dir * data.escort_ahead_m * 0.5
+	if _state == State.HOLDING:
+		if _flat(place - global_position).length() > data.escort_slack_m:
+			_move_to(place)
+	elif _flat(place - _goal).length() > data.escort_regoal_m:
+		_move_to(place)
+
+
+## The way the tank attacks: driving forward, where it goes; else where its gun points.
+## It only swings past escort_turn_deg (unless `now`), so the line holds still while the
+## turret looks about.
+func _attack_direction(now: bool) -> Vector3:
+	var velocity: Vector3 = _flat(tank.linear_velocity if not tank.net_puppet else Vector3.ZERO)
+	var forward: Vector3 = _flat(-tank.global_basis.z).normalized()
+	var dir: Vector3
+	if velocity.length() > 1.5 and velocity.dot(forward) > 0.0:
+		dir = velocity.normalized()
+	else:
+		dir = _flat(-tank.get_muzzle_transform().basis.z).normalized()
+	if dir.length_squared() < 0.5:
+		dir = forward
+	if now or rad_to_deg(dir.angle_to(_escort_dir)) > data.escort_turn_deg:
+		return dir
+	return _escort_dir
+
+
+## Escort line: the soldiers side by side across the attack direction, a little
+## ragged, each nudged off blocked ground.
+func _choose_line_spots() -> void:
+	var map: TacticalMap = _tactical_map()
+	var right: Vector3 = Vector3.UP.cross(_escort_dir).normalized()
+	var n: int = maxi(_soldiers.size(), 1)
+	for i: int in _soldiers.size():
+		var offset: Vector3 = right * (float(i) - float(n - 1) * 0.5) * data.escort_spacing_m \
+				+ _escort_dir * _rng.randf_range(-1.5, 1.5)
+		var p: Vector3 = global_position + offset
+		if map != null and map.is_blocked(p):
+			offset *= 0.5
+		_spot[i] = offset
+
+
 func _choose_spots() -> void:
 	_spots_chosen = true
+	if _escort:
+		_choose_line_spots()
+		return
 	var map: TacticalMap = _tactical_map()
 	var base: float = atan2(_heading.x, _heading.z)
 	var n: int = maxi(_soldiers.size(), 1)
@@ -1641,8 +1745,9 @@ func write_net_state(buf: StreamPeerBuffer) -> void:
 	buf.put_u8(_state)
 	buf.put_u8(mask)
 	# Flags: bit 0 lying in ambush (they kneel by themselves), bits 1-2 mines carried,
-	# bits 3-5 mines out.
-	buf.put_u8((1 if _lying else 0) | (mini(_mines_carried, 3) << 1) | (mini(_laid.size(), 7) << 3))
+	# bits 3-5 mines out, bit 6 escorting.
+	buf.put_u8((1 if _lying else 0) | (mini(_mines_carried, 3) << 1) | (mini(_laid.size(), 7) << 3)
+			| (64 if _escort else 0))
 	buf.put_float(global_position.x)
 	buf.put_float(global_position.y)
 	buf.put_float(global_position.z)
@@ -1671,6 +1776,7 @@ func read_net_state(buf: StreamPeerBuffer) -> void:
 	_lying = flags & 1 == 1
 	_net_mines_carried = (flags >> 1) & 3
 	_net_mines_out = (flags >> 3) & 7
+	_net_escort = flags & 64 == 64
 	_net_position = Vector3(buf.get_float(), buf.get_float(), buf.get_float())
 	var yaw: float = buf.get_float()
 	_heading = Vector3(sin(yaw), 0.0, cos(yaw))

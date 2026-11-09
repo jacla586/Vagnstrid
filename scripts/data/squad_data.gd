@@ -19,6 +19,20 @@ extends Resource
 @export var spacing_m: float = 4.0
 ## Orders are cut off at this distance from the tank (m)...
 @export var max_distance_from_tank_m: float = 300.0
+@export_group("Escort (F)")
+## Close protection: the squad walks this far ahead of its tank, in a line across the
+## way it attacks (moving forward: where it drives; else where its gun points).
+@export var escort_ahead_m: float = 25.0
+## Gap between soldiers in the escort line (m).
+@export var escort_spacing_m: float = 6.0
+## It moves on when its place is this far off (m), and re-aims a walk when the place
+## has moved this far (m).
+@export var escort_slack_m: float = 10.0
+@export var escort_regoal_m: float = 6.0
+## The tank's attack direction only swings by more than this (degrees): the line doesn't
+## run round the tank every time the turret turns a little.
+@export var escort_turn_deg: float = 35.0
+@export_group("")
 ## ...and if the tank drives more than this beyond it, the squad comes back (m).
 @export var leash_margin_m: float = 60.0
 ## Getting this close to its tank while coming back, the squad mounts (m).

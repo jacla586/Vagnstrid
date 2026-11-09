@@ -36,9 +36,9 @@ func _process(_delta: float) -> void:
 			var refill: float = squad.get_refill_time_left()
 			doing = "ON TANK" if refill <= 0.0 else "REFILLING %d s" % ceili(refill)
 		Squad.State.MOVING:
-			doing = "MOVING"
+			doing = "ESCORTING" if squad.is_escorting() else "MOVING"
 		Squad.State.HOLDING:
-			doing = "HOLDING"
+			doing = "ESCORTING" if squad.is_escorting() else "HOLDING"
 		Squad.State.RETURNING:
 			doing = "COMING BACK"
 		Squad.State.WIPED:

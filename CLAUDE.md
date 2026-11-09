@@ -70,7 +70,15 @@ shows on the minimap. This is what we test first.
 - Infantry squads (`Squad`, `scripts/squad/`; data `SquadData`, `data/squads/`,
   `TankData.squad`): one unit of 4 soldiers per tank, made by the tank and living in
   the map beside it. Orders only via `TankCommand.squad_order`/`squad_target`
-  (move / recall); the tank passes them on. Mounted it rides unseen; sent out it gets
+  (move / recall / mine / escort); the tank passes them on. Escort (F, `squad_escort`,
+  `Squad.ORDER_ESCORT`): close protection; it gets off if mounted and keeps a line
+  (`SquadData.escort_*`: 25 m ahead, 6 m apart) across the tank's attack direction (driving
+  forward: where it goes; else where the gun points; swings only past 35°), walks there when
+  10+ m off (`escort_slack_m`), so it falls behind a driving tank and catches up when it stops;
+  it halts and fights infantry and exposed commanders in reach like a moving squad, finds
+  mines as squads do, and withdraws when hit; no "in position" calls. Any other order, a
+  recall, mounting or the tank's loss ends it (`Squad._escort`; packet flags bit 6, HUD
+  "ESCORTING"). Mounted it rides unseen; sent out it gets
   off behind the tank and walks paths from `TacticalMap.for_scene(scene, tactics)`
   with infantry costs (`data/squads/tactics_infantry.tres`), at most
   `max_distance_from_tank_m` (300) from the tank; recalled or left behind it runs back
@@ -607,7 +615,7 @@ shows on the minimap. This is what we test first.
   direction; T lays it on the view. MG: mouse 2 (roof MG in the commander view with the hatch
   open, coaxial otherwise). Binoculars: B. Hatch: H.
 - Scoreboard: Tab (King of the Hill). Big map: M (view only). Squad orders map: Q (`SquadMap`, 1 km round the tank with
-  the 300 m ring; frees the mouse; left click sends the squad, right click lays a mine). Recall squad: G. Squad leader's eyes: V (look and spot only). Statistics (FPS, frame times, draw calls, network): F3.
+  the 300 m ring; frees the mouse; left click sends the squad, right click lays a mine). Recall squad: G. Squad escorts the tank: F. Squad leader's eyes: V (look and spot only). Statistics (FPS, frame times, draw calls, network): F3.
 - Smoke: X. Esc: frees the mouse and opens `EscMenu` (resume, change tank, switch team
   (online), answer a swap request, abandon tank, main menu). Change tank (`TankSwitch`) =
   a respawn at the team's spawn in the new type (a fresh tank can't be rebuilt in place:

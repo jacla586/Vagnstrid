@@ -64,6 +64,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_turret_to_view_requested = true
 	elif event.is_action_pressed("squad_recall"):
 		_squad_order = Squad.ORDER_RECALL
+	elif event.is_action_pressed("squad_escort"):
+		_squad_order = Squad.ORDER_ESCORT
 	elif event.is_action_pressed("smoke"):
 		_smoke_requested = true
 	elif event.is_action_pressed("spot") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
