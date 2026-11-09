@@ -1,0 +1,40 @@
+{
+	"_doc": "Terrain textures for geodata maps. tools/pack_terrain_texture.py packs 'textures' (ambientCG CC0, 1K) into assets/terrain/<file>_alb_ht.png / _nrm_rgh.png; tools/terrain_control.py turns the land cover into a Terrain3D control map with 'classes' (land cover class -> texture name); tools/import_geodata_map.gd -- <map> <out> --textures puts both on a map. Texture ids are the list order (Terrain3D ids, max 32).",
+	"textures": [
+		{"name": "rock", "file": "rock023", "source": "Rock023", "uv_scale": 0.08, "detiling_rotation": 0.3, "detiling_shift": 0.2},
+		{"name": "meadow", "file": "ground037", "source": "Ground037", "uv_scale": 0.1, "detiling_rotation": 0.4, "detiling_shift": 0.3},
+		{"name": "lawn", "file": "grass004", "source": "Grass004", "uv_scale": 0.12, "detiling_rotation": 0.4, "detiling_shift": 0.3},
+		{"name": "field", "file": "ground071", "source": "Ground071", "uv_scale": 0.1, "detiling_rotation": 0.3, "detiling_shift": 0.3},
+		{"name": "forest_floor", "file": "ground020", "source": "Ground020", "uv_scale": 0.1, "detiling_rotation": 0.4, "detiling_shift": 0.3},
+		{"name": "gravel", "file": "ground081", "source": "Ground081", "uv_scale": 0.3, "detiling_rotation": 0.4, "detiling_shift": 0.3},
+		{"name": "wet_grass", "file": "grass002", "source": "Grass002", "uv_scale": 0.1, "detiling_rotation": 0.4, "detiling_shift": 0.3},
+		{"name": "sand", "file": "ground054", "source": "Ground054", "uv_scale": 0.1, "detiling_rotation": 0.3, "detiling_shift": 0.3}
+	],
+	"classes": {
+		"hav": "sand",
+		"mark": "meadow",
+		"skog": "forest_floor",
+		"åker": "field",
+		"äng": "meadow",
+		"tomt": "lawn",
+		"gård": "gravel",
+		"våtmark": "wet_grass",
+		"berg": "rock",
+		"buskmark": "wet_grass",
+		"strand": "sand",
+		"sjö": "sand",
+		"väg_asfalt": "gravel",
+		"väg_grus": "gravel"
+	},
+	"_doc_rules": "blend_sigma_m: how soft the borders between classes are. rock_slope_deg: rock fades in between these slopes. albedo_color: multiplies a texture (above 1 brightens). road_shoulder_m: gravel this far beside roads (under the road meshes and their edges). tint_strength/tint_gain: the land cover colour over the textures (0 = none; the old import used 0.7 / 1.9).",
+	"blend_sigma_m": 2.5,
+	"rock_slope_deg": [30, 45],
+	"road_shoulder_m": 1.0,
+	"tint_strength": 0.15,
+	"tint_gain": 1.9,
+	"_doc_material": "Terrain3DMaterial settings put on the map by --textures: macro variation tints large patches (breaks tiling at a distance); blend_sharpness 0..1 (higher = harder, height-based borders).",
+	"macro_variation": true,
+	"macro_variation1": [0.86, 0.9, 0.78],
+	"macro_variation2": [0.94, 0.9, 0.84],
+	"blend_sharpness": 0.75
+}

@@ -457,6 +457,14 @@ shows on the minimap. This is what we test first.
   <name>` (route + korridor.json) -> `nytt_omrade.py` with the stored corners (build, import,
   scene) -> `tools/corridor_map_scene.py <map> <EnemyName>` (bot, respawn, start) ->
   `bake_tactical_grid` -> `thunder_route_from_osm.py --path=` -> `render_map_image`.
+- Terrain textures (`tools/terrain_textures.json`: 8 ambientCG CC0 1K textures, land cover
+  class -> texture, blend/slope/shoulder rules, material settings): `geodata/.venv/bin/python
+  tools/pack_terrain_texture.py` fetches and packs them into `assets/terrain/`;
+  `tools/terrain_control.py geodata/<map>/out` writes `terrain_control.r32` (Terrain3D control
+  bits per pixel: class textures, soft borders, rock on steep slopes, gravel road shoulders);
+  `tools/import_geodata_map.gd -- <map> res://geodata/<map>/out --textures` puts list, material
+  (auto shader off, macro variation) and control/colour maps on an imported map without
+  touching heights. Then rerun `render_map_image`. Done: vidingsjo (others still auto shader).
 - House style (types, colours, facades with windows, semi-realistic areas) comes from
   `geodata/stilar.json`; rebuild the map to apply changes.
 - Real maps `scenes/maps/vikbolandet.tscn` (6.6 × 7 km) and `scenes/maps/vidingsjo.tscn`

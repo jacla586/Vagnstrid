@@ -1,7 +1,15 @@
-Terrain textures, copied from the Terrain3D v1.1.0 demo (demo/assets/textures).
+Terrain textures. ground037 and rock023 were copied from the Terrain3D v1.1.0 demo
+(demo/assets/textures); the rest are fetched and packed by tools/pack_terrain_texture.py.
 Source: ambientCG, Creative Commons CC0 1.0 Universal (https://docs.ambientcg.com/license/)
 
 ground037_* : Grass  https://ambientcg.com/view?id=Ground037
 rock023_*   : Cliff  https://ambientcg.com/view?id=Rock023
 
-Packed by Terrain3D: *_alb_ht = albedo + height, *_nrm_rgh = normal + roughness.
+grass004_* : lawn  https://ambientcg.com/view?id=Grass004
+ground081_* : gravel  https://ambientcg.com/view?id=Ground081
+grass002_* : wet_grass  https://ambientcg.com/view?id=Grass002
+ground054_* : sand  https://ambientcg.com/view?id=Ground054
+
+Packed: *_alb_ht = albedo + height, *_nrm_rgh = normal (OpenGL) + roughness.
+ground071_* : field  https://ambientcg.com/view?id=Ground071
+ground020_* : forest_floor  https://ambientcg.com/view?id=Ground020

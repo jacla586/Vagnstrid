@@ -1,13 +1,18 @@
 extends SceneTree
 ## Imports a real map from the geodata pipeline: terrain into Terrain3D, and the
 ## object glb, trees and tree models into assets/maps/<name>/.
-##   godot --headless --path . --script res://tools/import_geodata_map.gd -- <name> <out dir>
+##   godot --headless --path . --script res://tools/import_geodata_map.gd -- <name> <out dir> [--textures]
 ##   e.g. -- vikbolandet res://geodata/out   (these are the defaults)
 ## Reads <out dir>/ (heightmap.r16, heightmap_info.json, landcover_color.png, *_objekt.glb,
 ## trees.bin, trees_info.json, trad_*.glb) and writes terrain/<name>/. Rerun after
 ## rebuilding the geodata; it overwrites any sculpting or painting in terrain/<name>/.
 ## material.tres and assets.tres are only made when missing, so edits made to them in the
 ## editor (textures, meshes, shader settings) survive a rebuild; delete them to start over.
+## Textures (tools/terrain_textures.json): with <out dir>/terrain_control.r32 from
+## tools/terrain_control.py each land cover class gets its texture, else the old auto shader
+## (grass on flats, rock on slopes). --textures only puts the textures on an imported map:
+## the texture list in assets.tres, the material settings, and the control and colour maps
+## (heights, objects and trees are left alone).
 ##
 ## Coordinates follow geodata/CLAUDE.md: origin at the heightmap's NW corner, x east,
 ## z south, y metres above sea level, pixel (column j, row i) at (j * RES, i * RES).
@@ -16,10 +21,8 @@ extends SceneTree
 const COPY_FILES: Array[String] = ["trees.bin", "trees_info.json", "buskar.bin", "buskar_info.json"]
 ## Terrain3D region size in pixels; with 2 m spacing a region covers 2048 m.
 const REGION_SIZE: int = 1024
-## How strongly the land-cover colour tints the terrain textures (0 = none).
-const TINT_STRENGTH: float = 0.7
-## Land-cover colours are dark map colours; scale them so mid tones sit near white.
-const TINT_GAIN: float = 1.9
+const TEXTURES_CONFIG: String = "res://tools/terrain_textures.json"
+const CONTROL_FILE: String = "terrain_control.r32"
 
 var _terrain: Terrain3D
 var _name: String = "vikbolandet"
@@ -27,6 +30,9 @@ var _geo_out: String = "res://geodata/out"
 var _directory: String
 var _images: Array[Image] = []
 var _frames: int = 0
+var _textures_only: bool = false
+## tools/terrain_textures.json
+var _config: Dictionary = {}
 
 
 func _initialize() -> void:
@@ -35,25 +41,25 @@ func _initialize() -> void:
 		_name = args[0]
 	if args.size() >= 2:
 		_geo_out = args[1]
+	_textures_only = args.has("--textures")
+	_config = JSON.parse_string(FileAccess.get_file_as_string(TEXTURES_CONFIG))
 	_directory = "res://terrain/" + _name
-	print("map %s from %s" % [_name, _geo_out])
+	print("map %s from %s%s" % [_name, _geo_out, " (textures only)" if _textures_only else ""])
 	var info: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_geo_out + "/heightmap_info.json"))
 	var size := Vector2i(int(info.width_px), int(info.height_px))
 	var spacing: float = float(info.resolution_m)
 	var height_range := Vector2(float(info.height_min_m), float(info.height_max_m))
 
+	if _textures_only:
+		_start_textures_only(size)
+		return
 	var height_image: Image = Terrain3DUtil.load_image(
 			ProjectSettings.globalize_path(_geo_out + "/heightmap.r16"),
 			ResourceLoader.CACHE_MODE_IGNORE, height_range, size)
 	print("height image %s, range %s" % [str(height_image.get_size()), str(Terrain3DUtil.get_min_max(height_image))])
 
-	# Every pixel on auto shader: grass on flats, rock on slopes.
-	var auto: float = Terrain3DUtil.as_float(Terrain3DUtil.enc_auto(true))
 	height_image = _pad_to_regions(height_image)
-	var control_image := Terrain3DUtil.get_filled_image(height_image.get_size(), Color(auto, 0.0, 0.0, 1.0), false, Image.FORMAT_RF)
-	var color_image := _tint_image(ProjectSettings.globalize_path(_geo_out + "/landcover_color.png"))
-	color_image = _pad_to_regions(color_image)
-	_images = [height_image, control_image, color_image]
+	_images = [height_image, _control_image(size), _color_image()]
 
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_directory))
 	_clear_old_regions()
@@ -74,6 +80,9 @@ func _process(_delta: float) -> bool:
 	_frames += 1
 	if _frames < 3:
 		return false
+	if _textures_only:
+		_finish_textures_only()
+		return true
 	_terrain.change_region_size(REGION_SIZE)
 	_terrain.data.import_images(_images, Vector3.ZERO, 0.0, 1.0)
 	_terrain.data.save_directory(_directory)
@@ -82,8 +91,109 @@ func _process(_delta: float) -> bool:
 	return true
 
 
-## Turns the land-cover map into a gentle albedo tint around white, so the grass and
-## rock textures still show but fields, forest and roads read differently.
+## The control map: textures per land cover class (terrain_control.r32), or without
+## one every pixel on the auto shader (grass on flats, rock on slopes). Padded to regions.
+func _control_image(size: Vector2i) -> Image:
+	var path: String = _geo_out + "/" + CONTROL_FILE
+	var image: Image
+	if FileAccess.file_exists(path):
+		# Raw uint32 in Terrain3D's control format: the same bytes as a FORMAT_RF image.
+		var bytes: PackedByteArray = FileAccess.get_file_as_bytes(path)
+		assert(bytes.size() == size.x * size.y * 4, "%s is not the heightmap's size" % path)
+		image = Image.create_from_data(size.x, size.y, false, Image.FORMAT_RF, bytes)
+		print("control map from %s" % path)
+	else:
+		var auto: float = Terrain3DUtil.as_float(Terrain3DUtil.enc_auto(true))
+		image = Terrain3DUtil.get_filled_image(size, Color(auto, 0.0, 0.0, 1.0), false, Image.FORMAT_RF)
+		print("no %s: auto shader everywhere" % CONTROL_FILE)
+	return _pad_to_regions(image)
+
+
+func _color_image() -> Image:
+	return _pad_to_regions(_tint_image(ProjectSettings.globalize_path(_geo_out + "/landcover_color.png")))
+
+
+# --- Textures only (--textures) -----------------------------------------------------
+
+func _start_textures_only(size: Vector2i) -> void:
+	_images = [null, _control_image(size), _color_image()]
+	var assets: Terrain3DAssets = load(_directory + "/assets.tres")
+	if assets == null:
+		# Unreadable (e.g. a texture it lists is gone): a fresh list, without its meshes.
+		print("  %s/assets.tres unreadable, making a new one" % _directory)
+		assets = Terrain3DAssets.new()
+	_set_texture_list(assets)
+	_save_keeping_uid(assets, _directory + "/assets.tres")
+	var material: Terrain3DMaterial = load(_directory + "/material.tres")
+	_set_material(material)
+	_terrain = Terrain3D.new()
+	_terrain.material = material
+	_terrain.assets = assets
+	_terrain.vertex_spacing = float(JSON.parse_string(FileAccess.get_file_as_string(
+			_geo_out + "/heightmap_info.json")).resolution_m)
+	_terrain.data_directory = _directory
+	root.add_child(_terrain)
+
+
+## Each region gets its piece of the control and colour maps; heights stay as they are.
+func _finish_textures_only() -> void:
+	var data: Terrain3DData = _terrain.data
+	var region_px: int = _terrain.region_size
+	var control: Image = _images[1]
+	var color: Image = _images[2]
+	for location: Vector2i in data.get_region_locations():
+		var rect := Rect2i(location * region_px, Vector2i(region_px, region_px))
+		if location.x < 0 or location.y < 0 or rect.end.x > control.get_width() \
+				or rect.end.y > control.get_height():
+			print("  region %s outside the land cover, skipped" % str(location))
+			continue
+		var region: Terrain3DRegion = data.get_region(location)
+		region.set_control_map(control.get_region(rect))
+		region.set_color_map(color.get_region(rect))
+		data.set_region_modified(location, true)
+	data.update_maps(Terrain3DRegion.TYPE_MAX, true, false)
+	data.save_directory(_directory)
+	# Shader parameters only stick once the terrain's shader is built (now).
+	_set_material(_terrain.material)
+	_save_keeping_uid(_terrain.material, _directory + "/material.tres")
+	print("%s: textures on %d regions" % [_name, data.get_region_count()])
+
+
+## Scenes refer to these files by UID; a plain save from a script drops it.
+func _save_keeping_uid(resource: Resource, path: String) -> void:
+	var uid: int = ResourceLoader.get_resource_uid(path)
+	ResourceSaver.save(resource, path)
+	if uid != ResourceUID.INVALID_ID:
+		ResourceSaver.set_uid(path, uid)
+
+
+func _set_texture_list(assets: Terrain3DAssets) -> void:
+	var textures: Array = _config["textures"]
+	for i: int in textures.size():
+		var entry: Dictionary = textures[i]
+		var texture := _texture(String(entry["name"]), String(entry["file"]))
+		texture.uv_scale = float(entry.get("uv_scale", 0.1))
+		texture.detiling_rotation = float(entry.get("detiling_rotation", 0.0))
+		texture.detiling_shift = float(entry.get("detiling_shift", 0.0))
+		var tint: Array = entry.get("albedo_color", [1.0, 1.0, 1.0])
+		texture.albedo_color = Color(float(tint[0]), float(tint[1]), float(tint[2]))
+		assets.set_texture_asset(i, texture)
+	# Drop textures beyond the list (an older, longer list).
+	for i: int in range(assets.get_texture_count() - 1, textures.size() - 1, -1):
+		assets.set_texture_asset(i, null)
+
+
+func _set_material(material: Terrain3DMaterial) -> void:
+	material.auto_shader_enabled = false
+	material.macro_variation_enabled = bool(_config.get("macro_variation", false))
+	material.set_shader_param(&"blend_sharpness", float(_config.get("blend_sharpness", 0.5)))
+	for key: String in ["macro_variation1", "macro_variation2"]:
+		var c: Array = _config.get(key, [1.0, 1.0, 1.0])
+		material.set_shader_param(StringName(key), Color(float(c[0]), float(c[1]), float(c[2])))
+
+
+## Turns the land-cover map into a gentle albedo tint around white, so the textures still
+## show but areas read a little differently (tint_strength, tint_gain in the config).
 ## Grows an image to whole Terrain3D regions by repeating its last column and row.
 ## Otherwise the unused part of the edge regions is height 0: a cliff on inland maps.
 func _pad_to_regions(source: Image) -> Image:
@@ -108,12 +218,14 @@ func _tint_image(path: String) -> Image:
 	var w: int = source.get_width()
 	var h: int = source.get_height()
 	var src: PackedByteArray = source.get_data()
+	var strength: float = float(_config.get("tint_strength", 0.7))
+	var gain: float = float(_config.get("tint_gain", 1.9))
 	var dst := PackedByteArray()
 	dst.resize(w * h * 4)
 	for k: int in w * h:
 		for c: int in 3:
-			var v: float = minf(src[k * 3 + c] / 255.0 * TINT_GAIN, 1.0)
-			dst[k * 4 + c] = int(lerpf(1.0, v, TINT_STRENGTH) * 255.0)
+			var v: float = minf(src[k * 3 + c] / 255.0 * gain, 1.0)
+			dst[k * 4 + c] = int(lerpf(1.0, v, strength) * 255.0)
 		dst[k * 4 + 3] = 128  # alpha = roughness modifier, 0.5 is neutral
 	return Image.create_from_data(w, h, false, Image.FORMAT_RGBA8, dst)
 
@@ -148,16 +260,19 @@ func _copy_files() -> void:
 
 func _make_material() -> Terrain3DMaterial:
 	var material := Terrain3DMaterial.new()
-	material.auto_shader_enabled = true
 	material.world_background = 0  # None: no fake terrain outside the regions
+	if FileAccess.file_exists(_geo_out + "/" + CONTROL_FILE):
+		_set_material(material)
+	else:
+		material.auto_shader_enabled = true
 	return material
 
 
+## The texture list from the config; without a control map the auto shader uses
+## texture 0 (rock) on slopes and 1 (meadow) on flat ground.
 func _make_assets() -> Terrain3DAssets:
 	var assets := Terrain3DAssets.new()
-	# Auto shader: base texture (0) shows on slopes, overlay (1) on flat ground.
-	assets.set_texture_asset(0, _texture("cliff", "rock023"))
-	assets.set_texture_asset(1, _texture("grass", "ground037"))
+	_set_texture_list(assets)
 	return assets
 
 
