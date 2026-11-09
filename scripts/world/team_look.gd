@@ -29,7 +29,7 @@ static func is_friend(team: int) -> bool:
 
 
 ## Camouflage for enemy paint; `pattern_scale` = blotches per model-space unit.
-static func camo(pattern_scale: float = 0.9) -> ShaderMaterial:
+static func camo(pattern_scale: float = 0.75) -> ShaderMaterial:
 	if not _camo.has(pattern_scale):
 		var m := ShaderMaterial.new()
 		m.shader = CAMO_SHADER

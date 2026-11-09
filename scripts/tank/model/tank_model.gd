@@ -54,6 +54,15 @@ var gun := MeshKit.new()
 var out: Dictionary = {}
 var _hull_groups: Array[String] = []
 var _turret_groups: Array[String] = []
+# Where the details go (set while the hull is built): the front plate (where it meets the
+# track tops, its slope from vertical), the deck's rear end and half width.
+var _front_z: float = 0.0
+var _front_y: float = 0.0
+var _front_deg: float = 0.0
+var _deck_end_z: float = 0.0
+var _deck_half_w: float = 0.0
+## Turret roof details are pulled in by this much (the BT-like cone has a small roof).
+var _roof_scale: float = 1.0
 
 
 static func build(d: TankData) -> Dictionary:
@@ -90,6 +99,7 @@ func _build(d: TankData) -> Dictionary:
 			_boxy()
 		_:
 			_heavy(d.turret_variant == VARIANT_BOX_TURRET)
+	_details(d.model_style)
 	_barrel(d.muzzle_brake)
 	out["hull"] = hull.build()
 	out["turret"] = turret.build()
@@ -125,6 +135,7 @@ func _light() -> void:
 		_glacis_plate(zf, yk, 65.0, 0.035)
 	var tz: float = -0.13 * L
 	out["turret_pos"] = Vector3(0.0, yt, tz)
+	_roof_scale = 0.72
 	# Turret: a low cone with a bustle at the back.
 	turret.cylinder(Vector3.ZERO, Vector3(0.0, TH, 0.0), R, R * LIGHT_TOP, 14, MeshKit.Mat.PAINT, "t_body")
 	turret.block(Vector3(-R * 0.55, TH * 0.1, R * 0.45), Vector3(R * 0.55, TH * 0.8, R * 1.25),
@@ -216,6 +227,11 @@ func _boxy() -> void:
 		[Vector3(0, ym, zr * 0.97), _n_rear(12.0, true)]]
 	hull.block(Vector3(-wu, ym, z1), Vector3(wu, yt, zr * 0.97), MeshKit.Mat.PAINT, sup_cuts, "h_upper")
 	_hull_groups.append("h_upper")
+	_front_z = z1
+	_front_y = ym
+	_front_deg = 10.0
+	_deck_end_z = zr * 0.97 - (yt - ym) * tan(deg_to_rad(12.0))
+	_deck_half_w = wu
 	var yb0: float = ym + (yt - ym) * 0.4
 	_band(hull, Vector3(-wu, ym, z1), Vector3(wu, yt, zr * 0.97), sup_cuts, yb0, yb0 + 0.13)
 	# Fenders over the tracks, front and back.
@@ -337,6 +353,82 @@ func _heavy(box_turret: bool) -> void:
 	out["turret_top"] = top
 
 
+# --- Details (looks only: no armour shapes) ------------------------------------------
+
+## Headlights, spare track links and the driver's hatch on the front; engine grilles and
+## tools on the deck; on the turret a loader's hatch, periscopes, smoke dischargers and an
+## antenna. Same for every style, placed from the measures recorded while building.
+func _details(style: StringName) -> void:
+	var paint := MeshKit.Mat.PAINT
+	var dark := MeshKit.Mat.DARK
+	# Front plate: headlights, spare links (not on the boxy one: it has its own), hatch.
+	for s: float in [-1.0, 1.0]:
+		var lamp: Array = _on_front(s * W * 0.34, 0.6)
+		var p: Vector3 = lamp[0]
+		var n: Vector3 = lamp[1]
+		hull.cylinder(p, p + n * 0.07, 0.085, 0.085, 10, paint)
+		hull.cylinder(p + n * 0.07, p + n * 0.085, 0.065, 0.065, 10, MeshKit.Mat.DETAIL)
+	if style != STYLE_BOXY:
+		var links: Array = _on_front(0.0, 0.28)
+		hull.xform = Transform3D(_plate_basis(links[1]), links[0])
+		for i: int in 3:
+			hull.box(Vector3((float(i) - 1.0) * 0.36, 0.025, 0.0), Vector3(0.32, 0.05, 0.22), MeshKit.Mat.TRACK)
+		hull.xform = Transform3D.IDENTITY
+	var top_front: float = _front_z + (yt - _front_y) * tan(deg_to_rad(_front_deg))
+	var hatch := Vector3(-W * 0.2, yt, top_front + 0.38)
+	hull.cylinder(hatch, hatch + Vector3(0.0, 0.035, 0.0), 0.26, 0.26, 12, paint)
+	hull.box(hatch + Vector3(0.0, 0.04, 0.27), Vector3(0.2, 0.04, 0.05), dark)
+	# Engine deck behind the turret: grille slats, as many as fit.
+	var turret_back: float = (out["turret_pos"] as Vector3).z + R * 1.5
+	for i: int in 6:
+		var z: float = _deck_end_z - 0.14 - 0.11 * float(i)
+		if z < turret_back:
+			break
+		hull.box(Vector3(0.0, yt + 0.008, z), Vector3(_deck_half_w * 0.8, 0.016, 0.06), dark)
+	# Tools along the deck edges: a crowbar on the right, a shovel on the left.
+	var edge: float = _deck_half_w - 0.1
+	var tz: float = (out["turret_pos"] as Vector3).z
+	hull.box(Vector3(edge, yt + 0.02, tz + 0.2), Vector3(0.04, 0.03, 1.2), dark)
+	hull.box(Vector3(-edge, yt + 0.02, tz + 0.1), Vector3(0.04, 0.03, 0.85), MeshKit.Mat.DETAIL)
+	hull.box(Vector3(-edge, yt + 0.02, tz + 0.65), Vector3(0.2, 0.02, 0.28), dark)
+	# Turret roof.
+	var top: float = out["turret_top"]
+	var k: float = _roof_scale
+	var loader := Vector3(R * 0.38 * k, top, R * 0.15 * k)
+	turret.cylinder(loader, loader + Vector3(0.0, 0.03, 0.0), 0.24 * k, 0.24 * k, 12, paint)
+	turret.box(loader + Vector3(0.0, 0.035, 0.24 * k), Vector3(0.16, 0.03, 0.04), dark)
+	for x: float in [-0.12, 0.12]:
+		turret.box(Vector3(R * (0.2 + x) * k, top + 0.035, -R * 0.35 * k), Vector3(0.13, 0.07, 0.08), dark)
+	# Smoke dischargers: three tubes a side, pointing out, forward and up.
+	for s: float in [-1.0, 1.0]:
+		var base := Vector3(s * R * 0.62 * k, top, -R * 0.15 * k)
+		turret.box(base + Vector3(0.0, 0.03, 0.0), Vector3(0.12, 0.06, 0.28), paint)
+		var dir := Vector3(s * 0.65, 0.45, -0.6).normalized()
+		for i: int in 3:
+			var a: Vector3 = base + Vector3(0.0, 0.07, (float(i) - 1.0) * 0.085)
+			turret.cylinder(a, a + dir * 0.2, 0.033, 0.033, 8, dark)
+	# Antenna at the back right: a base and a thin whip.
+	var foot := Vector3(R * 0.5 * k, top, R * 0.6 * k)
+	turret.cylinder(foot, foot + Vector3(0.0, 0.08, 0.0), 0.045, 0.035, 8, dark)
+	turret.cylinder(foot + Vector3(0.0, 0.08, 0.0), foot + Vector3(0.0, 1.9, 0.0), 0.01, 0.006, 4, dark)
+
+
+## A point on the front plate at x, `share` of the way from its foot up to the roof,
+## and the plate's outward normal.
+func _on_front(x: float, share: float) -> Array:
+	var y: float = lerpf(_front_y, yt, share)
+	var z: float = _front_z + (y - _front_y) * tan(deg_to_rad(_front_deg))
+	var n: Vector3 = _n_front(_front_deg, true)
+	return [Vector3(x, y, z) + n * 0.005, n]
+
+
+## A basis lying on a plate with outward normal `n` (local +Y out, +X along the hull's X).
+static func _plate_basis(n: Vector3) -> Basis:
+	var right := Vector3.RIGHT
+	var back: Vector3 = right.cross(n).normalized()
+	return Basis(right, n, back)
+
+
 # --- Parts -----------------------------------------------------------------------------
 
 ## Track runs (one convex profile per side), road wheels showing on the outside,
@@ -393,6 +485,11 @@ func _upper_hull(zf: float, zr: float, nose_y: float, glacis_deg: float, rear_y:
 		cuts.append([Vector3(-w, yk, 0), _n_side(side_deg, -1.0)])
 	hull.block(Vector3(-w, yk, zf), Vector3(w, yt, zr), MeshKit.Mat.PAINT, cuts, "h_upper")
 	_hull_groups.append("h_upper")
+	_front_z = zf
+	_front_y = nose_y
+	_front_deg = glacis_deg
+	_deck_end_z = zr - (yt - rear_y) * tan(deg_to_rad(rear_deg))
+	_deck_half_w = w - ((yt - yk) * tan(deg_to_rad(side_deg)) if side_deg > 0.0 else 0.0)
 	var y0: float = yk + (yt - yk) * 0.45
 	_band(hull, Vector3(-w, yk, zf), Vector3(w, yt, zr), cuts, y0, y0 + 0.13)
 

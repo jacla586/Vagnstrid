@@ -8,7 +8,7 @@
 script = ExtResource("1_mg")
 display_name = "Roof MG"
 bullet = ExtResource("2_bullet")
-rounds_per_minute = 600.0
+rounds_per_minute = 500.0
 burst_time_s = 1.2
 burst_pause_s = 1.0
 dispersion_mrad = 5.0

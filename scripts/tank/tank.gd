@@ -274,6 +274,7 @@ func _ready() -> void:
 	assert(ray_count > 0, "Tank needs RayCast3D children under Suspension")
 	_track_half_width = maxf(width_sum / ray_count, 0.1)
 	_align_gunner_sight()
+	_apply_roof_mg_model()
 	_setup_paint()
 	_rng.randomize()
 	_smoke_left = data.smoke_salvos
@@ -434,6 +435,18 @@ func _apply_model() -> void:
 		if ray != null:
 			ray.position = Vector3(signf(ray.position.x) * track_x, -data.hull_size.y * 0.5,
 					ray.position.z * data.hull_size.z / BASE_HULL.z)
+
+
+## The roof MG's look (RoofMgModel, a Browning M2-like gun) on every tank, model or not.
+func _apply_roof_mg_model() -> void:
+	var m: Dictionary = RoofMgModel.build()
+	var mount := $Visual/Turret/RoofMG/Mount as MeshInstance3D
+	mount.mesh = m["mount"]
+	mount.position = Vector3.ZERO
+	var gun := $Visual/Turret/RoofMG/Pitch/Gun as MeshInstance3D
+	gun.mesh = m["gun"]
+	gun.position = Vector3.ZERO
+	($Visual/Turret/RoofMG/Pitch/Muzzle as Node3D).position = Vector3(0.0, 0.0, m["muzzle_z"])
 
 
 ## Puts the gun and mantlet meshes on render layer `layer` alone. The gunner's sight

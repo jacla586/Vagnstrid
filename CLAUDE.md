@@ -236,14 +236,19 @@ shows on the minimap. This is what we test first.
   `MeshKit.Mat.MARK`; plain box tanks get a turret band, `Tank._add_plain_marks`; soldiers
   get their helmet material painted blue, `SquadData.friend_blue_materials`), every other
   team is camouflaged (`assets/shaders/camo.gdshader`, an M90-like splinter pattern in
-  model space, on paint, markings and uniforms).
+  model space, on paint, markings and uniforms: leaning, stretched Voronoi fields plus a
+  finer black layer, borders blended over a pixel; tanks at `TeamLook.camo()` 0.75 fields/m).
   Each machine decides for itself, nothing is sent; tanks/squads repaint when
   `TeamLook.version` or their team changes. `Tank.paint_color` is no longer used.
 - Tank models (`scripts/tank/model/`): `TankModel.build(data)` makes the look AND the
   armour shapes from `TankData.model_style` (chassis: light = BT-like, sloped = T-34-like,
   boxy = Pz IV-like, heavy = KV-like; only loose visual inspiration), the geometry
   fields, `turret_variant` (gun, e.g. box_turret for the 152 mm), `muzzle_brake` and
-  `armour_look` (heavy package: skirts/appliqué). `MeshKit` builds flat-shaded convex
+  `armour_look` (heavy package: skirts/appliqué). `TankModel._details` adds looks only (no
+  armour shapes) to every style: headlights, spare links and driver's hatch on the front
+  plate, engine grilles and tools on the deck, loader's hatch, periscopes, smoke
+  dischargers and an antenna on the turret roof. The roof MG is a Browning M2-like gun on
+  every tank (`RoofMgModel`, applied by `Tank._apply_roof_mg_model`; 500 rounds/min). `MeshKit` builds flat-shaded convex
   solids (blocks cut by plate planes, cylinders, extruded track profiles) with named
   point groups -> one `ConvexPolygonShape3D` per group (several hull and turret shapes;
   turret shapes follow the turret, `Tank._sync_turret_shapes`). So slopes are real: the
