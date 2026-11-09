@@ -161,9 +161,9 @@ extends Resource
 @export var gunner_wounded_lag_max_s: float = 0.8
 ## An ammo explosion throws the turret this high (m): min + (max - min) * u^bias with u
 ## random in 0..1, so short throws are common and long ones rare...
-@export var turret_toss_min_m: float = 3.0
-@export var turret_toss_max_m: float = 15.0
-@export var turret_toss_bias: float = 3.0
+@export var turret_toss_min_m: float = 6.0
+@export var turret_toss_max_m: float = 60.0
+@export var turret_toss_bias: float = 6.0
 ## ...a little to the side (up to m/s) and tumbling (up to rad/s per axis).
 @export var turret_toss_side_mps: float = 2.5
 @export var turret_toss_spin_rad_s: float = 2.0
