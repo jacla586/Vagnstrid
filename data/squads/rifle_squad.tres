@@ -31,18 +31,21 @@ soldier_radius_m = 0.3
 kneel_height_share = 0.6
 stance_change_s = 0.5
 eye_height_standing_m = 1.65
-eye_height_kneeling_m = 0.9
+eye_height_kneeling_m = 1.0
 view_fov_deg = 70.0
 binocular_fov_deg = 10.0
 ambush_after_s = 4.0
 ambush_rifle_range_m = 100.0
 prone_height_m = 0.45
-eye_height_prone_m = 0.35
-prone_eye_forward_m = 1.5
+eye_height_prone_m = 0.3
+prone_eye_forward_m = 0.8
 prone_change_s = 1.0
-anim_prone = &"idle"
-prone_pitch_deg = 85.0
-prone_lift_m = 0.12
+anim_prone = &"prone"
+prone_body_ahead_m = 0.0
+prone_delay_max_s = 1.5
+anim_get_up = &"prone_to_crouch"
+anim_get_up_fallback = &"prone_to_kneel"
+anim_get_up_speed = 1.4
 view_range_m = 500.0
 see_through_ranges_m = PackedFloat32Array(500, 300)
 moving_view_cone_deg = 240.0
@@ -86,7 +89,7 @@ mine = ExtResource("11_mine")
 mines_carried = 1
 max_mines_out = 2
 mine_lay_time_s = 6.0
-anim_lay_mine = &"kneel"
+anim_lay_mine = &"kneel_idle"
 mine_refill_s = 60.0
 smoke_grenades = 1
 smoke_ahead_m = 8.0
@@ -98,7 +101,7 @@ smoke_height_m = 5.2
 smoke_lifetime_s = 30.0
 refill_time_s = 60.0
 wipe_cooldown_s = 60.0
-body_time_s = 3.0
+body_time_s = 5.0
 scream_chance = 0.1
 scream_sound = ExtResource("8_scream")
 model = ExtResource("9_model")
@@ -109,8 +112,27 @@ friend_blue_materials = PackedStringArray("Material.004")
 model_animation = &"Armature|Standing"
 model_animations = ExtResource("10_anims")
 anim_move = &"jog"
-anim_hold = &"crouch_idle"
+anim_hold = &"kneel_idle"
+anim_hold_fire = &"crouch_aim"
+anim_prone_fire = &"prone_fire"
+anim_fire_hold_s = 2.5
 anim_death = &"death"
+anim_deaths_standing = Array[StringName]([&"death", &"death_fall", &"death_back"])
+anim_death_moving = &"death_run"
+anim_death_kneeling = &"death_kneel"
+anim_death_prone = &""
+anim_transitions = {
+"aim>kneel_idle": &"stand_to_kneel",
+"crouch_aim>prone": &"kneel_to_prone",
+"jog>kneel_idle": &"stand_to_kneel",
+"kneel_idle>aim": &"kneel_to_stand",
+"kneel_idle>crouch_aim": &"kneel_to_aim",
+"kneel_idle>prone": &"kneel_to_prone",
+"prone>kneel_idle": &"prone_to_kneel",
+"prone>crouch_aim": &"prone_to_kneel",
+"prone>aim": &"prone_to_kneel",
+"prone_fire>kneel_idle": &"prone_to_kneel"
+}
 anim_move_speed_mps = 3.2
 anim_blend_s = 0.25
 radio = ExtResource("90_radio")

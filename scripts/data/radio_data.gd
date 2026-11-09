@@ -21,6 +21,13 @@ extends Resource
 @export var at_hit_text: String = "Träff!"
 @export var at_miss: AudioStream
 @export var at_miss_text: String = "Miss!"
+## Mines: the squad sets off to lay one, it is laid, an enemy tank drove over it.
+@export var mine_laying: AudioStream
+@export var mine_laying_text: String = "Upprättar minering!"
+@export var mine_armed: AudioStream
+@export var mine_armed_text: String = "Mina armerad!"
+@export var mine_triggered: AudioStream
+@export var mine_triggered_text: String = "Mina utlöst!"
 ## Twelve recordings each, one per clock hour (1..12).
 @export var armour: Array[AudioStream] = []
 @export var armour_text: String = "Pansar, klockan %s!"

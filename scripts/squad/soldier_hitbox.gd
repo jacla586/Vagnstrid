@@ -33,12 +33,13 @@ func set_size(height: float, radius: float) -> void:
 	_shape.position = Vector3(0.0, height * 0.5, 0.0)
 
 
-## Lying down: a capsule `length` long along the ground ahead of his feet (-Z), `radius`.
-func set_lying(length: float, radius: float) -> void:
+## Lying down: a capsule `length` long along the ground (Z), `radius` thick, its middle
+## `ahead` ahead of his position (-Z).
+func set_lying(length: float, radius: float, ahead: float) -> void:
 	_capsule.height = maxf(length, radius * 2.0)
 	_capsule.radius = radius
 	_shape.rotation = Vector3(PI * 0.5, 0.0, 0.0)
-	_shape.position = Vector3(0.0, radius, -length * 0.5)
+	_shape.position = Vector3(0.0, radius, -ahead)
 
 
 func set_active(on: bool) -> void:

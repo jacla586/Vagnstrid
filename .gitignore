@@ -7,3 +7,6 @@
 
 # Exported builds (EXPORTERA.md)
 /build/
+
+# Mixamo source animations (may not be redistributed; baked into soldier_anims.res)
+/mixamo/

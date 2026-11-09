@@ -1,7 +1,8 @@
 class_name Mine
 extends Node3D
 ## An anti-tank mine (MineData) laid by a squad. On the host it watches enemy tanks:
-## a track over it is thrown (Tank.on_mine; never a knock-out) and the mine is gone.
+## a magnetic fuze, so it goes off anywhere under the tank (tracks or belly), but it
+## only throws the nearer track (Tank.on_mine; never a knock-out); then it is gone.
 ## Gun rounds landing close destroy it (shell_landed). Enemy soldiers who see it mark
 ## it for their team (mark_known): a red cross on their maps. Clients only show it
 ## (NetGame sends laying, finding and removal). No friendly fire: own team's tanks and
@@ -11,6 +12,8 @@ extends Node3D
 signal known(team: int)
 ## The mine is gone: blown up (true) or just removed (false, its squad laid another).
 signal gone(exploded: bool)
+## Host: an enemy tank over it set it off (just before it is gone).
+signal triggered(tank: Tank)
 
 const GROUP: StringName = &"mines"
 const IMPACT_SCENE: PackedScene = preload("res://scenes/effects/impact.tscn")
@@ -146,23 +149,34 @@ func _physics_process(delta: float) -> void:
 		var track: StringName = _track_over(tank)
 		if track != &"":
 			tank.on_mine(track, global_position, data)
+			triggered.emit(tank)
 			blow_up()
 			return
 
 
-## Which of `tank`'s tracks is over the mine (&"" = none).
+## The track it throws if `tank` is over the mine (&"" = not over it): the tank's
+## footprint (from one track's outer edge to the other's, the tracks' length) sets it
+## off, the track nearest the mine is the one hit.
 func _track_over(tank: Tank) -> StringName:
 	var local: Vector3 = tank.to_local(global_position)
 	if absf(local.y) > 3.0:
 		return &""
 	var m: float = data.trigger_margin_m
 	if tank.data.layout != null:
+		var nearest: ModuleData = null
+		var min_x: float = INF
+		var max_x: float = -INF
 		for module: ModuleData in tank.data.layout.modules:
 			if not module.external or module.frame != &"hull":
 				continue
-			if absf(local.x - module.center.x) <= module.size.x * 0.5 + m \
-					and absf(local.z - module.center.z) <= module.size.z * 0.5 + m:
-				return module.id
+			min_x = minf(min_x, module.center.x - module.size.x * 0.5)
+			max_x = maxf(max_x, module.center.x + module.size.x * 0.5)
+			if absf(local.z - module.center.z) > module.size.z * 0.5 + m:
+				continue
+			if nearest == null or absf(local.x - module.center.x) < absf(local.x - nearest.center.x):
+				nearest = module
+		if nearest != null and local.x >= min_x - m and local.x <= max_x + m:
+			return nearest.id
 		return &""
 	if absf(local.x) <= PLAIN_HALF_WIDTH_M + m and absf(local.z) <= PLAIN_HALF_LENGTH_M + m:
 		return &"track_right" if local.x > 0.0 else &"track_left"

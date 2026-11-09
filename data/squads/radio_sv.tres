@@ -4,6 +4,9 @@
 [ext_resource type="AudioStream" path="res://assets/audio/radio/under_attack.ogg" id="under_attack"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/returning.ogg" id="returning"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/in_position.ogg" id="in_position"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/mine_laying.ogg" id="mine_laying"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/mine_armed.ogg" id="mine_armed"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/mine_triggered.ogg" id="mine_triggered"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/armour_1.ogg" id="armour_1"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/armour_2.ogg" id="armour_2"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/armour_3.ogg" id="armour_3"]
@@ -42,6 +45,9 @@ in_position = ExtResource("in_position")
 at_fire = ExtResource("at_fire")
 at_hit = ExtResource("at_hit")
 at_miss = ExtResource("at_miss")
+mine_laying = ExtResource("mine_laying")
+mine_armed = ExtResource("mine_armed")
+mine_triggered = ExtResource("mine_triggered")
 armour = Array[AudioStream]([ExtResource("armour_1"), ExtResource("armour_2"), ExtResource("armour_3"), ExtResource("armour_4"), ExtResource("armour_5"), ExtResource("armour_6"), ExtResource("armour_7"), ExtResource("armour_8"), ExtResource("armour_9"), ExtResource("armour_10"), ExtResource("armour_11"), ExtResource("armour_12")])
 infantry = Array[AudioStream]([ExtResource("infantry_1"), ExtResource("infantry_2"), ExtResource("infantry_3"), ExtResource("infantry_4"), ExtResource("infantry_5"), ExtResource("infantry_6"), ExtResource("infantry_7"), ExtResource("infantry_8"), ExtResource("infantry_9"), ExtResource("infantry_10"), ExtResource("infantry_11"), ExtResource("infantry_12")])
 volume_db = 4.0

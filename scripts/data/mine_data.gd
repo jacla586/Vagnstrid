@@ -3,8 +3,8 @@ extends Resource
 ## An anti-tank mine laid by an infantry squad (SquadData.mine). It throws the track of
 ## an enemy tank that drives over it (never a knock-out, never a kill), and is gone.
 
-## Goes off when an enemy tank's track comes over it: the track's box (ModuleData)
-## grown by this much (m)...
+## Goes off when an enemy tank comes over it (magnetic fuze: anywhere between the outer
+## edges of its tracks, along their length), that footprint grown by this much (m)...
 @export var trigger_margin_m: float = 0.3
 ## ...but only this long after it was laid (s): the layer gets clear.
 @export var arm_time_s: float = 3.0

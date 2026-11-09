@@ -55,6 +55,11 @@ const RADIO_DISMOUNT: int = 6
 ## "Träff!" / "Miss!": how the AT round that was just fired landed.
 const RADIO_AT_HIT: int = 7
 const RADIO_AT_MISS: int = 8
+## "Upprättar minering!" (off to lay a mine), "Mina armerad!" (laid), "Mina utlöst!"
+## (an enemy tank drove over one of its mines).
+const RADIO_MINE_LAYING: int = 9
+const RADIO_MINE_ARMED: int = 10
+const RADIO_MINE_TRIGGERED: int = 11
 
 ## Orders in TankCommand.squad_order.
 const ORDER_NONE: int = 0
@@ -100,6 +105,10 @@ const DRIFT_M: float = 1.5
 const DRIFT_CHANGE_S: float = 3.0
 ## Slower than this a soldier counts as standing (m/s).
 const STANDING_SPEED: float = 0.4
+## Lying, a soldier gets up (data.anim_get_up) only for a move longer than this (m).
+const GET_UP_MIN_M: float = 0.5
+## A running soldier keeps his run animation through halts shorter than this (s).
+const ANIM_STOP_S: float = 0.3
 ## Puppets slide to the host's position this fast (1/s).
 const NET_FOLLOW_RATE: float = 10.0
 ## Kneeling soldiers' body height as a share of standing (hitbox).
@@ -235,6 +244,14 @@ var _aim_point: Array[Vector3] = []
 var _launcher_hold: Array[float] = []
 var _launchers: Array[Node3D] = []
 var _rifles: Array = []
+## Per soldier: how long he still shows his firing pose, and which way he shot (flat).
+var _fire_left: Array[float] = []
+var _fire_dir: Array[Vector3] = []
+## Per soldier: time left before he lies down (random), and of getting up from lying.
+var _lie_wait: Array[float] = []
+var _get_up_left: Array[float] = []
+## Per soldier: how long he has stood still (a moment's halt doesn't stop the run).
+var _still_time: Array[float] = []
 var _smoke_left: int = 0
 var _withdraw_timer: float = 0.0
 ## Withdrawing: on the move to cover, no halts to fight.
@@ -443,6 +460,7 @@ func order(kind: int, target: Vector3) -> void:
 			_mine_goal = _clamp_to_tank(target)
 			_mine_goal.y = _ground_height(_mine_goal, global_position.y, 200.0)
 			_move_to(_mine_goal)
+			radio.emit(RADIO_MINE_LAYING, Vector3.ZERO)
 		ORDER_RECALL:
 			if _state != State.MOUNTED:
 				_cancel_mine()
@@ -564,8 +582,14 @@ func _place_mine(at: Vector3) -> void:
 	var mine: Mine = Mine.lay(get_parent(), data.mine, get_team(), at)
 	_laid.append(mine)
 	mine.gone.connect(func(_exploded: bool) -> void: _laid.erase(mine))
+	mine.triggered.connect(_on_mine_triggered)
 	_mines_carried -= 1
 	mine_laid.emit(mine)
+	radio.emit(RADIO_MINE_ARMED, Vector3.ZERO)
+
+
+func _on_mine_triggered(_victim: Tank) -> void:
+	radio.emit(RADIO_MINE_TRIGGERED, Vector3.ZERO)
 
 
 func _cancel_mine() -> void:
@@ -818,6 +842,18 @@ func _move_soldiers(delta: float) -> void:
 		var soldier: Node3D = _soldiers[i]
 		var pos: Vector3 = _last_pos[i]
 		var to: Vector3 = _flat(target - pos)
+		# Lying, he gets up on the spot before he walks off.
+		if _get_up_left[i] > 0.0:
+			_get_up_left[i] = maxf(_get_up_left[i] - delta, 0.0)
+			if _get_up_left[i] > 0.0:
+				to = Vector3.ZERO
+		elif _prone[i] >= 0.5 and to.length() > GET_UP_MIN_M:
+			var get_up: float = _get_up_time(i)
+			if get_up > 0.0:
+				_get_up_left[i] = get_up
+				_prone[i] = 0.0
+				_size_hitbox(i)
+				to = Vector3.ZERO
 		var stride: float = data.run_speed_mps * CATCH_UP_FACTOR * _pace[i] * delta
 		var step: float = minf(to.length(), stride)
 		if net_puppet:
@@ -836,9 +872,13 @@ func _move_soldiers(delta: float) -> void:
 		_last_pos[i] = pos
 		var aiming: bool = _aim_point[i] != Vector3.INF and not walking
 		var laying: bool = not walking and is_laying_mine(i)
+		_fire_left[i] = maxf(_fire_left[i] - delta, 0.0)
+		var firing: bool = _fire_left[i] > 0.0 and not walking and not aiming and not laying
 		var facing: Vector3 = to.normalized() if walking else _flat(pos - global_position)
 		if aiming:
 			facing = _flat(_aim_point[i] - pos)
+		elif firing:
+			facing = _fire_dir[i]
 		if facing.length() < 0.1:
 			facing = _heading
 		soldier.look_at(pos + facing.normalized(), Vector3.UP)
@@ -846,26 +886,63 @@ func _move_soldiers(delta: float) -> void:
 		var was_prone: bool = _prone[i] >= 0.5
 		_kneel[i] = move_toward(_kneel[i], 0.0 if walking or aiming else 1.0,
 				delta / maxf(data.stance_change_s, 0.01))
-		_prone[i] = move_toward(_prone[i], 1.0 if _lying and not walking and not aiming
-				and not laying else 0.0,
-				delta / maxf(data.prone_change_s, 0.01))
+		var lie: bool = _lying and not walking and not aiming and not laying \
+				and _get_up_left[i] <= 0.0
+		if lie:
+			_lie_wait[i] -= delta
+		else:
+			_lie_wait[i] = _rng.randf_range(0.0, data.prone_delay_max_s)
+		_prone[i] = move_toward(_prone[i], 1.0 if lie and (_lie_wait[i] <= 0.0 or _prone[i] > 0.0)
+				else 0.0, delta / maxf(data.prone_change_s, 0.01))
 		if (_kneel[i] >= 0.5) != was or (_prone[i] >= 0.5) != was_prone:
 			_size_hitbox(i)
+		_still_time[i] = 0.0 if walking else _still_time[i] + delta
 		if _players[i] != null:
-			var anim: StringName = data.anim_move if walking \
+			var running: bool = walking or (_playing[i] == data.anim_move and _still_time[i] < ANIM_STOP_S
+					and not aiming and not laying)
+			var anim: StringName = data.anim_move if running \
+					else (_get_up_anim(i) if _get_up_left[i] > 0.0
 					else (data.anim_at_aim if aiming
 					else (data.anim_lay_mine if laying
-					else (data.anim_prone if _prone[i] >= 0.5 else data.anim_hold)))
-			_animate(i, anim, speed / maxf(data.anim_move_speed_mps, 0.1) if walking else 1.0)
-		# Animated soldiers crouch by themselves; placeholders are squashed. Lying down the
-		# body tips forward round his feet (no prone animation: a pose tipped over).
-		var height_scale: float = 1.0 if _players[i] != null \
-				else lerpf(1.0, data.kneel_height_share, _kneel[i] * (1.0 - _prone[i]))
+					else (_fire_anim(data.anim_prone_fire, data.anim_prone, firing)
+							if _prone[i] >= 0.5
+					else _fire_anim(data.anim_hold_fire, data.anim_hold, firing)))))
+			_animate(i, anim, speed / maxf(data.anim_move_speed_mps, 0.1) if running
+					else (data.anim_get_up_speed if _get_up_left[i] > 0.0 else 1.0))
+			continue
+		# Animated soldiers crouch and lie down by themselves; placeholders are squashed,
+		# and lying down they tip forward round their feet.
+		var height_scale: float = lerpf(1.0, data.kneel_height_share, _kneel[i] * (1.0 - _prone[i]))
 		var tip := Basis(Vector3.RIGHT, -deg_to_rad(data.prone_pitch_deg) * _prone[i])
 		_meshes[i].basis = tip * Basis(Vector3.UP, _body_yaw()) \
 				* Basis.from_scale(_body_scale() * Vector3(1.0, height_scale, 1.0))
 		_meshes[i].position = Vector3.UP * data.prone_lift_m * _prone[i] \
 				+ tip * Vector3(0.0, _body_offset * height_scale, 0.0)
+
+
+## Soldier `i`'s getting-up animation (data.anim_get_up or its fallback; "" = none).
+func _get_up_anim(i: int) -> StringName:
+	var player: AnimationPlayer = _players[i]
+	if player == null:
+		return &""
+	for anim: StringName in [data.anim_get_up, data.anim_get_up_fallback]:
+		if anim != &"" and player.has_animation(StringName("%s/%s" % [ANIM_LIBRARY, anim])):
+			return anim
+	return &""
+
+
+## How long soldier `i` takes to get up from lying (0 = he doesn't, no animation).
+func _get_up_time(i: int) -> float:
+	var anim: StringName = _get_up_anim(i)
+	if anim == &"":
+		return 0.0
+	var clip: Animation = _players[i].get_animation(StringName("%s/%s" % [ANIM_LIBRARY, anim]))
+	return clip.length / clampf(data.anim_get_up_speed, 0.5, 2.0)
+
+
+## The firing pose while he fires (if the squad has one), else the plain one.
+static func _fire_anim(fire: StringName, plain: StringName, firing: bool) -> StringName:
+	return fire if firing and fire != &"" else plain
 
 
 ## Where soldier `i` is heading now (world, flat).
@@ -892,6 +969,8 @@ func _snap_soldiers() -> void:
 			_last_pos[i] = p
 			_kneel[i] = 0.0
 			_prone[i] = 0.0
+			_fire_left[i] = 0.0
+			_get_up_left[i] = 0.0
 			_size_hitbox(i)
 	_move_soldiers(0.0)
 
@@ -1336,6 +1415,8 @@ func _fire(i: int, shell_data: ShellData, aim: Vector3, target: Node3D, spread_m
 	SoundFx.play_at(self, sound, from)
 	_revealed[i] = maxf(_revealed[i], data.reveal_at_s if shell_data == data.at_round
 			else data.reveal_rifle_s)
+	if shell_data != data.at_round:
+		_show_firing(i, dir)
 	fired_round.emit(SHOT_AT if shell_data == data.at_round else SHOT_RIFLE, from,
 			dir * shell_data.muzzle_velocity_mps)
 	return shell
@@ -1385,7 +1466,14 @@ func _put_down(index: int, screamed: bool) -> void:
 	_down_time[index] = 0.0
 	_hitboxes[index].set_active(false)
 	if _players[index] != null:
-		_animate(index, data.anim_death, 1.0)
+		var death: StringName = _death_anim(index)
+		if death == &"":
+			# Lying, he just stays down.
+			_players[index].clear_queue()
+			_players[index].pause()
+			_playing[index] = &""
+		else:
+			_animate(index, death, 1.0)
 	else:
 		_meshes[index].rotation = Vector3(deg_to_rad(90.0), _body_yaw(), 0.0)
 		_meshes[index].position = Vector3(0.0, data.soldier_radius_m, 0.0)
@@ -1615,6 +1703,17 @@ func net_show_shot(kind: int, from: Vector3, velocity: Vector3) -> void:
 		for i: int in _aim_point.size():
 			if _aim_point[i] != Vector3.INF:
 				_launcher_blast(i)
+	else:
+		# The shooter: the living soldier nearest the muzzle.
+		var best: int = -1
+		var best_d: float = INF
+		for i: int in _soldiers.size():
+			var d: float = _soldiers[i].global_position.distance_squared_to(from)
+			if _alive[i] and d < best_d:
+				best = i
+				best_d = d
+		if best >= 0:
+			_show_firing(best, velocity)
 	var shell_data: ShellData = data.at_round if kind == SHOT_AT else data.rifle_bullet
 	var shell := _shell_scene.instantiate() as Shell
 	get_parent().add_child(shell)
@@ -1666,6 +1765,11 @@ func _add_soldier(i: int) -> void:
 	_aim_point.append(Vector3.INF)
 	_launcher_hold.append(0.0)
 	_launchers.append(_make_launcher(root))
+	_fire_left.append(0.0)
+	_fire_dir.append(Vector3.FORWARD)
+	_lie_wait.append(0.0)
+	_get_up_left.append(0.0)
+	_still_time.append(0.0)
 	var rifles: Array[Node3D] = []
 	if data.rifle_mesh_pattern != "":
 		for node: Node in mesh.find_children(data.rifle_mesh_pattern, "MeshInstance3D", true, false):
@@ -1761,15 +1865,44 @@ func _make_body() -> Node3D:
 	return body
 
 
-## Plays `anim` (from the squad library) on soldier `i`, blending, unless it already is.
+## Plays `anim` (from the squad library) on soldier `i`, blending, unless it already is;
+## through its transition (data.anim_transitions) from the one before if there is one.
 func _animate(i: int, anim: StringName, speed: float) -> void:
 	var player: AnimationPlayer = _players[i]
 	var full := StringName("%s/%s" % [ANIM_LIBRARY, anim])
 	if _playing[i] != anim:
+		var between: StringName = StringName(data.anim_transitions.get("%s>%s" % [_playing[i], anim], ""))
+		var via := StringName("%s/%s" % [ANIM_LIBRARY, between])
 		_playing[i] = anim
-		if player.has_animation(full):
+		player.clear_queue()
+		if between != &"" and player.has_animation(via) and player.has_animation(full):
+			player.play(via, data.anim_blend_s)
+			player.queue(full)
+		elif player.has_animation(full):
 			player.play(full, data.anim_blend_s)
 	player.speed_scale = clampf(speed, 0.5, 2.0)
+
+
+## Soldier `i` fired along `dir`: he shows the firing pose for a while, facing that way.
+func _show_firing(i: int, dir: Vector3) -> void:
+	var flat: Vector3 = _flat(dir)
+	if flat.length() < 0.01:
+		return
+	_fire_left[i] = data.anim_fire_hold_s
+	_fire_dir[i] = flat.normalized()
+
+
+## How soldier `i` falls: by his stance (a random one of the standing ones).
+func _death_anim(i: int) -> StringName:
+	if _prone[i] >= 0.5:
+		return data.anim_death_prone
+	if _speed[i] > STANDING_SPEED and data.anim_death_moving != &"":
+		return data.anim_death_moving
+	if _kneel[i] >= 0.5 and data.anim_death_kneeling != &"":
+		return data.anim_death_kneeling
+	if not data.anim_deaths_standing.is_empty():
+		return data.anim_deaths_standing[_rng.randi() % data.anim_deaths_standing.size()]
+	return data.anim_death
 
 
 func _body_scale() -> Vector3:
@@ -1783,7 +1916,8 @@ func _body_yaw() -> float:
 ## Soldier `i`'s hitbox: shorter while he kneels, flat along the ground when he lies.
 func _size_hitbox(i: int) -> void:
 	if _prone[i] >= 0.5:
-		_hitboxes[i].set_lying(data.soldier_height_m, data.prone_height_m * 0.5)
+		_hitboxes[i].set_lying(data.soldier_height_m, data.prone_height_m * 0.5,
+				data.prone_body_ahead_m)
 		return
 	var h: float = data.soldier_height_m * (KNEEL_HITBOX_SHARE if _kneel[i] >= 0.5 else 1.0)
 	_hitboxes[i].set_size(h, data.soldier_radius_m)

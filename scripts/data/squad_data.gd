@@ -51,8 +51,22 @@ extends Resource
 ## crouch and fall instead of being squashed or tipped over.
 @export var model_animations: AnimationLibrary
 @export var anim_move: StringName = &"jog"
-@export var anim_hold: StringName = &"crouch_idle"
+@export var anim_hold: StringName = &"kneel_idle"
+## Holding and lying while he fires, and this long (s) after his last shot, facing where
+## he shot ("" = the plain hold / prone animation).
+@export var anim_hold_fire: StringName = &"crouch_aim"
+@export var anim_prone_fire: StringName = &"prone_fire"
+@export var anim_fire_hold_s: float = 2.5
+## Falling: standing (one at random), on the move, kneeling, lying ("" = he stays as he
+## lies). anim_death is the fallback.
 @export var anim_death: StringName = &"death"
+@export var anim_deaths_standing: Array[StringName] = []
+@export var anim_death_moving: StringName = &""
+@export var anim_death_kneeling: StringName = &""
+@export var anim_death_prone: StringName = &""
+## Played between two animations ("from>to" -> clip), e.g. kneeling down or lying down;
+## the new animation follows when it ends. Only into still poses (moving blends at once).
+@export var anim_transitions: Dictionary = {}
 ## The move animation looks right at this speed; faster soldiers play it faster (m/s).
 @export var anim_move_speed_mps: float = 3.2
 ## Blend between animations (s).
@@ -79,9 +93,20 @@ extends Resource
 @export var eye_height_prone_m: float = 0.35
 @export var prone_eye_forward_m: float = 1.5
 @export var prone_change_s: float = 1.0
-## No prone animation: this pose (from model_animations) is tipped forward this much
-## (degrees) round the feet and lifted this much (m) so the chest is above the ground.
-@export var anim_prone: StringName = &"idle"
+## The lying animation (from model_animations); his body lies centred this far ahead of
+## his position (m, for the hitbox).
+@export var anim_prone: StringName = &"prone"
+@export var prone_body_ahead_m: float = 0.9
+## Each soldier lies down up to this long (s, at random) after the squad goes to ground.
+@export var prone_delay_max_s: float = 1.5
+## Lying, a soldier who has to move first gets up on the spot with this animation (the
+## fallback if the library lacks it; "" = none, he blends straight into the move),
+## played this much faster.
+@export var anim_get_up: StringName = &""
+@export var anim_get_up_fallback: StringName = &""
+@export var anim_get_up_speed: float = 1.0
+## Without a model (a capsule): it is tipped forward this much (degrees) round the feet
+## and lifted this much (m).
 @export var prone_pitch_deg: float = 85.0
 @export var prone_lift_m: float = 0.12
 
@@ -174,7 +199,7 @@ extends Resource
 @export var max_mines_out: int = 2
 ## ...takes this long to lay one (s), kneeling (animation from model_animations)...
 @export var mine_lay_time_s: float = 6.0
-@export var anim_lay_mine: StringName = &"kneel"
+@export var anim_lay_mine: StringName = &"kneel_idle"
 ## ...and gets a new one on the tank after this long (s).
 @export var mine_refill_s: float = 60.0
 

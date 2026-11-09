@@ -112,6 +112,15 @@ func _on_radio(kind: int, at: Vector3) -> void:
 		Squad.RADIO_AT_MISS:
 			stream = r.at_miss
 			line = r.at_miss_text
+		Squad.RADIO_MINE_LAYING:
+			stream = r.mine_laying
+			line = r.mine_laying_text
+		Squad.RADIO_MINE_ARMED:
+			stream = r.mine_armed
+			line = r.mine_armed_text
+		Squad.RADIO_MINE_TRIGGERED:
+			stream = r.mine_triggered
+			line = r.mine_triggered_text
 		Squad.RADIO_ARMOUR, Squad.RADIO_INFANTRY:
 			var hour: int = clock_hour(tank.global_transform, at)
 			var list: Array[AudioStream] = r.armour if kind == Squad.RADIO_ARMOUR else r.infantry

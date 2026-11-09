@@ -109,7 +109,7 @@ shows on the minimap. This is what we test first.
   tank, whichever is nearer (`Squad._withdraw`). Mounted they refill one by one (one a minute);
   wiped out, a full squad is back after `wipe_cooldown_s`. HUD: `SquadPanel`.
   Radio (`Squad.radio` signal, kinds `RADIO_*`: under attack (withdraw), returning, in
-  position, armour/infantry contact, AT round coming): `SquadRadio` in the player rig plays the own
+  position, armour/infantry contact, AT round coming, mines): `SquadRadio` in the player rig plays the own
   squad's calls one at a time on Master (not muffled) with a subtitle; contacts get a
   clock hour from the tank's hull. Lines and recordings in `RadioData`
   (`data/squads/radio_sv.tres`, Swedish, `assets/audio/radio/`: ElevenLabs recordings in
@@ -117,10 +117,19 @@ shows on the minimap. This is what we test first.
   the old Piper TTS script `tools/audio/make_radio.sh` would overwrite them). Dismounting radios "Avsittning!"
   (`RADIO_DISMOUNT`), a recall "Uppsittning!"; clients get calls by `rpc_squad_radio`.
   Soldiers use `assets/models/soldier/soldier.glb` (CC-BY, KolosStudios, see its
-  CREDITS.md; uniform materials repainted green) with animations (jog, crouch, death...)
-  from Quaternius' Universal Animation Library (CC0, `assets/models/ual/`), retargeted by
-  direction matching with `tools/bake_soldier_animations.gd` into
-  `assets/models/soldier/soldier_anims.res` (rerun if a model changes). Own team's
+  CREDITS.md; uniform materials repainted green) with Mixamo rifle animations (FBX on
+  Y Bot in `mixamo/`, git-ignored: Mixamo files may not be passed on) baked by
+  `tools/bake_soldier_animations.gd` into `assets/models/soldier/soldier_anims.res` (rerun
+  if a model or clip changes): per-bone corrections from two directions at rest (twist
+  kept), the right hand matched by the rifle (skinned to it), the left hand IK'd onto the
+  fore grip, loops/transitions kept on the spot, deaths keep their travel. Look at them
+  with `tools/render_soldier_poses.gd` (needs a window). `SquadData`: `anim_hold`
+  (kneel), `anim_prone`, firing poses (`anim_hold_fire`/`anim_prone_fire`, facing the
+  shot, `anim_fire_hold_s`), deaths by stance (`anim_deaths_standing`/`_moving`/
+  `_kneeling`/`_prone`, "" = stays lying) and `anim_transitions` ("from>to" -> clip, e.g.
+  kneel_to_prone; `Squad._animate` queues the target after it). Each soldier lies down up
+  to `prone_delay_max_s` late; lying, he gets up on the spot (`anim_get_up`, prone_to_crouch,
+  else `anim_get_up_fallback`) before he walks off. Own team's
   squads show on the maps, as do teammates' tanks (`MapView._draw_friends`).
   Network: clients send squad orders by reliable RPC (`rpc_squad_order`); the host
   sends all squads in a 10 Hz unreliable packet (`PACKET_SQUADS`, `Squad.write_net_state`,
@@ -132,14 +141,16 @@ shows on the minimap. This is what we test first.
   (`camo_spot_factor`), kneeling/lying (`kneel_/prone_spot_factor`), distance beyond
   `soldier_easy_range_m`; a soldier who just fired shows for `reveal_rifle_s`/`reveal_at_s`
   (back blast) at `reveal_spot_factor`. Ambush is automatic: holding `ambush_after_s` the
-  squad lies down (`Squad.is_lying`; no prone animation: the `anim_prone` pose tipped
-  `prone_pitch_deg` round the feet, hitbox `SoldierHitbox.set_lying`) and holds rifle fire
+  squad lies down (`Squad.is_lying`; `anim_prone` via kneel_to_prone, hitbox
+  `SoldierHitbox.set_lying` round `prone_body_ahead_m`) and holds rifle fire
   beyond `ambush_rifle_range_m` until it fired or lost a man; moving ends it. Mines
   (`Mine`, `scripts/squad/mine.gd`, data `MineData`/`data/squads/mine.tres`,
   `SquadData.mine*`): Q map right click (`squad_mine`) = `Squad.ORDER_MINE`: the squad walks
   there, the nearest soldier kneels `mine_lay_time_s` and lays it; one carried
   (`mines_carried`, refilled `mine_refill_s` on the tank), at most `max_mines_out` (another
-  removes the oldest; on a road it lies on the visible surface, `RoadSurface`: road meshes have no collision). An enemy track over it (host, `Mine._track_over`) is thrown
+  removes the oldest; radio "Upprättar minering!" on the order, "Mina armerad!" when laid,
+  "Mina utlöst!" when an enemy sets it off, `RADIO_MINE_*`, `Mine.triggered`; on a road it lies on the visible surface, `RoadSurface`: road meshes have no collision). A magnetic fuze: an enemy tank anywhere over it, belly included (host,
+  `Mine._track_over`), throws its nearer track
   (`Tank.on_mine` -> `TankDamage.apply_mine`; never a knock-out, nobody scores; signal
   `Tank.mine_hit`, clients `rpc_mine_hit`: the crew calls "Mina! Bandet utslaget!",
   `CrewVoiceData.mine`, instead of "Vi är träffade!"); own team
