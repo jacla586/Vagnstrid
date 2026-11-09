@@ -42,8 +42,10 @@ class Objekthojd:
         win_T = self.T * rasterio.Affine.translation(c0, r0)
         m = geometry_mask([geom], out_shape=(r1 - r0, c1 - c0), transform=win_T, invert=True)
         v = self.h[r0:r1, c0:c1][m]
+        n_yta = v.size
         v = v[v > 1.5]
-        if v.size < 4:
+        # glesa träffar (under 20 % av ytan) är en kran, fåglar eller brus, inte ett tak
+        if v.size < max(4, 0.2 * n_yta):
             return None
         return float(np.percentile(v, 20)), float(np.percentile(v, 95))
 

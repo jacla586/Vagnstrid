@@ -320,7 +320,7 @@ shows on the minimap. This is what we test first.
   `hunt_*`): bots radio spots to the team and go after known enemies, those in the open
   zone first (any range, no time limit, pressing closer), others near the zone for
   `hunt_max_s`; firing spots for an enemy in the zone are inside it. Needs a baked grid. Without a baked grid bots drive
-  straight. Baked so far: vidingsjo, linghem, vikbolandet. Spawns avoid blocked cells.
+  straight. Baked so far: vidingsjo, linghem, vikbolandet, road_to_science. Spawns avoid blocked cells.
 - `BotGroup` moves bots together: column along a route, on the first contact
   (shared to all members) line abreast towards an objective, short halts to fire.
   Bots on an ordered route that get stuck reverse and detour sideways.
@@ -409,7 +409,9 @@ shows on the minimap. This is what we test first.
   own PlayerRig isn't counted when filling teams. Missions: `vidingsjo_thunder_red` (Haningeleden) and
   `vidingsjo_thunder_orange` (Ålerydsvägen + Haningeleden), made by
   `tools/thunder_route_from_osm.py` (named OSM roads between two points -> scene; rerun
-  overwrites checkpoint moves; `--join=M` across roundabouts).
+  overwrites checkpoint moves; `--join=M` across roundabouts), and `road_to_science_thunder` (Vidingsjö -> Vallastaden,
+  5.4 km, 15 checkpoints) on the corridor map `road_to_science` (see below), made with
+  `--path=geodata/road_to_science/korridor.json` (a ready route of any roads/paths).
 - Sound: `SoundSetData` (`data/sounds/*.tres`, random variant, optional `distant` set
   far away) on `TankData.sounds` (`TankSoundData`: engine, tracks, gun, hatch),
   `ShellData` (hit armour/ground, ricochet; explosive shells add `sound_explosion` on every impact) and `MachineGunData.sound_shot` (one per bullet, `GunfireSound`, polyphonic).
@@ -438,6 +440,17 @@ shows on the minimap. This is what we test first.
   them (they overwrite the user's edits).
 - New real maps: `geodata/.venv/bin/python geodata/scripts/nytt_omrade.py <name> <lat,lon> <lat,lon>`
   (fetches OSM, LM/Copernicus, NMD; builds; imports; makes `scenes/maps/<name>.tscn`).
+- Corridor maps for ThunderRoad (`geodata/scripts/hamta_korridor.py <name> <start lat,lon> <end lat,lon>`
+  fetches the box round both ends plus 600 m, reusing laser tiles of other areas): with
+  `geodata/<name>/korridor.json` (route in SWEREF, `bredd_m`, `kant_m`) the build puts houses,
+  trees, bushes and stones only near the route (`geodata/scripts/korridor.py`, ragged edge);
+  terrain and roads cover the whole box. `road_to_science`: route from OSM along a Google Maps
+  measurement (`rutt_bild.json`, `rutt_google.png`), 500 m + 120 m edge. Steps for a new one:
+  `hamta_korridor.py` (`--via` for bends wider than the ends; the user runs it, LM login) ->
+  points read off the screenshot into `<name>/rutt_bild.json` -> `geodata/scripts/rutt_ur_bild.py
+  <name>` (route + korridor.json) -> `nytt_omrade.py` with the stored corners (build, import,
+  scene) -> `tools/corridor_map_scene.py <map> <EnemyName>` (bot, respawn, start) ->
+  `bake_tactical_grid` -> `thunder_route_from_osm.py --path=` -> `render_map_image`.
 - House style (types, colours, facades with windows, semi-realistic areas) comes from
   `geodata/stilar.json`; rebuild the map to apply changes.
 - Real maps `scenes/maps/vikbolandet.tscn` (6.6 × 7 km) and `scenes/maps/vidingsjo.tscn`

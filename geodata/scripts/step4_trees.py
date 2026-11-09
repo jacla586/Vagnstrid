@@ -98,6 +98,9 @@ if bro_mask is not None:
     bad |= bro_mask[pi, pj]
 ground = ndi.map_coordinates(h_final, [(OY - N) / RES, (E - OX) / RES], order=1, mode='nearest')
 bad |= ground < 0.3
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import korridor   # korridorkarta (korridor.json): bara träd nära rutten, ojämn kant
+bad |= ~korridor.inne(WORK, E, N, rng.random(E.size))
 keep = ~bad
 E, N, ht, ground = E[keep], N[keep], ht[keep], ground[keep]
 print('träd efter rensning', E.size)
@@ -207,6 +210,7 @@ def ok_plats(E_, N_):
         bra &= ~bm[pi_, pj_]
     if bro_mask is not None:
         bra &= ~bro_mask[pi_, pj_]
+    bra &= korridor.inne(WORK, E_, N_, rng.random(np.size(E_)))
     return bra
 
 # 1) Laserdatan: låg vegetation 0,7–3 m med många flerekon (inte tak, inte träd)

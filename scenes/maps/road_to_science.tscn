@@ -1,0 +1,83 @@
+[gd_scene format=3]
+
+[ext_resource type="Terrain3DMaterial" path="res://terrain/road_to_science/material.tres" id="1_3asct"]
+[ext_resource type="Terrain3DAssets" path="res://terrain/road_to_science/assets.tres" id="2_i26ge"]
+[ext_resource type="PackedScene" path="res://assets/maps/road_to_science/road_to_science_objekt.glb" id="3_2vfqj"]
+[ext_resource type="Script" path="res://scripts/world/mesh_collision.gd" id="4_x1o55"]
+[ext_resource type="Script" path="res://scripts/world/tree_field.gd" id="5_jv7vi"]
+[ext_resource type="PackedScene" path="res://scenes/player/player_rig.tscn" id="6_q7nom"]
+[ext_resource type="PackedScene" path="res://scenes/tank/tank.tscn" id="7_tank"]
+[ext_resource type="Script" uid="uid://t1duuxcrtose" path="res://scripts/control/bot_controller.gd" id="8_botctrl"]
+[ext_resource type="Resource" uid="uid://xul8ehta6d3o" path="res://data/bots/bot_regular.tres" id="9_botdata"]
+[ext_resource type="Script" uid="uid://bc1odctfft7i4" path="res://scripts/control/respawn_at_start.gd" id="10_respawn"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_cra06"]
+
+[sub_resource type="Sky" id="Sky_7cc1b"]
+sky_material = SubResource("ProceduralSkyMaterial_cra06")
+
+[sub_resource type="Environment" id="Environment_6ewxh"]
+background_mode = 2
+sky = SubResource("Sky_7cc1b")
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.68, 0.73, 0.8, 1)
+fog_density = 0.0004
+fog_aerial_perspective = 0.4
+fog_sky_affect = 0.25
+
+[node name="RoadToScience" type="Node3D" unique_id=1356577048]
+
+[node name="Terrain3D" type="Terrain3D" parent="." unique_id=831187503]
+data_directory = "res://terrain/road_to_science"
+material = ExtResource("1_3asct")
+assets = ExtResource("2_i26ge")
+collision_mode = 3
+vertex_spacing = 2.0
+displacement_sharpness = 0.5
+top_level = true
+metadata/_edit_lock_ = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1474468540]
+environment = SubResource("Environment_6ewxh")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1330203525]
+transform = Transform3D(0.8660254, -0.38302222, 0.32139382, 0, 0.64278764, 0.76604444, -0.5, -0.66341394, 0.5566704, 0, 0, 0)
+shadow_enabled = true
+directional_shadow_max_distance = 300.0
+
+[node name="Objects" type="Node3D" parent="." unique_id=2055962180 instance=ExtResource("3_2vfqj")]
+script = ExtResource("4_x1o55")
+collision_prefixes = PackedStringArray("Byggnader", "Broar", "Stenar")
+
+[node name="Trees" type="Node3D" parent="." unique_id=377617088]
+script = ExtResource("5_jv7vi")
+info_path = "res://assets/maps/road_to_science/trees_info.json"
+data_path = "res://assets/maps/road_to_science/trees.bin"
+
+[node name="Bushes" type="Node3D" parent="." unique_id=1055573269]
+script = ExtResource("5_jv7vi")
+info_path = "res://assets/maps/road_to_science/buskar_info.json"
+data_path = "res://assets/maps/road_to_science/buskar.bin"
+data_prefix = "field_bush_"
+visibility_end_m = 800.0
+
+[node name="PlayerRig" type="Node3D" parent="." unique_id=916201150 instance=ExtResource("6_q7nom")]
+transform = Transform3D(-0.130569, 0, -0.991439, 0, 1, 0, 0.991439, 0, -0.130569, 4583.10, 69.77, 2123.50)
+
+[node name="Enemies" type="Node3D" parent="." unique_id=1402551901]
+
+[node name="EnemyVallastaden" parent="Enemies" unique_id=1402551902 instance=ExtResource("7_tank")]
+transform = Transform3D(0.914938, 0, 0.403595, 0, 1, 0, -0.403595, 0, 0.914938, 589.40, 72.70, 604.80)
+team = 1
+
+[node name="EnemyVallastadenController" type="Node" parent="Enemies" unique_id=1402551903 node_paths=PackedStringArray("tank")]
+script = ExtResource("8_botctrl")
+bot_data = ExtResource("9_botdata")
+tank = NodePath("../EnemyVallastaden")
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="PlayerRespawn" type="Node" parent="." unique_id=1402551904 node_paths=PackedStringArray("tank")]
+script = ExtResource("10_respawn")
+tank = NodePath("../PlayerRig/Tank")

@@ -11,6 +11,11 @@ editor), plus ThunderRoadBots.
 --join=M: join road pieces whose points are this close (default 15 m; more across
 roundabouts whose ring has another name).
 
+Or take a ready route (any roads and paths, e.g. a corridor map's korridor.json with
+"rutt_sweref": [[E, N], ...] from start to end) instead of road names:
+  ... --path=geodata/road_to_science/korridor.json road_to_science <out.tscn> <NodeName>
+Heights come from the nearest point in roads.json.
+
 Example (Vidingsjö, Haningeleden):
   ... vidingsjo scenes/scenarios/vidingsjo_thunder_red.tscn VidingsjoThunderRed \\
       20,190 2667,2000 Haningeleden
@@ -66,6 +71,27 @@ def build_graph(lines):
                     if j > i and math.dist((p[0], p[2]), (pts[j][0], pts[j][2])) <= JOIN_M:
                         add_edge(i, j)
     return pts, edges
+
+
+def load_path(map_name: str, path_file: str) -> list[tuple[float, float, float]]:
+    """Route from SWEREF points (korridor.json), in Godot coordinates, heights from roads.json."""
+    out_dir = ROOT / "geodata" / map_name / "out"
+    info = json.loads((out_dir / "heightmap_info.json").read_text())
+    oe, on = info["origin_sweref_of_pixel_0_0"]
+    road_pts = [p for road in json.loads((out_dir / "roads.json").read_text())["roads"] for p in road["points"]]
+    cell: dict[tuple[int, int], list] = {}
+    for p in road_pts:
+        cell.setdefault((int(p[0] // 20), int(p[2] // 20)), []).append(p)
+    route = []
+    for e, n in json.loads((ROOT / path_file).read_text())["rutt_sweref"]:
+        x, z = e - oe, on - n
+        near = [q for dx in (-1, 0, 1) for dz in (-1, 0, 1)
+                for q in cell.get((int(x // 20) + dx, int(z // 20) + dz), [])]
+        if not near:
+            sys.exit("no road point near %.0f, %.0f" % (x, z))
+        y = min(near, key=lambda q: (q[0] - x) ** 2 + (q[2] - z) ** 2)[1]
+        route.append((x, y, z))
+    return route
 
 
 def nearest(pts, x: float, z: float, among=None) -> int:
@@ -145,20 +171,26 @@ def fmt(v: float) -> str:
 
 def main() -> None:
     global JOIN_M
+    path_file = ""
     for arg in list(sys.argv[1:]):
         if arg.startswith("--join="):
             JOIN_M = float(arg.split("=", 1)[1])
             sys.argv.remove(arg)
-    if len(sys.argv) < 7:
+        elif arg.startswith("--path="):
+            path_file = arg.split("=", 1)[1]
+            sys.argv.remove(arg)
+    if len(sys.argv) < (4 if path_file else 7):
         sys.exit(__doc__)
     map_name, out, node_name = sys.argv[1], sys.argv[2], sys.argv[3]
-    sx, sz = (float(v) for v in sys.argv[4].split(","))
-    ex, ez = (float(v) for v in sys.argv[5].split(","))
-    names = sys.argv[6:]
-    pts, edges = build_graph(load_roads(map_name, names))
-    end = nearest(pts, ex, ez)
-    start = nearest(pts, sx, sz, component(edges, end))
-    path = [pts[i] for i in shortest(pts, edges, start, end)]
+    if path_file:
+        path = load_path(map_name, path_file)
+    else:
+        sx, sz = (float(v) for v in sys.argv[4].split(","))
+        ex, ez = (float(v) for v in sys.argv[5].split(","))
+        pts, edges = build_graph(load_roads(map_name, sys.argv[6:]))
+        end = nearest(pts, ex, ez)
+        start = nearest(pts, sx, sz, component(edges, end))
+        path = [pts[i] for i in shortest(pts, edges, start, end)]
     route = resample(path, STEP_M)
     total = length(route)
     n = max(1, round(total / SPACING_M))

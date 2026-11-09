@@ -20,11 +20,16 @@ from shapely.geometry import Polygon, box
 
 DEL_RES = 0.5            # m, rutnät för uppdelningen i rektanglar
 DEL_TACKNING = 0.90      # sluta när så stor del av fotavtrycket är täckt
-DEL_MAX = 4
+DEL_MAX = 4              # delar för vanliga hus
+DEL_MAX_STORT = 24       # stora komplex (kammar, gårdar), t.ex. Galaxen på Campus Valla
+DEL_STORT_YTA = 1500.0   # m², fotavtryck från vilket ett hus räknas som stort
 DEL_MIN_YTA = 12.0       # m²
 DEL_MIN_SIDA = 3.0       # m
 KANT_INDRAG = 0.5        # m, laserceller närmare kanten än så används inte (blandar tak och mark)
 MIN_CELLER = 8
+# Minst så stor del av delens yta måste ha laserträffar på taket. Glesa träffar är ofta en kran,
+# fåglar eller brus över ett hus som inte fanns (eller saknade data) när det skannades.
+LASER_MIN_TACKNING = 0.2
 MIN_HOJD = 1.5           # m, lägre celler är mark eller buskar, inte tak
 TRIM = 0.8               # robust fel: RMS av de 80 % minsta residualerna
 STRAFF_PER_PARAM = 0.03  # m, gör att enklare modeller vinner när felen är nästan lika
@@ -39,6 +44,11 @@ PULPET_MAX_FELKVOT = 0.8    # ett pulpettak måste ha högst så stor del av bä
 TRAPPA_MIN_SKILLNAD = 0.8   # m mellan nivåerna
 TRAPPA_FELKVOT = 0.7        # trappsteget måste ha högst så stor del av den bästa hela modellens fel
 MIN_TAKFOT = 2.0
+# Ett lutande tak måste hålla sig inom laserhöjderna: nocken högst så här mycket över den högsta
+# cellen (98:e percentilen) och takfoten högst så här mycket under den lägsta. Smala delar med
+# celler nästan på en linje gav annars lutningar som extrapolerades till hundratals meter.
+TAK_MARGINAL_UPP = 1.5
+TAK_MARGINAL_NED = 3.0
 
 
 @dataclass
@@ -58,11 +68,51 @@ class Tak:
 
 def dela_i_rektanglar(poly):
     """Delar ett fotavtryck i upp till DEL_MAX rektanglar längs husets huvudriktning.
+    Stora hus (DEL_STORT_YTA) får upp till DEL_MAX_STORT delar, och det som blir över (flyglar
+    i en annan riktning) delas sedan bit för bit i sin egen riktning.
     Returnerar en lista med shapely-polygoner (rektanglar i SWEREF)."""
+    if poly.area < DEL_STORT_YTA:
+        return _dela(poly, DEL_MAX, DEL_TACKNING) or [poly.minimum_rotated_rectangle]
+    delar = _dela(poly, DEL_MAX_STORT, DEL_TACKNING)
+    from shapely.ops import unary_union
+    for _ in range(3):
+        if len(delar) >= DEL_MAX_STORT:
+            break
+        rest = poly.difference(unary_union(delar)) if delar else poly
+        # öppna upp tunna remsor (avrundning längs delarnas kanter)
+        rest = rest.buffer(-DEL_MIN_SIDA / 2, join_style=2).buffer(DEL_MIN_SIDA / 2, join_style=2)
+        bitar = sorted((b for b in getattr(rest, 'geoms', [rest]) if b.area >= DEL_MIN_YTA * 2),
+                       key=lambda b: -b.area)
+        if not bitar:
+            break
+        fler = []
+        for b in bitar:
+            plats = DEL_MAX_STORT - len(delar) - len(fler)
+            if plats <= 0:
+                break
+            # rektanglarna klipps till fotavtrycket, så de aldrig går ut i en gård
+            fler += [r for r in _dela(b, plats, DEL_TACKNING) if r.within(poly.buffer(0.3))]
+        if not fler:
+            break
+        delar += fler
+    return delar or [poly.minimum_rotated_rectangle]
+
+
+def _dela(poly, max_delar, tackning):
+    """Största rektanglarna i poly, längs den av två riktningar som täcker mest: minsta
+    omslutande rektangelns eller den dominerande väggriktningen (_vaggriktning)."""
     rect = poly.minimum_rotated_rectangle
     c = np.array(rect.exterior.coords)[:4]
     e = c[1] - c[0]
-    vinkel = math.degrees(math.atan2(e[1], e[0]))
+    vinklar = [math.degrees(math.atan2(e[1], e[0]))]
+    vagg = _vaggriktning(poly)
+    if abs((vagg - vinklar[0] + 45.0) % 90.0 - 45.0) > 0.5:
+        vinklar.append(vagg)
+    return max((_dela_langs(poly, v, max_delar, tackning) for v in vinklar), key=lambda r: r[1])[0]
+
+
+def _dela_langs(poly, vinkel, max_delar, tackning):
+    """(rektanglar, täckta celler) längs vinkel (grader)."""
     origo = poly.centroid
     lokal = rotate(poly, -vinkel, origin=origo)
     minx, miny, maxx, maxy = lokal.bounds
@@ -72,12 +122,10 @@ def dela_i_rektanglar(poly):
     T = from_origin(minx, maxy, DEL_RES, DEL_RES)
     m = rasterize([(lokal, 1)], out_shape=(H, W), transform=T, all_touched=False).astype(bool)
     total = m.sum()
-    if total == 0:
-        return [rect]
     delar, tackt = [], 0
     min_celler = DEL_MIN_YTA / DEL_RES ** 2
     min_sida = int(DEL_MIN_SIDA / DEL_RES)
-    while len(delar) < DEL_MAX and tackt < DEL_TACKNING * total:
+    while total and len(delar) < max_delar and tackt < tackning * total:
         r0, c0, h, w = _storsta_rektangel(m)
         if h * w < min_celler or min(h, w) < min_sida:
             break
@@ -85,7 +133,27 @@ def dela_i_rektanglar(poly):
         tackt += h * w
         x0 = minx + c0 * DEL_RES; y1 = maxy - r0 * DEL_RES
         delar.append(rotate(box(x0, y1 - h * DEL_RES, x0 + w * DEL_RES, y1), vinkel, origin=origo))
-    return delar or [rect]
+    return delar, tackt
+
+
+def _vaggriktning(poly):
+    """Husets huvudriktning (grader): den vinkel modulo 90° som flest meter vägg går längs
+    (alla ringar, gårdar också). Bättre än minsta omslutande rektangel för hus med en sned flygel."""
+    vinklar, langder = [], []
+    for ring in [poly.exterior, *poly.interiors]:
+        c = np.array(ring.coords)
+        d = np.diff(c, axis=0)
+        vinklar.append(np.degrees(np.arctan2(d[:, 1], d[:, 0])) % 90.0)
+        langder.append(np.hypot(d[:, 0], d[:, 1]))
+    v, w = np.concatenate(vinklar), np.concatenate(langder)
+    # viktat histogram på en cirkel (modulo 90°), utjämnat ±2°
+    hist = np.bincount(np.round(v).astype(int) % 90, weights=w, minlength=90)
+    jamn = sum(np.roll(hist, k) for k in range(-2, 3))
+    topp = int(np.argmax(jamn))
+    # medelvinkel för väggarna nära toppen
+    diff = (v - topp + 45.0) % 90.0 - 45.0
+    nara = np.abs(diff) <= 3.0
+    return float(topp + np.average(diff[nara], weights=w[nara])) if nara.any() else float(topp)
 
 
 def _storsta_rektangel(m):
@@ -140,7 +208,8 @@ def laserceller(del_poly, ok):
     hh = ok.h[r0:r1, c0:c1].ravel()
     har = ok.frac[r0:r1, c0:c1].ravel() != 255
     inne = (np.abs(uu) <= a - KANT_INDRAG) & (np.abs(vv) <= b - KANT_INDRAG) & har & (hh > MIN_HOJD)
-    if inne.sum() < MIN_CELLER:
+    yta_inne = (np.abs(uu) <= a - KANT_INDRAG) & (np.abs(vv) <= b - KANT_INDRAG)
+    if inne.sum() < max(MIN_CELLER, LASER_MIN_TACKNING * yta_inne.sum()):
         return None
     return uu[inne], vv[inne], hh[inne], (mitt, u, v, a, b)
 
@@ -234,6 +303,9 @@ def _tolka_data(data):
         kandidater.append((f + STRAFF_PER_PARAM * 2, 'talt' if a / b < TALT_KVOT else 'valmat',
                            dict(topp=p[0], takfot=p[0] - p[1] * b, k=p[1], fel=f)))
 
+    h_hog, h_lag = float(np.quantile(hh, 0.98)), float(np.quantile(hh, 0.02))
+    kandidater = [c for c in kandidater if c[1] == 'platt' or
+                  (c[2]['topp'] <= h_hog + TAK_MARGINAL_UPP and c[2]['takfot'] >= h_lag - TAK_MARGINAL_NED)]
     poang, modell, prm = min(kandidater, key=lambda x: x[0])
     if modell == 'pulpet':
         andra = [c for c in kandidater if c[1] in ('sadel', 'valmat', 'talt')]

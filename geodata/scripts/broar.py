@@ -334,9 +334,14 @@ class Broar:
                 s_p = rutt.project(Point(p))
                 sin = _sin(_riktning(rk['line'], rk['line'].project(Point(p))), _riktning(rutt, s_p))
                 halv = (rk['width'] / 2 + 0.6) / max(sin, 0.5)
-                krav = botten - fri_hojd(self.roads[j]['tags'])
+                # broar_justera.json (features.py): mer fri höjd under just den här bron
+                krav = botten - fri_hojd(self.roads[j]['tags']) - float(rk['tags'].get('_extra_fri_hojd', 0.0))
                 z_r = np.minimum(z_r, krav + RAMP_LUTNING * np.maximum(0.0, np.abs(ss - s_p) - halv))
                 bottnar.append((botten, s_p))
+                if '_extra_fri_hojd' in rk['tags']:
+                    print(f"broar: {rk['tags'].get('name', rk['tags']['highway'])} över "
+                          f"{self.roads[j]['tags'].get('name', self.roads[j]['tags']['highway'])}: "
+                          f"golv {krav:.1f} m, mark nu {float(sample(h, [p[0]], [p[1]])[0]):.1f} m")
                 if not self.bro[k] or kort_bro:
                     tak_kanter.append((s_p - halv, s_p + halv, s_p, topp))
                     if kort_bro:
@@ -434,7 +439,7 @@ class Broar:
             m.platta(d['pts'], d['topp'], d['bredd'] / 2, tjock)
             r = self.roads[d['k']]
             L = r['line']
-            if d['b'] - d['a'] > PELARE_FRAN:
+            if d['b'] - d['a'] > PELARE_FRAN and not r['tags'].get('_utan_pelare'):
                 for sp in np.arange(d['a'] + PELARE_AVSTAND, d['b'] - 5.0, PELARE_AVSTAND):
                     c = np.array(L.interpolate(sp).coords[0])
                     v = _riktning(L, sp)

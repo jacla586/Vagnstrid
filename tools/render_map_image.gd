@@ -13,6 +13,10 @@ extends SceneTree
 const TILE_PX: int = 512
 ## Frames to wait after moving the camera (terrain LOD, tree chunks, shadows).
 const SETTLE_FRAMES: int = 6
+## Shots per tile at most while waiting for the picture to stop changing.
+const MAX_SHOTS: int = 8
+## Mean byte difference between two shots below which the tile counts as settled.
+const STEADY_DIFFERENCE: float = 0.5
 ## Camera height above the highest terrain point (m).
 const CAMERA_CLEARANCE_M: float = 150.0
 ## Materials shinier than this count as water (geodata sea and lakes: 0.15).
@@ -87,10 +91,7 @@ func _run() -> void:
 		for tx: int in tiles.x:
 			var centre := area.position + Vector2(tx + 0.5, ty + 0.5) * tile_m
 			camera.global_position = Vector3(centre.x, height_range.y + CAMERA_CLEARANCE_M, centre.y)
-			for i: int in SETTLE_FRAMES:
-				await process_frame
-			var shot: Image = viewport.get_texture().get_image()
-			shot.convert(Image.FORMAT_RGB8)
+			var shot: Image = await _steady_shot(viewport)
 			image.blit_rect(shot, Rect2i(Vector2i.ZERO, shot.get_size()),
 					Vector2i(tx * TILE_PX, ty * TILE_PX))
 		print("row %d/%d" % [ty + 1, tiles.y])
@@ -107,6 +108,36 @@ func _run() -> void:
 	_write_data(png_path, Rect2(area.position, Vector2(width_px, height_px) * _metres_per_px))
 	print("wrote %s (%d x %d)" % [png_path, width_px, height_px])
 	quit()
+
+
+## A shot of the tile once the picture has stopped changing: after a long camera
+## jump (a new row) terrain LOD and tree chunks can lag several frames, and a shot
+## taken too early showed part of the previous view.
+func _steady_shot(viewport: SubViewport) -> Image:
+	var last: Image = null
+	for attempt: int in MAX_SHOTS:
+		for i: int in SETTLE_FRAMES:
+			await process_frame
+		await RenderingServer.frame_post_draw
+		var shot: Image = viewport.get_texture().get_image()
+		shot.convert(Image.FORMAT_RGB8)
+		if last != null and _difference(shot, last) < STEADY_DIFFERENCE:
+			return shot
+		last = shot
+	push_warning("tile never settled; using the last shot")
+	return last
+
+
+## Mean absolute difference per byte between two same-sized RGB8 images (sampled).
+func _difference(a: Image, b: Image) -> float:
+	var da: PackedByteArray = a.get_data()
+	var db: PackedByteArray = b.get_data()
+	var total: int = 0
+	var count: int = 0
+	for i: int in range(0, mini(da.size(), db.size()), 97):
+		total += absi(da[i] - db[i])
+		count += 1
+	return float(total) / maxi(count, 1)
 
 
 ## The heightmap's area from heightmap_info.json, or all Terrain3D regions.

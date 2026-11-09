@@ -71,6 +71,19 @@ def build(osm_path):
     if bort.exists():
         for wid in json.loads(bort.read_text()):
             ways.get(wid, ways.get(str(wid), {})).get('tags', {}).pop('bridge', None)
+    # <projekt>/broar_justera.json: {"<OSM-väg-id>": {"utan_pelare": true, "extra_fri_hojd": 1.0}}
+    # Bron får inga pelare, och marken under den sänks så mycket mer än vanligt (broar.py).
+    justera = WORK.parent / 'broar_justera.json'
+    if justera.exists():
+        for wid, val in json.loads(justera.read_text()).items():
+            t = ways.get(wid, ways.get(int(wid) if wid.isdigit() else wid, {})).get('tags')
+            if t is None:
+                print(f'broar_justera.json: ingen väg {wid}')
+                continue
+            if val.get('utan_pelare'):
+                t['_utan_pelare'] = 'yes'
+            if val.get('extra_fri_hojd'):
+                t['_extra_fri_hojd'] = str(float(val['extra_fri_hojd']))
 
     for wid, w in ways.items():
         t = w['tags']

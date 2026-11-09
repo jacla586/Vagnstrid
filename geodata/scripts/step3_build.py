@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta
+import takform, husgeometri, broar, stenar, okarta, korridor
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -324,7 +324,7 @@ if STEN_FIL.exists():
     def sten_hinder(E, N):
         c, r_ = to_px(E, N)
         i_, j_ = int(round(r_)), int(round(c))
-        return not (0 <= i_ < H and 0 <= j_ < W) or bool(stopp[i_, j_])
+        return not (0 <= i_ < H and 0 <= j_ < W) or bool(stopp[i_, j_]) or not korridor.inne(WORK, E, N)[0]
     scene.graph.update(frame_to='Stenar', frame_from=scene.graph.base_frame)
     auto = np.load(str(STEN_FIL))
     inmatta = []
@@ -504,7 +504,8 @@ if OBJ:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from laserhus import Objekthojd
     laser = Objekthojd(OBJ)
-osm_b = [(gm, t) for gm, t in feat['buildings'] if BOX.intersects(gm)]
+osm_b = [(gm, t) for gm, t in feat['buildings'] if BOX.intersects(gm)
+         and korridor.inne(WORK, gm.centroid.x, gm.centroid.y)[0]]   # korridorkarta: bara nära rutten
 bpolys = []
 n_h = 0
 for k, (gm, t) in enumerate(osm_b):
@@ -524,6 +525,8 @@ if laser:
     for rect, poly in laser.detect(exclude=excl):
         c_, r_ = to_px(rect.centroid.x, rect.centroid.y)
         if not land[int(np.clip(round(r_), 0, H - 1)), int(np.clip(round(c_), 0, W - 1))]:
+            continue
+        if not korridor.inne(WORK, rect.centroid.x, rect.centroid.y)[0]:
             continue
         hh = laser.heights_in(poly)
         add_building(poly, {}, 'Byggnader_laser', hh)
