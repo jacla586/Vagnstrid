@@ -197,7 +197,7 @@ func _tri(a: Vector3, b: Vector3, c: Vector3, out: Vector3, mat: Mat) -> void:
 	for k: int in 3:
 		cu.append_array([spin.x, spin.y, spin.z, spin.w])
 	_customs[mat] = cu
-	if spin.w > 0.0:
+	if spin != Vector4.ZERO:
 		_spun[mat] = true
 
 

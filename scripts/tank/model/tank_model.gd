@@ -112,9 +112,15 @@ func _build(d: TankData) -> Dictionary:
 	out["turret"] = turret.build()
 	out["mantlet"] = mantlet.build()
 	out["gun"] = gun.build()
+	# Armour shapes stop above the track bottoms (they rest on the ground; see
+	# TankData.track_shape_lift_m), so they don't scrape it.
+	var floor_y: float = yb + d.track_shape_lift_m
 	var hs: Array[PackedVector3Array] = []
 	for g: String in _hull_groups:
-		hs.append(hull.points(g))
+		var pts: PackedVector3Array = hull.points(g)
+		for i: int in pts.size():
+			pts[i].y = maxf(pts[i].y, floor_y)
+		hs.append(pts)
 	var ts: Array[PackedVector3Array] = []
 	for g: String in _turret_groups:
 		ts.append(turret.points(g))
@@ -488,11 +494,14 @@ func _tracks(rw: float, wheels: int, span: float, sprocket_front: bool, rollers:
 		var g: String = "track_l" if s < 0.0 else "track_r"
 		var x_in: float = s * (W * 0.5 - tw)
 		var x_out: float = s * W * 0.5
+		# The bottom run follows the ground (tank_track.gdshader); the top stays.
+		hull.spin = Vector4(yb, yb + 0.5 * rise, 0.0, 0.0)
 		hull.extrude_x(profile, minf(x_in, x_out), maxf(x_in, x_out), MeshKit.Mat.TRACK, g)
+		hull.spin = Vector4.ZERO
 		_hull_groups.append(g)
 		for i: int in wheels:
 			var z: float = lerpf(-span, span, float(i) / float(maxi(wheels - 1, 1)))
-			_wheel(s, z, yb + rw + 0.03, rw)
+			_wheel(s, z, yb + rw + 0.03, rw, true)
 		var rs: float = 0.22 * rise
 		var z_drive: float = (-1.0 if sprocket_front else 1.0) * (L * 0.5 - 0.1 - rs)
 		_wheel(s, z_drive, yb + 0.5 * rise + 0.04, rs)
@@ -502,18 +511,19 @@ func _tracks(rw: float, wheels: int, span: float, sprocket_front: bool, rollers:
 			_wheel(s, z, yk - 0.07, 0.06)
 
 
-func _wheel(s: float, z: float, y: float, r: float) -> void:
+func _wheel(s: float, z: float, y: float, r: float, road: bool = false) -> void:
 	var xo: float = s * W * 0.5
-	# The wheel turns (tank_wheel.gdshader): bolts round the hub show it.
-	hull.spin = Vector4(y, z, 1.0 / maxf(r, 0.01), 1.0)
+	# The wheel turns (tank_wheel.gdshader): bolts round the hub show it. Road wheels
+	# also ride with the ground under the track (spin.w 2).
+	hull.spin = Vector4(y, z, 1.0 / maxf(r, 0.01), 2.0 if road else 1.0)
 	hull.cylinder(Vector3(xo - s * 0.14, y, z), Vector3(xo + s * 0.03, y, z), r, r, 14, MeshKit.Mat.WHEEL)
 	hull.cylinder(Vector3(xo + s * 0.03, y, z), Vector3(xo + s * 0.07, y, z), r * 0.35, r * 0.3, 8, MeshKit.Mat.WHEEL)
 	for i: int in 5:
 		var a: float = TAU * float(i) / 5.0
 		var c := Vector3(xo + s * 0.04, y + cos(a) * r * 0.62, z + sin(a) * r * 0.62)
 		hull.box(c, Vector3(0.04, r * 0.16, r * 0.16), MeshKit.Mat.WHEEL)
+	hull.cylinder(Vector3(xo + s * 0.07, y, z), Vector3(xo + s * 0.075, y, z), r * 0.12, r * 0.12, 6, MeshKit.Mat.WHEEL)
 	hull.spin = Vector4.ZERO
-	hull.cylinder(Vector3(xo + s * 0.07, y, z), Vector3(xo + s * 0.075, y, z), r * 0.12, r * 0.12, 6, MeshKit.Mat.DARK)
 
 
 ## The hull between the tracks, from the floor to the track tops; sloped lower plates.

@@ -31,10 +31,10 @@ uniform float mud_height = 0.75;
 uniform float roughness_value = 0.85;
 
 // 0 = clean .. 1 = covered in dust (driving); 0 = dry .. 1 = soaked (rain).
-instance uniform float dust_amount = 0.25;
-instance uniform float wetness = 0.0;
+instance uniform float dust_amount : instance_index(0) = 0.25;
+instance uniform float wetness : instance_index(1) = 0.0;
 // This mesh's local height of the track bottoms (mud measures from it).
-instance uniform float base_y = -0.7;
+instance uniform float base_y : instance_index(2) = -0.7;
 
 varying vec3 local_pos;
 varying vec3 local_normal;

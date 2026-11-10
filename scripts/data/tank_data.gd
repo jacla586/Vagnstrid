@@ -42,6 +42,12 @@ extends Resource
 @export var suspension_frequency_hz: float = 1.5
 ## 1.0 = critically damped (no bounce), lower = bouncier.
 @export var suspension_damping_ratio: float = 0.6
+## At rest the track bottoms sit this far above the ground (m): the rays start inside
+## the hull so the springs' sag brings the tracks down onto it (Tank.ray_origin_y).
+@export var track_ground_gap_m: float = 0.04
+## The armour shapes of the tracks (and a plain box hull) stop this far above the track
+## bottoms (m), so they don't scrape the ground when the hull rocks or crosses bumps.
+@export var track_shape_lift_m: float = 0.22
 ## Speeding up lifts the nose, braking dips it. Full throttle or full braking pitch the
 ## hull as by a force of mass × pitch_rock_accel this far above the tracks (m), the
 ## same for speeding up and braking (the share of the tank's own limit counts, not

@@ -263,7 +263,14 @@ shows on the minimap. This is what we test first.
   physics rate, blended between ticks) turns the wheels (`tank_wheel.gdshader`: MeshKit
   `spin` puts each wheel's centre and 1/radius in CUSTOM0; bolts show the turning) and
   moves the track links (`tank_track.gdshader`, instance uniforms `wheel_dist_l/r`,
-  `track_dist_l/r`); the antenna whip is its own mesh ("Antenna", TankModel "antenna") and
+  `track_dist_l/r`); road wheels (MeshKit spin.w 2) and the bottom track run follow the
+  ground under each track (`ground_fit`, instance index 7: TankLooks casts two rays a side at
+  15 Hz for tanks within 250 m of the camera). Tracks rest on the ground: suspension rays
+  start `Tank.ray_origin_y()` (track bottoms + the springs' sag − `TankData.track_ground_gap_m`
+  0.04), and hull armour shapes (and a plain box hull) stop `track_shape_lift_m` (0.22) above
+  the track bottoms so they don't scrape. Instance uniforms of shaders that share a mesh share its slots: give
+  each a fixed `instance_index(n)` (paint 0-2, wheel 3-4, track 5-6, ground 7), or they overwrite
+  each other (the hull went black after driving); the antenna whip is its own mesh ("Antenna", TankModel "antenna") and
   sways on a damped spring pushed by the tank's acceleration. Battle marks (`BattleMarks`): every gun round
   (>= 20 mm) striking a tank leaves a scorch Decal (soot round a bright gouge) on the hull or
   turret, from `Shell._play_impact` on every machine (clients' cosmetic shells too, nothing
@@ -484,7 +491,9 @@ shows on the minimap. This is what we test first.
   (armour: tanks, commander, wrecks; building: other static bodies; wood: trees; else ground),
   bullets (< 20 mm) their small set, explosive rounds add `explosion`; size = calibre / 75.
   `Tank._muzzle_effects`: flash plus blast dust when the muzzle is within
-  `blast_dust_height_m` of the ground. `TankDust` (made by Tank, like TankExhaust) throws dust
+  `blast_dust_height_m` of the ground. Flash and gun smoke grow as (calibre/75)^
+  `muzzle_calibre_exponent` (0.25), the dust takes `blast_dust_calibre_share` of that and
+  shrinks with muzzle height (`blast_dust_high_share`). `TankDust` (made by Tank, like TankExhaust) throws dust
   behind the tracks by speed times `WeatherData.dust_factor` (rain 0). `Burning` (burning.tscn)
   is flames + a smoke column (`fire_flames`, `fire_smoke`). `GunSmoke` uses `gun_smoke` (8 puffs,
   `BurstData.near_fade_m` dithers puffs near the camera out: three shots in front of the

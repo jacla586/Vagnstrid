@@ -19,6 +19,15 @@ extends Resource
 ## Dust kicked up under the muzzle when it is within blast_dust_height_m of the ground.
 @export var muzzle_blast_dust: EffectData
 @export var blast_dust_height_m: float = 3.5
+## Muzzle flash and gun smoke grow as (calibre / 75 mm) to this power: 0.5 made a 152 mm
+## shot fill the view, 0.25 gives it ~1.2 times a 75 mm's.
+@export var muzzle_calibre_exponent: float = 0.25
+## How much of the gun's calibre scale the blast dust takes (0 = same for every gun, 1 =
+## grows like the flash: a 152 mm blast covered the whole scene).
+@export var blast_dust_calibre_share: float = 0.3
+## Blast dust size with the muzzle at blast_dust_height_m, as a share of right at the
+## ground (in between: linear).
+@export var blast_dust_high_share: float = 0.6
 ## The cloud a main-gun shot leaves at the muzzle (GunSmoke; +Y along the bore).
 @export var gun_smoke: BurstData
 @export_group("Tanks")

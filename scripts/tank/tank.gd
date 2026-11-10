@@ -321,6 +321,18 @@ func _ready() -> void:
 		add_child(looks)
 
 
+## Height (hull frame) the suspension rays start at: the track bottoms (-H/2) lifted by
+## the springs' sag at rest less the gap, so a standing tank's tracks sit on the ground
+## and not on stilts above it.
+func ray_origin_y() -> float:
+	var omega: float = TAU * data.suspension_frequency_hz
+	var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
+	var sag: float = gravity / (omega * omega)
+	var lift: float = clampf(data.suspension_rest_length - sag - data.track_ground_gap_m,
+			0.0, data.suspension_rest_length)
+	return -data.hull_size.y * 0.5 + lift
+
+
 ## Sizes the hull, tracks, turret and gun from the data (TankData geometry; the scene
 ## is today's medium tank, so its own measures are the reference). Shapes and meshes
 ## are copied first: they are shared by every tank made from the scene. Suspension rays
@@ -343,8 +355,10 @@ func apply_geometry() -> void:
 	var tr: float = data.turret_radius_m / BASE_TURRET_RADIUS
 	var th: float = data.turret_height_m
 	var box := (hull_shape.shape as BoxShape3D).duplicate() as BoxShape3D
-	box.size = hull
+	# The box stops above the track bottoms (they rest on the ground), see TankData.
+	box.size = hull - Vector3(0.0, data.track_shape_lift_m, 0.0)
 	hull_shape.shape = box
+	hull_shape.position = Vector3(0.0, data.track_shape_lift_m * 0.5, 0.0)
 	var hull_mesh: MeshInstance3D = $Visual/Hull
 	var hm := (hull_mesh.mesh as BoxMesh).duplicate() as BoxMesh
 	hm.size = BASE_HULL_MESH * s
@@ -384,7 +398,7 @@ func apply_geometry() -> void:
 	for child: Node in suspension.get_children():
 		var ray := child as RayCast3D
 		if ray != null:
-			ray.position = Vector3(signf(ray.position.x) * BASE_TRACK_X * s.x, -hull.y * 0.5,
+			ray.position = Vector3(signf(ray.position.x) * BASE_TRACK_X * s.x, ray_origin_y(),
 					ray.position.z * s.z)
 
 
@@ -452,7 +466,7 @@ func _apply_model() -> void:
 	for child: Node in ($Suspension as Node3D).get_children():
 		var ray := child as RayCast3D
 		if ray != null:
-			ray.position = Vector3(signf(ray.position.x) * track_x, -data.hull_size.y * 0.5,
+			ray.position = Vector3(signf(ray.position.x) * track_x, ray_origin_y(),
 					ray.position.z * data.hull_size.z / BASE_HULL.z)
 
 
@@ -1806,14 +1820,18 @@ func _muzzle_effects(at: Vector3, direction: Vector3) -> void:
 	if not hit.is_empty():
 		# The blast spreads out ahead of the muzzle.
 		var ground: Vector3 = hit["position"] + Vector3(direction.x, 0.0, direction.z) * 1.5
-		EffectFx.play(fx.muzzle_blast_dust, get_parent(), ground, hit["normal"], size)
+		var height: float = at.y - (hit["position"] as Vector3).y
+		var dust: float = (1.0 + (size - 1.0) * fx.blast_dust_calibre_share) \
+				* lerpf(1.0, fx.blast_dust_high_share, clampf(height / fx.blast_dust_height_m, 0.0, 1.0))
+		EffectFx.play(fx.muzzle_blast_dust, get_parent(), ground, hit["normal"], dust)
 
 
-## Gun smoke cloud size: 1 for a 75 mm gun, more for bigger ones.
+## Muzzle flash and gun smoke size: 1 for a 75 mm gun, more for bigger ones
+## ((calibre / 75) ^ EffectsSetData.muzzle_calibre_exponent).
 func _gun_smoke_scale() -> float:
 	var shell_data: ShellData = get_loaded_shell()
 	var calibre: float = shell_data.caliber_mm if shell_data != null else 75.0
-	return sqrt(maxf(calibre, 10.0) / 75.0)
+	return pow(maxf(calibre, 10.0) / 75.0, EffectFx.SET.muzzle_calibre_exponent)
 
 
 func _apply_suspension(state: PhysicsDirectBodyState3D, rays: Array[RayCast3D],
