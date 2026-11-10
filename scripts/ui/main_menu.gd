@@ -8,6 +8,7 @@ const GARAGE_SCENE: String = "res://scenes/menu/garage.tscn"
 const MAP_DIRS: Array[String] = ["res://scenes/scenarios/", "res://scenes/maps/"]
 const COLUMN_WIDTH: float = 330.0
 const COLUMN_MARGIN: float = 44.0
+const CREDITS_PATH: String = "res://data/ui/credits.txt"
 
 var _name: LineEdit
 var _map: OptionButton
@@ -19,6 +20,7 @@ var _tank: OptionButton
 var _team_size: SpinBox
 var _weather: OptionButton
 var _tank_configs: Array[TankConfig] = []
+var _credits: Control
 
 
 func _ready() -> void:
@@ -137,6 +139,54 @@ func _ready() -> void:
 	NetSession.instance.status_changed.connect(func(t: String) -> void:
 		if is_instance_valid(_status):
 			_status.text = t)
+	var credits: Button = _button("Credits", _show_credits)
+	credits.flat = true
+	credits.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	credits.add_theme_color_override("font_color", MenuTheme.MUTED)
+	credits.add_theme_font_size_override("font_size", 12)
+	box.add_child(credits)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _credits != null and _credits.visible and event.is_action_pressed("ui_cancel"):
+		_credits.hide()
+		get_viewport().set_input_as_handled()
+
+
+## Who made what (data/ui/credits.txt) over a dimmed menu; Close or Esc hides it.
+func _show_credits() -> void:
+	if _credits != null:
+		_credits.show()
+		return
+	_credits = ColorRect.new()
+	(_credits as ColorRect).color = Color(MenuTheme.SHADE, 0.75)
+	_credits.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_credits)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_credits.add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(560, 500)
+	center.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	panel.add_child(box)
+	MenuTheme.add_title(box, "CREDITS", 24)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	box.add_child(scroll)
+	var text := Label.new()
+	text.text = FileAccess.get_file_as_string(CREDITS_PATH)
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.add_theme_font_size_override("font_size", 12)
+	text.add_theme_color_override("font_color", MenuTheme.TEXT)
+	scroll.add_child(text)
+	var close: Button = _button("Close", func() -> void: _credits.hide())
+	close.size_flags_horizontal = Control.SIZE_SHRINK_END
+	close.custom_minimum_size.x = 110
+	box.add_child(close)
 
 
 func _add_title(box: Container) -> void:
