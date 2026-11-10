@@ -5,6 +5,7 @@ out/*
 data/*.tif
 data/laser
 data/nmd/
+data/jordbruk_*.geojson
 .venv/
 __pycache__/
 /*.tif
