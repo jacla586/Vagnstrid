@@ -187,11 +187,20 @@ shows on the minimap. This is what we test first.
   nothing), times a grazing factor (full along the ground, none looked down on from 35°), multiplies
   spot time (`hide_spot_time_factor`) and cuts range (`hide_range_share`). Players see the same:
   `GroundCoverField` (player rig) draws blade clumps (MultiMesh per 24 m cell and class,
-  `ground_cover.gdshader`, wind) within `draw_radius_m` (55 m) of the camera, all at once after a
-  camera jump; beyond, `GroundCoverCanopy` shows the baked `assets/maps/<map>/<map>_markvegetation.glb`
+  `ground_cover.gdshader`, wind) by "seen" distance = true distance / zoom (camera FOV against
+  `reference_fov_deg` 70): all round to `blade_range_m` (130), in a zoomed view's wedge (sight,
+  binoculars) to 130 × zoom, at most `max_reach_m` (800). Full density to `full_density_m` (30), then
+  the shader keeps clumps of rank (INSTANCE_CUSTOM.r) < (30/d)^`thin_exponent` / zoom^`zoom_thin_exponent`,
+  widens survivors (≤ `max_widen`), shrinks those about to drop (no popping) and flattens far colours.
+  A cell holds only the share its nearest point needs (levels 1, 1/4, 1/16...: the first tries of one
+  fixed sequence, so finer rebuilds add clumps); built by `GroundCoverCellBuild` in slices within
+  `build_ms_per_frame` (2 ms), near cells at once after a camera jump; unwanted cells hide, freed after
+  `keep_hidden_s`. Note: `PROJECTION_MATRIX[1][1]` is negative in Vulkan (use abs). Beyond,
+  `GroundCoverCanopy` shows the baked `assets/maps/<map>/<map>_markvegetation.glb`
   (4 m cells on the ground, class in UV.x; height and colour from the .tres by shader): opaque far,
-  dithered near the blade field's edge and thinned when looked down on (same angles as the rule), so a
-  man lying in a far field is hidden to the eye as to bots, with nothing marking him. Cost ~0.1-1 ms.
+  dithered in where the blades thin (`canopy_fade_start..end` × blade range, seen distance) and thinned
+  when looked down on (same angles as the rule), so a man lying in a far field is hidden to the eye as
+  to bots, with nothing marking him. Cost: ~0-0.4 ms normally, ~1-1.3 ms in sight/binoculars over fields.
   So far: Vidingsjö. Class 8 'vass' (reed, 1.6 m) belts the lakes' shores (4 m up the land, 6 m
   into the water).
 - Water: `WaterLook` (player rig) puts `assets/shaders/water.gdshader` on the map glb's water meshes
@@ -284,6 +293,11 @@ shows on the minimap. This is what we test first.
   "Närträff!" on `Tank.near_missed` (clients by `rpc_near_miss`), "Föraren/Skytten träffad!" on a
   crew wound, "Vagnchef träffad!" on `Tank.commander_wounded`, played by `SquadRadio`.
   MG/rifle results are `HitResult.bullet`: no hit text for the shooter.
+- The open hatch lid stands up behind the commander and shields him from the rear:
+  `Tank.hatch_lid_shields(from, to)` (segment through the lid's disc in its real pose) stops bullets
+  (< 20 mm, `CommanderHitbox.on_shell_hit`, checked `LID_CHECK_M` back along the path) and HE
+  fragments (`fragment_shielded`, optional fragment-target method used by `Explosion`); gun rounds go
+  through. No collider (the commander's own sight lines aren't blocked).
 - Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
   only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
 - Bots: `BotController` (extends `TargetTankController`, so patrols waypoints) with
@@ -355,7 +369,7 @@ shows on the minimap. This is what we test first.
   the cupola, made by `Tank._add_commander_figure`): it rises with the hatch like the
   hitbox, turns with the roof MG, hides when shut or knocked out; uniform PAINT, helmet
   MARK (friends olive with a UN-blue helmet, enemies camouflaged). The own commander's
-  view doesn't draw its own figure (render layer `CommanderCamera.OWN_COMMANDER_LAYER` 3,
+  view doesn't draw its own figure, roof MG post or hatch lid (render layer `CommanderCamera.OWN_COMMANDER_LAYER` 3,
   `Tank.set_commander_figure_layer`); every other view does. `MeshKit.Mat.SKIN` for faces. `MeshKit` builds flat-shaded convex
   solids (blocks cut by plate planes, cylinders, extruded track profiles) with named
   point groups -> one `ConvexPolygonShape3D` per group (several hull and turret shapes;
@@ -645,7 +659,8 @@ shows on the minimap. This is what we test first.
   heightmap, glb group `Jarnvag` (ballast, sleepers, rails, catenary wires; no collision, tanks drive
   over) and `Banhinder` (catenary masts, rail bridge decks, platforms; collision). So far only Linghem.
 - Orienteering maps (club-owned, private use only, in `geodata/<area>/data/`, outside git) add
-  boulders (`Stenar`), thickets (extra bushes) and marsh/open-land classes: `geodata/scripts/okarta.py`.
+  boulders (`Stenar`; `StoneLook` in the player rig gives them `assets/shaders/stone.gdshader`: flat
+  facets from screen derivatives, mottled granite, lichen, moss on top, wet in rain), thickets (extra bushes) and marsh/open-land classes: `geodata/scripts/okarta.py`.
 - Map pictures (minimap, big map on M): `tools/render_map_image.gd -- <map>` renders
   `scenes/maps/<map>.tscn` from above (needs a window, not `--headless`; add
   `--disable-vsync`) into `assets/maps/<map>/map_image.png` + `data/maps/<map>_map.tres`

@@ -41,6 +41,7 @@
 [ext_resource type="Script" path="res://scripts/world/ground_cover/ground_cover_field.gd" id="90_ground_cover"]
 [ext_resource type="Script" path="res://scripts/world/ground_cover/ground_cover_canopy.gd" id="91_ground_canopy"]
 [ext_resource type="Script" path="res://scripts/world/water_look.gd" id="92_water_look"]
+[ext_resource type="Script" path="res://scripts/world/stone_look.gd" id="96_stone_look"]
 [ext_resource type="Script" path="res://scripts/world/prop_break.gd" id="93_prop_break"]
 [ext_resource type="Resource" path="res://data/world/prop_break.tres" id="94_prop_break_data"]
 
@@ -269,6 +270,9 @@ script = ExtResource("91_ground_canopy")
 
 [node name="WaterLook" type="Node" parent="."]
 script = ExtResource("92_water_look")
+
+[node name="StoneLook" type="Node" parent="."]
+script = ExtResource("96_stone_look")
 
 [node name="PropBreak" type="Node" parent="."]
 script = ExtResource("93_prop_break")

@@ -130,6 +130,8 @@ const BASE_SPOT_POINTS: Array[Vector3] = [Vector3(0.0, 0.3, 0.0), Vector3(0.0, 1
 		Vector3(0.0, 0.4, -2.9), Vector3(0.0, 0.4, 2.9)]
 ## Visual only: how far the hatch lid swings open.
 const HATCH_OPEN_ANGLE_DEG: float = 110.0
+## The hatch lid's radius if its mesh isn't a cylinder (hatch_lid_shields).
+const HATCH_LID_RADIUS_M: float = 0.32
 
 @export var data: TankData
 ## Built in the garage: if set, `data` is built from it (TankBuilder) at start.
@@ -522,9 +524,9 @@ func _add_commander_figure() -> void:
 	($Visual/Turret/Cupola as Node3D).add_child(_commander_figure)
 
 
-## Puts the commander's figure and the roof MG's pintle post on render layer `layer` alone:
-## the own commander's view (CommanderCamera) doesn't render them, so his own head and the
-## post right in front of the cupola aren't in the way. The gun itself stays visible.
+## Puts the commander's figure, the roof MG's pintle post and the hatch lid on render layer
+## `layer` alone: the own commander's view (CommanderCamera) doesn't render them, so his own
+## head, the post right in front of the cupola and the lid behind him aren't in the way. The gun itself stays visible.
 func set_commander_figure_layer(layer: int) -> void:
 	var mask: int = 1 << (clampi(layer, 1, 20) - 1)
 	if _commander_figure != null:
@@ -532,6 +534,11 @@ func set_commander_figure_layer(layer: int) -> void:
 	var mount := get_node_or_null("Visual/Turret/RoofMG/Mount") as MeshInstance3D
 	if mount != null:
 		mount.layers = mask
+	# The open lid stands up right behind his head: a flat green plate that only blocks
+	# the view to the rear. Others still see it.
+	var lid := get_node_or_null("Visual/Turret/Cupola/HatchHinge/HatchLid") as MeshInstance3D
+	if lid != null:
+		lid.layers = mask
 
 
 ## The roof MG's look (RoofMgModel, a Browning M2-like gun) on every tank, model or not.
@@ -815,6 +822,31 @@ func wound_commander() -> void:
 	_update_hatch(0.0)
 	_update_commander_hitbox()
 	commander_wounded.emit()
+
+
+## True when the open hatch lid lies across the straight line `from` -> `to` (a shot or
+## fragment on its way to the exposed commander): the lid, standing up behind him, stops
+## bullets and splinters from the rear. Gun rounds go through (see CommanderHitbox).
+func hatch_lid_shields(from: Vector3, to: Vector3) -> bool:
+	if _hatch_progress <= 0.0:
+		return false
+	var lid := get_node_or_null("Visual/Turret/Cupola/HatchHinge/HatchLid") as MeshInstance3D
+	if lid == null:
+		return false
+	var radius: float = HATCH_LID_RADIUS_M
+	var cyl := lid.mesh as CylinderMesh
+	if cyl != null:
+		radius = maxf(cyl.top_radius, cyl.bottom_radius)
+	var t: Transform3D = lid.global_transform
+	var normal: Vector3 = t.basis.y.normalized()
+	radius *= t.basis.x.length()
+	var centre: Vector3 = t.origin
+	var d0: float = (from - centre).dot(normal)
+	var d1: float = (to - centre).dot(normal)
+	if d0 * d1 > 0.0 or is_equal_approx(d0, d1):
+		return false   # both on one side of the lid's plane (or along it)
+	var cross: Vector3 = from.lerp(to, d0 / (d0 - d1))
+	return cross.distance_to(centre) <= radius
 
 
 ## Called by the commander hitbox when something hits the exposed commander.

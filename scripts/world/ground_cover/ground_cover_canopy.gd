@@ -6,14 +6,14 @@ extends Node3D
 ## marking where he is. The mesh is baked by the geodata pipeline
 ## (markvegetation.lager_glb: 4 m cells on the ground, class index in UV.x) into
 ## assets/maps/<map>/<map>_markvegetation.glb; height and colour per class come from
-## data/world/ground_cover.tres through the shader. Pieces near the blade field
-## (GroundCoverField), or all of them when the camera is high above the ground, use the
-## dithered material (fades in under the outer blades, thins when looked down on);
-## the rest the cheap opaque one. Lives in the player rig; cosmetic and local.
+## data/world/ground_cover.tres through the shader. Pieces within the blade field's reach
+## (GroundCoverField; farther in a zoomed view), or all of them when the camera is high
+## above the ground, use the dithered material (fades in where the blades thin out, by the
+## same seen distance, and thins when looked down on); the rest the cheap opaque one. Lives in the player rig; cosmetic and local.
 
 const NEAR_SHADER: String = "res://assets/shaders/ground_cover_canopy.gdshader"
 const FAR_SHADER: String = "res://assets/shaders/ground_cover_canopy_far.gdshader"
-## Pieces closer than the blade radius + this use the dithered material.
+## Pieces closer than the blade range (× zoom) + this use the dithered material.
 const NEAR_MARGIN_M: float = 30.0
 ## With the camera this high above the ground everything is dithered (thins from above).
 const HIGH_CAMERA_M: float = 8.0
@@ -50,7 +50,10 @@ func _process(_delta: float) -> void:
 	var p: Vector3 = cam.global_position
 	var ground: float = _gc.ground_y(p.x, p.z)
 	var high: bool = not is_nan(ground) and p.y - ground > HIGH_CAMERA_M
-	var near_r: float = _gc.rules.draw_radius_m + NEAR_MARGIN_M
+	var rules: GroundCoverSetData = _gc.rules
+	var zoom: float = maxf(tan(deg_to_rad(rules.reference_fov_deg) * 0.5)
+			/ tan(deg_to_rad(cam.fov) * 0.5), 1.0)
+	var near_r: float = minf(rules.blade_range_m * zoom, rules.max_reach_m) + NEAR_MARGIN_M
 	for i: int in _pieces.size():
 		var b: AABB = _boxes[i]
 		var q := Vector3(clampf(p.x, b.position.x, b.end.x), p.y, clampf(p.z, b.position.z, b.end.z))
@@ -79,8 +82,10 @@ func _load() -> bool:
 		var c: Color = (k.color_a.lerp(k.color_b, 0.4) * 0.85).srgb_to_linear() if k != null else Color.BLACK
 		colors.append(Vector3(c.r, c.g, c.b))
 	_near_mat = _material(NEAR_SHADER, heights, colors)
-	_near_mat.set_shader_parameter("fade_in_start", _gc.rules.draw_radius_m - _gc.rules.fade_m - 3.0)
-	_near_mat.set_shader_parameter("fade_in_end", _gc.rules.draw_radius_m - _gc.rules.fade_m)
+	var rules: GroundCoverSetData = _gc.rules
+	_near_mat.set_shader_parameter("fade_in_start", rules.blade_range_m * rules.canopy_fade_start)
+	_near_mat.set_shader_parameter("fade_in_end", rules.blade_range_m * rules.canopy_fade_end)
+	_near_mat.set_shader_parameter("ref_tan_half", tan(deg_to_rad(rules.reference_fov_deg) * 0.5))
 	_near_mat.set_shader_parameter("grazing_full_deg", _gc.rules.grazing_full_deg)
 	_near_mat.set_shader_parameter("grazing_none_deg", _gc.rules.grazing_none_deg)
 	_far_mat = _material(FAR_SHADER, heights, colors)

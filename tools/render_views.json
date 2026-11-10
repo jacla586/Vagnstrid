@@ -322,6 +322,90 @@
 			],
 			"look_height_m": 0.3,
 			"fov": 60
+		},
+		{
+			"name": "24_stone_close",
+			"at": [
+				397.2,
+				1541.6
+			],
+			"height_m": 1.7,
+			"look_at": [
+				400.4,
+				1545.3
+			],
+			"look_height_m": 0.4,
+			"fov": 60
+		},
+		{
+			"name": "25_stones_mid",
+			"at": [
+				372,
+				1522
+			],
+			"height_m": 2.5,
+			"look_at": [
+				398,
+				1540
+			],
+			"look_height_m": 0.5,
+			"fov": 60
+		},
+		{
+			"name": "26_stone_group",
+			"at": [
+				94,
+				1108
+			],
+			"height_m": 2.5,
+			"look_at": [
+				106,
+				1123
+			],
+			"look_height_m": 0.5,
+			"fov": 60
+		},
+		{
+			"name": "27_field_binoculars",
+			"at": [
+				400,
+				560
+			],
+			"height_m": 3.0,
+			"look_at": [
+				700,
+				760
+			],
+			"look_height_m": 1.0,
+			"fov": 7
+		},
+		{
+			"name": "28_field_gunner",
+			"at": [
+				400,
+				560
+			],
+			"height_m": 2.4,
+			"look_at": [
+				700,
+				760
+			],
+			"look_height_m": 1.0,
+			"fov": 24
+		},
+		{
+			"name": "29_field_commander",
+			"at": [
+				400,
+				560
+			],
+			"height_m": 3.0,
+			"look_at": [
+				700,
+				760
+			],
+			"look_height_m": 1.0,
+			"fov": 70
 		}
 	],
 	"linghem": [

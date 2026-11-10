@@ -3,6 +3,8 @@ extends SceneTree
 ## (tools/render_views.json) in one or more weather presets, and measures each view.
 ##   godot --path . --disable-vsync --script res://tools/render_views.gd -- <map> <label> [weather,...]
 ##   e.g. -- vidingsjo before clear,dusk
+##   An optional 4th argument renders only the views whose names start with one of its
+##   comma-separated prefixes: -- vidingsjo gc clear 1_,8_,24_
 ## Needs a real window (not --headless). Loads res://scenes/maps/<map>.tscn with its
 ## PlayerRig (WeatherView dresses the map), removes the bots, hides the HUD and looks
 ## through its own camera. Writes renders/views/<label>/<weather>_<view>.png and
@@ -51,6 +53,13 @@ func _initialize() -> void:
 		quit(1)
 		return
 	_views = (all as Dictionary)[_map]
+	if args.size() >= 4:
+		var prefixes: PackedStringArray = args[3].split(",", false)
+		_views = _views.filter(func(v: Dictionary) -> bool:
+			for p: String in prefixes:
+				if String(v["name"]).begins_with(p):
+					return true
+			return false)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_out_dir()))
 	DisplayServer.window_set_size(WINDOW_SIZE)
 	root.size = WINDOW_SIZE

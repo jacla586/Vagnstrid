@@ -11,7 +11,9 @@ extends RefCounted
 ##   get_fragment_collider() -> CollisionObject3D
 ##   on_fragment_hit(shell_data: ShellData, distance: float) -> HitResult
 ## and optionally fragment_hit_ok(point: Vector3) -> bool, for targets that are only
-## part of their collider (a tank's tracks): the fragment must strike near the target.
+## part of their collider (a tank's tracks): the fragment must strike near the target,
+## and fragment_shielded(origin: Vector3) -> bool, for cover that isn't a collider (the
+## commander's open hatch lid).
 
 const TARGET_GROUP: StringName = &"fragment_targets"
 ## Line-of-sight rays start this far off the surface, so the plate hit doesn't block.
@@ -61,5 +63,7 @@ static func _has_line_of_sight(world: World3D, from: Vector3, to: Vector3, targe
 	query.collision_mask = Vision.SHOT_MASK
 	var hit: Dictionary = world.direct_space_state.intersect_ray(query)
 	if hit.is_empty() or hit["collider"] != target.get_fragment_collider():
+		return false
+	if target.has_method("fragment_shielded") and target.fragment_shielded(from):
 		return false
 	return not target.has_method("fragment_hit_ok") or target.fragment_hit_ok(hit["position"])
