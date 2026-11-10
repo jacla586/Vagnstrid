@@ -40,7 +40,7 @@ def build(osm_path):
         return [P[k] for k in w['nds'] if k in P]
 
     out = dict(buildings=[], roads=[], landcover=[], water=[], waterways=[], points=[], hedges=[],
-               rails=[], platforms=[])
+               rails=[], platforms=[], vagpunkter=[])
     used_in_rel = set()
     for rid, r in rels.items():
         t = r['tags']
@@ -103,6 +103,8 @@ def build(osm_path):
             out['rails'].append((LineString(c), t))
         elif t.get('railway') == 'platform' or t.get('public_transport') == 'platform' and t.get('train') == 'yes':
             out['platforms'].append((Polygon(c).buffer(0) if closed else LineString(c), t))
+        elif t.get('public_transport') == 'platform' and t.get('shelter') == 'yes':
+            out['vagpunkter'].append((LineString(c).centroid, {'highway': 'vaderskydd'}))   # vagkant.py
         elif 'waterway' in t:
             out['waterways'].append((LineString(c), t))
         elif t.get('barrier') == 'hedge':
@@ -114,4 +116,9 @@ def build(osm_path):
     for nid, t in ntags.items():
         if 'name' in t and ('place' in t or 'historic' in t):
             out['points'].append((Point(P[nid]), t))
+        # vägkanten (vagkant.py): hållplatser, väjnings- och stopplikt, gatlyktor
+        if t.get('highway') in ('bus_stop', 'give_way', 'stop', 'street_lamp') and nid in P:
+            out['vagpunkter'].append((Point(P[nid]), t))
+        elif t.get('amenity') == 'shelter' and t.get('shelter_type') == 'public_transport' and nid in P:
+            out['vagpunkter'].append((Point(P[nid]), {'highway': 'vaderskydd'}))
     return out

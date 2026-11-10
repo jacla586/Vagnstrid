@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -64,9 +64,10 @@ for k, r in enumerate(roads):
     if r['tags']['highway'] in ('path', 'footway'):
         continue  # stigar följer terrängen, ingen schaktning
     pa_dack = BRO.pa_bro(k, ss)
+    dike = vagkant.dike_flagga(r)   # landsvägar utanför tätort får diken
     for (x, y), zz, dack, hh in zip(pts, z, pa_dack, r['hw']):
         if not dack:   # under däcken ligger marken kvar på den lägre nivån
-            samples.append((x, y, zz, hh, k))
+            samples.append((x, y, zz, hh, k, dike))
 S = np.array(samples)
 SHOULDER = 8.0
 tree = cKDTree(S[:, :2])
@@ -83,7 +84,13 @@ hw = S[idx, 3]
 t_ = np.clip((d - hw - 2.0) / SHOULDER, 0, 1)
 w = 1 - (t_ * t_ * (3 - 2 * t_))  # smoothstep
 h[ii, jj] = h[ii, jj] * (1 - w) + S[idx, 2] * w
-print('schaktade celler', len(ii))
+# Diken längs landsvägarna (vagkant.py): en mjuk fåra DIKE_AVST_M från vägkanten
+dike = S[idx, 5] > 0.5
+rel = np.abs(d - hw - vagkant.DIKE_AVST_M) / vagkant.DIKE_HALV_M
+prof = np.clip(1 - rel, 0, 1)
+prof = prof * prof * (3 - 2 * prof)
+h[ii[dike], jj[dike]] -= (vagkant.DIKE_DJUP_M * prof)[dike]
+print('schaktade celler', len(ii), 'varav dike', int((dike & (prof > 0)).sum()))
 
 # ---------- Sjöar/dammar: sänk terrängen ----------
 water_polys = [part for gm, t in feat['water'] if gm.intersects(BOX)
@@ -313,10 +320,15 @@ for k, r in enumerate(roads):
     road_json.append(dict(name=r['name'], highway=r['tags']['highway'], ref=r['tags'].get('ref'), surface=r['surface'],
                           width_m=r['width'], osm_name=r['tags'].get('name'),
                           points=[[round(float(x), 2), round(float(z), 2), round(float(y), 2)] for (x, y), z in zip(cw, cz)]))
-vagmarkering.Markering(roads, NV).bygg(add_merged, mat, to_world)
+MARK = vagmarkering.Markering(roads, NV)
+MARK.bygg(add_merged, mat, to_world)
 scene.graph.update(frame_to='Broar', frame_from=scene.graph.base_frame)
 BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 0.95),
                 mat('Tra', (120, 88, 58), 0.9), mat('Racke', (72, 74, 76), 0.6))
+# Vägkanten (vagkant.py): kantstolpar, lyktor, räcken, skyltar, hållplatser
+scene.graph.update(frame_to='Vagkant', frame_from=scene.graph.base_frame)
+vagkant.Vagkant(roads, MARK.korsningar, feat.get('vagpunkter', []), h, np.load(str(WORK / 'h_raw.npy')).astype(np.float64),
+                sample, to_world, add_merged, mat).bygg()
 # Vägtrummor (trummor.py, Trafikverket): rörändar i vägbankarna
 scene.graph.update(frame_to='Trummor', frame_from=scene.graph.base_frame)
 trummor.bygg(TRUMMOR, h, sample, to_world, add_merged, mat)

@@ -201,6 +201,11 @@ shows on the minimap. This is what we test first.
   `GroundCover.water_depth()`; `Tank._ford_factor()` slows the drive by `TankData.ford_slow_share` at
   `ford_depth_m` (1.2 m), deeper `too_deep_speed_factor` (a crawl). Culverts (Trafikverket, state
   roads): pipe ends in hollows at the road banks (geodata `trummor.py`, glb group `Trummor`).
+- Roadside (geodata `vagkant.py`, glb group `Vagkant`, no collision): reflector posts on rural roads
+  from 70 km/h, street lamps every 32 m in built-up areas, guard rails on high banks, speed signs where
+  NVDB's limit changes, give-way/stop signs and bus stop signs from OSM nodes, bus shelters from OSM
+  (shelter nodes and platforms with shelter=yes); sign faces from a generated atlas (alpha). Rural
+  roads get 0.6 m ditches in the carving.
 - Hits and wrecks: a gun round (>= 20 mm) on a tank emits `Tank.struck(outcome, dir)`
   (clients get it for their own tank by `rpc_struck`) and jolts the hull
   (`TankData.hit_jolt_factor`); `HitReaction` in the player rig shakes the commander/gunner

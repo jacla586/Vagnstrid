@@ -67,6 +67,13 @@ def bygg(lc, CIDX, T, shape, data_dir, byggnader, ut_dir, forhands=None, sjoar=N
         natur = np.isin(mv, [K['kort gräs'], K['högt gräs'], K['våtmark'], K['snår']])
         vass = (~sjo & (land_avst <= VASS_LAND_M) & natur) | (sjo & (vatten_avst <= VASS_VATTEN_M))
         mv[vass] = K['vass']
+    # vägrenen (en cell utanför asfalten och gruset) hålls kort
+    vag_idx = [CIDX[n] for n in ('väg_asfalt', 'väg_grus') if n in CIDX]
+    if vag_idx:
+        from scipy import ndimage as ndi
+        vag = np.isin(lc, vag_idx)
+        ren = ndi.binary_dilation(vag, iterations=1) & ~vag & np.isin(mv, [K['högt gräs'], K['gröda'], K['snår'], K['våtmark']])
+        mv[ren] = K['kort gräs']
     if byggnader:
         mv[rasterize([(b, 1) for b in byggnader], out_shape=shape, transform=T).astype(bool)] = K['ingen']
     ut = Path(ut_dir)
