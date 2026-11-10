@@ -57,12 +57,12 @@ def main():
     run('-c', f"import sys,pickle; sys.path.insert(0,r'{S}'); from features import build; "
               f"pickle.dump(build(r'{osm}'), open(r'{work / 'features.pkl'}','wb'))", env=env)
     run(S / 'step2_terrain.py', dem, a.dem_typ, env=env)
+    run(S / 'platser.py', proj, '--osm', osm, env=env)   # ortnamn till step3:s ortnamnsskyltar
     run(S / 'step3_build.py', out, objekt, env=env)
     if Path(objekt).exists():
         run(S / 'step4_trees.py', objekt, out, nmd, env=env)
     else:
         print(f'Hoppar över träd: {objekt} saknas')
-    run(S / 'platser.py', proj, '--osm', osm, env=env)   # ortnamn för spelets platsskylt
     print(f'\nKlart. Resultatet ligger i {out}')
 
 

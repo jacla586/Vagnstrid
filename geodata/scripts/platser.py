@@ -1,11 +1,10 @@
-"""Ortnamn för spelets skylt när man kör in i en stadsdel (PlaceBanner): OSM place=* (noder, och
-ytor/relationer med sin mittpunkt) inom kartans ruta -> spelets `data/maps/<karta>_places.tres`
-(PlaceNamesData: namn, typ, läge i Godot-koordinater, räckvidd i m efter typen).
+"""Ortnamn till ortnamnsskyltarna (vagkant.py): OSM place=* (noder, och ytor/relationer med sin
+mittpunkt) inom kartans ruta -> `<projekt>/work/platser.json` ([{namn, typ, E, N, rackvidd}], SWEREF).
+En punkt hör till platsen som ligger närmast i förhållande till sin räckvidd (efter typen).
 
-  .venv/bin/python -I scripts/platser.py <projekt> [karta] [--osm fil]
+  .venv/bin/python -I scripts/platser.py <projekt> [--osm fil]
 
-<projekt> = mappen med work/grid.json (Vikbolandet: `.`, kartan heter då vikbolandet). Kräver ingen
-ombyggnad; bygg.py kör det efter step4.
+<projekt> = mappen med work/grid.json (Vikbolandet: `.`). bygg.py kör det före step3.
 """
 import argparse
 import json
@@ -19,7 +18,6 @@ from pyproj import Transformer
 # till räckvidden vinner, så en stadsdel inne i en förort tar över nära sin punkt.
 RACKVIDD = {'city': 3000, 'town': 1800, 'suburb': 1100, 'village': 700, 'quarter': 600,
             'neighbourhood': 550, 'hamlet': 380, 'locality': 320, 'isolated_dwelling': 180, 'farm': 180}
-SPEL = Path(__file__).resolve().parents[2]
 
 
 def _osm_for(proj):
@@ -66,7 +64,7 @@ def las(osm, grid):
         z = (grid['y1'] - res / 2) - N
         if not (0 <= x <= grid['W'] * res and 0 <= z <= grid['H'] * res):
             continue
-        platser.append((namn, typ, x, z, RACKVIDD[typ]))
+        platser.append((namn, typ, E, N, RACKVIDD[typ]))
     # samma namn två gånger (nod + yta): behåll den största typen
     bast = {}
     for p in platser:
@@ -75,38 +73,18 @@ def las(osm, grid):
     return sorted(bast.values(), key=lambda p: (-p[4], p[0]))
 
 
-def skriv_tres(platser, fil):
-    def s(v):
-        return '"' + v.replace('\\', '\\\\').replace('"', '\\"') + '"'
-    rader = [
-        '[gd_resource type="Resource" script_class="PlaceNamesData" load_steps=2 format=3]',
-        '',
-        '[ext_resource type="Script" path="res://scripts/data/place_names_data.gd" id="1_script"]',
-        '',
-        '[resource]',
-        'script = ExtResource("1_script")',
-        'names = PackedStringArray(' + ', '.join(s(p[0]) for p in platser) + ')',
-        'kinds = PackedStringArray(' + ', '.join(s(p[1]) for p in platser) + ')',
-        'positions = PackedVector2Array(' + ', '.join(f'{p[2]:.1f}, {p[3]:.1f}' for p in platser) + ')',
-        'reach_m = PackedFloat32Array(' + ', '.join(f'{p[4]:.0f}' for p in platser) + ')',
-        '',
-    ]
-    Path(fil).write_text('\n'.join(rader), encoding='utf-8')
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('projekt')
-    ap.add_argument('karta', nargs='?')
     ap.add_argument('--osm')
     a = ap.parse_args()
     proj = Path(a.projekt).resolve()
-    karta = a.karta or ('vikbolandet' if proj.name == 'geodata' else proj.name)
     grid = json.loads((proj / 'work' / 'grid.json').read_text())
     osm = Path(a.osm) if a.osm else _osm_for(proj)
     platser = las(osm, grid)
-    ut = SPEL / 'data' / 'maps' / f'{karta}_places.tres'
-    skriv_tres(platser, ut)
+    ut = proj / 'work' / 'platser.json'
+    ut.write_text(json.dumps([dict(namn=p[0], typ=p[1], E=round(p[2], 1), N=round(p[3], 1), rackvidd=p[4])
+                              for p in platser], ensure_ascii=False, indent=1), encoding='utf-8')
     print(f'platser: {len(platser)} ->', ut)
     for p in platser:
         print(f'  {p[1]:18s} {p[0]}')

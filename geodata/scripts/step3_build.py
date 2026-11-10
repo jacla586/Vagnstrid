@@ -330,7 +330,9 @@ BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 
 scene.graph.update(frame_to='Vagkant', frame_from=scene.graph.base_frame)
 VALT = valtbart.Samling()   # vältbart (lyktstolpar, kontaktledning): glb-gruppen Valtbart
 vagkant.Vagkant(roads, MARK.korsningar, feat.get('vagpunkter', []), h, np.load(str(WORK / 'h_raw.npy')).astype(np.float64),
-                sample, to_world, add_merged, mat, valt=VALT).bygg()
+                sample, to_world, add_merged, mat, valt=VALT,
+                platser=json.loads((WORK / 'platser.json').read_text()) if (WORK / 'platser.json').exists() else None
+                ).bygg()   # platser.json: platser.py (ortnamnsskyltarna)
 # Lekplatser (lekplatser.py): redskap i OSM:s lekplatsytor, unika per park
 scene.graph.update(frame_to='Lekplatser', frame_from=scene.graph.base_frame)
 scene.graph.update(frame_to='Lekplatsunderlag', frame_from=scene.graph.base_frame)

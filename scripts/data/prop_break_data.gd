@@ -6,8 +6,10 @@ extends Resource
 
 ## Tanks are checked against the props this often (Hz).
 @export var check_hz: float = 10.0
-## A prop is hit when it is this close to the hull's footprint (m).
+## A prop is hit when its foot is this close to the hull's footprint (m)...
 @export var tank_margin_m: float = 0.3
+## ...plus this much for wide kinds (kind name prefix -> m), e.g. bus shelters (3.3 m long).
+@export var kind_reach_m: Dictionary = {"Vaderskydd": 1.3}
 ## Toppling: time to fall (angle grows as t²) and the angle it ends at (deg).
 @export var fall_time_s: float = 1.3
 @export var fallen_angle_deg: float = 86.0
@@ -23,7 +25,8 @@ extends Resource
 @export var cell_m: float = 250.0
 ## Small props (kinds starting with one of these: signs, reflector posts) are drawn only
 ## this far (m): a sign is a pixel or two beyond it, and the many sign kinds are many draws.
-@export var small_kinds: PackedStringArray = PackedStringArray(["Skylt", "Hallplats", "Kantstolpe"])
+@export var small_kinds: PackedStringArray = PackedStringArray(["Skylt", "Hallplats", "Kantstolpe",
+		"Ortnamn", "Racke"])
 @export var small_draw_range_m: float = 450.0
 ## Playground pieces up to this far (m) are drawn.
 @export var playground_draw_range_m: float = 450.0

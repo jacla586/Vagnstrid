@@ -9,6 +9,10 @@
   hållplatser   OSM highway=bus_stop: hållplatsskylt; väderskydd vid OSM amenity=shelter (public_transport)
                 och plattformar med shelter=yes (features.py: 'vaderskydd'), öppningen mot vägen;
                 hållplatsens namn (OSM name) på en skylt under H-skylten
+  ortnamn       där en väg går in i en annan stadsdel/by (work/platser.json, platser.py): vit skylt med
+                svart ram och text på högersidan för trafiken in, åt båda hållen (olika namn)
+Vältbara (valtbart.py) med en Samling: lyktor, kantstolpar, räcken (en bit per 2 m), skyltar,
+ortnamnsskyltar och väderskydd.
 Skyltarna har en atlas (PIL) som glb-textur med alfa; baksidan är grå. Skylten sitter SKYLT_AVST_M
 framför och baksidan lika långt bakom stolpens mitt, och stolpen slutar vid skyltens mitt, så den
 syns aldrig genom skylten. Hållplatsnamnen har en egen atlas (en rad per namn). Diken grävs i step3:s schaktning
@@ -38,6 +42,10 @@ ATLAS = HASTIGHETER + ['vajning', 'stopp', 'buss']   # celler i ordning, 8 per r
 SKYLT_AVST_M = 0.06    # skyltytan framför (och baksidan bakom) stolpens mitt; stolpen är 0,06 m
 NAMN_H_M = 0.16        # hållplatsnamnets skylt: höjd, bredd efter texten (minst H-skyltens)
 NAMN_HOJD_M = 2.2 - 0.25 - NAMN_H_M / 2 - 0.03   # namnskyltens mitt över marken, under H-skylten
+ORTNAMN_H_M = 0.34      # ortnamnsskylten: höjd, bredd efter texten
+ORTNAMN_MITT_M = 1.9    # skyltens mitt över marken
+ORTNAMN_MIN_RACKVIDD = 300   # bara platser med minst så stor räckvidd (platser.py) får skyltar
+ORTNAMN_STABIL = 15     # vägpunkter (var 2 m) i samma plats på båda sidor om bytet
 NAMN_RAD_PX = 64
 NAMN_BREDD_PX = 1024
 
@@ -89,8 +97,9 @@ def _atlas():
     return im, cols, rows
 
 
-def _namnatlas(namnlista):
-    """En rad per hållplatsnamn: vit skylt, mörkgrön text. -> (bild, {namn: (rad, andel av bredden)})."""
+def _namnatlas(namnlista, text=(30, 90, 50, 255), ram=(30, 90, 50, 255), min_bredd_m=0.5, skylt_h_m=NAMN_H_M):
+    """En rad per namn: vit skylt med ram och text i färgen (hållplatser mörkgrönt, ortnamn svart)
+    -> (bild, höjd px, {namn: (rad, andel av bredden)})."""
     rader = max(len(namnlista), 1)
     hojd_px = 1
     while hojd_px < rader * NAMN_RAD_PX:
@@ -105,17 +114,37 @@ def _namnatlas(namnlista):
     for i, namn in enumerate(namnlista):
         y0 = i * NAMN_RAD_PX
         w = min(d.textlength(namn, font=font) + 36, NAMN_BREDD_PX)
-        w = max(w, NAMN_RAD_PX * 0.5 / NAMN_H_M * 1.0)   # minst lika bred som H-skylten (0,5 m)
+        w = max(w, NAMN_RAD_PX * min_bredd_m / skylt_h_m)   # minst min_bredd_m bred
         w = min(w, NAMN_BREDD_PX)
-        d.rectangle([0, y0 + 2, w - 1, y0 + NAMN_RAD_PX - 3], fill=(245, 245, 240, 255),
-                    outline=(30, 90, 50, 255), width=4)
-        d.text((w / 2, y0 + NAMN_RAD_PX / 2), namn, fill=(30, 90, 50, 255), font=font, anchor='mm')
+        d.rectangle([0, y0 + 2, w - 1, y0 + NAMN_RAD_PX - 3], fill=(245, 245, 240, 255), outline=ram, width=4)
+        d.text((w / 2, y0 + NAMN_RAD_PX / 2), namn, fill=text, font=font, anchor='mm')
         info[namn] = (i, w / NAMN_BREDD_PX)
     return im, hojd_px, info
 
 
+def _plana_ytor(lista, bak=False):
+    """Skyltytor i mallens lokala koordinater: [(x, y, bredd, höjd, uv, framåt)] -> (trimesh, uv). Ytan i
+    planet x = konst.; framåt = normalen mot +x, annars mot -x (en andra framsida, läsbar bakifrån). Sett
+    från normalens håll ligger u0 till vänster (vid +x är +z vänster). bak: baksidan till en framsida
+    vid +x (normalen mot -x, samma uv på samma ställe så att konturen stämmer)."""
+    V, F, UV = [], [], []
+    for x, y, bredd, hojd, (u0, u1, vb, vt), framat in lista:
+        n0 = len(V)
+        utat = 1.0 if (framat and not bak) else -1.0
+        zv, zh = (bredd / 2, -bredd / 2) if (framat or bak) else (-bredd / 2, bredd / 2)
+        V += [[x, y - hojd / 2, zv], [x, y - hojd / 2, zh], [x, y + hojd / 2, zh], [x, y + hojd / 2, zv]]
+        UV += [[u0, vb], [u1, vb], [u1, vt], [u0, vt]]
+        tri = np.array([[n0, n0 + 1, n0 + 2], [n0, n0 + 2, n0 + 3]])
+        v = np.array(V[n0:n0 + 4])
+        if np.cross(v[1] - v[0], v[2] - v[0])[0] * utat < 0:
+            tri = tri[:, ::-1]
+        F += tri.tolist()
+    return trimesh.Trimesh(np.array(V), np.array(F), process=False), np.array(UV)
+
+
 class Vagkant:
-    def __init__(self, roads, korsningar, vagpunkter, h, h_raw, sample, to_world, add_merged, mat, valt=None):
+    def __init__(self, roads, korsningar, vagpunkter, h, h_raw, sample, to_world, add_merged, mat, valt=None,
+                 platser=None):
         self.roads = roads
         self.kors = korsningar
         self.punkter = vagpunkter
@@ -126,9 +155,13 @@ class Vagkant:
         self.skyltar = []   # (mitt SWEREF, riktning mot trafiken SWEREF, höjd, atlasnamn, storlek, baksida)
         self.namnskyltar = []   # (mitt SWEREF, riktning SWEREF, höjd, namn)
         self.valt = valt    # valtbart.Samling: lyktor, kantstolpar och skyltar (annars sammanslagna meshar)
+        # platser.py (work/platser.json): [{namn, typ, E, N, rackvidd}]; ortnamnsskyltar kräver valt
+        self.platser = [p for p in (platser or []) if p['rackvidd'] >= ORTNAMN_MIN_RACKVIDD]
+        self.ortnamn = []   # (stolpens mitt SWEREF, riktning mot trafiken SWEREF, namn)
         self.valt_skyltar = []   # vältbara skyltar: (p, mot, atlasnamn, höjd, storlek, dubbel, hållplatsnamn)
         self._skydd = []
-        self.antal = dict(kantstolpar=0, lyktor=0, racken_m=0, hastighet=0, vajning=0, hallplatser=0, skydd=0)
+        self.antal = dict(kantstolpar=0, lyktor=0, racken_m=0, hastighet=0, vajning=0, hallplatser=0, skydd=0,
+                          ortnamn=0)
 
     # ---------- hjälp ----------
     def _box(self, mat, C):
@@ -165,10 +198,12 @@ class Vagkant:
                 self._lyktor(r)
             if hw_typ in GATA:
                 self._hastighet(r)
+            if hw_typ in GATA + STOR and self.platser and self.valt is not None:
+                self._ortnamn(r)
         self._punkter()
         self._skriv()
         print('vägkant:', ', '.join(f'{k} {v}' for k, v in self.antal.items()),
-              '(lyktor, kantstolpar och skyltar vältbara)' if self.valt is not None else '')
+              '(allt utom räckenas bankar vältbart)' if self.valt is not None else '')
 
     def _langs(self, r, delning, fas=0.0):
         """(punkt, riktning, vänsternormal, halvbredd, s) var delning:e m längs vägen."""
@@ -245,6 +280,12 @@ class Vagkant:
             return
         stal = self.mat('Racke_vag', (150, 154, 152), 0.45)
         s, pts, nrm, hw, zm = r['s'], r['pts'], r['nrm'], r['hw'], r['zm']
+        if self.valt is not None and not self.valt.har_mall('Racke'):
+            # en bit: stolpen vid foten och balken 2 m längs +x (skalas till bitens längd)
+            stolpe = ladar([[0, 0]], [[1, 0]], 0.05, 0.05, -0.4, 0.7)
+            self.valt.mall('Racke', [(lador_mesh(np.vstack([
+                stolpe, ladar([[1.0, 0]], [[1, 0]], 1.02, 0.03, 0.45, 0.75)])), stal)])
+            self.valt.mall('Rackestolpe', [(lador_mesh(stolpe), stal)])
         for sida in (1, -1):
             ute = pts + nrm * sida * (hw[:, None] + 6.0)
             bank = zm - self.sample(self.h_raw, ute[:, 0], ute[:, 1])
@@ -258,6 +299,16 @@ class Vagkant:
                 z = float(zm[i])
                 w = np.array(self.to_world(q[0], q[1]))
                 d = np.array(self.to_world(q[0] - nrm[i][1], q[1] + nrm[i][0])) - w
+                if self.valt is not None:
+                    if i + 1 < len(pts) and hog[i + 1]:
+                        q2 = pts[i + 1] + nrm[i + 1] * sida * (hw[i + 1] + 0.5)
+                        wd = np.array(self.to_world(q2[0], q2[1])) - w
+                        L = float(np.linalg.norm(wd))
+                        self.valt.placera('Racke', [w[0], z, w[1]], wd, skala_x=L / 2.0)
+                        self.antal['racken_m'] += int(round(L))
+                    else:
+                        self.valt.placera('Rackestolpe', [w[0], z, w[1]], d)
+                    continue
                 self._box(stal, ladar(w[None], np.array([[1.0, 0.0]]), 0.05, 0.05, z - 0.4, z + 0.7))
                 if i + 1 < len(pts) and hog[i + 1]:
                     q2 = pts[i + 1] + nrm[i + 1] * sida * (hw[i + 1] + 0.5)
@@ -295,6 +346,39 @@ class Vagkant:
                 q = p + hoger * (hw[i] + 1.0)
                 self._skylt(q, -riktning, f'{int(varde)}', 2.0, 0.64)
                 self.antal['hastighet'] += 1
+
+    def _plats_index(self, P):
+        """Platsen vid varje punkt (n, 2) SWEREF: närmast i förhållande till räckvidden (som platser.py
+        säger), -1 där ingen når."""
+        E = np.array([p['E'] for p in self.platser])
+        N = np.array([p['N'] for p in self.platser])
+        R = np.array([p['rackvidd'] for p in self.platser], float)
+        andel = np.hypot(P[:, 0:1] - E[None], P[:, 1:2] - N[None]) / R[None]
+        i = andel.argmin(1)
+        return np.where(andel[np.arange(len(P)), i] < 1.0, i, -1)
+
+    def _ortnamn(self, r):
+        """Ortnamnsskylt där vägen byter plats (bestående, ORTNAMN_STABIL punkter åt båda håll): för
+        trafiken in i den nya platsen på högersidan, åt båda hållen (enkelriktat: bara framåt)."""
+        pts, hw = r['pts'], r['hw']
+        k = ORTNAMN_STABIL
+        if len(pts) < 2 * k + 1 or self._pa_bro(r):
+            return
+        idx = self._plats_index(pts)
+        enkel = r['tags'].get('oneway') in ('yes', '1', 'true') or r.get('rondell')
+        for i in range(k, len(pts) - k + 1):
+            if idx[i] == idx[i - 1] or (idx[i - k:i] != idx[i - 1]).any() or (idx[i:i + k] != idx[i]).any():
+                continue
+            if self._nara_korsning(pts[i], 8.0):
+                continue
+            d = pts[min(i + 1, len(pts) - 1)] - pts[i - 1]
+            d /= max(np.linalg.norm(d), 1e-9)
+            for riktning, ny in ((d, idx[i]), (-d, idx[i - 1])):
+                if ny < 0 or (enkel and riktning is not d):
+                    continue
+                hoger = np.array([riktning[1], -riktning[0]])
+                self.ortnamn.append((pts[i] + hoger * (hw[i] + 1.2), -riktning, self.platser[ny]['namn']))
+                self.antal['ortnamn'] += 1
 
     def _punkter(self):
         from shapely import STRtree
@@ -366,6 +450,19 @@ class Vagkant:
         z = self._mark(*p)
         def w(q):
             return np.array(self.to_world(q[0], q[1]))
+        if self.valt is not None:
+            if not self.valt.har_mall('Vaderskydd'):
+                # lokalt: x längs vägen, z ut från vägen (bakväggen på +z)
+                st = [ladar([[s_, u]], [[1, 0]], 0.04, 0.04, 0.0, 2.3) for s_ in (-1.5, 1.5) for u in (-0.7, 0.7)]
+                self.valt.mall('Vaderskydd', [
+                    (lador_mesh(np.vstack([ladar([[0, 0.7]], [[1, 0]], 1.5, 0.03, 0.0, 2.2)]
+                                          + [ladar([[s_, 0]], [[0, 1]], 0.7, 0.03, 0.0, 2.2) for s_ in (-1.5, 1.5)])),
+                     glas),
+                    (lador_mesh(np.vstack(st)), ram),
+                    (lador_mesh(ladar([[0, 0]], [[1, 0]], 1.65, 0.85, 2.3, 2.4)), tak)])
+            wu = w(p + ut) - w(p)
+            self.valt.placera('Vaderskydd', [w(p)[0], z, w(p)[1]], np.array([wu[1], -wu[0]]))
+            return
         wl = w(p + langs) - w(p)
         # bakvägg (glas) längs vägen, två gavlar, tak, fyra stolpar
         self._box(glas, ladar(w(p + ut * 0.7)[None], wl[None], 1.5, 0.03, z, z + 2.2))
@@ -411,6 +508,8 @@ class Vagkant:
                 self.add('Vagkant', trimesh.Trimesh(V[used], remap[f], process=False), mat)
         if self.valt_skyltar:
             self._skriv_valtbara()
+        if self.ortnamn:
+            self._skriv_ortnamn()
         if self.skyltar:
             self._skriv_skyltar()
         if self.namnskyltar:
@@ -482,37 +581,10 @@ class Vagkant:
                                                           doubleSided=False)
 
         def ytor(lista):
-            """[(x, y, bredd, höjd, uv, framåt)] -> (trimesh, uv). Ytan i planet x = konst., framåt
-            = normalen mot +x. Sett från normalens håll ligger u0 till vänster."""
-            V, F, UV = [], [], []
-            for x, y, bredd, hojd, (u0, u1, vb, vt), framat in lista:
-                n0 = len(V)
-                s = 1.0 if framat else -1.0
-                # betraktaren vid +x ser +z till vänster; vid -x till höger
-                zv, zh = (bredd / 2, -bredd / 2) if framat else (-bredd / 2, bredd / 2)
-                V += [[x, y - hojd / 2, zv], [x, y - hojd / 2, zh], [x, y + hojd / 2, zh], [x, y + hojd / 2, zv]]
-                UV += [[u0, vb], [u1, vb], [u1, vt], [u0, vt]]
-                tri = np.array([[n0, n0 + 1, n0 + 2], [n0, n0 + 2, n0 + 3]])
-                v = np.array(V[n0:n0 + 4])
-                if np.cross(v[1] - v[0], v[2] - v[0])[0] * s < 0:
-                    tri = tri[:, ::-1]
-                F += tri.tolist()
-            return trimesh.Trimesh(np.array(V), np.array(F), process=False), np.array(UV)
+            return _plana_ytor(lista)
 
         def bak_ytor(lista):
-            """Baksidan: samma uv på samma ställe som framsidan (konturen stämmer), normalen mot -x."""
-            V, F, UV = [], [], []
-            for x, y, bredd, hojd, (u0, u1, vb, vt), _ in lista:
-                n0 = len(V)
-                V += [[x, y - hojd / 2, bredd / 2], [x, y - hojd / 2, -bredd / 2],
-                      [x, y + hojd / 2, -bredd / 2], [x, y + hojd / 2, bredd / 2]]
-                UV += [[u0, vb], [u1, vb], [u1, vt], [u0, vt]]
-                tri = np.array([[n0, n0 + 1, n0 + 2], [n0, n0 + 2, n0 + 3]])
-                v = np.array(V[n0:n0 + 4])
-                if np.cross(v[1] - v[0], v[2] - v[0])[0] > 0:
-                    tri = tri[:, ::-1]
-                F += tri.tolist()
-            return trimesh.Trimesh(np.array(V), np.array(F), process=False), np.array(UV)
+            return _plana_ytor(lista, bak=True)
 
         a = SKYLT_AVST_M
         for p, mot, namn, hojd, st, dubbel, text in self.valt_skyltar:
@@ -540,6 +612,35 @@ class Vagkant:
             self.valt.placera(typ, [w[0], self._mark(*p), w[1]], wm)
         if namnlista:
             print(f'hållplatsnamn: {len(namnlista)} namn (vältbara skyltar)')
+
+    def _skriv_ortnamn(self):
+        """Ortnamnsskyltarna: vit med svart ram och text, grå baksida, en mall per namn (Ortnamn_<n>);
+        breda skyltar på två stolpar."""
+        namnlista = sorted({n for _, _, n in self.ortnamn})
+        im, hojd_px, info = _namnatlas(namnlista, text=(20, 20, 20, 255), ram=(20, 20, 20, 255),
+                                       min_bredd_m=0.9, skylt_h_m=ORTNAMN_H_M)
+        fram = trimesh.visual.material.PBRMaterial(name='Ortnamn', baseColorTexture=im, alphaMode='MASK',
+                                                   alphaCutoff=0.5, roughnessFactor=0.5, doubleSided=False)
+        bak = trimesh.visual.material.PBRMaterial(name='Ortnamn_bak', baseColorTexture=im, alphaMode='MASK',
+                                                  alphaCutoff=0.5, baseColorFactor=[0.25, 0.25, 0.26, 1.0],
+                                                  roughnessFactor=0.7, doubleSided=False)
+        stolpe = self.mat('Skyltstolpe', (150, 154, 156), 0.5)
+        a = SKYLT_AVST_M
+        for p, mot, namn in self.ortnamn:
+            typ = f'Ortnamn_{namnlista.index(namn)}'
+            if not self.valt.har_mall(typ):
+                rad, andel = info[namn]
+                bredd = ORTNAMN_H_M * andel * NAMN_BREDD_PX / NAMN_RAD_PX
+                uv = (0.0, andel, 1 - (rad + 1) * NAMN_RAD_PX / hojd_px, 1 - rad * NAMN_RAD_PX / hojd_px)
+                lagen = [0.0] if bredd < 1.2 else [-bredd * 0.32, bredd * 0.32]
+                stolpar = np.vstack([ladar([[0, z_]], [[1, 0]], 0.03, 0.03, -0.3, ORTNAMN_MITT_M) for z_ in lagen])
+                m, u = _plana_ytor([(a, ORTNAMN_MITT_M, bredd, ORTNAMN_H_M, uv, True)])
+                mb, ub = _plana_ytor([(-a, ORTNAMN_MITT_M, bredd, ORTNAMN_H_M, uv, True)], bak=True)
+                self.valt.mall(typ, [(lador_mesh(stolpar), stolpe), (m, fram, u), (mb, bak, ub)])
+            w = np.array(self.to_world(p[0], p[1]))
+            wm = np.array(self.to_world(p[0] + mot[0], p[1] + mot[1])) - w
+            self.valt.placera(typ, [w[0], self._mark(*p), w[1]], wm)
+        print(f'ortnamn: {len(self.ortnamn)} skyltar, {len(namnlista)} namn')
 
     def _skriv_namn(self):
         """Hållplatsnamnen: dubbelsidiga skyltar under H-skylten, en egen atlas."""

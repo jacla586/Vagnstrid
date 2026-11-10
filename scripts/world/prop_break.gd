@@ -3,7 +3,8 @@ extends Node
 ## Street furniture tanks knock down (cosmetic, local on every machine, nothing sent):
 ## - glb group `Valtbart` (geodata valtbart.py): templates `Mall_<kind>` (one mesh child per
 ##   material, foot at the origin) and one empty node `<kind>__<key>` per prop (street lamps,
-##   catenary masts, road signs, bus stop signs with their names, reflector posts). Drawn here as one MultiMesh per kind and `data.cell_m` cell (as many
+##   catenary masts, road signs, bus stop signs with their names, place-name signs, reflector
+##   posts, guard rail pieces (2 m, scaled along x), bus shelters). Drawn here as one MultiMesh per kind and `data.cell_m` cell (as many
 ##   draw calls as the merged meshes before); a prop a tank touches is hidden and a
 ##   FallenProp topples in its place. A mast `Kontaktstolpe_*__<track>_<i>` drops the
 ##   catenary spans `Ledning__<track>_<i-1>` and `_<i>` with it.
@@ -32,6 +33,7 @@ var _down: PackedByteArray = PackedByteArray()
 var _spans_of: Array = []                 # prop -> Array[MeshInstance3D] it drops
 var _templates: Array[Mesh] = []
 var _kind_names: PackedStringArray = PackedStringArray()
+var _kind_margin: PackedFloat32Array = PackedFloat32Array()   # per kind: tank_margin_m + kind_reach_m
 # playground pieces
 var _pieces: Array[MeshInstance3D] = []
 var _boxes: Array[AABB] = []
@@ -94,7 +96,7 @@ func _physics_process(delta: float) -> void:
 					continue
 				for i: int in cell as PackedInt32Array:
 					if i >= 0:
-						if _down[i] == 0 and _in_footprint(tank, _xform[i].origin):
+						if _down[i] == 0 and _in_footprint(tank, _xform[i].origin, _kind_margin[_kind_of[i]]):
 							_topple(i, _push_dir(moved, p, _xform[i].origin))
 					elif _broken[-1 - i] == 0 and _box_touched(tank, _boxes[-1 - i]):
 						_break_piece(-1 - i, _push_dir(moved, p, _boxes[-1 - i].get_center()))
@@ -127,6 +129,11 @@ func _collect_props(group: Node) -> void:
 				kinds[n.substr(5)] = _templates.size()
 				_templates.append(mesh)
 				_kind_names.append(n.substr(5))
+				var margin: float = data.tank_margin_m
+				for prefix: Variant in data.kind_reach_m:
+					if n.substr(5).begins_with(String(prefix)):
+						margin += float(data.kind_reach_m[prefix])
+				_kind_margin.append(margin)
 			continue
 		var split: int = n.find("__")
 		if split < 0:
@@ -252,12 +259,11 @@ func _add_to_grid(p: Vector3, entry: int) -> void:
 
 # --- Hits ---------------------------------------------------------------------------
 
-func _in_footprint(tank: Tank, p: Vector3) -> bool:
+func _in_footprint(tank: Tank, p: Vector3, m: float) -> bool:
 	if tank.global_position.distance_squared_to(p) > TANK_REACH_M * TANK_REACH_M + 25.0:
 		return false
 	var local: Vector3 = tank.global_transform.affine_inverse() * p
 	var half: Vector3 = tank.data.hull_size * 0.5
-	var m: float = data.tank_margin_m
 	return absf(local.x) <= half.x + m and absf(local.z) <= half.z + m and local.y > -half.y - 3.0 \
 			and local.y < half.y + 2.0
 

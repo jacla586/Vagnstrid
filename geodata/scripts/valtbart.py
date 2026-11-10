@@ -21,13 +21,14 @@ def lador_mesh(C, botten=False):
     return trimesh.Trimesh(V, np.vstack([Fs, Ft]), process=False)
 
 
-def yaw_matris(fot, x_dir):
-    """4x4: lokala x längs x_dir (världens xz), y upp, foten i `fot` (världen x, y, z)."""
+def yaw_matris(fot, x_dir, skala_x=1.0):
+    """4x4: lokala x längs x_dir (världens xz), y upp, foten i `fot` (världen x, y, z); x skalas
+    med skala_x (räckesbitar med olika längd)."""
     x = np.array([x_dir[0], 0.0, x_dir[1]], float)
     x /= max(np.linalg.norm(x), 1e-9)
     z = np.cross(x, [0.0, 1.0, 0.0])   # högerhänt: x × y = z
     M = np.eye(4)
-    M[:3, 0], M[:3, 1], M[:3, 2] = x, [0.0, 1.0, 0.0], z
+    M[:3, 0], M[:3, 1], M[:3, 2] = x * skala_x, [0.0, 1.0, 0.0], z
     M[:3, 3] = fot
     return M
 
@@ -46,10 +47,10 @@ class Samling:
         """delar: [(trimesh i lokala koordinater, material[, uv])]."""
         self.mallar.setdefault(typ, delar)
 
-    def placera(self, typ, fot, x_dir, nyckel=None):
+    def placera(self, typ, fot, x_dir, nyckel=None, skala_x=1.0):
         n = self.antal.get(typ, 0)
         self.antal[typ] = n + 1
-        self.platser.append((f'{typ}__{n if nyckel is None else nyckel}', yaw_matris(fot, x_dir)))
+        self.platser.append((f'{typ}__{n if nyckel is None else nyckel}', yaw_matris(fot, x_dir, skala_x)))
 
     def mesh(self, namn, msh, material):
         self.meshar.append((namn, msh, material))

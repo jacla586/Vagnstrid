@@ -212,15 +212,18 @@ shows on the minimap. This is what we test first.
   `data/world/prop_break.tres`; cosmetic, local, nothing sent): glb group `Valtbart` (geodata
   `valtbart.py`: templates `Mall_<kind>` + one empty node `<kind>__<key>` per prop) = street lamps,
   catenary masts (no collision any more), road signs (`Skylt_<face>`, bus stops with a name
-  `Hallplats_<n>`) and reflector posts, drawn as a MultiMesh per kind and 250 m cell (small kinds only
+  `Hallplats_<n>`, place names `Ortnamn_<n>`), reflector posts, guard rail pieces (`Racke`, 2 m,
+  scaled along x) and bus shelters (`Vaderskydd`, wider reach `kind_reach_m`), drawn as a MultiMesh per kind and 250 m cell (small kinds only
   within `small_draw_range_m`); a tank's
   hull footprint touching one hides it and a `FallenProp` topples (a mast drops its catenary spans
   `Ledning__<track>_<i>`); playground pieces (`Lekplatser`) fall apart into their solids (at most
   `debris_max_parts`, thrown and spinning). Fallen things lie `lie_s` (30 s), sink and are gone until
   ThunderRoad's map reset (`PropBreak.restore_all`).
-- Place names (`PlaceBanner`, HUD): driving into a district/village shows its name (and the wider place
-  round it) for a few seconds; `PlaceNamesData` (`data/maps/<map>_places.tres`) from OSM place=* by
-  `geodata/scripts/platser.py <project> [map]` (no rebuild needed; bygg.py runs it), reach per kind.
+- Place-name signs (geodata `vagkant.py` `_ortnamn`): where a road passes from one district/village to
+  another (OSM place=* by `geodata/scripts/platser.py` -> `work/platser.json`; a point belongs to the
+  place nearest relative to its reach by kind), a white sign with black frame and text on the right for
+  traffic going in, one each way with the name being entered (`Ortnamn_<n>`, toppleable). Nothing on
+  the HUD.
 - Playgrounds (geodata `lekplatser.py`): every OSM playground gets equipment (climbing tower with roof,
   net/wall and slide, slide, swing set or basket swing, roundabout, zip line in big parks, sandpit,
   basketball hoop, seesaw, benches, playhouse), unique per park (seeded by its OSM id: choice, count,
