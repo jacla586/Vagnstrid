@@ -541,7 +541,7 @@ shows on the minimap. This is what we test first.
   bits per pixel: class textures, soft borders, rock on steep slopes, gravel road shoulders);
   `tools/import_geodata_map.gd -- <map> res://geodata/<map>/out --textures` puts list, material
   (auto shader off, macro variation) and control/colour maps on an imported map without
-  touching heights. Then rerun `render_map_image`. Done: vidingsjo (others still auto shader).
+  touching heights (nor the object glb: run the plain import first). Then rerun `render_map_image`. Done: vidingsjo (others still auto shader).
 - House style (types, colours, facades with windows, semi-realistic areas) comes from
   `geodata/stilar.json`; rebuild the map to apply changes.
 - Real maps `scenes/maps/vikbolandet.tscn` (6.6 × 7 km) and `scenes/maps/vidingsjo.tscn`
@@ -570,7 +570,13 @@ shows on the minimap. This is what we test first.
   hills.tscn still uses `tree.tscn`/`BreakableTree`.
 - Bridges and underpasses come from the geodata pipeline (`geodata/scripts/broar.py`): glb group
   `Broar` (decks, parapets, pillars, trench floors, retaining walls). `mesh_collision.gd` gives
-  `Byggnader`, `Broar` and `Stenar` trimesh collision. Underpasses are tank-sized (≥ 5 m wide, 3.8 m clear).
+  `Byggnader`, `Broar`, `Stenar` and `Banhinder` trimesh collision. Underpasses are tank-sized (≥ 5 m wide, 3.8 m clear).
+- Roads come from OSM with Trafikverket's NVDB attributes (`geodata/scripts/nvdb.py`: real width, surface,
+  speed; `vagmarkering.py`: centre/warning/no-overtaking/edge lines and zebra crossings as thin meshes in
+  the glb group `Vagar`). So far rebuilt: vidingsjo, linghem.
+- Railways come from the geodata pipeline (`geodata/scripts/jarnvag.py`, OSM): banvall shaped in the
+  heightmap, glb group `Jarnvag` (ballast, sleepers, rails, catenary wires; no collision, tanks drive
+  over) and `Banhinder` (catenary masts, rail bridge decks, platforms; collision). So far only Linghem.
 - Orienteering maps (club-owned, private use only, in `geodata/<area>/data/`, outside git) add
   boulders (`Stenar`), thickets (extra bushes) and marsh/open-land classes: `geodata/scripts/okarta.py`.
 - Map pictures (minimap, big map on M): `tools/render_map_image.gd -- <map>` renders

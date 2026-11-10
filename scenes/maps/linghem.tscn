@@ -48,7 +48,7 @@ directional_shadow_max_distance = 300.0
 
 [node name="Objects" type="Node3D" parent="." unique_id=1081408993 instance=ExtResource("3_5m7lv")]
 script = ExtResource("4_h1y08")
-collision_prefixes = PackedStringArray("Byggnader", "Broar", "Stenar")
+collision_prefixes = PackedStringArray("Byggnader", "Broar", "Stenar", "Banhinder")
 
 [node name="Trees" type="Node3D" parent="." unique_id=1031025178]
 script = ExtResource("5_8rr55")

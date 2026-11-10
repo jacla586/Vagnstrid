@@ -1,15 +1,385 @@
 {
 	"_doc": "Fixed camera views per map for tools/render_views.gd. at / look_at: world x, z (m; origin NW corner, z south). height_m: camera above the ground; look_height_m: target above its ground. fov: vertical degrees.",
 	"vidingsjo": [
-		{"name": "1_field", "at": [400, 560], "height_m": 2.5, "look_at": [560, 650], "look_height_m": 2.0, "fov": 60},
-		{"name": "2_forest_edge", "at": [700, 1543], "height_m": 2.5, "look_at": [772, 1540], "look_height_m": 6.0, "fov": 60},
-		{"name": "3_town", "at": [2560, 1360], "height_m": 14.0, "look_at": [2636, 1428], "look_height_m": 0.0, "fov": 60},
-		{"name": "4_house_close", "at": [2427, 2284], "height_m": 3.0, "look_at": [2392, 2356], "look_height_m": 0.0, "fov": 60},
-		{"name": "5_far_view", "at": [986, 2588], "height_m": 6.0, "look_at": [1690, 1525], "look_height_m": -20.0, "fov": 50},
-		{"name": "6_tank_road", "at": [1690, 1522], "height_m": 3.0, "look_at": [1720, 1626], "look_height_m": 2.5, "fov": 70},
-		{"name": "7_overview", "at": [1690, 2700], "height_m": 260.0, "look_at": [1690, 1700], "look_height_m": 0.0, "fov": 55},
-		{"name": "8_binoculars_edge", "at": [330, 1545], "height_m": 3.0, "look_at": [772, 1540], "look_height_m": 8.0, "fov": 7},
-		{"name": "10_villas_close", "at": [2588, 1392], "height_m": 4.0, "look_at": [2630, 1420], "look_height_m": 2.0, "fov": 60},
-		{"name": "9_binoculars_far", "at": [986, 2588], "height_m": 6.0, "look_at": [1300, 2100], "look_height_m": 6.0, "fov": 6}
+		{
+			"name": "1_field",
+			"at": [
+				400,
+				560
+			],
+			"height_m": 2.5,
+			"look_at": [
+				560,
+				650
+			],
+			"look_height_m": 2.0,
+			"fov": 60
+		},
+		{
+			"name": "2_forest_edge",
+			"at": [
+				700,
+				1543
+			],
+			"height_m": 2.5,
+			"look_at": [
+				772,
+				1540
+			],
+			"look_height_m": 6.0,
+			"fov": 60
+		},
+		{
+			"name": "3_town",
+			"at": [
+				2560,
+				1360
+			],
+			"height_m": 14.0,
+			"look_at": [
+				2636,
+				1428
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		},
+		{
+			"name": "4_house_close",
+			"at": [
+				2427,
+				2284
+			],
+			"height_m": 3.0,
+			"look_at": [
+				2392,
+				2356
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		},
+		{
+			"name": "5_far_view",
+			"at": [
+				986,
+				2588
+			],
+			"height_m": 6.0,
+			"look_at": [
+				1690,
+				1525
+			],
+			"look_height_m": -20.0,
+			"fov": 50
+		},
+		{
+			"name": "6_tank_road",
+			"at": [
+				1690,
+				1522
+			],
+			"height_m": 3.0,
+			"look_at": [
+				1720,
+				1626
+			],
+			"look_height_m": 2.5,
+			"fov": 70
+		},
+		{
+			"name": "7_overview",
+			"at": [
+				1690,
+				2700
+			],
+			"height_m": 260.0,
+			"look_at": [
+				1690,
+				1700
+			],
+			"look_height_m": 0.0,
+			"fov": 55
+		},
+		{
+			"name": "8_binoculars_edge",
+			"at": [
+				330,
+				1545
+			],
+			"height_m": 3.0,
+			"look_at": [
+				772,
+				1540
+			],
+			"look_height_m": 8.0,
+			"fov": 7
+		},
+		{
+			"name": "10_villas_close",
+			"at": [
+				2588,
+				1392
+			],
+			"height_m": 4.0,
+			"look_at": [
+				2630,
+				1420
+			],
+			"look_height_m": 2.0,
+			"fov": 60
+		},
+		{
+			"name": "9_binoculars_far",
+			"at": [
+				986,
+				2588
+			],
+			"height_m": 6.0,
+			"look_at": [
+				1300,
+				2100
+			],
+			"look_height_m": 6.0,
+			"fov": 6
+		},
+		{
+			"name": "11_haningeleden",
+			"at": [
+				2440,
+				2125
+			],
+			"height_m": 1.8,
+			"look_at": [
+				2530,
+				2085
+			],
+			"look_height_m": 0.5,
+			"fov": 60
+		},
+		{
+			"name": "12_alerydsvagen",
+			"at": [
+				2930,
+				776
+			],
+			"height_m": 1.8,
+			"look_at": [
+				3030,
+				744
+			],
+			"look_height_m": 0.5,
+			"fov": 60
+		},
+		{
+			"name": "13_haninge_above",
+			"at": [
+				2420,
+				2160
+			],
+			"height_m": 30.0,
+			"look_at": [
+				2500,
+				2095
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		},
+		{
+			"name": "14_haninge_down",
+			"at": [
+				2486,
+				2120
+			],
+			"height_m": 12.0,
+			"look_at": [
+				2490,
+				2104
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		},
+		{
+			"name": "15_ortgatan_tunnel_above",
+			"at": [
+				900,
+				1380
+			],
+			"height_m": 22.0,
+			"look_at": [
+				917,
+				1337
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		},
+		{
+			"name": "16_ortgatan_tunnel_road",
+			"at": [
+				960,
+				1310
+			],
+			"height_m": 2.5,
+			"look_at": [
+				917,
+				1337
+			],
+			"look_height_m": 0.5,
+			"fov": 60
+		},
+		{
+			"name": "17_split_haninge_1300",
+			"at": [
+				1250,
+				1990
+			],
+			"height_m": 45.0,
+			"look_at": [
+				1290,
+				1935
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		},
+		{
+			"name": "18_split_vist_2400",
+			"at": [
+				2350,
+				1050
+			],
+			"height_m": 45.0,
+			"look_at": [
+				2400,
+				980
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		},
+		{
+			"name": "19_split_haninge_900",
+			"at": [
+				880,
+				1440
+			],
+			"height_m": 45.0,
+			"look_at": [
+				960,
+				1390
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		}
+	],
+	"linghem": [
+		{
+			"name": "1_station",
+			"at": [
+				700,
+				530
+			],
+			"height_m": 2.5,
+			"look_at": [
+				760,
+				485
+			],
+			"look_height_m": 1.5,
+			"fov": 60
+		},
+		{
+			"name": "2_rail_bridge",
+			"at": [
+				588,
+				575
+			],
+			"height_m": 2.0,
+			"look_at": [
+				589,
+				521
+			],
+			"look_height_m": 3.0,
+			"fov": 60
+		},
+		{
+			"name": "3_along_track",
+			"at": [
+				905,
+				470
+			],
+			"height_m": 4.0,
+			"look_at": [
+				1149,
+				318
+			],
+			"look_height_m": 3.0,
+			"fov": 55
+		},
+		{
+			"name": "4_overview",
+			"at": [
+				700,
+				700
+			],
+			"height_m": 120.0,
+			"look_at": [
+				850,
+				450
+			],
+			"look_height_m": 0.0,
+			"fov": 55
+		},
+		{
+			"name": "5_track_close",
+			"at": [
+				1000,
+				430
+			],
+			"height_m": 1.8,
+			"look_at": [
+				1012,
+				410
+			],
+			"look_height_m": 0.0,
+			"fov": 70
+		},
+		{
+			"name": "6_road_secondary",
+			"at": [
+				680,
+				476
+			],
+			"height_m": 1.8,
+			"look_at": [
+				760,
+				461
+			],
+			"look_height_m": 0.5,
+			"fov": 60
+		},
+		{
+			"name": "7_road_tertiary",
+			"at": [
+				569,
+				985
+			],
+			"height_m": 1.8,
+			"look_at": [
+				571,
+				900
+			],
+			"look_height_m": 0.5,
+			"fov": 60
+		},
+		{
+			"name": "8_road_above",
+			"at": [
+				700,
+				480
+			],
+			"height_m": 25.0,
+			"look_at": [
+				760,
+				462
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		}
 	]
 }

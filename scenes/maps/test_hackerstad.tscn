@@ -43,7 +43,7 @@ directional_shadow_max_distance = 300.0
 
 [node name="Objects" type="Node3D" parent="." unique_id=1132460111 instance=ExtResource("3_b2yap")]
 script = ExtResource("4_k001v")
-collision_prefixes = PackedStringArray("Byggnader", "Broar", "Stenar")
+collision_prefixes = PackedStringArray("Byggnader", "Broar", "Stenar", "Banhinder")
 
 [node name="PlayerRig" type="Node3D" parent="." unique_id=700429090 instance=ExtResource("5_gnhrl")]
 transform = Transform3D(-0.41794303, 0, -0.90847325, 0, 1, 0, 0.90847325, 0, -0.41794303, 1892.51, 43.466064, 642.94)

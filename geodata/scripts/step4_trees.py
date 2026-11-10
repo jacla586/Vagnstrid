@@ -90,10 +90,10 @@ if blds:
 # broar och undergångar (step3/broar.py): inga träd i schakten eller på brobanorna
 bro_fil = WORK / 'broar_mask.npy'
 bro_mask = np.load(str(bro_fil)) if bro_fil.exists() else None
-sten_fil = WORK / 'stenar_mask.npy'   # stenblock ur orienteringskartan (step3)
-if sten_fil.exists():
-    sm = np.load(str(sten_fil))
-    bro_mask = sm if bro_mask is None else (bro_mask | sm)
+for extra in ('stenar_mask.npy', 'jarnvag_mask.npy'):   # stenblock (orienteringskartan), järnväg (step3)
+    if (WORK / extra).exists():
+        sm = np.load(str(WORK / extra))
+        bro_mask = sm if bro_mask is None else (bro_mask | sm)
 if bro_mask is not None:
     bad |= bro_mask[pi, pj]
 ground = ndi.map_coordinates(h_final, [(OY - N) / RES, (E - OX) / RES], order=1, mode='nearest')

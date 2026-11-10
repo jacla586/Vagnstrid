@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -43,34 +43,11 @@ def sample(hh, xs, ys):
     c, r = to_px(np.asarray(xs), np.asarray(ys))
     return ndi.map_coordinates(hh, [r, c], order=1, mode='nearest')
 
-# ---------- Vägar ----------
-WIDTH = dict(trunk=8, primary=7.5, secondary=7, tertiary=6.5, unclassified=5, residential=5,
-             service=3.5, track=3.0, path=1.2, footway=1.5, cycleway=2.5)
-def surface_of(t):
-    s = t.get('surface')
-    if s in ('asphalt', 'paved', 'concrete'):
-        return 'asfalt'
-    if s in ('unpaved', 'gravel', 'compacted', 'fine_gravel', 'dirt', 'ground'):
-        return 'grus' if t['highway'] not in ('path', 'footway') else 'stig'
-    if t['highway'] in ('trunk', 'primary', 'secondary', 'tertiary'):
-        return 'asfalt'
-    if t['highway'] in ('path', 'footway'):
-        return 'stig'
-    return 'grus'
-
-clip_area = BOX
-roads = []
-for geom, t in feat['roads']:
-    is_e851 = t.get('ref') == 'E 851'
-    gg = geom if is_e851 else geom.intersection(clip_area)
-    if gg.is_empty:
-        continue
-    for part in getattr(gg, 'geoms', [gg]):
-        if part.geom_type != 'LineString' or part.length < 4:
-            continue
-        roads.append(dict(line=part, tags=t, width=WIDTH.get(t['highway'], 3.0), surface=surface_of(t),
-                          name=t.get('name') or t.get('ref') or t['highway']))
+# ---------- Vägar ---------- (vagnat.py: OSM-listan, körbanor genom korsningar, NVDB, harmonisering)
+WIDTH, surface_of = vagnat.WIDTH, vagnat.surface_of
+roads = vagnat.vaglista(feat['roads'], BOX)
 print('vägsegment', len(roads), 'total km', round(sum(r['line'].length for r in roads) / 1000, 1))
+NV = vagnat.forbered(roads, (X0, Y1 - H * RES, X0 + W * RES, Y1), WORK)
 BRO = broar.Broar(roads)   # brobanor och undergångar (broar.py)
 
 # Täta ut mittlinjerna (var 2 m) och jämna ut längsprofilen
@@ -87,9 +64,9 @@ for k, r in enumerate(roads):
     if r['tags']['highway'] in ('path', 'footway'):
         continue  # stigar följer terrängen, ingen schaktning
     pa_dack = BRO.pa_bro(k, ss)
-    for (x, y), zz, dack in zip(pts, z, pa_dack):
+    for (x, y), zz, dack, hh in zip(pts, z, pa_dack, r['hw']):
         if not dack:   # under däcken ligger marken kvar på den lägre nivån
-            samples.append((x, y, zz, r['width'] / 2, k))
+            samples.append((x, y, zz, hh, k))
 S = np.array(samples)
 SHOULDER = 8.0
 tree = cKDTree(S[:, :2])
@@ -157,6 +134,11 @@ for geom, t in feat['waterways']:
 h = ndi.gaussian_filter(h, 0.6) * 0.5 + h * 0.5  # mjuka kanter efter schaktning
 BRO.schakta(h, sample, (H, W), T, OX, OY, RES)   # undergångar: fri höjd under däcken
 BRO.spara_mask(str(WORK / 'broar_mask.npy'), (H, W), T)   # step4: inga träd i schakt och på broar
+# Järnväg (jarnvag.py): profil ur den orörda höjdmodellen, banvallen formas sist
+BANA = jarnvag.Jarnvag(feat.get('rails', []), feat.get('platforms', []), BOX,
+                       np.load(str(WORK / 'h_raw.npy')).astype(np.float64), sample)
+BANA.forma(h, (H, W), T, OX, OY, RES)
+BANA.spara_mask(str(WORK / 'jarnvag_mask.npy'), (H, W), T)   # step4: inga träd nära spåret
 
 # ---------- Heightmap-export ----------
 hmin, hmax = float(h.min()), float(h.max())
@@ -201,6 +183,7 @@ for r in roads:
         continue
     mm = rasterize([(r['line'].buffer(r['width'] / 2), 1)], out_shape=(H, W), transform=T).astype(bool)
     lc[mm] = CIDX['väg_asfalt' if r['surface'] == 'asfalt' else 'väg_grus']
+BANA.marktacke(lc, CIDX['väg_grus'], (H, W), T)
 pal = np.array([c for _, c in CLASSES], np.uint8)
 Image.fromarray(lc).save(f'{OUT}/landcover_index.png')
 Image.fromarray(pal[lc]).save(f'{OUT}/landcover_color.png')
@@ -271,6 +254,18 @@ def flush_merged():
 
 # ---------- Vägmeshar ----------
 ROADMAT = dict(asfalt=mat('Vag_asfalt', (62, 62, 64), 0.8), grus=mat('Vag_grus', (150, 138, 116)), stig=mat('Stig', (118, 100, 76)))
+# Asfaltens ålder: beläggningsåret ur NVDB (statliga vägar), annars stabilt slumpat per väg
+ASFALT_ALDER = [(4, mat('Vag_asfalt_ny', (46, 46, 49), 0.75)), (12, ROADMAT['asfalt']),
+                (999, mat('Vag_asfalt_gammal', (74, 73, 72), 0.85))]
+def asfalt_mat(r):
+    ar = r['bel_ar'][np.isfinite(r['bel_ar'])]
+    if len(ar):
+        alder = 2026 - float(np.median(ar))
+    else:   # samma gata (namn/vägnummer) får samma ålder, så nyansen inte byter mitt på gatan
+        import zlib
+        nyckel = r['tags'].get('name') or r['tags'].get('ref') or '%.0f,%.0f' % r['line'].coords[0]
+        alder = [2, 8, 8, 8, 16][zlib.crc32(nyckel.encode()) % 5]
+    return next(m for grans, m in ASFALT_ALDER if alder < grans)
 road_json = []
 scene.graph.update(frame_to='Vagar', frame_from=scene.graph.base_frame)
 for k, r in enumerate(roads):
@@ -280,7 +275,7 @@ for k, r in enumerate(roads):
     dvec = np.gradient(pts, axis=0)
     dvec /= np.maximum(np.linalg.norm(dvec, axis=1, keepdims=True), 1e-9)
     nrm = np.c_[-dvec[:, 1], dvec[:, 0]]
-    hw = r['width'] / 2
+    hw = r['hw'][:, None]
     L = pts + nrm * hw; Rr = pts - nrm * hw
     lift = broar.lyft(r['tags'])
     if r['tags']['highway'] in ('path', 'footway'):
@@ -290,6 +285,7 @@ for k, r in enumerate(roads):
         zl = zr = zc + lift
     dack = BRO.pa_dack(k, r['s'])
     zl = np.where(dack, r['z'] + lift, zl); zr = np.where(dack, r['z'] + lift, zr)  # brobanans yta
+    r['zm'], r['nrm'] = (zl + zr) / 2, nrm   # vägmarkeringarna (vagmarkering.py)
     wl = np.array([to_world(*p) for p in L]); wr = np.array([to_world(*p) for p in Rr])
     V = np.empty((2 * len(pts), 3))
     V[0::2] = np.c_[wl[:, 0], zl, wl[:, 1]]
@@ -303,15 +299,20 @@ for k, r in enumerate(roads):
     # se till att normalerna pekar uppåt
     if mesh.face_normals[:, 1].mean() < 0:
         mesh.faces = mesh.faces[:, ::-1]
-    add_merged('Vagar', mesh, ROADMAT[r['surface']], uv)
+    add_merged('Vagar', mesh, asfalt_mat(r) if r['surface'] == 'asfalt' else ROADMAT[r['surface']], uv)
     cw = np.array([to_world(*p) for p in pts[::2]] + ([to_world(*pts[-1])] if (len(pts) - 1) % 2 else []))
     cz = np.r_[r['z'][::2], [r['z'][-1]] if (len(pts) - 1) % 2 else []]
     road_json.append(dict(name=r['name'], highway=r['tags']['highway'], ref=r['tags'].get('ref'), surface=r['surface'],
                           width_m=r['width'], osm_name=r['tags'].get('name'),
                           points=[[round(float(x), 2), round(float(z), 2), round(float(y), 2)] for (x, y), z in zip(cw, cz)]))
+vagmarkering.Markering(roads, NV).bygg(add_merged, mat, to_world)
 scene.graph.update(frame_to='Broar', frame_from=scene.graph.base_frame)
 BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 0.95),
                 mat('Tra', (120, 88, 58), 0.9), mat('Racke', (72, 74, 76), 0.6))
+if BANA:
+    for grupp in ('Jarnvag', 'Banhinder'):
+        scene.graph.update(frame_to=grupp, frame_from=scene.graph.base_frame)
+    BANA.bygg_meshar(h, sample, to_world, add_merged, mat)
 
 # ---------- Stenblock ur orienteringskartan (stenar.py) ----------
 STEN_FIL = WORK / 'okarta_stenar.npy'

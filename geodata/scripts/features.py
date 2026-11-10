@@ -22,6 +22,9 @@ LANDCOVER_KEYS = {
     ('natural', 'water'): 'water',
 }
 
+# Järnväg i bruk (jarnvag.py); disused/abandoned/museum/tram tas inte med
+RAIL_KINDS = ('rail', 'light_rail', 'narrow_gauge')
+
 def landcover_class(t):
     for (k, v), c in LANDCOVER_KEYS.items():
         if t.get(k) == v:
@@ -36,7 +39,8 @@ def build(osm_path):
     def coords(w):
         return [P[k] for k in w['nds'] if k in P]
 
-    out = dict(buildings=[], roads=[], landcover=[], water=[], waterways=[], points=[], hedges=[])
+    out = dict(buildings=[], roads=[], landcover=[], water=[], waterways=[], points=[], hedges=[],
+               rails=[], platforms=[])
     used_in_rel = set()
     for rid, r in rels.items():
         t = r['tags']
@@ -95,6 +99,10 @@ def build(osm_path):
             out['buildings'].append((Polygon(c).buffer(0), t))
         elif 'highway' in t and t['highway'] not in ('proposed', 'construction', 'platform'):
             out['roads'].append((LineString(c), t))
+        elif t.get('railway') in RAIL_KINDS:
+            out['rails'].append((LineString(c), t))
+        elif t.get('railway') == 'platform' or t.get('public_transport') == 'platform' and t.get('train') == 'yes':
+            out['platforms'].append((Polygon(c).buffer(0) if closed else LineString(c), t))
         elif 'waterway' in t:
             out['waterways'].append((LineString(c), t))
         elif t.get('barrier') == 'hedge':

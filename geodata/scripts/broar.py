@@ -132,7 +132,7 @@ class Broar:
         self.anslut = {k: [] for k in range(n)}     # s där vägen ansluter till en bro
         self.korsningar = {}                        # (undre j, övre k) -> korsningspunkt
         self.murar = []                             # (punkter Nx2, topp N, botten N, tjocklek)
-        self.tak = []                               # (punkter Nx2, topp N, halvbredd N, undre vägens taggar)
+        self.tak = []                               # (punkter Nx2, topp N, halvbredd N, undre vägens taggar, vägriktning)
         self.schakt = 0
         self.fria_hojder = []
         lines = [r['line'] for r in roads]
@@ -326,6 +326,7 @@ class Broar:
             pts = np.array([rutt.interpolate(d).coords[0] for d in ss])
             z_r = np.full(n, np.inf)
             bottnar, tak_kanter = [], []
+            vag_riktn = []   # vägarna ovanför: taket och räckena följer dem, inte gångvägen under
             for k, p in lista:
                 rk = self.roads[k]
                 topp = self._dack_hojd(k, p)
@@ -344,6 +345,7 @@ class Broar:
                           f"golv {krav:.1f} m, mark nu {float(sample(h, [p[0]], [p[1]])[0]):.1f} m")
                 if not self.bro[k] or kort_bro:
                     tak_kanter.append((s_p - halv, s_p + halv, s_p, topp))
+                    vag_riktn.append(_riktning(rk['line'], rk['line'].project(Point(p))))
                     if kort_bro:
                         self.pa_tak.add(k)
             h_nu = sample(h, pts[:, 0], pts[:, 1])
@@ -370,8 +372,16 @@ class Broar:
                 tp = np.interp(sp, [c for c, _ in ordn], [t for _, t in ordn]) - 0.03
                 zr = np.interp(sp, ss, z_r)
                 hw = bredd / 2 + SLANT * np.maximum(0.0, tp - TAK_TJOCKLEK - zr) + 0.6
-                self.tak.append((np.array([rutt.interpolate(d).coords[0] for d in sp]), tp, hw,
-                                 self.roads[j]['tags']))
+                # mynningarna parallella med vägen ovanför (medelriktning, samma håll som normalen)
+                n_r = _riktning(rutt, float(np.mean([c for _, _, c, _ in tak_kanter])))
+                n_r = np.array([-n_r[1], n_r[0]])
+                u = np.zeros(2)
+                for v in vag_riktn:
+                    u += v if np.dot(v, n_r) >= 0 else -v
+                u = u / np.linalg.norm(u) if np.linalg.norm(u) > 1e-9 else n_r
+                sin = max(abs(float(np.dot(u, n_r))), 0.5)   # mot normalen: 1 = rät korsning
+                self.tak.append((np.array([rutt.interpolate(d).coords[0] for d in sp]), tp, hw / sin,
+                                 self.roads[j]['tags'], u))
             for botten, s_p in bottnar:
                 if schakt:
                     golvet = float(np.interp(s_p, ss, z_r))
@@ -464,17 +474,16 @@ class Broar:
                 add_merged('Broar', mr.trimesh(), tra if d['tra'] else metall)
             antal += 1
         # tunneltak över undergångarna, med räcken längs mynningarna
-        for pts, topp, hw, tj in self.tak:
+        for pts, topp, hw, tj, u in self.tak:
             m = _Mesh(to_world)
-            m.platta(pts, topp, hw, TAK_TJOCKLEK, ovan_under=0.0)
+            m.platta(pts, topp, hw, TAK_TJOCKLEK, ovan_under=0.0, tvars=u)
             mr = _Mesh(to_world)
             dv = np.gradient(pts, axis=0) if len(pts) > 2 else np.repeat([pts[-1] - pts[0]], len(pts), 0)
             dv /= np.maximum(np.linalg.norm(dv, axis=1, keepdims=True), 1e-9)
-            nrm = np.c_[-dv[:, 1], dv[:, 0]]
             for i_, inat in ((0, 1.0), (len(pts) - 1, -1.0)):
                 n_ = max(2, int(2 * hw[i_]) + 1)
                 tvars = np.linspace(-hw[i_] + 0.3, hw[i_] - 0.3, n_)
-                linje = pts[i_] + dv[i_] * inat * STOLPE + np.outer(tvars, nrm[i_])
+                linje = pts[i_] + dv[i_] * inat * STOLPE + np.outer(tvars, u)
                 mr.racke(linje, np.full(n_, topp[i_]), RACKE_HOJD)
             add_merged('Broar', m.trimesh(), betong)
             add_merged('Broar', mr.trimesh(), metall)
@@ -505,15 +514,18 @@ class _Mesh:
             f1, f2 = f1[::-1], f2[::-1]
         self.F += [f1, f2]
 
-    def platta(self, pts, topp, hw, tjock, ovan_under=0.02):
+    def platta(self, pts, topp, hw, tjock, ovan_under=0.02, tvars=None):
         """Platta längs en linje med halvbredd hw (tal eller array): ovansida (ovan_under m under
-        topp; på broar ligger vägmeshen utan kollision ovanpå), sidor, undersida och ändar."""
+        topp; på broar ligger vägmeshen utan kollision ovanpå), sidor, undersida och ändar.
+        tvars: enhetsvektor (SWEREF) som kanterna tvärs över följer i stället för linjens normal,
+        t.ex. vägen ovanför ett snett tunneltak (hw räknas då längs den)."""
         pts = np.asarray(pts, float)
         d = np.gradient(pts, axis=0) if len(pts) > 2 else np.repeat([pts[-1] - pts[0]], len(pts), 0)
         d = d / np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-9)
         nrm = np.c_[-d[:, 1], d[:, 0]]
         hw = np.broadcast_to(np.asarray(hw, float), (len(pts),))[:, None]
-        Lp, Rp = pts + nrm * hw, pts - nrm * hw
+        tv = nrm if tvars is None else np.broadcast_to(np.asarray(tvars, float), (len(pts), 2))
+        Lp, Rp = pts + tv * hw, pts - tv * hw
         topp = np.asarray(topp, float)
         bot, ovan = topp - tjock, topp - ovan_under
         upp, ned = np.array([0.0, 1.0, 0.0]), np.array([0.0, -1.0, 0.0])
