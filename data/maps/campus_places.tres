@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="PlaceNamesData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/place_names_data.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+names = PackedStringArray("Mjärdevi", "Västra Valla", "Vallastaden", "Campus Valla", "Vallamassivet")
+kinds = PackedStringArray("suburb", "suburb", "neighbourhood", "locality", "locality")
+positions = PackedVector2Array(244.4, 1213.6, 1489.6, 586.9, 1621.1, 1401.1, 1164.5, 500.6, 1897.9, 636.9)
+reach_m = PackedFloat32Array(1100, 1100, 550, 320, 320)

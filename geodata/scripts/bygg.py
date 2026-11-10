@@ -62,6 +62,7 @@ def main():
         run(S / 'step4_trees.py', objekt, out, nmd, env=env)
     else:
         print(f'Hoppar över träd: {objekt} saknas')
+    run(S / 'platser.py', proj, '--osm', osm, env=env)   # ortnamn för spelets platsskylt
     print(f'\nKlart. Resultatet ligger i {out}')
 
 

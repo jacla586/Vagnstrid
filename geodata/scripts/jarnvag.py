@@ -185,7 +185,9 @@ class Jarnvag:
             lc[self._celler(MAKADAM[-1][0] - 0.3, shape, T)] = klass
 
     # ---------- meshar ----------
-    def bygg_meshar(self, h, sample, to_world, add_merged, mat):
+    def bygg_meshar(self, h, sample, to_world, add_merged, mat, valt=None):
+        """valt (valtbart.Samling): kontaktledningsstolparna (med utliggare) och trådarna per spann
+        blir vältbara, utan kollision; annars stolparna i Banhinder och trådarna sammanslagna."""
         if not self:
             return
         M = dict(makadam=mat('Makadam', (96, 88, 80), 1.0), sliper=mat('Sliper', (138, 136, 130), 0.95),
@@ -284,11 +286,15 @@ class Jarnvag:
 
             # kontaktledning
             if sp['el'] and not sp['service']:
-                C_st, C_arm, A, B = self._kontaktledning(k, sp, W)
-                stolpar.append(C_st)
-                armar.append(C_arm)
-                tradar.append((A, B))
-                n_stolpe += len(C_st)
+                C_st, C_arm, A, B, fotter, spann = self._kontaktledning(k, sp, W)
+                if valt is not None:
+                    self._valtbar_ledning(valt, k, fotter, spann, M)
+                    n_stolpe += len(fotter)
+                else:
+                    stolpar.append(C_st)
+                    armar.append(C_arm)
+                    tradar.append((A, B))
+                    n_stolpe += len(C_st)
 
         lagg('Jarnvag', np.vstack(lagg_sliper), M['sliper'])
         lagg('Jarnvag', np.vstack(lagg_rals), M['rals'], M['ralshuvud'])
@@ -304,6 +310,24 @@ class Jarnvag:
                 lagg('Banhinder', np.vstack(C), M['betong'], botten=True)
         self._perronger(h, sample, W, add_merged, M)
         print(f'järnväg: {n_sliper} sliprar, {n_stolpe} kontaktledningsstolpar')
+
+    def _valtbar_ledning(self, valt, k, fotter, spann, M):
+        """Stolpar som mallar (två utliggarlängder: a när stolpens sida och sicksacken är lika,
+        annars b) och ett mesh per spann; stolpe i drar med sig spann i − 1 och i."""
+        from valtbart import lador_mesh   # valtbart importerar kuboider härifrån
+        topp = SLIPER_H + RALS_H + BAR_OVER_RALS
+        for v, tecken in (('a', 1), ('b', -1)):
+            typ = f'Kontaktstolpe_{v}'
+            if valt.har_mall(typ):
+                continue
+            ut = (STOLPE_SIDLED_M - tecken * SICKSACK_M) / 2   # utliggarens mitt mot spåret (+x)
+            valt.mall(typ, [(lador_mesh(np.vstack([
+                ladar([[0, 0]], [[0, 1]], 0.12, 0.15, -0.5, topp + 1.0),
+                ladar([[ut, 0]], [[1, 0]], ut + 0.1, 0.04, topp - 0.05, topp + 0.05)])), M['stolpe'])])
+        for i, fot, x_dir, v in fotter:
+            valt.placera(f'Kontaktstolpe_{v}', fot, x_dir, nyckel=f'{k}_{i}')
+        for i, A, B in spann:
+            valt.mesh(f'Ledning__{k}_{i}', lador_mesh(ror(A, B, 0.035), botten=True), M['trad'])
 
     def _yttersida(self, k, P, nrm):
         """(n, 2) bool: [vänster fri, höger fri] = inget annat spår 2–7 m åt det hållet."""
@@ -337,12 +361,16 @@ class Jarnvag:
             dd, _ = cKDTree(self.P[self.pa_bro]).query(P)
             nara_bro = dd < 4.0
         C_st, C_arm = [], []
+        fotter = []   # (station, fot i världen, x mot spåret i världens xz, utliggarvariant)
         zig = np.where(np.arange(len(stn)) % 2 == 0, SICKSACK_M, -SICKSACK_M)
         for i in range(1, len(stn) - 1):   # ändpunkterna bär bara tråd (nästa spårbit fortsätter)
             if nara_bro[i] or not (fri[i, 0] or fri[i, 1]):
                 continue
             sida = 1 if fri[i, 1] else -1
             m = P[i] + nr[i] * sida * STOLPE_SIDLED_M
+            wm = W(m[None])[0]
+            fotter.append((i, [wm[0], pz[i], wm[1]], W(m[None] - nr[i:i + 1] * sida)[0] - wm,
+                           'a' if sida * zig[i] > 0 else 'b'))
             C_st.append(ladar(W(m[None]), W(m[None] + d[i:i + 1]) - W(m[None]), 0.12, 0.15, pz[i] - 0.5,
                               rals[i] + BAR_OVER_RALS + 1.0))
             a_mitt = (m + P[i] + nr[i] * zig[i]) / 2
@@ -351,7 +379,9 @@ class Jarnvag:
                                rals[i] + BAR_OVER_RALS - 0.05, rals[i] + BAR_OVER_RALS + 0.05))
         # trådar: kontakttråd (sicksack) och bärlina (nedhäng) mellan stationerna, hängare emellan
         A, B = [], []
+        spann = []   # (i, A, B) för trådarna mellan station i och i + 1
         for i in range(len(stn) - 1):
+            n_fore = len(A)
             for j in range(6):
                 t0, t1 = j / 6, (j + 1) / 6
                 def punkt(t, hojd, sag):
@@ -366,8 +396,10 @@ class Jarnvag:
                 A.append(punkt(t0, BAR_OVER_RALS, BAR_NEDHANG)); B.append(punkt(t1, BAR_OVER_RALS, BAR_NEDHANG))
                 if j > 0:
                     A.append(punkt(t0, KONTAKT_OVER_RALS, 0)); B.append(punkt(t0, BAR_OVER_RALS, BAR_NEDHANG))
+            spann.append((i, np.array(A[n_fore:]), np.array(B[n_fore:])))
         tom = np.zeros((0, 8, 3))
-        return (np.vstack(C_st) if C_st else tom), (np.vstack(C_arm) if C_arm else tom), np.array(A), np.array(B)
+        return ((np.vstack(C_st) if C_st else tom), (np.vstack(C_arm) if C_arm else tom), np.array(A), np.array(B),
+                fotter, spann)
 
     def _platta(self, poly, c, h, sample, to_W):
         def topp(xy):

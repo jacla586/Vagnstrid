@@ -34,6 +34,9 @@ extends Resource
 ## The attackers' time bank (s), topped up per checkpoint taken.
 @export var start_time_s: float = 240.0
 @export var time_per_capture_s: float = 120.0
+## Time up with attackers in the zone: overtime, the round runs on while one is alive
+## there and ends this long after the last one left or fell (s).
+@export var overtime_grace_s: float = 3.0
 ## Attackers' shared lives: per tank in the team at the start, and per checkpoint taken.
 @export var start_lives_per_tank: int = 2
 @export var lives_per_capture: int = 2

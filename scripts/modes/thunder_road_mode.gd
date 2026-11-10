@@ -57,6 +57,12 @@ var _next_cp: int = 0
 var _front_s: float = 0.0
 var _progress: float = 0.0
 var _contested: bool = false
+## Living attacker tanks in the next checkpoint's zone (host).
+var _attackers_in: int = 0
+## The time is up but attackers hold out in the zone: the round runs on.
+var _overtime: bool = false
+## Overtime: seconds left after the last attacker left the zone or fell.
+var _overtime_grace: float = 0.0
 var _time_left: float = 0.0
 var _lives: int = 0
 var _wave_left: float = 0.0
@@ -235,6 +241,11 @@ func is_contested() -> bool:
 	return _contested
 
 
+## The time is up, but the round runs on while attackers are in the zone.
+func is_overtime() -> bool:
+	return _overtime
+
+
 func get_time_left() -> float:
 	return _time_left
 
@@ -367,7 +378,7 @@ func get_net_state() -> Dictionary:
 			per_tank[tank.net_id] = row
 	return {
 		"go": _started, "r": _round, "at": _attack_team, "cp": _next_cp, "f": _front_s,
-		"p": _progress, "c": _contested, "t": _time_left, "l": _lives, "w": _wave_left,
+		"p": _progress, "c": _contested, "ot": _overtime, "t": _time_left, "l": _lives, "w": _wave_left,
 		"b": _break_left, "res": _results, "over": _over, "win": _winner, "dec": _decided,
 		"st": get_stats(), "tk": per_tank,
 	}
@@ -384,6 +395,7 @@ func apply_net_state(state: Dictionary) -> void:
 	_front_s = state.get("f", _front_s)
 	_progress = state.get("p", _progress)
 	_contested = state.get("c", _contested)
+	_overtime = state.get("ot", _overtime)
 	_time_left = state.get("t", _time_left)
 	_lives = state.get("l", _lives)
 	_wave_left = state.get("w", _wave_left)
@@ -495,7 +507,7 @@ func _physics_process(delta: float) -> void:
 		_check_corridors(CHECK_INTERVAL_S)
 	if _next_cp >= _cp_s.size():
 		_end_round()
-	elif _time_left <= 0.0:
+	elif _time_left <= 0.0 and _overtime_over(delta):
 		_end_round()
 	elif _lives <= 0 and _alive_count(_attack_team) == 0:
 		_end_round()
@@ -526,6 +538,8 @@ func _setup_round(number: int) -> void:
 	_front_s = data.start_front_m
 	_progress = 0.0
 	_contested = false
+	_attackers_in = 0
+	_overtime = false
 	_time_left = data.start_time_s
 	_lives = data.start_lives_per_tank * _team_tanks(_attack_team).size()
 	_wave_left = data.wave_interval_s
@@ -561,6 +575,7 @@ func _reset_map() -> void:
 
 
 func _end_round() -> void:
+	_overtime = false
 	var result := {
 		"attack_team": _attack_team,
 		"checkpoints": _next_cp,
@@ -620,6 +635,7 @@ func _update_capture(delta: float) -> void:
 		else:
 			defenders += 1
 	# More attackers than defenders there take it, the faster the bigger the edge.
+	_attackers_in = attackers
 	_contested = defenders > 0 and attackers > 0 and attackers <= defenders
 	var rate: float = 1.0 / maxf(data.capture_time_s, 0.1)
 	if attackers > defenders:
@@ -636,11 +652,25 @@ func _take_checkpoint() -> void:
 	_next_cp += 1
 	_progress = 0.0
 	_contested = false
+	_overtime = false
 	_time_left += data.time_per_capture_s
 	_lives += data.lives_per_capture
 	checkpoint_taken.emit(index)
 	if _next_cp < _cp_s.size():
 		_wave()
+
+
+## The time is up: true when the round may end. While a living attacker is in the
+## zone it runs on (overtime), and ends overtime_grace_s after the last one is gone.
+func _overtime_over(delta: float) -> bool:
+	if _attackers_in > 0 and _next_cp < _cp_s.size():
+		_overtime = true
+		_overtime_grace = data.overtime_grace_s
+		return false
+	if _overtime and _overtime_grace > 0.0:
+		_overtime_grace -= delta
+		return false
+	return true
 
 
 func _update_waves(delta: float) -> void:

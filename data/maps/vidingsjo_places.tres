@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="PlaceNamesData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/place_names_data.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+names = PackedStringArray("Berga", "Ekholmen", "Vidingsjö", "Blästad", "Duvkullen", "Haninge", "Skarpan", "Åleryd", "Ånestad", "Fröberget", "Smedstad", "Berga kulle", "Magasinshagen", "Oxhagen", "Ryttartorpet", "Smedstad dammar", "Smedstad utmark", "Vidingsjö motionscentrum", "Fridensborg")
+kinds = PackedStringArray("suburb", "suburb", "suburb", "neighbourhood", "neighbourhood", "neighbourhood", "neighbourhood", "neighbourhood", "neighbourhood", "hamlet", "hamlet", "locality", "locality", "locality", "locality", "locality", "locality", "locality", "isolated_dwelling")
+positions = PackedVector2Array(1392.1, 654.9, 3245.3, 1374.2, 2024.9, 1670.1, 2767.3, 1855.3, 2803.0, 277.6, 2372.1, 2279.1, 1117.0, 982.4, 2643.9, 987.0, 2109.1, 433.9, 458.9, 2285.4, 102.0, 1047.0, 1274.4, 207.7, 206.9, 600.2, 445.0, 1467.2, 585.9, 1444.1, 535.6, 866.6, 157.6, 2013.5, 1434.1, 2446.3, 972.3, 2918.7)
+reach_m = PackedFloat32Array(1100, 1100, 1100, 550, 550, 550, 550, 550, 550, 380, 380, 320, 320, 320, 320, 320, 320, 320, 180)

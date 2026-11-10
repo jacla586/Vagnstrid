@@ -66,6 +66,9 @@ func _draw() -> void:
 	_text(font, Vector2(cx, y), line, font_size - 6, text_color)
 	y += font_size + 2.0
 	var progress: float = mode.get_capture_progress()
+	if mode.is_overtime():
+		_text(font, Vector2(cx, y), "OVERTIME", font_size + 2, warn_color)
+		y += font_size + 6.0
 	if mode.is_contested():
 		_text(font, Vector2(cx, y), "CHECKPOINT %d CONTESTED" % (next + 1), font_size - 4, warn_color)
 		y += font_size + 2.0

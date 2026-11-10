@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant, lekplatser
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant, lekplatser, valtbart
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -328,8 +328,9 @@ BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 
                 mat('Tra', (120, 88, 58), 0.9), mat('Racke', (72, 74, 76), 0.6))
 # Vägkanten (vagkant.py): kantstolpar, lyktor, räcken, skyltar, hållplatser
 scene.graph.update(frame_to='Vagkant', frame_from=scene.graph.base_frame)
+VALT = valtbart.Samling()   # vältbart (lyktstolpar, kontaktledning): glb-gruppen Valtbart
 vagkant.Vagkant(roads, MARK.korsningar, feat.get('vagpunkter', []), h, np.load(str(WORK / 'h_raw.npy')).astype(np.float64),
-                sample, to_world, add_merged, mat).bygg()
+                sample, to_world, add_merged, mat, valt=VALT).bygg()
 # Lekplatser (lekplatser.py): redskap i OSM:s lekplatsytor, unika per park
 scene.graph.update(frame_to='Lekplatser', frame_from=scene.graph.base_frame)
 scene.graph.update(frame_to='Lekplatsunderlag', frame_from=scene.graph.base_frame)
@@ -354,7 +355,7 @@ trummor.bygg(TRUMMOR, h, sample, to_world, add_merged, mat)
 if BANA:
     for grupp in ('Jarnvag', 'Banhinder'):
         scene.graph.update(frame_to=grupp, frame_from=scene.graph.base_frame)
-    BANA.bygg_meshar(h, sample, to_world, add_merged, mat)
+    BANA.bygg_meshar(h, sample, to_world, add_merged, mat, valt=VALT)
 
 # ---------- Stenblock ur orienteringskartan (stenar.py) ----------
 STEN_FIL = WORK / 'okarta_stenar.npy'
@@ -724,6 +725,7 @@ scene.graph.update(frame_to='Vattendrag', frame_from=scene.graph.base_frame)
 print('vattendrag med vattenyta', n_vd)
 
 flush_merged()
+VALT.skriv(scene)
 markvegetation.lager_glb(MV, h, RES, f'{OUT}/{NAMN}_markvegetation.glb')   # växtlagret på avstånd
 # Först utan terrängrutor, för Godot där Terrain3D står för marken, sedan hela scenen
 scene.export(f'{OUT}/{NAMN}_objekt.glb')

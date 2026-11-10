@@ -203,15 +203,30 @@ shows on the minimap. This is what we test first.
   roads): pipe ends in hollows at the road banks (geodata `trummor.py`, glb group `Trummor`).
 - Roadside (geodata `vagkant.py`, glb group `Vagkant`, no collision): reflector posts on rural roads
   from 70 km/h, street lamps every 32 m in built-up areas, guard rails on high banks, speed signs where
-  NVDB's limit changes, give-way/stop signs and bus stop signs from OSM nodes, bus shelters from OSM
-  (shelter nodes and platforms with shelter=yes); sign faces from a generated atlas (alpha). Rural
+  NVDB's limit changes, give-way/stop signs and bus stop signs from OSM nodes (the stop's OSM name on a
+  plate below, own atlas), bus shelters from OSM
+  (shelter nodes and platforms with shelter=yes); sign faces from a generated atlas (alpha), the face
+  6 cm in front of and the grey back 6 cm behind the post, which ends at the sign's middle. Rural
   roads get 0.6 m ditches in the carving.
+- Toppling props (`PropBreak`, player rig, moves itself to the map scene; data `PropBreakData`,
+  `data/world/prop_break.tres`; cosmetic, local, nothing sent): glb group `Valtbart` (geodata
+  `valtbart.py`: templates `Mall_<kind>` + one empty node `<kind>__<key>` per prop) = street lamps,
+  catenary masts (no collision any more), road signs (`Skylt_<face>`, bus stops with a name
+  `Hallplats_<n>`) and reflector posts, drawn as a MultiMesh per kind and 250 m cell (small kinds only
+  within `small_draw_range_m`); a tank's
+  hull footprint touching one hides it and a `FallenProp` topples (a mast drops its catenary spans
+  `Ledning__<track>_<i>`); playground pieces (`Lekplatser`) fall apart into their solids (at most
+  `debris_max_parts`, thrown and spinning). Fallen things lie `lie_s` (30 s), sink and are gone until
+  ThunderRoad's map reset (`PropBreak.restore_all`).
+- Place names (`PlaceBanner`, HUD): driving into a district/village shows its name (and the wider place
+  round it) for a few seconds; `PlaceNamesData` (`data/maps/<map>_places.tres`) from OSM place=* by
+  `geodata/scripts/platser.py <project> [map]` (no rebuild needed; bygg.py runs it), reach per kind.
 - Playgrounds (geodata `lekplatser.py`): every OSM playground gets equipment (climbing tower with roof,
   net/wall and slide, slide, swing set or basket swing, roundabout, zip line in big parks, sandpit,
   basketball hoop, seesaw, benches, playhouse), unique per park (seeded by its OSM id: choice, count,
   colours, sizes, layout; OSM equipment nodes placed where mapped), sand or rubber under them. One glb
-  node per piece in group `Lekplatser` (vertex colours); `PlaygroundBreak` (player rig) gives them a
-  vertex-colour material and squashes a piece flat when a tank (group "tanks", puppets too) drives over
+  node per piece in group `Lekplatser` (vertex colours); `PropBreak` (player rig) gives them a
+  vertex-colour material and breaks a piece apart when a tank (group "tanks", puppets too) drives into
   it (no collision, nothing sent).
 - Hits and wrecks: a gun round (>= 20 mm) on a tank emits `Tank.struck(outcome, dir)`
   (clients get it for their own tank by `rpc_struck`) and jolts the hull
@@ -463,6 +478,8 @@ shows on the minimap. This is what we test first.
   attackers' shared lives and brings a wave. Knocked-out attackers wait for the wave (on a
   capture or every `wave_interval_s`, a life each, behind the front); defenders come back
   after `defender_respawn_s` `defender_spawn_checkpoints` past the next checkpoint (at the round start `defender_start_checkpoints`, closer; the route has no checkpoint in its first spacing, a free drive to the fight).
+  Time up with a living attacker in the checkpoint's zone: overtime (`is_overtime`, HUD
+  "OVERTIME"); the round ends `overtime_grace_s` (3 s) after the last one left or fell.
   Corridors: defenders within `defender_half_width_m` of the road and ahead of the front,
   attackers within `attacker_half_width_m`. Outside: `Tank.fire_blocked` (no gun or MG),
   a spot mark for the other team every `outside_mark_s`, `Tank.wound_commander()` after

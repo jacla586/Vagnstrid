@@ -41,7 +41,9 @@
 [ext_resource type="Script" path="res://scripts/world/ground_cover/ground_cover_field.gd" id="90_ground_cover"]
 [ext_resource type="Script" path="res://scripts/world/ground_cover/ground_cover_canopy.gd" id="91_ground_canopy"]
 [ext_resource type="Script" path="res://scripts/world/water_look.gd" id="92_water_look"]
-[ext_resource type="Script" path="res://scripts/world/playground_break.gd" id="93_playground"]
+[ext_resource type="Script" path="res://scripts/world/prop_break.gd" id="93_prop_break"]
+[ext_resource type="Resource" path="res://data/world/prop_break.tres" id="94_prop_break_data"]
+[ext_resource type="Script" path="res://scripts/ui/place_banner.gd" id="95_place_banner"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -248,6 +250,17 @@ font_size = 20
 [node name="MatchNotice" type="Label" parent="HUD"]
 script = ExtResource("91_match_notice")
 
+[node name="PlaceBanner" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("95_place_banner")
+views = NodePath("../../PlayerViews")
+
 [node name="EscMenu" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
 layout_mode = 3
 anchors_preset = 15
@@ -268,8 +281,9 @@ script = ExtResource("91_ground_canopy")
 [node name="WaterLook" type="Node" parent="."]
 script = ExtResource("92_water_look")
 
-[node name="PlaygroundBreak" type="Node" parent="."]
-script = ExtResource("93_playground")
+[node name="PropBreak" type="Node" parent="."]
+script = ExtResource("93_prop_break")
+data = ExtResource("94_prop_break_data")
 
 [node name="WeatherView" type="Node" parent="." node_paths=PackedStringArray("tank")]
 script = ExtResource("35_weather_view")
