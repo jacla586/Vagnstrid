@@ -118,9 +118,11 @@ def build(osm_path):
     for nid, t in ntags.items():
         if 'name' in t and ('place' in t or 'historic' in t):
             out['points'].append((Point(P[nid]), t))
-        # vägkanten (vagkant.py): hållplatser, väjnings- och stopplikt, gatlyktor
-        if t.get('highway') in ('bus_stop', 'give_way', 'stop', 'street_lamp') and nid in P:
+        # vägkanten (vagkant.py): hållplatser, väjnings- och stopplikt, gatlyktor, trafikljus
+        if t.get('highway') in ('bus_stop', 'give_way', 'stop', 'street_lamp', 'traffic_signals') and nid in P:
             out['vagpunkter'].append((Point(P[nid]), t))
+        elif t.get('highway') == 'crossing' and nid in P:
+            out['vagpunkter'].append((Point(P[nid]), t))   # övergångsställen (vagmarkering.py, vagkant.py)
         elif 'playground' in t and nid in P:
             out['lekredskap'].append((Point(P[nid]), t))   # lekplatser.py: redskap ur OSM
         elif t.get('amenity') == 'shelter' and t.get('shelter_type') == 'public_transport' and nid in P:

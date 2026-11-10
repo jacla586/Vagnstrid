@@ -4,10 +4,12 @@ extends Node
 ## - glb group `Valtbart` (geodata valtbart.py): templates `Mall_<kind>` (one mesh child per
 ##   material, foot at the origin) and one empty node `<kind>__<key>` per prop (street lamps,
 ##   catenary masts, road signs, bus stop signs with their names, place-name signs, reflector
-##   posts, guard rail pieces (2 m, scaled along x), bus shelters). Drawn here as one MultiMesh per kind and `data.cell_m` cell (as many
+##   posts, guard rail pieces (2 m, scaled along x), bus shelters, traffic lights). Drawn here as one MultiMesh per kind and `data.cell_m` cell (as many
 ##   draw calls as the merged meshes before); a prop a tank touches is hidden and a
 ##   FallenProp topples in its place. A mast `Kontaktstolpe_*__<track>_<i>` drops the
-##   catenary spans `Ledning__<track>_<i-1>` and `_<i>` with it.
+##   catenary spans `Ledning__<track>_<i-1>` and `_<i>` with it. Traffic lights
+##   (`Trafikljus*__<n>_<phase>_<axis>`) switch: their lenses get `signal_light.gdshader` and
+##   the phase/axis as instance custom data; a toppled one falls dark.
 ## - glb group `Lekplatser` (lekplatser.py, one node per piece): a piece a tank touches
 ##   falls apart into its parts (FallenProp.scatter). Also gives the pieces a material
 ##   that shows their vertex colours.
@@ -23,6 +25,8 @@ static var instance: PropBreak
 const GRID_M: float = 16.0
 ## A tank reaches about this far from its centre (m): wider lookups aren't needed.
 const TANK_REACH_M: float = 5.0
+## Traffic-light lens material names (after data.signal_material_prefix) -> the shader's lamp.
+const SIGNAL_LAMPS: Dictionary = {"gang_rod": 3, "gang_gron": 4, "rod": 0, "gul": 1, "gron": 2}
 
 # standing props
 var _kind_of: PackedInt32Array = PackedInt32Array()
@@ -32,6 +36,8 @@ var _slot: PackedInt32Array = PackedInt32Array()
 var _down: PackedByteArray = PackedByteArray()
 var _spans_of: Array = []                 # prop -> Array[MeshInstance3D] it drops
 var _templates: Array[Mesh] = []
+var _fall_templates: Array[Mesh] = []     # per kind: what topples (traffic lights: unlit)
+var _signal_materials: Dictionary = {}    # lens name -> ShaderMaterial
 var _kind_names: PackedStringArray = PackedStringArray()
 var _kind_margin: PackedFloat32Array = PackedFloat32Array()   # per kind: tank_margin_m + kind_reach_m
 # playground pieces
@@ -120,13 +126,17 @@ func _collect() -> void:
 func _collect_props(group: Node) -> void:
 	var kinds: Dictionary = {}   # kind name -> index
 	var span_by_key: Dictionary = {}
-	var props: Array = []   # [kind name, key, Transform3D]
+	var props: Array = []   # [kind name, key, Transform3D, custom data]
 	for child: Node in group.get_children():
 		var n: String = child.name
 		if n.begins_with("Mall_"):
 			var mesh := _template_mesh(child)
 			if mesh != null:
 				kinds[n.substr(5)] = _templates.size()
+				_fall_templates.append(mesh)
+				if n.substr(5).begins_with(data.signal_kind_prefix):
+					mesh = _template_mesh(child)
+					_light_up(mesh)
 				_templates.append(mesh)
 				_kind_names.append(n.substr(5))
 				var margin: float = data.tank_margin_m
@@ -152,7 +162,13 @@ func _collect_props(group: Node) -> void:
 				_spans.append(span)
 				_span_xform.append(span.global_transform)
 			continue
-		props.append([kind, key, (child as Node3D).global_transform if child is Node3D else Transform3D()])
+		var custom := Color(0, 0, 0, 0)
+		if kind.begins_with(data.signal_kind_prefix):
+			var parts: PackedStringArray = key.split("_")
+			if parts.size() >= 3:
+				custom = Color(float(parts[-2]) / 1000.0, float(parts[-1]), 0.0, 0.0)
+		props.append([kind, key, (child as Node3D).global_transform if child is Node3D else Transform3D(),
+				custom])
 	# one MultiMesh per kind and cell
 	var batches: Dictionary = {}   # Vector3i(kind, cx, cz) -> Array[int]
 	for row: Array in props:
@@ -177,17 +193,21 @@ func _collect_props(group: Node) -> void:
 		var b := Vector3i(kinds[row[0]], floori(xf.origin.x / data.cell_m), floori(xf.origin.z / data.cell_m))
 		if not batches.has(b):
 			batches[b] = []
-		batches[b].append(i)
+		batches[b].append([i, row[3]])
 		_add_to_grid(xf.origin, i)
 	for b: Vector3i in batches:
 		var list: Array = batches[b]
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
+		var is_signal: bool = _kind_names[b.x].begins_with(data.signal_kind_prefix)
+		mm.use_custom_data = is_signal
 		mm.mesh = _templates[b.x]
 		mm.instance_count = list.size()
 		for k: int in list.size():
-			var i: int = list[k]
+			var i: int = list[k][0]
 			mm.set_instance_transform(k, _xform[i])
+			if is_signal:
+				mm.set_instance_custom_data(k, list[k][1])
 			_multimesh[i] = mm
 			_slot[i] = k
 		var mmi := MultiMeshInstance3D.new()
@@ -231,6 +251,37 @@ func _template_mesh(node: Node) -> Mesh:
 				mat = mi.mesh.surface_get_material(s)
 			out.surface_set_material(out.get_surface_count() - 1, mat)
 	return out if out.get_surface_count() > 0 else null
+
+
+## A traffic light's template: its lens surfaces get the switching shader.
+func _light_up(mesh: Mesh) -> void:
+	for s: int in mesh.get_surface_count():
+		var mat: Material = mesh.surface_get_material(s)
+		if mat == null or not mat.resource_name.begins_with(data.signal_material_prefix):
+			continue
+		var lens: String = mat.resource_name.substr(data.signal_material_prefix.length())
+		for lamp_name: String in SIGNAL_LAMPS:
+			if lens.begins_with(lamp_name):
+				mesh.surface_set_material(s, _signal_material(lamp_name))
+				break
+
+
+func _signal_material(lens: String) -> ShaderMaterial:
+	if _signal_materials.has(lens):
+		return _signal_materials[lens]
+	var m := ShaderMaterial.new()
+	m.shader = data.signal_shader
+	m.set_shader_parameter("lamp", SIGNAL_LAMPS[lens])
+	m.set_shader_parameter("lit_colour", data.signal_colours.get(lens, Color.WHITE))
+	m.set_shader_parameter("energy", data.signal_energy)
+	m.set_shader_parameter("off_share", data.signal_off_share)
+	m.set_shader_parameter("green_s", data.signal_green_s)
+	m.set_shader_parameter("yellow_s", data.signal_yellow_s)
+	m.set_shader_parameter("red_yellow_s", data.signal_red_yellow_s)
+	m.set_shader_parameter("all_red_s", data.signal_all_red_s)
+	m.set_shader_parameter("walk_s", data.signal_walk_s)
+	_signal_materials[lens] = m
+	return m
 
 
 func _collect_playground(group: Node) -> void:
@@ -305,7 +356,7 @@ func _topple(i: int, direction: Vector3) -> void:
 			_xform[i].origin))
 	var fallen := FallenProp.new()
 	add_child(fallen)
-	fallen.topple(_templates[_kind_of[i]], _xform[i], direction, data)
+	fallen.topple(_fall_templates[_kind_of[i]], _xform[i], direction, data)
 	for span: MeshInstance3D in _spans_of[i]:
 		if not span.visible:
 			continue

@@ -203,7 +203,9 @@ shows on the minimap. This is what we test first.
   roads): pipe ends in hollows at the road banks (geodata `trummor.py`, glb group `Trummor`).
 - Roadside (geodata `vagkant.py`, glb group `Vagkant`, no collision): reflector posts on rural roads
   from 70 km/h, street lamps every 32 m in built-up areas, guard rails on high banks, speed signs where
-  NVDB's limit changes, give-way/stop signs and bus stop signs from OSM nodes (the stop's OSM name on a
+  NVDB's limit changes, give-way/stop signs and bus stop signs from OSM nodes, pedestrian-crossing
+  signs (E1, both sides, not at traffic lights) at every zebra (`vagmarkering.py`: NVDB crossings plus
+  OSM `highway=crossing` uncontrolled/marked/traffic_signals) (the stop's OSM name on a
   plate below, own atlas), bus shelters from OSM
   (shelter nodes and platforms with shelter=yes); sign faces from a generated atlas (alpha), the face
   6 cm in front of and the grey back 6 cm behind the post, which ends at the sign's middle. Rural
@@ -213,8 +215,18 @@ shows on the minimap. This is what we test first.
   `valtbart.py`: templates `Mall_<kind>` + one empty node `<kind>__<key>` per prop) = street lamps,
   catenary masts (no collision any more), road signs (`Skylt_<face>`, bus stops with a name
   `Hallplats_<n>`, place names `Ortnamn_<n>`), reflector posts, guard rail pieces (`Racke`, 2 m,
-  scaled along x) and bus shelters (`Vaderskydd`, wider reach `kind_reach_m`), drawn as a MultiMesh per kind and 250 m cell (small kinds only
-  within `small_draw_range_m`); a tank's
+  scaled along x), bus shelters (`Vaderskydd`, wider reach `kind_reach_m`) and traffic lights
+  (`Trafikljus`, `Trafikljus_gang` with a pedestrian light and push button, `Trafikljus_gangstolpe` a
+  pedestrian post across the road from it; a repeater `Trafikljus` on the junction's far side for
+  every approach; key `<n>_<phase>_<axis>`),
+  drawn as a MultiMesh per kind and 250 m cell (small kinds only
+  within `small_draw_range_m`). Traffic lights switch: lens materials `Signal_*` get
+  `assets/shaders/signal_light.gdshader` (cycle in `PropBreakData` "Traffic lights": red+yellow, green,
+  yellow, red; the junction's offset and direction axis as MultiMesh custom data, so a junction's two
+  directions take turns and pedestrians walk while their road has red; from TIME, local, nothing
+  sent); a toppled one falls dark (the plain materials). Placed by geodata `vagkant.py` from OSM
+  `highway=traffic_signals` (stop line towards the nearest junction, `traffic_signals:direction`, or a
+  junction-centre node = one per approach) and `crossing=traffic_signals` (both ways mid-block); a tank's
   hull footprint touching one hides it and a `FallenProp` topples (a mast drops its catenary spans
   `Ledning__<track>_<i>`); playground pieces (`Lekplatser`) fall apart into their solids (at most
   `debris_max_parts`, thrown and spinning). Fallen things lie `lie_s` (30 s), sink and are gone until

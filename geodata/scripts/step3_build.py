@@ -321,7 +321,7 @@ for k, r in enumerate(roads):
     road_json.append(dict(name=r['name'], highway=r['tags']['highway'], ref=r['tags'].get('ref'), surface=r['surface'],
                           width_m=r['width'], osm_name=r['tags'].get('name'),
                           points=[[round(float(x), 2), round(float(z), 2), round(float(y), 2)] for (x, y), z in zip(cw, cz)]))
-MARK = vagmarkering.Markering(roads, NV)
+MARK = vagmarkering.Markering(roads, NV, feat.get('vagpunkter', []))
 MARK.bygg(add_merged, mat, to_world)
 scene.graph.update(frame_to='Broar', frame_from=scene.graph.base_frame)
 BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 0.95),
@@ -330,7 +330,7 @@ BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 
 scene.graph.update(frame_to='Vagkant', frame_from=scene.graph.base_frame)
 VALT = valtbart.Samling()   # vältbart (lyktstolpar, kontaktledning): glb-gruppen Valtbart
 vagkant.Vagkant(roads, MARK.korsningar, feat.get('vagpunkter', []), h, np.load(str(WORK / 'h_raw.npy')).astype(np.float64),
-                sample, to_world, add_merged, mat, valt=VALT,
+                sample, to_world, add_merged, mat, valt=VALT, overgangar=MARK.overgangar,
                 platser=json.loads((WORK / 'platser.json').read_text()) if (WORK / 'platser.json').exists() else None
                 ).bygg()   # platser.json: platser.py (ortnamnsskyltarna)
 # Lekplatser (lekplatser.py): redskap i OSM:s lekplatsytor, unika per park

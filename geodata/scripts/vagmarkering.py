@@ -7,7 +7,10 @@ Per väg (punkter var ~2 m, egenskaper från nvdb.berika):
   spärrlinje  heldragen: omkörningsförbud (NVDB) eller för kort sikt över krön och i kurvor
               (SIKT_KRAV_M per hastighet, ögon och mötande bil 1,1 m över vägen)
   kantlinje   1 + 2, 0,3 m in från kanten (högst 3,75 m från mitten, vägrenen utanför): minst KANT_MIN_BREDD bred och 70 km/h eller mer
-  övergångsställe: NVDB-GCM "Övergångsställe" som korsar vägen -> block 0,5 m breda, 3 m långa
+  övergångsställe: NVDB-GCM "Övergångsställe" som korsar vägen, och OSM highway=crossing med
+              crossing=uncontrolled/marked/zebra/traffic_signals eller crossing:markings (inte unmarked/no)
+              på en asfalterad bilväg (inom OVERGANG_SAMMA_M av ett annat räknas som samma) -> block
+              0,5 m breda, 3 m långa; listan `overgangar` får vagkant.py (skyltar)
 Enkelriktade körbanor (oneway, t.ex. vägar med mittremsa): ingen spärr, körfältslinje 3 + 9 bara med
 lanes >= 2, kantlinjer från 60 km/h. Tvåfältsvägar med lanes=1 får ingen mittlinje.
 Inga linjer i korsningar (kortare än korsande vägens halva bredd + 3 m från korsningspunkten) eller i
@@ -70,10 +73,27 @@ def _sikt(s, z, pts, hw):
     return ut
 
 
+OVERGANG_SAMMA_M = 10.0
+OVERGANG_MALAT = ('uncontrolled', 'marked', 'zebra', 'traffic_signals')
+
+
+def malat_overgangsstalle(t):
+    """OSM highway=crossing som är ett målat övergångsställe (svensk praxis: uncontrolled = zebra)."""
+    if t.get('highway') != 'crossing':
+        return False
+    m = t.get('crossing:markings')
+    if m in ('no', 'surface'):
+        return False
+    return t.get('crossing') in OVERGANG_MALAT or t.get('crossing_ref') == 'zebra' or m not in (None, 'no')
+
+
 class Markering:
-    def __init__(self, roads, M):
+    def __init__(self, roads, M, punkter=None):
         self.roads = roads
         self.M = M
+        self.punkter = [(pt, t) for pt, t in (punkter or []) if malat_overgangsstalle(t)]
+        # övergångsställen: dict(p (SWEREF på vägens mitt), d (vägens riktning), hw, ljus, enkel)
+        self.overgangar = []
         bil = [k for k, r in enumerate(roads) if r['tags']['highway'] not in UTAN_LINJER[:6]]
         self.bil = bil
         self.tree = shapely.STRtree([roads[k]['line'] for k in bil])
@@ -229,33 +249,59 @@ class Markering:
         V.append(Vv); F.append(Ff + base)
 
     def _overgangsstallen(self, add_merged, vit, to_world):
-        if not self.M or 'NVDB_DK_O_99_GCM_vagtyp' not in self.M.lager:
-            return 0
-        tree, A, B, attr, _ = self.M.lager['NVDB_DK_O_99_GCM_vagtyp']
-        n = 0
+        """NVDB:s övergångsställen först, sedan OSM:s som inte redan finns."""
         V, F = [], []
-        for a, b, at in zip(A, B, attr):
-            if at.get('gcm') != 'Övergångsställe':
-                continue
-            seg = shapely.linestrings([a, b])
-            for i in self.tree.query(seg, predicate='intersects'):
+        if self.M and 'NVDB_DK_O_99_GCM_vagtyp' in self.M.lager:
+            tree, A, B, attr, _ = self.M.lager['NVDB_DK_O_99_GCM_vagtyp']
+            for a, b, at in zip(A, B, attr):
+                if at.get('gcm') != 'Övergångsställe':
+                    continue
+                seg = shapely.linestrings([a, b])
+                for i in self.tree.query(seg, predicate='intersects'):
+                    r = self.roads[self.bil[i]]
+                    if not self._malbar(r):
+                        continue
+                    p = r['line'].intersection(seg)
+                    if p.is_empty or p.geom_type != 'Point':
+                        continue
+                    self._overgang(r, r['line'].project(p), False, V, F)
+        for pt, t in self.punkter:
+            for i in self.tree.query(pt, predicate='dwithin', distance=12.0):
                 r = self.roads[self.bil[i]]
-                if r['surface'] != 'asfalt' or 'pts' not in r or r['tags']['highway'] in UTAN_LINJER:
+                if not self._malbar(r):
                     continue
-                p = r['line'].intersection(seg)
-                if p.is_empty or p.geom_type != 'Point':
+                sp = r['line'].project(pt)
+                if r['line'].distance(pt) > float(np.interp(sp, r['s'], r['hw'])) + 1.0:
                     continue
-                sp = r['line'].project(p)
-                hw = float(np.interp(sp, r['s'], r['hw']))
-                k = 0
-                # block tvärs över vägen, 0,5 m breda med 0,5 m mellanrum, 3 m långa längs vägen
-                for off in np.arange(-hw + 0.5, hw - 0.4, 1.0):
-                    self._block(r, sp, off + 0.25, V, F)
-                    k += 1
-                n += k > 0
+                ljus = t.get('crossing') == 'traffic_signals' or t.get('crossing:signals') == 'yes'
+                self._overgang(r, sp, ljus, V, F)
+                break
         if F:
             add_merged('Vagar', trimesh.Trimesh(np.vstack(V), np.vstack(F), process=False), vit)
-        return n
+        return len(self.overgangar)
+
+    def _malbar(self, r):
+        return r['surface'] == 'asfalt' and 'pts' in r and r['tags']['highway'] not in UTAN_LINJER
+
+    def _overgang(self, r, sp, ljus, V, F):
+        """Ett övergångsställe vid sp på r (om inget redan finns inom OVERGANG_SAMMA_M): block tvärs över
+        vägen, 0,5 m breda med 0,5 m mellanrum, 3 m långa längs vägen."""
+        L = r['line']
+        p = np.array(L.interpolate(sp).coords[0])
+        for o in self.overgangar:
+            if np.hypot(*(o['p'] - p)) < OVERGANG_SAMMA_M:
+                o['ljus'] = o['ljus'] or ljus
+                return
+        hw = float(np.interp(sp, r['s'], r['hw']))
+        d = np.array(L.interpolate(min(sp + 1, L.length)).coords[0]) - np.array(L.interpolate(max(sp - 1, 0)).coords[0])
+        d /= max(np.linalg.norm(d), 1e-9)
+        k = 0
+        for off in np.arange(-hw + 0.5, hw - 0.4, 1.0):
+            self._block(r, sp, off + 0.25, V, F)
+            k += 1
+        if k:
+            self.overgangar.append(dict(p=p, d=d, hw=hw, ljus=ljus,
+                                        enkel=r['tags'].get('oneway') in ('yes', '1', '-1')))
 
     def _block(self, r, sp, off, V, F):
         s, pts, nrm, zm = r['s'], r['pts'], r['nrm'], r['zm']

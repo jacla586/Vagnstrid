@@ -6,13 +6,22 @@
   räcken        där vägbanken står mer än RACKE_BANK_M över marken intill (lasermarken, h_raw)
   hastighet     skylt där NVDB:s hastighet byter, åt båda hållen (högersidan)
   väjningsplikt OSM highway=give_way / stop: skylten på högersidan för trafiken mot korsningen
+  övergång      skylt E1 på båda sidor vid varje målat övergångsställe utan ljus (vagmarkering.py:
+                Markering.overgangar, NVDB + OSM), dubbelsidig; vältbar (Skylt_overgang)
   hållplatser   OSM highway=bus_stop: hållplatsskylt; väderskydd vid OSM amenity=shelter (public_transport)
                 och plattformar med shelter=yes (features.py: 'vaderskydd'), öppningen mot vägen;
                 hållplatsens namn (OSM name) på en skylt under H-skylten
   ortnamn       där en väg går in i en annan stadsdel/by (work/platser.json, platser.py): vit skylt med
                 svart ram och text på högersidan för trafiken in, åt båda hållen (olika namn)
+  trafikljus    OSM highway=traffic_signals (stopplinjen: mot den närmaste korsningen, eller
+                traffic_signals:direction; i korsningens mitt: en per tillfart) och övergångsställen
+                med ljus (crossing=traffic_signals: båda hållen, nära en korsning bara in mot den).
+                En stolpe på högersidan för trafiken mot ljuset, vältbar (Trafikljus, med
+                fotgängarljus och tryckknapp Trafikljus_gang). Linserna har materialen Signal_*;
+                spelets PropBreak växlar dem. Nodnamnet Trafikljus*__<n>_<fas>_<axel>: fas = korsningens
+                förskjutning i cykeln (tusendelar), axel 0/1 = vilken av korsningens två riktningar
 Vältbara (valtbart.py) med en Samling: lyktor, kantstolpar, räcken (en bit per 2 m), skyltar,
-ortnamnsskyltar och väderskydd.
+ortnamnsskyltar, väderskydd och trafikljus (bara med Samling).
 Skyltarna har en atlas (PIL) som glb-textur med alfa; baksidan är grå. Skylten sitter SKYLT_AVST_M
 framför och baksidan lika långt bakom stolpens mitt, och stolpen slutar vid skyltens mitt, så den
 syns aldrig genom skylten. Hållplatsnamnen har en egen atlas (en rad per namn). Diken grävs i step3:s schaktning
@@ -38,7 +47,7 @@ RACKE_BANK_M = 2.0
 KORSNING_FRI_M = 14.0
 HASTIGHETER = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
 ATLAS_RUTA = 128
-ATLAS = HASTIGHETER + ['vajning', 'stopp', 'buss']   # celler i ordning, 8 per rad
+ATLAS = HASTIGHETER + ['vajning', 'stopp', 'buss', 'overgang']   # celler i ordning, 8 per rad
 SKYLT_AVST_M = 0.06    # skyltytan framför (och baksidan bakom) stolpens mitt; stolpen är 0,06 m
 NAMN_H_M = 0.16        # hållplatsnamnets skylt: höjd, bredd efter texten (minst H-skyltens)
 NAMN_HOJD_M = 2.2 - 0.25 - NAMN_H_M / 2 - 0.03   # namnskyltens mitt över marken, under H-skylten
@@ -47,6 +56,13 @@ ORTNAMN_MITT_M = 1.9    # skyltens mitt över marken
 ORTNAMN_MIN_RACKVIDD = 300   # bara platser med minst så stor räckvidd (platser.py) får skyltar
 ORTNAMN_STABIL = 15     # vägpunkter (var 2 m) i samma plats på båda sidor om bytet
 NAMN_RAD_PX = 64
+TRAFIKLJUS_KORS_M = 45.0    # en ljusnod så nära en korsning styr trafiken in i den
+TRAFIKLJUS_MITT_M = 5.0     # så nära korsningspunkten: noden står för hela korsningen
+TRAFIKLJUS_STOPP_M = 2.0    # stopplinjen utanför korsningens radie (noden i mitten)
+TRAFIKLJUS_DUBBEL_M = 15.0  # ljus åt samma håll närmare än så på samma väg är samma ljus
+TRAFIKLJUS_UT_M = 1.0       # stolpen utanför vägkanten
+TRAFIKLJUS_LEDIG_M = 3.0    # ingen stolpe närmare än så en annan
+TRAFIKLJUS_KLUNGA_M = 30.0  # korsningspunkter så nära varandra är en korsning (samma fas)
 NAMN_BREDD_PX = 1024
 
 
@@ -94,6 +110,24 @@ def _atlas():
                         outline=(30, 90, 50, 255), width=8)
             d.text((c[0], c[1] - 14), 'H', fill=(30, 90, 50, 255), font=font, anchor='mm')
             d.text((c[0], c[1] + 36), 'BUSS', fill=(30, 90, 50, 255), font=font_l, anchor='mm')
+        elif namn == 'overgang':
+            # E1 övergångsställe: blå kvadrat, vit triangel, svart gående på ett övergångsställe
+            blå, svart = (20, 80, 170, 255), (15, 15, 15, 255)
+            d.rounded_rectangle([x0 + 6, y0 + 6, x0 + ATLAS_RUTA - 6, y0 + ATLAS_RUTA - 6], radius=10, fill=blå,
+                                outline=(245, 245, 245, 255), width=4)
+            tri = [(c[0], y0 + 18), (x0 + 17, y0 + ATLAS_RUTA - 22), (x0 + ATLAS_RUTA - 17, y0 + ATLAS_RUTA - 22)]
+            d.polygon(tri, fill=(250, 250, 250, 255))
+            botten = y0 + ATLAS_RUTA - 30
+            for k in range(5):   # zebran under figuren
+                xa = c[0] - 30 + k * 13
+                d.polygon([(xa, botten), (xa + 7, botten), (xa + 4, botten - 9), (xa - 3, botten - 9)], fill=svart)
+            hx, hy = c[0] + 3, y0 + 44
+            d.ellipse([hx - 6, hy - 6, hx + 6, hy + 6], fill=svart)           # huvud
+            d.line([(hx - 1, hy + 6), (hx - 5, hy + 30)], fill=svart, width=7)   # kropp
+            d.line([(hx - 5, hy + 30), (hx + 8, hy + 46)], fill=svart, width=6)  # ben fram
+            d.line([(hx - 5, hy + 30), (hx - 16, hy + 46)], fill=svart, width=6)  # ben bak
+            d.line([(hx - 2, hy + 12), (hx + 11, hy + 24)], fill=svart, width=5)  # arm fram
+            d.line([(hx - 2, hy + 12), (hx - 14, hy + 22)], fill=svart, width=5)  # arm bak
     return im, cols, rows
 
 
@@ -142,9 +176,30 @@ def _plana_ytor(lista, bak=False):
     return trimesh.Trimesh(np.array(V), np.array(F), process=False), np.array(UV)
 
 
+def _skivor(lista, radie, n=12):
+    """Runda linser: [(x, y, z, 'x'|'z')] -> en trimesh med en tolvhörning per lins i planet x = konst.
+    (normalen mot +x) eller z = konst. (normalen mot +z)."""
+    V, F = [], []
+    a = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    for x, y, z, axel in lista:
+        n0 = len(V)
+        V.append([x, y, z])
+        for v in a:
+            du, dv = np.cos(v) * radie, np.sin(v) * radie
+            V.append([x, y + dv, z + du] if axel == 'x' else [x + du, y + dv, z])
+        normal = np.array([1.0, 0, 0]) if axel == 'x' else np.array([0, 0, 1.0])
+        for i in range(n):
+            tri = [n0, n0 + 1 + i, n0 + 1 + (i + 1) % n]
+            p = np.array([V[j] for j in tri])
+            if np.dot(np.cross(p[1] - p[0], p[2] - p[0]), normal) < 0:
+                tri = tri[::-1]
+            F.append(tri)
+    return trimesh.Trimesh(np.array(V), np.array(F), process=False)
+
+
 class Vagkant:
     def __init__(self, roads, korsningar, vagpunkter, h, h_raw, sample, to_world, add_merged, mat, valt=None,
-                 platser=None):
+                 platser=None, overgangar=None):
         self.roads = roads
         self.kors = korsningar
         self.punkter = vagpunkter
@@ -160,8 +215,10 @@ class Vagkant:
         self.ortnamn = []   # (stolpens mitt SWEREF, riktning mot trafiken SWEREF, namn)
         self.valt_skyltar = []   # vältbara skyltar: (p, mot, atlasnamn, höjd, storlek, dubbel, hållplatsnamn)
         self._skydd = []
+        self.overgangar = overgangar or []   # vagmarkering.Markering.overgangar (skyltar E1)
+        self.ljus = []   # trafikljus före sammanslagningen: dict(p, rikt (färdriktning), hw, gang, prio, grupp)
         self.antal = dict(kantstolpar=0, lyktor=0, racken_m=0, hastighet=0, vajning=0, hallplatser=0, skydd=0,
-                          ortnamn=0)
+                          ortnamn=0, trafikljus=0, overgang=0)
 
     # ---------- hjälp ----------
     def _box(self, mat, C):
@@ -201,6 +258,7 @@ class Vagkant:
             if hw_typ in GATA + STOR and self.platser and self.valt is not None:
                 self._ortnamn(r)
         self._punkter()
+        self._overgang_skyltar()
         self._skriv()
         print('vägkant:', ', '.join(f'{k} {v}' for k, v in self.antal.items()),
               '(allt utom räckenas bankar vältbart)' if self.valt is not None else '')
@@ -387,6 +445,7 @@ class Vagkant:
         if not bil:
             return
         tree = STRtree([r['line'] for r in bil])
+        self._ljus_bil, self._ljus_tree = bil, tree   # trafikljusens upprepningar
         for pt, t in self.punkter:
             typ = t.get('highway')
             if typ == 'street_lamp':
@@ -428,6 +487,11 @@ class Vagkant:
                 if namn and self.valt is None:
                     self.namnskyltar.append((pos, d, NAMN_HOJD_M, namn))
                 self.antal['hallplatser'] += 1
+            elif typ in ('traffic_signals', 'crossing'):
+                if typ == 'crossing' and (L.distance(pt) > hw + 1.5 or not (
+                        t.get('crossing') == 'traffic_signals' or t.get('crossing:signals') == 'yes')):
+                    continue   # utan ljus (skyltarna: _overgang_skyltar), eller på en gångväg bredvid
+                self._ljusnod(t, typ, r, sp, p_vag, d, hw, bil, tree)
             elif typ == 'vaderskydd':
                 # öppningen mot vägen: bakväggen på bortre sidan
                 pos = np.array(pt.coords[0])
@@ -442,6 +506,247 @@ class Vagkant:
                 self._skydd.append(pos)
                 self._vaderskydd(pos, d, ut)
                 self.antal['skydd'] += 1
+
+    def _overgang_skyltar(self):
+        """Skylt E1 vid varje målat övergångsställe utan trafikljus: en på var sida, dubbelsidig längs
+        vägen (enkelriktat: vänd mot trafiken)."""
+        for o in self.overgangar:
+            if o['ljus']:
+                continue
+            d = o['d']
+            nn = np.array([-d[1], d[0]])
+            for sida in (1.0, -1.0):
+                q = o['p'] + nn * sida * (o['hw'] + 0.8)
+                if o['enkel']:
+                    self._skylt(q, -d, 'overgang', 2.0, 0.64)
+                else:
+                    self._skylt(q, d, 'overgang', 2.0, 0.64, dubbel=True)
+                self.antal['overgang'] += 1
+
+    # ---------- trafikljus ----------
+    @staticmethod
+    def _enkel(r):
+        return r['tags'].get('oneway') in ('yes', '1', '-1') or bool(r.get('rondell'))
+
+    def _ljusnod(self, t, typ, r, sp, p_vag, d, hw, bil, tree):
+        """Ett trafikljus eller ett övergångsställe med ljus: kandidater i self.ljus (färdriktningen
+        mot ljuset)."""
+        gang = typ == 'crossing' or t.get('crossing') in ('traffic_signals', 'yes') or \
+            t.get('crossing:signals') == 'yes' or t.get('button_operated') == 'yes'
+        k, dk, i = None, np.inf, -1
+        if len(self.kors):
+            avst = np.hypot(self.kors[:, 0] - p_vag[0], self.kors[:, 1] - p_vag[1])
+            i = int(avst.argmin())
+            k, dk = self.kors[i], float(avst[i])
+        if typ == 'traffic_signals' and dk < TRAFIKLJUS_MITT_M:
+            self._ljus_mitt(k, i, gang, bil, tree)
+            return
+        riktning = t.get('traffic_signals:direction') or t.get('direction')
+        if typ == 'traffic_signals' and riktning in ('forward', 'backward', 'both'):
+            rikt = {'forward': [d], 'backward': [-d], 'both': [d, -d]}[riktning]
+        elif dk < TRAFIKLJUS_KORS_M:
+            rikt = [d if np.dot(d, k[:2] - p_vag) > 0 else -d]   # trafiken in mot korsningen
+        else:
+            rikt = [d, -d]   # övergångsställe mitt på en sträcka: båda hållen
+        if self._enkel(r):
+            rikt = [x for x in rikt if np.dot(x, d) > 0] or [d]   # linjen går i färdriktningen
+        grupp = ('k', self._klunga(i)) if dk < TRAFIKLJUS_KORS_M + 20 else \
+            ('p', round(p_vag[0] / 20), round(p_vag[1] / 20))
+        for x in rikt:
+            self.ljus.append(dict(p=p_vag, rikt=x, hw=hw, gang=gang, prio=0 if typ == 'traffic_signals' else 2,
+                                  grupp=grupp, ki=i if grupp[0] == 'k' else None))
+
+    def _klunga(self, i):
+        """Korsningspunkt i -> dess klunga (punkter inom TRAFIKLJUS_KLUNGA_M av varandra, kedjat): en
+        korsning med flera körbanor har flera punkter men en fas."""
+        if not hasattr(self, '_klungor'):
+            n = len(self.kors)
+            far = list(range(n))
+            def rot(a):
+                while far[a] != a:
+                    far[a] = far[far[a]]
+                    a = far[a]
+                return a
+            for a in range(n):
+                d = np.hypot(self.kors[:, 0] - self.kors[a, 0], self.kors[:, 1] - self.kors[a, 1])
+                for b in np.nonzero(d < TRAFIKLJUS_KLUNGA_M)[0]:
+                    far[rot(a)] = rot(int(b))
+            self._klungor = [rot(a) for a in range(n)]
+        return self._klungor[i]
+
+    def _ljus_mitt(self, k, ki, gang, bil, tree):
+        """Noden i korsningens mitt: ett ljus per tillfart, vid stopplinjen utanför korsningen."""
+        kp = Point(k[0], k[1])
+        grupp = ('k', self._klunga(ki))
+        for j in tree.query(kp, predicate='dwithin', distance=6.0):
+            r = bil[j]
+            if r['tags']['highway'] in ('service', 'track'):
+                continue
+            L = r['line']
+            s0 = L.project(kp)
+            a = k[2] + TRAFIKLJUS_STOPP_M
+            for sgn in (1.0, -1.0):   # tillfarten före (sgn 1) eller efter (sgn -1) korsningen längs linjen
+                s = s0 - sgn * a
+                if s < 1.0 or s > L.length - 1.0:
+                    continue
+                if sgn < 0 and self._enkel(r):
+                    continue   # enkelriktat bort från korsningen
+                p = np.array(L.interpolate(s).coords[0])
+                dd = np.array(L.interpolate(min(s + 1, L.length)).coords[0]) - \
+                    np.array(L.interpolate(max(s - 1, 0)).coords[0])
+                dd /= max(np.linalg.norm(dd), 1e-9)
+                self.ljus.append(dict(p=p, rikt=dd * sgn, hw=float(np.interp(s, r['s'], r['hw'])), gang=gang,
+                                      prio=1, grupp=grupp, ki=ki))
+
+    def _skriv_trafikljus(self):
+        """Kandidaterna slås ihop (samma håll inom TRAFIKLJUS_DUBBEL_M), får korsningens fas och
+        axel och blir vältbara stolpar: huvudljuset på högersidan före stopplinjen, ett upprepningsljus
+        på bortre sidan korsningen (_upprepning) och, där huvudstolpen har fotgängarljus, en
+        fotgängarstolpe med knapp på andra sidan vägen (fotgängarna har då ett ljus att se från båda
+        sidor). Stolpar närmare än TRAFIKLJUS_LEDIG_M en annan stolpe ställs inte ut."""
+        import zlib
+        kvar = []
+        for c in sorted(self.ljus, key=lambda c: c['prio']):
+            lik = next((q for q in kvar if np.dot(q['rikt'], c['rikt']) > 0.7
+                        and np.hypot(*(q['p'] - c['p'])) < TRAFIKLJUS_DUBBEL_M), None)
+            if lik is not None:
+                lik['gang'] = lik['gang'] or c['gang']
+                continue
+            kvar.append(c)
+        ref = {}
+        stolpar = []   # (typ, q SWEREF, x mot (SWEREF), fas, axel)
+        for c in kvar:
+            r0 = ref.setdefault(c['grupp'], c['rikt'])
+            axel = 0 if abs(float(np.dot(r0, c['rikt']))) >= np.cos(np.radians(45)) else 1
+            fas = zlib.crc32(repr(c['grupp']).encode()) % 1000
+            hoger = np.array([c['rikt'][1], -c['rikt'][0]])
+            q = c['p'] + hoger * (c['hw'] + TRAFIKLJUS_UT_M)
+            stolpar.append(('Trafikljus_gang' if c['gang'] else 'Trafikljus', q, -c['rikt'], fas, axel))
+            if c['gang']:
+                # fotgängarljuset pekar mot vänster om trafiken (tvärs vägen): där står fotgängarstolpen,
+                # vänd så att dess fotgängarljus (+z) pekar tillbaka mot huvudstolpen
+                andra = c['p'] - hoger * (c['hw'] + TRAFIKLJUS_UT_M)
+                stolpar.append(('Trafikljus_gangstolpe', andra, -c['rikt'], fas, axel, 'gang'))
+            if c['prio'] < 2 and c.get('ki') is not None:
+                u = self._upprepning(c)
+                if u is not None:
+                    stolpar.append(('Trafikljus', u, -c['rikt'], fas, axel, 'upprepning'))
+        self._ljusmallar()
+        satta = []
+        n_upp = n_gang = 0
+        # huvudljusen först, sedan upprepningar och fotgängarstolpar där det är ledigt
+        stolpar.sort(key=lambda st: {'upprepning': 1, 'gang': 2}.get(st[5] if len(st) > 5 else '', 0))
+        for st in stolpar:
+            typ, q, mot, fas, axel = st[:5]
+            if any(np.hypot(*(q - o)) < TRAFIKLJUS_LEDIG_M for o in satta):
+                continue
+            satta.append(q)
+            w = np.array(self.to_world(q[0], q[1]))
+            if typ == 'Trafikljus_gangstolpe':
+                # mallens +z = x × upp ska peka mot vägen (motsatt trafikens vänster = trafikens höger)
+                hoger = np.array([-mot[1], mot[0]])   # färdriktningen är -mot; dess högra sida
+                t = np.array(self.to_world(q[0] + hoger[0], q[1] + hoger[1])) - w
+                wm = np.array([t[1], -t[0]])
+            else:
+                wm = np.array(self.to_world(q[0] + mot[0], q[1] + mot[1])) - w   # x mot trafiken
+            n = self.antal['trafikljus']
+            self.valt.placera(typ, [w[0], self._mark(*q), w[1]], wm, nyckel=f'{n}_{fas}_{axel}')
+            self.antal['trafikljus'] += 1
+            n_upp += len(st) > 5 and st[5] == 'upprepning'
+            n_gang += len(st) > 5 and st[5] == 'gang'
+        print(f'trafikljus: {len(self.ljus)} kandidater -> {len(kvar)} tillfarter i {len(ref)} grupper, '
+              f'{len(satta)} stolpar ({n_upp} upprepningsljus, {n_gang} fotgängarstolpar)')
+
+    def _upprepning(self, c):
+        """Upprepningsljuset för tillfarten c: på bortre sidan korsningen (alla korsningspunkter i
+        klungan, t.ex. båda körbanorna), på högersidan av vägen som fortsätter rakt fram (inom 35°), lika
+        långt efter korsningens bortre punkt som stopplinjen ligger före den närmaste (minst radien + 2 m);
+        utan rak fortsättning (T-korsning) vid bortre kanten av den korsande vägen. None om inget passar."""
+        klunga = self._klunga(c['ki'])
+        med = [j for j in range(len(self.kors)) if self._klunga(j) == klunga]
+        rikt = c['rikt']
+        proj = np.array([float(np.dot(self.kors[j, :2] - c['p'], rikt)) for j in med])
+        if (proj <= 0).all():
+            return None
+        fore = float(proj[proj > 0].min())
+        if fore > TRAFIKLJUS_KORS_M:
+            return None
+        jb = med[int(proj.argmax())]
+        kp = np.array(self.kors[jb, :2])
+        X = c['p'] + rikt * (float(proj.max()) + max(fore, float(self.kors[jb, 2]) + 2.0))
+        hoger = lambda d: np.array([d[1], -d[0]])
+        bast = None
+        for j in self._ljus_tree.query(Point(*X), predicate='dwithin', distance=12.0):
+            r = self._ljus_bil[j]
+            if r['tags']['highway'] in ('service', 'track'):
+                continue
+            L = r['line']
+            sp = L.project(Point(*X))
+            d = np.array(L.interpolate(min(sp + 1, L.length)).coords[0]) - \
+                np.array(L.interpolate(max(sp - 1, 0)).coords[0])
+            d /= max(np.linalg.norm(d), 1e-9)
+            if abs(float(np.dot(d, rikt))) < np.cos(np.radians(35)):
+                continue
+            d = d if np.dot(d, rikt) > 0 else -d
+            p = np.array(L.interpolate(sp).coords[0])
+            avst = float(np.hypot(*(p - X)))
+            if bast is None or avst < bast[0]:
+                bast = (avst, p + hoger(d) * (float(np.interp(sp, r['s'], r['hw'])) + TRAFIKLJUS_UT_M))
+        if bast is not None:
+            return bast[1]
+        # T-korsning: den korsande vägens bortre kant, rakt fram
+        for j in self._ljus_tree.query(Point(*kp), predicate='dwithin', distance=6.0):
+            r = self._ljus_bil[j]
+            L = r['line']
+            sp = L.project(Point(*kp))
+            d = np.array(L.interpolate(min(sp + 1, L.length)).coords[0]) - \
+                np.array(L.interpolate(max(sp - 1, 0)).coords[0])
+            d /= max(np.linalg.norm(d), 1e-9)
+            if abs(float(np.dot(d, rikt))) < 0.5:
+                return np.array(L.interpolate(sp).coords[0]) + rikt * (float(np.interp(sp, r['s'], r['hw'])) + 1.2)
+        return None
+
+    def _ljusmallar(self):
+        """Mallarna: stolpe i origo, fordonsljuset (rött, gult, grönt uppifrån) vänt mot +x;
+        Trafikljus_gang har också ett fotgängarljus (rött över grönt) mot +z, tvärs vägen, och en
+        tryckknapp; Trafikljus_gangstolpe bara fotgängarljuset och knappen."""
+        if self.valt.har_mall('Trafikljus'):
+            return
+        stolpe = self.mat('Trafikljus_stolpe', (150, 154, 156), 0.5)
+        hus = self.mat('Trafikljus_hus', (32, 33, 34), 0.6)
+        skarm = self.mat('Trafikljus_skarm', (14, 14, 14), 0.8)
+        knapp = self.mat('Trafikljus_knapp', (60, 62, 64), 0.6)
+        lins = {n: self.mat(f'Signal_{n}', c, 0.3) for n, c in
+                (('rod', (60, 12, 10)), ('gul', (60, 45, 8)), ('gron', (10, 45, 25)),
+                 ('gang_rod', (60, 12, 10)), ('gang_gron', (10, 45, 25)))}
+        ljus_y = (('rod', 3.2), ('gul', 2.95), ('gron', 2.7))
+        bas_hus = [ladar([[0.20, 0]], [[1, 0]], 0.10, 0.16, 2.5, 3.4),
+                   ladar([[0.075, 0]], [[1, 0]], 0.025, 0.05, 2.65, 2.75),
+                   ladar([[0.075, 0]], [[1, 0]], 0.025, 0.05, 3.15, 3.25)]
+        bas_hus += [ladar([[0.36, 0]], [[1, 0]], 0.06, 0.12, y + 0.105, y + 0.125) for _, y in ljus_y]   # skärmar
+        bas_skarm = ladar([[0.09, 0]], [[1, 0]], 0.01, 0.30, 2.35, 3.55)
+        bas_stolpe = ladar([[0, 0]], [[1, 0]], 0.055, 0.055, -0.3, 3.55)
+        for typ in ('Trafikljus', 'Trafikljus_gang', 'Trafikljus_gangstolpe'):
+            bara_gang = typ == 'Trafikljus_gangstolpe'
+            hus_l = [] if bara_gang else list(bas_hus)
+            linser = {} if bara_gang else {n: [(0.305, y, 0.0, 'x')] for n, y in ljus_y}
+            delar_extra = []
+            if typ != 'Trafikljus':
+                hus_l += [ladar([[0, 0.20]], [[0, 1]], 0.10, 0.13, 1.95, 2.45),
+                          ladar([[0, 0.075]], [[0, 1]], 0.025, 0.05, 2.15, 2.25)]
+                hus_l += [ladar([[0, 0.36]], [[0, 1]], 0.06, 0.11, y + 0.095, y + 0.11) for y in (2.32, 2.08)]
+                linser['gang_rod'] = [(0.0, 2.32, 0.305, 'z')]
+                linser['gang_gron'] = [(0.0, 2.08, 0.305, 'z')]
+                delar_extra.append((lador_mesh(ladar([[0, 0.085]], [[0, 1]], 0.03, 0.06, 0.95, 1.2), botten=True), knapp))
+            if bara_gang:
+                delar = [(lador_mesh(ladar([[0, 0]], [[1, 0]], 0.05, 0.05, -0.3, 2.6)), stolpe),
+                         (lador_mesh(np.vstack(hus_l), botten=True), hus)] + delar_extra
+            else:
+                delar = [(lador_mesh(bas_stolpe), stolpe), (lador_mesh(np.vstack(hus_l), botten=True), hus),
+                         (lador_mesh(bas_skarm, botten=True), skarm)] + delar_extra
+            for n, lista in linser.items():
+                delar.append((_skivor(lista, 0.10 if not n.startswith('gang') else 0.09), lins[n]))
+            self.valt.mall(typ, delar)
 
     def _vaderskydd(self, p, langs, ut):
         ram = self.mat('Vaderskydd_ram', (70, 74, 76), 0.5)
@@ -510,6 +815,8 @@ class Vagkant:
             self._skriv_valtbara()
         if self.ortnamn:
             self._skriv_ortnamn()
+        if self.ljus and self.valt is not None:
+            self._skriv_trafikljus()
         if self.skyltar:
             self._skriv_skyltar()
         if self.namnskyltar:
