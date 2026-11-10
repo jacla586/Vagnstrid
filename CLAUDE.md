@@ -740,6 +740,15 @@ shows on the minimap. This is what we test first.
   (`MapImageData`). The HUD finds it from the Terrain3D data directory name. Rerun
   after map changes. Spot marks live in `SpotMarks` (player rig), drawn by `MapView`. The own tank shows
   as a hull arrow plus a cone for where the player looks (`PlayerViews.get_view_camera`).
+- Main menu and garage (`MainMenu`, `Garage`, built in code, look from `MenuTheme`: dark see-through
+  fields, orange primary button, `add_backdrop`/`add_title`; the garage dims the picture and
+  shows the tank painted as a friend on a dark disc) over `assets/ui/menu_background.jpg`, rendered in the game by
+  `godot --path . --disable-vsync --fixed-fps 60 --script res://tools/render_menu_background.gd --
+  [map] [weather] [friend|enemy]` (tank, running squad, an HE burst with an extra dirt fountain;
+  frames after the burst in `renders/menu/`; the picture is dusk_enemy_0300, kept ungraded in
+  `assets/ui/raw/` (.gdignore) and graded HDR-like by `geodata/.venv/bin/python
+  tools/grade_menu_background.py [strength]` (default 0.6: local shadow lift, detail, vibrance)). Note the canvas
+  stretch: UI sizes are in 1152x648 units.
 - Graphics before/after: `godot --path . --disable-vsync --script res://tools/render_views.gd --
   <map> <label> [weather,...]` renders the fixed views in `tools/render_views.json` (1920x1080,
   bots removed, HUD hidden) to `renders/views/<label>/` with frame/GPU ms, draw calls and

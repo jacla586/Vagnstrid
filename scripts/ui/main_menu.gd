@@ -1,14 +1,17 @@
 class_name MainMenu
 extends Control
-## Start menu: name, Host (map, bots on/off), Join (host's IP, e.g. a Tailscale address)
-## and Single player (any map or scenario, offline as before). Built in code.
+## Start menu: name, tank, map, match settings, then Single player, Host (bots on/off)
+## and Join (host's IP, e.g. a Tailscale address). Built in code over a picture of a
+## fight (assets/ui/menu_background.jpg, made by tools/render_menu_background.gd).
 
 const GARAGE_SCENE: String = "res://scenes/menu/garage.tscn"
 const MAP_DIRS: Array[String] = ["res://scenes/scenarios/", "res://scenes/maps/"]
+const COLUMN_WIDTH: float = 330.0
+const COLUMN_MARGIN: float = 44.0
 
 var _name: LineEdit
 var _map: OptionButton
-var _bots: CheckBox
+var _bots: CheckButton
 var _ip: LineEdit
 var _status: Label
 var _maps: PackedStringArray = []
@@ -21,44 +24,52 @@ var _tank_configs: Array[TankConfig] = []
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var bg := ColorRect.new()
-	bg.color = Color(0.1, 0.12, 0.1)
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
-	# Centred, scrolling if the window is too low for everything.
+	theme = MenuTheme.get_theme()
+	MenuTheme.add_backdrop(self, true)
+	# A column on the left over the darkened side of the picture, scrolling if the
+	# window is too low for everything.
 	var scroll := ScrollContainer.new()
-	scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scroll.anchor_bottom = 1.0
+	scroll.offset_right = COLUMN_WIDTH + 2.0 * COLUMN_MARGIN
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	add_child(scroll)
-	var center := CenterContainer.new()
-	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.add_child(center)
+	var margin := MarginContainer.new()
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	for side: String in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, COLUMN_MARGIN)
+	scroll.add_child(margin)
 	var box := VBoxContainer.new()
-	box.custom_minimum_size = Vector2(420, 0)
-	box.add_theme_constant_override("separation", 6)
-	center.add_child(box)
-	var title := Label.new()
-	title.text = "VAGNSTRID"
-	title.add_theme_font_size_override("font_size", 40)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(title)
-	_name = _field(box, "Name", NetSession.instance.player_name)
-	box.add_child(_label("Map"))
-	_map = OptionButton.new()
-	box.add_child(_map)
-	_maps = _find_maps()
-	for i: int in _maps.size():
-		_map.add_item(_maps[i].get_file().get_basename(), i)
-		if _maps[i] == NetSession.DEFAULT_MAP:
-			_map.select(i)
-	box.add_child(_label("Tank"))
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 9)
+	margin.add_child(box)
+	_add_title(box)
+
+	_name = LineEdit.new()
+	_name.text = NetSession.instance.player_name
+	_name.placeholder_text = "Name"
+	box.add_child(_field("Name", _name))
+
 	_tank = OptionButton.new()
-	box.add_child(_tank)
 	_fill_tanks()
 	_tank.item_selected.connect(func(i: int) -> void:
 		TankConfigs.select(_tank_configs[i]))
-	_button(box, "Garage", func() -> void: get_tree().change_scene_to_file(GARAGE_SCENE))
-	box.add_child(_label("Tanks per team, King of the Hill (5 = 5 vs 5, bots fill empty places; 0 = map default)"))
+	var tank_row := HBoxContainer.new()
+	tank_row.add_theme_constant_override("separation", 8)
+	_tank.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tank_row.add_child(_tank)
+	tank_row.add_child(_button("Garage", func() -> void: get_tree().change_scene_to_file(GARAGE_SCENE)))
+	box.add_child(_field("Tank", tank_row))
+
+	_map = OptionButton.new()
+	_maps = _find_maps()
+	for i: int in _maps.size():
+		_map.add_item(_maps[i].get_file().get_basename().capitalize(), i)
+		if _maps[i] == NetSession.DEFAULT_MAP:
+			_map.select(i)
+	box.add_child(_field("Map", _map))
+
+	# 0 = the map's own number; bots fill empty places.
 	_team_size = SpinBox.new()
 	_team_size.min_value = 0
 	_team_size.max_value = MatchSettings.MAX_TEAM_SIZE
@@ -68,10 +79,8 @@ func _ready() -> void:
 	MatchSettings.load_settings()
 	_team_size.value = MatchSettings.team_size
 	_team_size.value_changed.connect(func(v: float) -> void: MatchSettings.set_team_size(roundi(v)))
-	box.add_child(_team_size)
-	box.add_child(_label("Weather"))
+	_team_size.tooltip_text = "0 = map default"
 	_weather = OptionButton.new()
-	box.add_child(_weather)
 	var ids: PackedStringArray = [Weather.RANDOM]
 	ids.append_array(Weather.PRESETS)
 	for i: int in ids.size():
@@ -82,21 +91,62 @@ func _ready() -> void:
 			_weather.select(i)
 	_weather.item_selected.connect(func(i: int) -> void:
 		MatchSettings.set_weather(str(_weather.get_item_metadata(i))))
-	_bots = CheckBox.new()
-	_bots.text = "Bots (host)"
-	box.add_child(_bots)
-	_button(box, "Host game", _on_host)
-	_ip = _field(box, "Host address", "127.0.0.1")
-	_button(box, "Join game", _on_join)
-	_button(box, "Single player", _on_single)
-	_status = _label(NetSession.instance.status)
+	var match_row := HBoxContainer.new()
+	match_row.add_theme_constant_override("separation", 12)
+	var size_field: Control = _field("Tanks per team", _team_size)
+	var weather_field: Control = _field("Weather", _weather)
+	size_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	weather_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	match_row.add_child(size_field)
+	match_row.add_child(weather_field)
+	box.add_child(match_row)
+
+	var gap := Control.new()
+	gap.custom_minimum_size.y = 6
+	box.add_child(gap)
+	var single: Button = _button("Single player", _on_single)
+	MenuTheme.make_primary(single)
+	box.add_child(single)
+
+	var host_row := HBoxContainer.new()
+	host_row.add_theme_constant_override("separation", 12)
+	var host: Button = _button("Host game", _on_host)
+	host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	host_row.add_child(host)
+	_bots = CheckButton.new()
+	_bots.text = "Bots"
+	host_row.add_child(_bots)
+	box.add_child(host_row)
+
+	var join_row := HBoxContainer.new()
+	join_row.add_theme_constant_override("separation", 8)
+	_ip = LineEdit.new()
+	_ip.text = "127.0.0.1"
+	_ip.placeholder_text = "Host address"
+	_ip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	join_row.add_child(_ip)
+	var join: Button = _button("Join game", _on_join)
+	join.custom_minimum_size.x = 104
+	join_row.add_child(join)
+	box.add_child(join_row)
+
+	_status = MenuTheme.caption("")
+	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_status.text = NetSession.instance.status
 	box.add_child(_status)
 	NetSession.instance.status_changed.connect(func(t: String) -> void:
 		if is_instance_valid(_status):
 			_status.text = t)
 
 
-## The tank list: the four presets, then the player's own garage configs.
+func _add_title(box: Container) -> void:
+	MenuTheme.add_title(box, "VAGNSTRID", 40)
+	var gap := Control.new()
+	gap.custom_minimum_size.y = 8
+	box.add_child(gap)
+
+
+## The tank list: the presets, then the player's own garage configs.
 func _fill_tanks() -> void:
 	_tank_configs = TankConfigs.presets()
 	_tank_configs.append_array(TankConfigs.saved())
@@ -109,25 +159,20 @@ func _fill_tanks() -> void:
 			_tank.select(i)
 
 
-func _field(box: Container, caption: String, value: String) -> LineEdit:
-	box.add_child(_label(caption))
-	var e := LineEdit.new()
-	e.text = value
-	box.add_child(e)
-	return e
+## A small caption above a control.
+func _field(caption: String, control: Control) -> Control:
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	v.add_child(MenuTheme.caption(caption))
+	v.add_child(control)
+	return v
 
 
-func _label(t: String) -> Label:
-	var l := Label.new()
-	l.text = t
-	return l
-
-
-func _button(box: Container, t: String, cb: Callable) -> void:
+func _button(t: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = t
 	b.pressed.connect(cb)
-	box.add_child(b)
+	return b
 
 
 func _find_maps() -> PackedStringArray:

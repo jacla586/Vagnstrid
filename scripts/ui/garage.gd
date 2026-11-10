@@ -1,12 +1,17 @@
 class_name Garage
 extends Control
 ## The garage: pick chassis, gun, armour package and camouflage, see what the tank
-## becomes (stats with bars, a turning 3D preview), save your own configs and choose
-## which tank to drive. Built in code like the main menu.
+## becomes (a turning 3D preview, stats with bars), save your own configs and choose
+## which tank to drive. Built in code like the main menu, in MenuTheme's look.
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const TANK_SCENE: PackedScene = preload("res://scenes/tank/tank.tscn")
 const PREVIEW_TURN_DEG_S: float = 20.0
+## Layout in the 1152x648 canvas (the window scales it).
+const MARGIN: int = 32
+const GAP: int = 24
+const LIST_WIDTH: float = 200.0
+const PARTS_WIDTH: float = 230.0
 
 ## [label, getter, unit, format, higher is better]
 var _stat_defs: Array = [
@@ -36,7 +41,8 @@ var _name: LineEdit
 var _chassis: OptionButton
 var _gun: OptionButton
 var _armour: OptionButton
-var _camo: CheckBox
+var _camo: CheckButton
+var _title: Label
 var _cost: Label
 var _status: Label
 var _bars: Array[ProgressBar] = []
@@ -44,38 +50,28 @@ var _values: Array[Label] = []
 var _preview_root: Node3D
 var _preview_tank: Node3D
 var _camera: Camera3D
+var _floor: MeshInstance3D
 var _updating: bool = false
 
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	theme = MenuTheme.get_theme()
 	_cat = TankBuilder.catalogue()
 	_compute_maxima()
-	var bg := ColorRect.new()
-	bg.color = Color(0.1, 0.12, 0.1)
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+	MenuTheme.add_backdrop(self, false, 0.82)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for side: String in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 24)
+		margin.add_theme_constant_override("margin_" + side, MARGIN)
 	add_child(margin)
-	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 12)
-	margin.add_child(outer)
-	var title := Label.new()
-	title.text = "GARAGE"
-	title.add_theme_font_size_override("font_size", 32)
-	outer.add_child(title)
 	var row := HBoxContainer.new()
-	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	row.add_theme_constant_override("separation", 24)
-	outer.add_child(row)
+	row.add_theme_constant_override("separation", GAP)
+	margin.add_child(row)
 	row.add_child(_build_list())
+	row.add_child(_build_centre())
 	row.add_child(_build_parts())
-	row.add_child(_build_stats())
-	row.add_child(_build_preview())
 	_refresh_list()
 	var chosen: TankConfig = TankConfigs.get_selected()
 	_load_config(chosen if chosen != null else _first_preset())
@@ -88,103 +84,187 @@ func _process(delta: float) -> void:
 
 # --- Layout -----------------------------------------------------------------------
 
+## Left: title, the tanks to choose from, drive / back.
 func _build_list() -> Control:
 	var box := VBoxContainer.new()
-	box.custom_minimum_size = Vector2(220, 0)
-	box.add_child(_label("Tanks"))
+	box.custom_minimum_size = Vector2(LIST_WIDTH, 0)
+	box.add_theme_constant_override("separation", 9)
+	MenuTheme.add_title(box, "GARAGE", 30)
+	var gap := Control.new()
+	gap.custom_minimum_size.y = 6
+	box.add_child(gap)
+	box.add_child(MenuTheme.caption("Tanks"))
 	_list = ItemList.new()
 	_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_list.item_selected.connect(func(i: int) -> void: _load_config(_configs[i]))
 	box.add_child(_list)
-	_button(box, "Drive this tank", _on_use)
-	_button(box, "Back", _on_back)
+	var drive: Button = _button("Drive this tank", _on_use)
+	MenuTheme.make_primary(drive)
+	box.add_child(drive)
+	box.add_child(_button("Back", _on_back))
 	return box
 
 
+## Middle: the turning tank with its name and cost, the stats under it.
+func _build_centre() -> Control:
+	var box := VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", 10)
+	var frame := PanelContainer.new()
+	frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	frame.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	frame.add_child(_build_preview())
+	var head := VBoxContainer.new()
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_theme_constant_override("separation", 0)
+	var head_margin := MarginContainer.new()
+	head_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for side: String in ["left", "top"]:
+		head_margin.add_theme_constant_override("margin_" + side, 14)
+	head_margin.add_child(head)
+	frame.add_child(head_margin)
+	_title = Label.new()
+	_title.add_theme_font_size_override("font_size", 24)
+	_title.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.7))
+	head.add_child(_title)
+	_cost = MenuTheme.caption("")
+	_cost.add_theme_color_override("font_color", MenuTheme.ACCENT)
+	_cost.add_theme_font_size_override("font_size", 12)
+	head.add_child(_cost)
+	box.add_child(frame)
+	box.add_child(_build_stats())
+	return box
+
+
+## Right: name and parts, save / delete.
 func _build_parts() -> Control:
 	var box := VBoxContainer.new()
-	box.custom_minimum_size = Vector2(240, 0)
-	box.add_theme_constant_override("separation", 8)
-	box.add_child(_label("Name"))
+	box.custom_minimum_size = Vector2(PARTS_WIDTH, 0)
+	box.add_theme_constant_override("separation", 9)
 	_name = LineEdit.new()
-	box.add_child(_name)
-	box.add_child(_label("Chassis"))
+	_name.placeholder_text = "Name"
+	_name.text_changed.connect(func(t: String) -> void: _title.text = t)
+	box.add_child(_field("Name", _name))
 	_chassis = OptionButton.new()
 	for c: ChassisData in _cat.chassis:
 		_chassis.add_item(c.display_name)
 	_chassis.item_selected.connect(func(_i: int) -> void: _on_parts_changed(true))
-	box.add_child(_chassis)
-	box.add_child(_label("Gun"))
+	box.add_child(_field("Chassis", _chassis))
 	_gun = OptionButton.new()
 	_gun.item_selected.connect(func(_i: int) -> void: _on_parts_changed(false))
-	box.add_child(_gun)
-	box.add_child(_label("Armour"))
+	box.add_child(_field("Gun", _gun))
 	_armour = OptionButton.new()
 	_armour.item_selected.connect(func(_i: int) -> void: _on_parts_changed(false))
-	box.add_child(_armour)
-	_camo = CheckBox.new()
+	box.add_child(_field("Armour", _armour))
+	_camo = CheckButton.new()
 	_camo.text = "Camouflage"
 	_camo.toggled.connect(func(_on: bool) -> void: _on_parts_changed(false))
 	box.add_child(_camo)
-	_cost = _label("")
-	_cost.add_theme_font_size_override("font_size", 22)
-	box.add_child(_cost)
-	_button(box, "Save", _on_save)
-	_button(box, "Delete", _on_delete)
-	_status = _label("")
-	_status.autowrap_mode = TextServer.AUTOWRAP_WORD
+	var gap := Control.new()
+	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(gap)
+	_status = MenuTheme.caption("")
+	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_status)
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 8)
+	var save: Button = _button("Save", _on_save)
+	var delete: Button = _button("Delete", _on_delete)
+	save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	delete.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	buttons.add_child(save)
+	buttons.add_child(delete)
+	box.add_child(buttons)
 	return box
 
 
+## Two columns of stats: name and value on a line, a thin bar under.
 func _build_stats() -> Control:
 	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.custom_minimum_size = Vector2(380, 0)
-	grid.add_theme_constant_override("h_separation", 10)
-	for def: Array in _stat_defs:
-		grid.add_child(_label(def[0]))
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 24)
+	grid.add_theme_constant_override("v_separation", 7)
+	var half: int = ceili(_stat_defs.size() / 2.0)
+	# Filled column by column: the first half on the left.
+	var order: Array[int] = []
+	for r: int in half:
+		order.append(r)
+		if r + half < _stat_defs.size():
+			order.append(r + half)
+	_bars.resize(_stat_defs.size())
+	_values.resize(_stat_defs.size())
+	for i: int in order:
+		var cell := VBoxContainer.new()
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cell.add_theme_constant_override("separation", 2)
+		var line := HBoxContainer.new()
+		var name_label := Label.new()
+		name_label.text = _stat_defs[i][0]
+		name_label.add_theme_font_size_override("font_size", 12)
+		name_label.add_theme_color_override("font_color", MenuTheme.MUTED)
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.add_child(name_label)
+		var value := Label.new()
+		value.add_theme_font_size_override("font_size", 12)
+		line.add_child(value)
+		cell.add_child(line)
 		var bar := ProgressBar.new()
-		bar.custom_minimum_size = Vector2(150, 16)
+		bar.custom_minimum_size = Vector2(0, 3)
 		bar.show_percentage = false
 		bar.max_value = 1.0
-		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		grid.add_child(bar)
-		_bars.append(bar)
-		var value := _label("")
-		value.custom_minimum_size = Vector2(120, 0)
-		grid.add_child(value)
-		_values.append(value)
+		cell.add_child(bar)
+		grid.add_child(cell)
+		_bars[i] = bar
+		_values[i] = value
 	return grid
 
 
 func _build_preview() -> Control:
 	var container := SubViewportContainer.new()
 	container.stretch = true
-	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	container.custom_minimum_size = Vector2(320, 320)
+	container.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	container.custom_minimum_size = Vector2(320, 240)
 	var vp := SubViewport.new()
 	vp.own_world_3d = true
-	vp.transparent_bg = false
+	vp.transparent_bg = true
+	vp.msaa_3d = Viewport.MSAA_4X
 	container.add_child(vp)
 	var env := WorldEnvironment.new()
 	env.environment = Environment.new()
-	env.environment.background_mode = Environment.BG_COLOR
-	env.environment.background_color = Color(0.16, 0.19, 0.17)
+	env.environment.background_mode = Environment.BG_CLEAR_COLOR
 	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.environment.ambient_light_color = Color(0.6, 0.62, 0.6)
+	env.environment.ambient_light_color = Color(0.45, 0.45, 0.48)
+	env.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	vp.add_child(env)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, -30, 0)
+	sun.light_color = Color(1.0, 0.9, 0.8)
+	sun.shadow_enabled = true
 	vp.add_child(sun)
+	var rim := DirectionalLight3D.new()
+	rim.rotation_degrees = Vector3(-20, 150, 0)
+	rim.light_color = MenuTheme.ACCENT
+	rim.light_energy = 0.3
+	vp.add_child(rim)
+	# Only the shadow and a soft dark round floor show; the picture is behind.
 	var ground := MeshInstance3D.new()
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(30, 30)
-	ground.mesh = plane
+	var disc := CylinderMesh.new()
+	disc.top_radius = 1.0
+	disc.bottom_radius = 1.0
+	disc.height = 0.02
+	disc.radial_segments = 64
+	var floor_mat := StandardMaterial3D.new()
+	floor_mat.albedo_color = Color(0.1, 0.1, 0.11, 0.65)
+	floor_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+	floor_mat.roughness = 1.0
+	disc.material = floor_mat
+	ground.mesh = disc
 	vp.add_child(ground)
+	_floor = ground
 	_preview_root = Node3D.new()
 	vp.add_child(_preview_root)
 	_camera = Camera3D.new()
+	_camera.fov = 40.0
 	vp.add_child(_camera)
 	return container
 
@@ -196,12 +276,13 @@ func _refresh_list() -> void:
 	_list.clear()
 	var chosen: TankConfig = TankConfigs.get_selected()
 	for c: TankConfig in _configs:
-		var text: String = c.display_name
+		var driven: bool = chosen != null and c.resource_path == chosen.resource_path
+		var i: int = _list.add_item(("●  " if driven else "    ") + c.display_name)
 		if TankConfigs.is_preset(c):
-			text += "  (preset)"
-		if chosen != null and c.resource_path == chosen.resource_path:
-			text = "▶ " + text
-		_list.add_item(text)
+			_list.set_item_tooltip(i, "Preset")
+		if driven:
+			_list.set_item_custom_fg_color(i, MenuTheme.ACCENT)
+			_list.set_item_tooltip(i, "You drive this tank")
 
 
 func _first_preset() -> TankConfig:
@@ -216,6 +297,7 @@ func _load_config(cfg: TankConfig) -> void:
 	_cfg = cfg.duplicate()
 	_updating = true
 	_name.text = _cfg.display_name
+	_title.text = _cfg.display_name
 	for i: int in _cat.chassis.size():
 		if _cat.chassis[i].id == _cfg.chassis:
 			_chassis.select(i)
@@ -268,7 +350,7 @@ func _on_parts_changed(chassis_changed: bool) -> void:
 		var v: float = (def[1] as Callable).call(d)
 		_bars[i].value = v / maxf(_max[i], 0.001)
 		_values[i].text = (def[3] as String) % v + " " + def[2] + _effective_note(d, String(def[0]), v)
-	_cost.text = "Cost: %d" % d.cost
+	_cost.text = "Cost %d" % d.cost
 	_show_preview(d)
 
 
@@ -292,11 +374,13 @@ func _show_preview(d: TankData) -> void:
 	tank.remove_child(visual)
 	tank.free()
 	_preview_root.add_child(visual)
-	visual.position = Vector3(0.0, d.hull_size.y * 0.5 + 0.2, 0.0)
+	Tank.paint_visual(visual, true)
+	visual.position = Vector3(0.0, d.hull_size.y * 0.5, 0.0)
 	_preview_tank = visual
 	var size: float = maxf(d.hull_size.z, d.gun_length_m + d.turret_radius_m * 2.0)
-	_camera.position = Vector3(0.0, size * 0.55, size * 1.25)
-	_camera.look_at(Vector3(0.0, d.hull_size.y * 0.5, 0.0))
+	_floor.scale = Vector3(size * 0.62, 1.0, size * 0.62)
+	_camera.position = Vector3(0.0, size * 0.42, size * 1.35)
+	_camera.look_at(Vector3(0.0, d.hull_size.y * 0.55, 0.0))
 
 
 func _on_save() -> void:
@@ -365,14 +449,17 @@ func _compute_maxima() -> void:
 						_max[i] = maxf(_max[i], (_stat_defs[i][1] as Callable).call(d))
 
 
-func _label(t: String) -> Label:
-	var l := Label.new()
-	l.text = t
-	return l
+## A small caption above a control.
+func _field(caption: String, control: Control) -> Control:
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	v.add_child(MenuTheme.caption(caption))
+	v.add_child(control)
+	return v
 
 
-func _button(box: Container, t: String, cb: Callable) -> void:
+func _button(t: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = t
 	b.pressed.connect(cb)
-	box.add_child(b)
+	return b
