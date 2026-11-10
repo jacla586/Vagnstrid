@@ -416,18 +416,31 @@ func soldier_spot_time_factor(index: int, viewer: Vector3, conceal: ConcealmentD
 		factor *= data.prone_spot_factor
 	elif _kneel[index] >= 0.5:
 		factor *= data.kneel_spot_factor
+	# Grass, crops and reed hide the body by its height (GroundCover; less seen from above).
+	var gc: GroundCover = GroundCover.of(self)
+	if gc != null:
+		factor *= gc.spot_time_factor(gc.hidden_share(_soldiers[index].global_position,
+				gc.body_height(_prone[index], _kneel[index]), viewer))
 	var beyond: float = viewer.distance_to(_soldiers[index].global_position) - data.soldier_easy_range_m
 	if beyond > 0.0:
 		factor *= 1.0 + beyond / 100.0 * data.soldier_spot_per_100m
 	return factor
 
 
-## Share of the viewer's range at which soldier `index` can be made out at all (cover).
-func soldier_spot_range_factor(index: int, conceal: ConcealmentData) -> float:
-	if conceal == null or _revealed[index] > 0.0:
+## Share of the viewer's range at which soldier `index` can be made out at all (cover,
+## and ground vegetation seen from `viewer`).
+func soldier_spot_range_factor(index: int, conceal: ConcealmentData, viewer: Vector3 = Vector3.INF) -> float:
+	if _revealed[index] > 0.0:
 		return 1.0
-	return Concealment.range_factor(Concealment.cover(get_world_3d(), _hitboxes[index], conceal),
-			conceal)
+	var factor: float = 1.0
+	if conceal != null:
+		factor = Concealment.range_factor(Concealment.cover(get_world_3d(), _hitboxes[index], conceal),
+				conceal)
+	var gc: GroundCover = GroundCover.of(self)
+	if gc != null and viewer.is_finite():
+		factor *= gc.range_factor(gc.hidden_share(_soldiers[index].global_position,
+				gc.body_height(_prone[index], _kneel[index]), viewer))
+	return factor
 
 
 ## The leader kneels or lies (lower eyes).
@@ -1195,7 +1208,7 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 	var soldier := target as SoldierHitbox
 	if soldier != null:
 		time_factor = soldier.squad.soldier_spot_time_factor(soldier.index, eye, data.concealment)
-		range_factor = soldier.squad.soldier_spot_range_factor(soldier.index, data.concealment)
+		range_factor = soldier.squad.soldier_spot_range_factor(soldier.index, data.concealment, eye)
 	elif data.concealment != null:
 		var cover: float
 		if target is Tank:

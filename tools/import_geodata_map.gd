@@ -88,7 +88,27 @@ func _process(_delta: float) -> bool:
 	_terrain.data.save_directory(_directory)
 	print("%s: %d regions, height range %s" % [_name, _terrain.data.get_region_count(),
 			str(_terrain.data.get_height_range())])
+	_save_ground_cover()
 	return true
+
+
+## Ground vegetation classes (geodata markvegetation.bin/.json, 2 m cells as the heightmap)
+## -> data/maps/<map>_groundcover.res (GroundCoverData).
+func _save_ground_cover() -> void:
+	var bin: String = _geo_out + "/markvegetation.bin"
+	var info_path: String = _geo_out + "/markvegetation.json"
+	if not FileAccess.file_exists(bin) or not FileAccess.file_exists(info_path):
+		print("%s: no markvegetation.bin, no ground cover" % _name)
+		return
+	var info: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(info_path))
+	var gc := GroundCoverData.new()
+	gc.width = int(info["width"])
+	gc.height = int(info["height"])
+	gc.cell_m = 2.0
+	gc.classes = FileAccess.get_file_as_bytes(bin)
+	var path: String = "res://data/maps/%s_groundcover.res" % _name
+	_save_keeping_uid(gc, path)
+	print("%s: ground cover %d x %d -> %s" % [_name, gc.width, gc.height, path])
 
 
 ## The control map: textures per land cover class (terrain_control.r32), or without
@@ -245,11 +265,22 @@ func _copy_files() -> void:
 	for file: String in DirAccess.get_files_at(_geo_out):
 		if file.ends_with("_objekt.glb"):
 			pairs[file] = "%s_objekt.glb" % _name
+		elif file.ends_with("_markvegetation.glb"):
+			pairs[file] = "%s_markvegetation.glb" % _name   # far ground vegetation (GroundCoverCanopy)
 		elif file.begins_with("veg_") and file.ends_with(".glb"):
 			pairs[file] = file   # tree and bush models (vegetation.json)
 	for file: String in COPY_FILES:
 		pairs[file] = file
-	_remove_extracted_images(target_dir)
+	# Only a changed object glb is reimported (and extracts its images again): an unchanged one
+	# keeps its images, else they would be gone for good.
+	var objekt_src: String = ""
+	for file: String in pairs:
+		if pairs[file] == "%s_objekt.glb" % _name:
+			objekt_src = _geo_out + "/" + file
+	var objekt_dst: String = target_dir + "/%s_objekt.glb" % _name
+	if objekt_src.is_empty() or not FileAccess.file_exists(objekt_dst) \
+			or FileAccess.get_md5(objekt_src) != FileAccess.get_md5(objekt_dst):
+		_remove_extracted_images(target_dir)
 	for file: String in pairs:
 		var source: String = ProjectSettings.globalize_path(_geo_out + "/" + file)
 		if not FileAccess.file_exists(source):

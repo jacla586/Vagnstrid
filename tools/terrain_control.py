@@ -51,6 +51,13 @@ def main():
     for idx, name in class_names.items():
         lut[idx] = tex_ids[config['classes'][name]]
     tex = lut[lc]
+    # Fields with a crop (geodata markvegetation.bin, class 4 'gröda') look green from afar,
+    # not like ploughed soil: the game draws the crop near the camera (GroundCoverField).
+    mv_file = out / 'markvegetation.bin'
+    if mv_file.exists():
+        mv = np.fromfile(mv_file, np.uint8)
+        if mv.size == h * w:
+            tex[mv.reshape(h, w) == 4] = tex_ids['meadow']
     by_name = {v: k for k, v in class_names.items()}
     road = np.isin(lc, [by_name[c] for c in ROAD_CLASSES if c in by_name])
     water = np.isin(lc, [by_name[c] for c in WATER_CLASSES if c in by_name])

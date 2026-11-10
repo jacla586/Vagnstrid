@@ -38,6 +38,8 @@
 [ext_resource type="Script" path="res://scripts/ui/killcam.gd" id="38_killcam"]
 [ext_resource type="Script" path="res://scripts/ui/killcam_panel.gd" id="39_killcam_panel"]
 [ext_resource type="Resource" path="res://data/ui/killcam.tres" id="40_killcam_data"]
+[ext_resource type="Script" path="res://scripts/world/ground_cover/ground_cover_field.gd" id="90_ground_cover"]
+[ext_resource type="Script" path="res://scripts/world/ground_cover/ground_cover_canopy.gd" id="91_ground_canopy"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -254,6 +256,12 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("33_esc_menu")
 views = NodePath("../../PlayerViews")
+
+[node name="GroundCoverField" type="Node3D" parent="."]
+script = ExtResource("90_ground_cover")
+
+[node name="GroundCoverCanopy" type="Node3D" parent="."]
+script = ExtResource("91_ground_canopy")
 
 [node name="WeatherView" type="Node" parent="." node_paths=PackedStringArray("tank")]
 script = ExtResource("35_weather_view")

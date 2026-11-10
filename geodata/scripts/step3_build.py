@@ -184,6 +184,11 @@ for r in roads:
     mm = rasterize([(r['line'].buffer(r['width'] / 2), 1)], out_shape=(H, W), transform=T).astype(bool)
     lc[mm] = CIDX['väg_asfalt' if r['surface'] == 'asfalt' else 'väg_grus']
 BANA.marktacke(lc, CIDX['väg_grus'], (H, W), T)
+# Markvegetation för spelet (markvegetation.py): klass per 2 m-cell
+import markvegetation
+MV = markvegetation.bygg(lc, CIDX, T, (H, W), WORK.parent / 'data' if WORK.name == 'work' and WORK.parent != ROOT else ROOT / 'data',
+                    [gm for gm, _ in feat['buildings']], OUT,
+                    str(ROOT / 'forhandsbilder' / f'markvegetation_{NAMN}.png'))
 pal = np.array([c for _, c in CLASSES], np.uint8)
 Image.fromarray(lc).save(f'{OUT}/landcover_index.png')
 Image.fromarray(pal[lc]).save(f'{OUT}/landcover_color.png')
@@ -682,6 +687,7 @@ scene.graph.update(frame_to='Vattendrag', frame_from=scene.graph.base_frame)
 print('vattendrag med vattenyta', n_vd)
 
 flush_merged()
+markvegetation.lager_glb(MV, h, RES, f'{OUT}/{NAMN}_markvegetation.glb')   # växtlagret på avstånd
 # Först utan terrängrutor, för Godot där Terrain3D står för marken, sedan hela scenen
 scene.export(f'{OUT}/{NAMN}_objekt.glb')
 for name, mesh in terrain_tiles:

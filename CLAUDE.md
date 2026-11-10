@@ -178,6 +178,21 @@ shows on the minimap. This is what we test first.
   `find_position` with infantry costs), recall it when hurt, left behind or driving on; squad
   contacts reach the crew and (KothBots) its team. Decided rules: memory
   `squad-rules`.
+- Ground vegetation (`GroundCover`, `scripts/world/ground_cover/`): grass, crops, reed, scrub and
+  heather per 2 m cell (`GroundCoverData`, `data/maps/<map>_groundcover.res`, made at map import
+  from geodata `markvegetation.bin`), classes with heights and looks in `data/world/ground_cover.tres`
+  (`GroundCoverSetData`/`GroundCoverClassData`). Rule (bots and squads alike, in
+  `Squad.soldier_spot_time_factor`/`soldier_spot_range_factor`, which now take the viewer): the share
+  of the body (stance heights) below the vegetation, above `min_hiding_height_m` (a lawn hides
+  nothing), times a grazing factor (full along the ground, none looked down on from 35°), multiplies
+  spot time (`hide_spot_time_factor`) and cuts range (`hide_range_share`). Players see the same:
+  `GroundCoverField` (player rig) draws blade clumps (MultiMesh per 24 m cell and class,
+  `ground_cover.gdshader`, wind) within `draw_radius_m` (55 m) of the camera, all at once after a
+  camera jump; beyond, `GroundCoverCanopy` shows the baked `assets/maps/<map>/<map>_markvegetation.glb`
+  (4 m cells on the ground, class in UV.x; height and colour from the .tres by shader): opaque far,
+  dithered near the blade field's edge and thinned when looked down on (same angles as the rule), so a
+  man lying in a far field is hidden to the eye as to bots, with nothing marking him. Cost ~0.1-1 ms.
+  So far: Vidingsjö.
 - Hits and wrecks: a gun round (>= 20 mm) on a tank emits `Tank.struck(outcome, dir)`
   (clients get it for their own tank by `rpc_struck`) and jolts the hull
   (`TankData.hit_jolt_factor`); `HitReaction` in the player rig shakes the commander/gunner

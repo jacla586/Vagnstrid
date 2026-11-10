@@ -1,0 +1,128 @@
+[gd_resource type="Resource" script_class="GroundCoverSetData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ground_cover_set_data.gd" id="1_set"]
+[ext_resource type="Script" path="res://scripts/data/ground_cover_class_data.gd" id="2_cls"]
+
+[sub_resource type="Resource" id="Klass_0"]
+script = ExtResource("2_cls")
+name = "ingen"
+height_m = 0.0
+density = 0.0
+blades = 6
+blade_width_m = 0.04
+spread_m = 0.18
+height_jitter = 0.25
+lean = 0.35
+color_a = Color(0.471, 0.588, 0.235, 1)
+color_b = Color(0.549, 0.627, 0.275, 1)
+heads = 0
+head_color = Color(0.784, 0.706, 0.431, 1)
+
+[sub_resource type="Resource" id="Klass_1"]
+script = ExtResource("2_cls")
+name = "gräsmatta"
+height_m = 0.06
+density = 0.0
+blades = 6
+blade_width_m = 0.04
+spread_m = 0.18
+height_jitter = 0.25
+lean = 0.35
+color_a = Color(0.431, 0.588, 0.235, 1)
+color_b = Color(0.510, 0.627, 0.275, 1)
+heads = 0
+head_color = Color(0.784, 0.706, 0.431, 1)
+
+[sub_resource type="Resource" id="Klass_2"]
+script = ExtResource("2_cls")
+name = "kort gräs"
+height_m = 0.18
+density = 2.0
+blades = 8
+blade_width_m = 0.04
+spread_m = 0.16
+height_jitter = 0.3
+lean = 0.4
+color_a = Color(0.490, 0.569, 0.243, 1)
+color_b = Color(0.627, 0.627, 0.314, 1)
+heads = 0
+head_color = Color(0.784, 0.706, 0.431, 1)
+
+[sub_resource type="Resource" id="Klass_3"]
+script = ExtResource("2_cls")
+name = "högt gräs"
+height_m = 0.55
+density = 3.5
+blades = 12
+blade_width_m = 0.04
+spread_m = 0.24
+height_jitter = 0.25
+lean = 0.45
+color_a = Color(0.549, 0.608, 0.275, 1)
+color_b = Color(0.706, 0.686, 0.373, 1)
+heads = 1
+head_color = Color(0.745, 0.667, 0.431, 1)
+
+[sub_resource type="Resource" id="Klass_4"]
+script = ExtResource("2_cls")
+name = "gröda"
+height_m = 0.9
+density = 6.0
+blades = 10
+blade_width_m = 0.035
+spread_m = 0.16
+height_jitter = 0.1
+lean = 0.12
+color_a = Color(0.62, 0.66, 0.33, 1)
+color_b = Color(0.74, 0.72, 0.42, 1)
+heads = 4
+head_color = Color(0.8, 0.74, 0.47, 1)
+
+[sub_resource type="Resource" id="Klass_5"]
+script = ExtResource("2_cls")
+name = "våtmark"
+height_m = 0.85
+density = 2.0
+blades = 10
+blade_width_m = 0.035
+spread_m = 0.2
+height_jitter = 0.25
+lean = 0.25
+color_a = Color(0.431, 0.510, 0.255, 1)
+color_b = Color(0.569, 0.569, 0.314, 1)
+heads = 2
+head_color = Color(0.373, 0.275, 0.176, 1)
+
+[sub_resource type="Resource" id="Klass_6"]
+script = ExtResource("2_cls")
+name = "snår"
+height_m = 0.6
+density = 1.0
+blades = 9
+blade_width_m = 0.06
+spread_m = 0.24
+height_jitter = 0.3
+lean = 0.5
+color_a = Color(0.333, 0.431, 0.188, 1)
+color_b = Color(0.412, 0.490, 0.227, 1)
+heads = 0
+head_color = Color(0.784, 0.706, 0.431, 1)
+
+[sub_resource type="Resource" id="Klass_7"]
+script = ExtResource("2_cls")
+name = "skogsbotten"
+height_m = 0.28
+density = 2.0
+blades = 8
+blade_width_m = 0.06
+spread_m = 0.22
+height_jitter = 0.3
+lean = 0.6
+color_a = Color(0.275, 0.392, 0.165, 1)
+color_b = Color(0.373, 0.439, 0.204, 1)
+heads = 0
+head_color = Color(0.784, 0.706, 0.431, 1)
+
+[resource]
+script = ExtResource("1_set")
+classes = Array[ExtResource("2_cls")]([SubResource("Klass_0"), SubResource("Klass_1"), SubResource("Klass_2"), SubResource("Klass_3"), SubResource("Klass_4"), SubResource("Klass_5"), SubResource("Klass_6"), SubResource("Klass_7")])

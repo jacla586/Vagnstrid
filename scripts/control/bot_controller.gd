@@ -834,7 +834,7 @@ func _scan_squads(dt: float) -> void:
 			if not enemy.is_soldier_exposed(hb.index):
 				continue
 			total += 1
-			var range_factor: float = enemy.soldier_spot_range_factor(hb.index, bot_data.concealment)
+			var range_factor: float = enemy.soldier_spot_range_factor(hb.index, bot_data.concealment, eye)
 			if _can_see_point(hb.get_aim_point(), hb, range_factor):
 				seen += 1
 				easiest = minf(easiest,
