@@ -44,6 +44,11 @@ signal fired(shell: Shell)
 signal shot_landed(result: HitResult)
 ## Emitted when this tank is knocked out.
 signal knocked_out
+## Host only, right after knocked_out: who knocked it out (null: nobody, e.g. abandoned)
+## and the other enemies whose gun rounds damaged it this life (assists). The killer is
+## HitRecord.kill_of's shooter: the knock-out hit, else the one that lit the fire, else
+## the last penetration.
+signal eliminated(killer: Tank, assists: Array[Tank])
 ## A gun round (THREAT_MIN_CALIBER_MM or more) hit this tank: HitResult.Outcome and the
 ## shell's direction. Also on network clients for their own tank (net_struck).
 signal struck(outcome: int, direction: Vector3)
@@ -72,6 +77,8 @@ signal squad_contact(enemy: Node3D, at: Vector3)
 ## A gun round passed or landed within NEAR_MISS_M without hitting (the crew shouts).
 ## Host/offline from the shell, network clients for their own tank (net_near_miss).
 signal near_missed(direction: Vector3)
+## An HE burst near the tank threw dirt over the crew's optics (`amount` added, 0..1).
+signal optics_dirtied(amount: float)
 ## A track ran over a mine (host/offline; the owner's client by rpc_mine_hit). Comes
 ## just before the `struck` it also gives.
 signal mine_hit
@@ -182,6 +189,11 @@ var _look_version: int = -1
 var _look_team: int = -1
 var _charred_material: StandardMaterial3D
 var _mg_shot_timer: float = 0.0
+## Dirt on the optics (0 clean .. 1), fading (TankData.optics_dirt_fade_s).
+var _optics_dirt: float = 0.0
+## Per MG (0 coaxial, 1 roof): rounds left in the belt, and reload time left (s).
+var _mg_rounds := PackedInt32Array([0, 0])
+var _mg_reload := PackedFloat32Array([0.0, 0.0])
 var _spot_cooldown_remaining: float = 0.0
 var _smoke_left: int = 0
 ## Time.get_ticks_msec() when the next salvo may go (clock time, so clients have it too).
@@ -261,6 +273,9 @@ func _ready() -> void:
 	assert(data != null, "Tank needs a TankData resource")
 	add_to_group("tanks")
 	mass = data.mass_kg
+	# Contacts tell when it presses against another tank or a wreck (push_accel).
+	contact_monitor = true
+	max_contacts_reported = 4
 	apply_geometry()
 	var width_sum: float = 0.0
 	for child: Node in _suspension.get_children():
@@ -286,6 +301,8 @@ func _ready() -> void:
 	_setup_paint()
 	_rng.randomize()
 	_smoke_left = data.smoke_salvos
+	for i: int in 2:
+		_mg_rounds[i] = _belt_of(i)
 	_roof_mg.visible = data.roof_mg != null
 	_damage = TankDamage.new(data)
 	_damage.module_changed.connect(func(id: StringName, st: TankDamage.State) -> void:
@@ -641,6 +658,23 @@ func get_spot_points() -> Array[Vector3]:
 	return out
 
 
+## The name in the kill feed: the player's name, "You" offline, else "Bot".
+func get_player_name() -> String:
+	if display_label != "":
+		return display_label
+	if use_player_config and not NetRole.is_online():
+		return "You"
+	return "Bot"
+
+
+## The tank's type for the kill feed: its garage config's name (presets: "T-34"...),
+## else its data's.
+func get_type_name() -> String:
+	if config != null and config.display_name != "":
+		return config.display_name
+	return data.display_name if data != null else "?"
+
+
 func get_display_label() -> String:
 	if display_label != "":
 		return display_label
@@ -795,6 +829,11 @@ func is_immobilised() -> bool:
 	return _damage.is_immobilised()
 
 
+## Share of top speed the engine, tracks and fire allow (0: can't drive).
+func get_speed_factor() -> float:
+	return _damage.speed_factor()
+
+
 func is_commander_wounded() -> bool:
 	return _commander_wound_remaining > 0.0
 
@@ -876,6 +915,27 @@ func get_hits_this_life() -> Array[HitRecord]:
 	return _hits_this_life
 
 
+## The tank a round came from: the tank itself, or the tank a firing soldier's squad
+## belongs to (its AT round; kill and assist credit go to that tank's player).
+static func _shooter_tank(shooter: Object) -> Tank:
+	if shooter == null or not is_instance_valid(shooter):
+		return null
+	if shooter is Tank:
+		return shooter as Tank
+	if shooter is SoldierHitbox:
+		var sq: Squad = (shooter as SoldierHitbox).squad
+		if sq != null and is_instance_valid(sq) and is_instance_valid(sq.tank):
+			return sq.tank
+	return null
+
+
+## What the knock-out came from for the kill feed ("Bazooka"), "" for a tank's gun or
+## none. Host only.
+func get_kill_weapon() -> String:
+	var kill: HitRecord = HitRecord.kill_of(_hits_this_life)
+	return kill.weapon if kill != null else ""
+
+
 ## The hit the knock-out goes on (null: none to show).
 func get_kill_record() -> HitRecord:
 	return HitRecord.kill_of(_hits_this_life)
@@ -948,8 +1008,10 @@ func _record_hit(shell_data: ShellData, result: HitResult, point: Vector3, hull_
 	r.calibre_mm = shell_data.caliber_mm
 	r.origin = _incoming_origin if _incoming_origin != Vector3.ZERO else point
 	r.impact = point
-	var shooter: Tank = _incoming_shooter as Tank if is_instance_valid(_incoming_shooter) else null
+	var shooter: Tank = _shooter_tank(_incoming_shooter)
 	r.shooter_label = shooter.get_display_label() if shooter != null else ""
+	r.shooter_id = shooter.get_instance_id() if shooter != null else 0
+	r.weapon = shell_data.kill_feed_name
 	r.distance_m = r.origin.distance_to(point)
 	r.killed = killed
 	r.set_fire = set_fire
@@ -964,7 +1026,8 @@ func _record_hit(shell_data: ShellData, result: HitResult, point: Vector3, hull_
 func on_mine(track: StringName, point: Vector3, mine_data: MineData) -> void:
 	if _knocked_out or net_puppet:
 		return
-	_damage.apply_mine(track)
+	_damage.apply_mine(track, mine_data.blast_hp)
+	add_optics_dirt(mine_data.optics_dirt)
 	mine_hit.emit()
 	struck.emit(HitResult.Outcome.HIT, Vector3.UP)
 	apply_impulse(Vector3.UP * mass * mine_data.jolt_speed_mps, point - global_position)
@@ -1017,8 +1080,12 @@ func repair() -> void:
 	_smoke_left = data.smoke_salvos
 	_smoke_ready_ms = 0
 	_mg_shot_timer = 0.0
+	for i: int in 2:
+		_mg_rounds[i] = _belt_of(i)
+		_mg_reload[i] = 0.0
 	_since_fired = 999.0
 	_since_mg_fired = 999.0
+	_optics_dirt = 0.0
 	_at_rest = false
 	_rock = 0.0
 	_rock_slow = 0.0
@@ -1042,7 +1109,7 @@ func get_life_seconds() -> float:
 	return _life_clock
 
 
-func _knock_out() -> void:
+func _knock_out(abandoned: bool = false) -> void:
 	_knocked_out = true
 	_wreck_left = false
 	_burning = BURNING_SCENE.instantiate()
@@ -1052,6 +1119,29 @@ func _knock_out() -> void:
 	if _damage.ammo_exploded and not net_puppet:
 		_toss_turret_random()
 	knocked_out.emit()
+	if not net_puppet:
+		_emit_eliminated(abandoned)
+
+
+## Host: eliminated(killer, assists) from this life's hit records.
+func _emit_eliminated(abandoned: bool) -> void:
+	var killer: Tank = null
+	if not abandoned:
+		var kill: HitRecord = HitRecord.kill_of(_hits_this_life)
+		if kill != null:
+			killer = instance_from_id(kill.shooter_id) as Tank if kill.shooter_id != 0 else null
+	if killer != null and (not is_instance_valid(killer) or not killer.is_enemy_of(self)):
+		killer = null
+	var assists: Array[Tank] = []
+	for r: HitRecord in _hits_this_life:
+		if r.shooter_id == 0 or not r.dealt_damage():
+			continue
+		var t := instance_from_id(r.shooter_id) as Tank
+		if t == null or not is_instance_valid(t) or t == killer or assists.has(t) \
+				or not t.is_enemy_of(self):
+			continue
+		assists.append(t)
+	eliminated.emit(killer, assists)
 
 
 ## Host: the ammo went up: throws the turret turret_toss_min_m..max_m high, short
@@ -1144,13 +1234,19 @@ func make_wreck_here(turret_yaw: float, gun_pitch: float) -> void:
 	queue_free()
 
 
+## True while the hull presses against another tank or a wreck (they can be shoved).
+func _is_pushing() -> bool:
+	for body: Node3D in get_colliding_bodies():
+		if body is Tank or body is Wreck:
+			return true
+	return false
+
+
 func _make_wreck(at: Transform3D, no_turret: bool = false) -> void:
 	var to_tank: Transform3D = global_transform.affine_inverse()
-	var wreck := StaticBody3D.new()
+	var wreck := Wreck.new()
 	wreck.name = "Wreck"
-	wreck.collision_layer = 1
-	wreck.collision_mask = 0
-	wreck.add_to_group(&"wrecks")
+	wreck.setup(at, mass * data.wreck_mass_share, data.wreck_friction, data.wreck_damp)
 	var root: Node = get_tree().current_scene if get_tree().current_scene != null else get_parent()
 	root.add_child(wreck)
 	wreck.global_transform = at
@@ -1175,6 +1271,15 @@ func _make_wreck(at: Transform3D, no_turret: bool = false) -> void:
 		shape.shape = cs.shape.duplicate()
 		wreck.add_child(shape)
 		shape.transform = to_tank * cs.global_transform
+	# The hull shapes stop above the tracks (they would scrape): the wreck stands on a
+	# block the size of its tracks' footprint, from the ground up to the hull.
+	var track_h: float = data.track_shape_lift_m + data.track_ground_gap_m + 0.05
+	var block := BoxShape3D.new()
+	block.size = Vector3(data.hull_size.x, track_h, data.hull_size.z * 0.9)
+	var under := CollisionShape3D.new()
+	under.shape = block
+	under.position = Vector3(0.0, -data.hull_size.y * 0.5 - data.track_ground_gap_m + track_h * 0.5, 0.0)
+	wreck.add_child(under)
 	var wrecks: Array[Node] = get_tree().get_nodes_in_group(&"wrecks")
 	if wrecks.size() > MAX_WRECKS:
 		wrecks[0].queue_free()
@@ -1363,6 +1468,7 @@ func _physics_process(delta: float) -> void:
 				is_crew_wounded(&"gunner"))
 	_update_turret(delta)
 	_commander_wound_remaining = maxf(_commander_wound_remaining - delta, 0.0)
+	_fade_optics_dirt(delta)
 	_update_hatch(delta)
 	_update_commander_hitbox()
 	_update_gun(delta)
@@ -1373,7 +1479,7 @@ func _physics_process(delta: float) -> void:
 	_update_squad_order()
 	_update_damage(delta)
 	if _command.abandon and not _knocked_out:
-		_knock_out()   # the crew bails out: a loss, but nobody's kill
+		_knock_out(true)   # the crew bails out: a loss, but nobody's kill
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -1406,6 +1512,9 @@ func _update_turret(delta: float) -> void:
 	var hull_local: Vector3 = (_turret.get_parent() as Node3D).to_local(_command.aim_point)
 	var target_yaw: float = atan2(-hull_local.x, -hull_local.z)
 	var yaw_step: float = deg_to_rad(data.turret_traverse_speed_deg) * delta * _damage.traverse_factor()
+	if data.gun_stabiliser > 0.0:
+		# The stabiliser drives against the hull's own turning, on top of the traverse.
+		yaw_step += absf(angular_velocity.dot(global_basis.y)) * data.gun_stabiliser * delta
 	var yaw_diff: float = wrapf(target_yaw - _turret.rotation.y, -PI, PI)
 	_turret.rotation.y = wrapf(_turret.rotation.y + clampf(yaw_diff, -yaw_step, yaw_step), -PI, PI)
 
@@ -1415,6 +1524,9 @@ func _update_turret(delta: float) -> void:
 	var target_pitch: float = clampf(atan2(from_pivot.y, horizontal),
 			-deg_to_rad(data.gun_max_depression_deg), deg_to_rad(data.gun_max_elevation_deg))
 	var pitch_step: float = deg_to_rad(data.gun_elevation_speed_deg) * delta
+	if data.gun_stabiliser > 0.0:
+		# ...and against the hull's rocking (pitch), so the gun stays on the aim.
+		pitch_step += absf(angular_velocity.dot(_turret.global_basis.x)) * data.gun_stabiliser * delta
 	_gun_pivot.rotation.x += clampf(target_pitch - _gun_pivot.rotation.x, -pitch_step, pitch_step)
 
 
@@ -1442,7 +1554,11 @@ func _update_gun(delta: float) -> void:
 	var wanted: int = _command.ammo_select
 	if wanted >= 0 and wanted < data.ammo.size() and wanted != _ammo_index:
 		_ammo_index = wanted
-		_reload_remaining = data.reload_time_s
+		# A round in the breech: unload it and load the other (ammo_swap_share of a
+		# reload). Already loading (after a shot, or mid-swap): the loader just takes the
+		# other round; the time left stays, so a swap never cuts a reload short.
+		if _reload_remaining <= 0.0:
+			_reload_remaining = data.reload_time_s * data.ammo_swap_share
 	_reload_remaining = maxf(_reload_remaining - delta, 0.0)
 	if _command.fire and not fire_blocked and is_loaded() and get_loaded_shell() != null:
 		_fire()
@@ -1610,9 +1726,16 @@ func _update_roof_mg(delta: float) -> void:
 
 
 func _update_mg(delta: float) -> void:
+	# Belts are counted on the host and by the own client (the host's count overrides
+	# it); other puppets just follow the host's "firing" flag.
+	var counts: bool = not net_puppet or net_predict
+	if counts:
+		_update_mg_reloads(delta)
 	var roof: bool = _command.mg_use_roof and can_use_roof_mg()
 	var mg: MachineGunData = data.roof_mg if roof else data.coax_mg
-	if not _command.fire_mg or fire_blocked or mg == null or mg.bullet == null:
+	var i: int = 1 if roof else 0
+	if not _command.fire_mg or fire_blocked or mg == null or mg.bullet == null \
+			or (counts and _mg_reload[i] > 0.0):
 		_mg_shot_timer = 0.0
 		return
 	_mg_shot_timer -= delta
@@ -1621,6 +1744,69 @@ func _update_mg(delta: float) -> void:
 	while _mg_shot_timer <= 0.0:
 		_mg_shot_timer += interval
 		_fire_bullet(mg, muzzle, roof)
+		if counts and mg.belt_rounds > 0:
+			_mg_rounds[i] -= 1
+			if _mg_rounds[i] <= 0:
+				_mg_rounds[i] = 0
+				_mg_reload[i] = mg.reload_s   # belt empty: the crew reloads
+				_mg_shot_timer = 0.0
+				break
+
+
+func _update_mg_reloads(delta: float) -> void:
+	for i: int in 2:
+		if _mg_reload[i] > 0.0:
+			_mg_reload[i] = maxf(_mg_reload[i] - delta, 0.0)
+			if _mg_reload[i] <= 0.0:
+				_mg_rounds[i] = _belt_of(i)
+
+
+## MG `i`'s full belt (0 coaxial, 1 roof; -1: endless or none).
+func _belt_of(i: int) -> int:
+	var mg: MachineGunData = data.roof_mg if i == 1 else data.coax_mg
+	return mg.belt_rounds if mg != null and mg.belt_rounds > 0 else -1
+
+
+## The coaxial (roof false) or roof MG's rounds left in its belt (-1: endless).
+func get_mg_rounds_left(roof: bool) -> int:
+	return _mg_rounds[1 if roof else 0]
+
+
+## Seconds until that MG's new belt is in (0 when it isn't reloading).
+func get_mg_reload_left(roof: bool) -> float:
+	return _mg_reload[1 if roof else 0]
+
+
+## Dirt from an HE burst nearby (Explosion; on clients the host's rpc for the own tank):
+## `amount` 0..1 is added, at most clean-to-full.
+func add_optics_dirt(amount: float) -> void:
+	if amount <= 0.0 or _knocked_out:
+		return
+	_optics_dirt = minf(_optics_dirt + amount, 1.0)
+	optics_dirtied.emit(amount)
+
+
+## How dirty the optics are now (0 clean .. 1): the player's OpticsDirt overlay, bots'
+## slower spotting and settling (BotController).
+func get_optics_dirt() -> float:
+	return _optics_dirt
+
+
+func _fade_optics_dirt(delta: float) -> void:
+	if _optics_dirt > 0.0:
+		_optics_dirt *= exp(-delta / maxf(data.optics_dirt_fade_s, 0.1))
+		if _optics_dirt < 0.01:
+			_optics_dirt = 0.0
+
+
+## Rough distance from the middle to the hull's sides (m): bursts are measured from it.
+func get_hull_radius() -> float:
+	return _track_half_width + 0.4
+
+
+## The MG mouse 2 fires now is the roof MG.
+func is_roof_mg_active() -> bool:
+	return _command.mg_use_roof and can_use_roof_mg()
 
 
 # --- Network --------------------------------------------------------------------------
@@ -1684,7 +1870,8 @@ func get_net_state(for_owner: bool) -> TankNetState:
 	if _knocked_out: s.flags |= TankNetState.FLAG_KNOCKED_OUT
 	if _damage.is_burning(): s.flags |= TankNetState.FLAG_BURNING
 	var roof: bool = _command.mg_use_roof and can_use_roof_mg()
-	if _command.fire_mg and not fire_blocked and not _knocked_out and get_active_mg(roof) != null:
+	if _command.fire_mg and not fire_blocked and not _knocked_out and get_active_mg(roof) != null \
+			and _mg_reload[1 if roof else 0] <= 0.0:
 		s.flags |= TankNetState.FLAG_MG_FIRING
 	if roof: s.flags |= TankNetState.FLAG_MG_ROOF
 	if is_commander_wounded(): s.flags |= TankNetState.FLAG_WOUNDED
@@ -1695,6 +1882,8 @@ func get_net_state(for_owner: bool) -> TankNetState:
 			s.module_states.append(_damage.state(id))
 		s.reload_s = _reload_remaining
 		s.ammo_index = _ammo_index
+		s.mg_rounds = _mg_rounds.duplicate()
+		s.mg_reload = _mg_reload.duplicate()
 		s.repair_left_s = _damage.repair_time_left()
 		s.repair_total_s = _damage.repair_total()
 		s.spot_cooldown_s = _spot_cooldown_remaining
@@ -1759,6 +1948,9 @@ func net_set_status(s: TankNetState) -> void:
 	if s.has(TankNetState.FLAG_OWNER_DATA):
 		_reload_remaining = s.reload_s
 		_ammo_index = s.ammo_index
+		for i: int in 2:
+			_mg_rounds[i] = s.mg_rounds[i]
+			_mg_reload[i] = s.mg_reload[i]
 		_spot_cooldown_remaining = s.spot_cooldown_s
 		if wounded:
 			_commander_wound_remaining = s.wound_s
@@ -1805,6 +1997,7 @@ func _puppet_process(delta: float) -> void:
 		_update_roof_mg(delta)
 	_update_commander_hitbox()
 	_commander_wound_remaining = maxf(_commander_wound_remaining - delta, 0.0)
+	_fade_optics_dirt(delta)
 	_reload_remaining = maxf(_reload_remaining - delta, 0.0)
 	_spot_cooldown_remaining = maxf(_spot_cooldown_remaining - delta, 0.0)
 	if not _knocked_out:
@@ -1919,6 +2112,9 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	var speed: float = linear_velocity.dot(forward)
 	var speeding_up: bool = target_speed * speed >= 0.0 and absf(target_speed) > absf(speed)
 	var accel_limit: float = data.acceleration if speeding_up else data.brake_deceleration
+	if speeding_up and _is_pushing():
+		var fade: float = clampf(absf(speed) / maxf(data.push_fade_speed_kmh * KMH_TO_MS, 0.1), 0.0, 1.0)
+		accel_limit = maxf(accel_limit, lerpf(data.push_accel, data.acceleration, fade))
 	var accel: float = clampf((target_speed - speed) / delta, -accel_limit, accel_limit)
 	# The tracks also cancel gravity along the slope (uphill pull, downhill push),
 	# up to what the steepest climbable slope needs.
@@ -1950,19 +2146,29 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	# Skid steer: right track pushing harder turns the tank left, and vice versa.
 	var track_split: float = yaw_torque / (2.0 * _track_half_width)
 	# A destroyed track gives no drive on its side, but drags like a brake (it doesn't
-	# roll freely): the tank can only pivot round it, and still holds on slopes.
-	var hold_force: float = 0.5 * mass * clampf(
-			clampf(-speed / delta, -data.brake_deceleration, data.brake_deceleration) - gravity_along,
-			-traction_limit, traction_limit)
+	# roll freely): the tank can only pivot round it, and still holds on slopes. Each
+	# brakes its own side's travel (speed ± yaw × half width), so a stuck tank that was
+	# turning stops turning instead of spinning on.
 	var left_force: float = drive_force * 0.5 - track_split
 	var right_force: float = drive_force * 0.5 + track_split
 	if _damage.track_factor(-1) <= 0.0 or _damage.is_immobilised():
-		left_force = hold_force
+		left_force = _track_hold_force(speed - yaw_rate * _track_half_width, delta,
+				gravity_along, traction_limit)
 	if _damage.track_factor(1) <= 0.0 or _damage.is_immobilised():
-		right_force = hold_force
+		right_force = _track_hold_force(speed + yaw_rate * _track_half_width, delta,
+				gravity_along, traction_limit)
 	var com_global: Vector3 = global_position + state.center_of_mass
 	_apply_track_force(left_force, forward, up, com_global, left_points, left_normals)
 	_apply_track_force(right_force, forward, up, com_global, right_points, right_normals)
+
+
+## A braked track's push on its side: stops that side's travel `track_speed`
+## (brake_deceleration at most) and holds half the tank on the slope.
+func _track_hold_force(track_speed: float, delta: float, gravity_along: float,
+		traction_limit: float) -> float:
+	return 0.5 * mass * clampf(
+			clampf(-track_speed / delta, -data.brake_deceleration, data.brake_deceleration) - gravity_along,
+			-traction_limit, traction_limit)
 
 
 ## Track forces act at the wheels' places along and across the hull but at the centre

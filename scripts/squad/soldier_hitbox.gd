@@ -66,6 +66,11 @@ func get_fragment_collider() -> CollisionObject3D:
 	return self
 
 
+## Explosion: fragments reach soldiers farther (SquadData.fragment_radius_factor).
+func fragment_radius_factor() -> float:
+	return squad.data.fragment_radius_factor if squad != null and squad.data != null else 1.0
+
+
 func on_fragment_hit(_shell_data: ShellData, _distance: float) -> HitResult:
 	return squad.soldier_hit(index) if squad != null else null
 

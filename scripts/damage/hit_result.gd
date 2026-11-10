@@ -21,6 +21,10 @@ var effective_mm: float = 0.0
 var penetration_mm: float = 0.0
 ## Plate thickness before wear (mm); equal to armour_mm on an unworn plate.
 var unworn_mm: float = 0.0
+## A penetration with little to spare (ShellData.penetration_damage_share below
+## WEAK_SHARE): it got in but did less harm. Shown as "WEAK PENETRATION".
+var weak: bool = false
+const WEAK_SHARE: float = 0.7
 ## Modules the shell damaged ("engine", "track_left", ...), worst effect first.
 var modules: PackedStringArray = PackedStringArray()
 ## True if this hit knocked the tank out.
@@ -49,7 +53,7 @@ func describe() -> String:
 	if outcome == Outcome.COMMANDER_HIT:
 		return "COMMANDER HIT"
 	var head: String = {
-		Outcome.PENETRATION: "PENETRATION",
+		Outcome.PENETRATION: "WEAK PENETRATION" if weak else "PENETRATION",
 		Outcome.NO_PENETRATION: "NO PENETRATION",
 		Outcome.RICOCHET: "RICOCHET",
 	}[outcome]

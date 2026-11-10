@@ -20,6 +20,12 @@ extends Resource
 @export var structure_damage_hp: float = 0.0
 ## Outside the armour (tracks): hit by shells that don't penetrate and by HE fragments.
 @export var external: bool = false
+## Close under the plates (engine under the deck, turret ring): an HE burst on the hull
+## within ShellData.blast_module_reach_m damages it without penetrating.
+@export var blast_exposed: bool = false
+## ...within this share of that reach (from the box's surface): the turret ring only
+## takes bursts right at the turret's base.
+@export var blast_reach_share: float = 1.0
 ## Own repair time when broken (s, standing still), rolled between min and max each time
 ## it breaks (tracks: putting a thrown track back on). 0 = the tank's repair_time_s.
 @export var repair_time_min_s: float = 0.0

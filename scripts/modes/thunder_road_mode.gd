@@ -140,7 +140,7 @@ func _read_route() -> void:
 	if cps != null:
 		for child: Node in cps.get_children():
 			if child is Node3D:
-				_cp_s.append(project((child as Node3D).global_position).x)
+				_cp_s.append(minf(project((child as Node3D).global_position).x, get_length()))
 	_cp_s.sort()
 	if _cp_s.is_empty():
 		_cp_s.append(total)
@@ -158,6 +158,9 @@ func project(p: Vector3) -> Vector2:
 		var ab: Vector3 = _flat(_route[i + 1] - a)
 		var len2: float = ab.length_squared()
 		var t: float = clampf(_flat(p - a).dot(ab) / len2, 0.0, 1.0) if len2 > 0.0 else 0.0
+		if i == _route.size() - 2 and len2 > 0.0:
+			# past the road's end it goes on straight (defenders spawn out there)
+			t = maxf(t, _flat(p - a).dot(ab) / len2)
 		var d: float = _flat(p - (a + ab * t)).length()
 		if d < best.y:
 			best = Vector2(_along[i] + (_along[i + 1] - _along[i]) * t, d)
@@ -231,6 +234,11 @@ func get_next_checkpoint() -> int:
 
 func get_front_s() -> float:
 	return _front_s
+
+
+## Where the defenders' corridor begins (s): the front less defender_behind_front_m.
+func get_defender_line_s() -> float:
+	return _front_s - data.defender_behind_front_m
 
 
 func get_capture_progress() -> float:
@@ -318,7 +326,7 @@ func is_decided() -> bool:
 	return _decided
 
 
-## Every tank's [name, team, knock-outs, losses], most knock-outs first.
+## Every tank's [name, team, knock-outs, losses, assists], most knock-outs first.
 func get_stats() -> Array:
 	if NetRole.is_client():
 		return _net_stats
@@ -356,12 +364,13 @@ func get_checkpoint_corners(index: int) -> PackedVector3Array:
 			c - along + across])
 
 
-## Inside `role`'s corridor: near the road, and for defenders ahead of the front.
+## Inside `role`'s corridor: near the road, and for defenders ahead of
+## get_defender_line_s (a little behind the front).
 func is_inside(p: Vector3, role: Role) -> bool:
 	var at: Vector2 = project(p)
 	if at.y > half_width(role):
 		return false
-	return role != Role.DEFEND or at.x >= _front_s
+	return role != Role.DEFEND or at.x >= get_defender_line_s()
 
 
 # --- Network -------------------------------------------------------------------------
@@ -457,9 +466,7 @@ func spawn_for_new(team: int, tank: Tank) -> Transform3D:
 	if _round == 0 or _over:
 		var s: float = maxf(data.start_front_m - data.attacker_spawn_back_m, 30.0)
 		if team != 0:
-			s = minf(get_checkpoint_s(mini(data.defender_start_checkpoints, _cp_s.size() - 1))
-					+ data.defender_spawn_beyond_m, get_length() - 10.0)
-			return _free_slot(s, -tangent_at(s), tank)
+			return _defender_start(tank)
 		return _free_slot(s, tangent_at(s), tank)
 	if team == _attack_team:
 		return _attacker_spawn(tank)
@@ -550,7 +557,7 @@ func _setup_round(number: int) -> void:
 	for tank: Tank in _team_tanks(_attack_team):
 		_place(tank, _attacker_spawn(tank))
 	for tank: Tank in _team_tanks(1 - _attack_team):
-		_place(tank, _defender_spawn(tank, data.defender_start_checkpoints))
+		_place(tank, _defender_start(tank))
 	if number > 1:
 		_reset_map()   # after the tanks left their wrecks
 
@@ -718,13 +725,16 @@ func _on_knocked_out(tank: Tank) -> void:
 		_def_respawn[tank] = data.defender_respawn_s
 
 
-## A knock-out by `shooter` of an enemy counts for him.
-func _on_shot_landed(result: HitResult, shooter: Tank) -> void:
-	if _round == 0 or _over or _break_left >= 0.0 or result == null or not result.knocked_out:
+## A knock-out counts for the killer (fire and ammo included), an assist for every other
+## enemy that damaged the tank this life.
+func _on_eliminated(killer: Tank, assists: Array[Tank]) -> void:
+	if _round == 0 or _over or _break_left >= 0.0:
 		return
-	var victim := result.target as Tank
-	if victim != null and is_instance_valid(shooter) and shooter.is_enemy_of(victim):
-		_stat_add(shooter, 2)
+	if killer != null and is_instance_valid(killer):
+		_stat_add(killer, 2)
+	for t: Tank in assists:
+		if is_instance_valid(t):
+			_stat_add(t, 4)
 
 
 func _stat_add(tank: Tank, field: int) -> void:
@@ -781,7 +791,18 @@ func _defender_spawn(tank: Tank, ahead: int = -1) -> Transform3D:
 	if ahead < 0:
 		ahead = data.defender_spawn_checkpoints
 	var index: int = mini(_next_cp + ahead, _cp_s.size() - 1)
-	var s: float = minf(_cp_s[index] + data.defender_spawn_beyond_m, get_length() - 10.0)
+	var s: float = maxf(_cp_s[index] + data.defender_spawn_beyond_m,
+			_cp_s[mini(_next_cp, _cp_s.size() - 1)] + data.defender_spawn_min_ahead_m)
+	return _free_slot(s, -tangent_at(s), tank)
+
+
+## Round start: in the first checkpoint's zone (defender_start_in_zone), else a
+## respawn's spawn.
+func _defender_start(tank: Tank) -> Transform3D:
+	if not data.defender_start_in_zone or _cp_s.is_empty():
+		return _defender_spawn(tank)
+	# Slots go in rows away from the attackers from here: the zone's near half and on.
+	var s: float = _cp_s[0] - data.capture_half_length_m * 0.5
 	return _free_slot(s, -tangent_at(s), tank)
 
 
@@ -792,7 +813,7 @@ func _free_slot(s: float, facing: Vector3, tank: Tank) -> Transform3D:
 	var found_first: bool = false
 	for row: int in SLOT_ROWS:
 		for across: float in SLOT_ACROSS_M:
-			var p: Vector3 = point_at(s + back * row * SLOT_ROW_M, across)
+			var p: Vector3 = _slot_point(s + back * row * SLOT_ROW_M, across)
 			var hit: Dictionary = KothMode.ground_hit(get_world_3d(), p)
 			if hit.is_empty():
 				continue
@@ -804,10 +825,22 @@ func _free_slot(s: float, facing: Vector3, tank: Tank) -> Transform3D:
 			if _slot_ok(hit, tank):
 				return xform
 	if not found_first:
-		var hit: Dictionary = KothMode.ground_hit(get_world_3d(), point_at(s, 0.0))
+		var hit: Dictionary = KothMode.ground_hit(get_world_3d(), _slot_point(s, 0.0))
+		if hit.is_empty():
+			s = minf(s, get_length() - 10.0)   # off the map past the road's end
+			hit = KothMode.ground_hit(get_world_3d(), point_at(s, 0.0))
 		var at: Vector3 = point_at(s, 0.0) if hit.is_empty() else hit["position"]
 		first = Transform3D(Basis.looking_at(facing, Vector3.UP), at + Vector3.UP * SPAWN_LIFT_M)
 	return first
+
+
+## point_at, but past the road's ends it goes on straight along the end's direction.
+func _slot_point(s: float, across: float) -> Vector3:
+	var length: float = get_length()
+	if s <= length:
+		return point_at(s, across)
+	var t: Vector3 = tangent_at(length)
+	return point_at(length, 0.0) + t * (s - length) + t.cross(Vector3.UP) * across
 
 
 func _wreck_near(at: Vector3) -> bool:
@@ -861,10 +894,10 @@ func _connect_new_tanks() -> void:
 			continue
 		_connected[tank.get_instance_id()] = true
 		_stats[tank.get_instance_id()] = _carried.get(tank.get_instance_id(),
-				[tank.get_display_label(), tank.team, 0, 0])
+				[tank.get_display_label(), tank.team, 0, 0, 0])
 		_carried.erase(tank.get_instance_id())
 		tank.knocked_out.connect(_on_knocked_out.bind(tank))
-		tank.shot_landed.connect(_on_shot_landed.bind(tank))
+		tank.eliminated.connect(_on_eliminated)
 		# A tank added mid-round (a bot filling a team) waits for its side's respawn.
 		if _round > 0 and _break_left < 0.0 and not _over:
 			if tank.team == _attack_team:

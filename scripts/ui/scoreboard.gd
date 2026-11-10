@@ -121,11 +121,12 @@ func _rebuild_thunder(mode: ThunderRoadMode, tank: Tank) -> void:
 	for child: Node in _tables.get_children():
 		child.queue_free()
 	var stats: Array = mode.get_stats()
-	var headers: Array[String] = ["KO", "Lost"]
+	var headers: Array[String] = ["KO", "Assists", "Lost"]
+	var cols: Array[int] = [2, 4, 3]
 	_tables.add_child(_table("Your team", stats, func(t: int) -> bool: return t == tank.team,
-			own_color, headers))
+			own_color, headers, cols))
 	_tables.add_child(_table("Enemy", stats, func(t: int) -> bool: return t != tank.team,
-			enemy_color, headers))
+			enemy_color, headers, cols))
 
 
 func _rebuild(mode: KothMode, tank: Tank) -> void:
@@ -140,9 +141,11 @@ func _rebuild(mode: KothMode, tank: Tank) -> void:
 	_tables.add_child(_table("Enemy", stats, func(t: int) -> bool: return t != tank.team, enemy_color))
 
 
-## Rows are [name, team, value per header...].
+## Rows are [name, team, values...]; `cols` says which value goes under each header
+## (KotH rows: KO 2, losses 3, points 4, assists 5).
 func _table(caption: String, stats: Array, include: Callable, color: Color,
-		headers: Array[String] = ["KO", "Lost", "Points"]) -> Control:
+		headers: Array[String] = ["KO", "Assists", "Lost", "Points"],
+		cols: Array[int] = [2, 5, 3, 4]) -> Control:
 	var grid := GridContainer.new()
 	grid.columns = headers.size() + 1
 	grid.add_theme_constant_override("h_separation", 18)
@@ -154,7 +157,8 @@ func _table(caption: String, stats: Array, include: Callable, color: Color,
 			continue
 		grid.add_child(_label(String(row[0]), font_size, color))
 		for i: int in headers.size():
-			grid.add_child(_label("%d" % int(row[2 + i]), font_size, Color.WHITE))
+			var v: int = int(row[cols[i]]) if cols[i] < row.size() else 0
+			grid.add_child(_label("%d" % v, font_size, Color.WHITE))
 	return grid
 
 

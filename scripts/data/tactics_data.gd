@@ -98,6 +98,15 @@ extends Resource
 
 
 @export_group("Aggression")
+## Close fight: an enemy tank spotted within this range (m) becomes the target at once
+## (over any farther one), and the bot leaves its orders to charge round to the enemy's
+## side or rear (close_fight_flank_m off its hull, firing on the move) instead of
+## trading frontal shots; it lets go past close_fight_release_share × the range, then
+## takes up its orders again. 0 = off.
+@export var close_fight_range_m: float = 50.0
+@export var close_fight_release_share: float = 1.4
+@export var close_fight_flank_m: float = 14.0
+@export var close_fight_throttle: float = 0.9
 ## Throttle for drives to the objective and hunts (KothBots).
 @export var travel_throttle: float = 0.7
 ## On the way somewhere, halt to fire only at targets within this range (m).

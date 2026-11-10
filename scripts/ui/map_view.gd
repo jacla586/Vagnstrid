@@ -145,7 +145,7 @@ func _draw_route(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 		return
 	var role: ThunderRoadMode.Role = mode.role_of(tank.team)
 	var w: float = mode.half_width(role)
-	var start: float = mode.get_front_s() if role == ThunderRoadMode.Role.DEFEND else 0.0
+	var start: float = maxf(mode.get_defender_line_s(), 0.0) if role == ThunderRoadMode.Role.DEFEND else 0.0
 	var length: float = mode.get_length()
 	var road := PackedVector2Array()
 	var left := PackedVector2Array()

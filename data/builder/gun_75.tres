@@ -2,17 +2,17 @@
 
 [ext_resource type="Script" path="res://scripts/data/gun_data.gd" id="1_gun"]
 [ext_resource type="Script" path="res://scripts/data/shell_data.gd" id="2_shell"]
-[ext_resource type="Resource" path="res://data/shells/test_ap.tres" id="3_ap"]
-[ext_resource type="Resource" path="res://data/shells/test_he.tres" id="4_he"]
+[ext_resource type="Resource" path="res://data/shells/ap_76.tres" id="3_ap"]
+[ext_resource type="Resource" path="res://data/shells/he_76.tres" id="4_he"]
 [ext_resource type="Resource" path="res://data/sounds/cannon_fire.tres" id="5_snd"]
 
 [resource]
 script = ExtResource("1_gun")
 id = &"gun_75"
-display_name = "75 mm"
+display_name = "76 mm"
 caliber_mm = 75.0
 ammo = Array[ExtResource("2_shell")]([ExtResource("3_ap"), ExtResource("4_he")])
-reload_time_s = 6.0
+reload_time_s = 6.5
 recoil_impulse_ns = 30000.0
 mass_kg = 1000.0
 gun_length_m = 3.6

@@ -60,6 +60,8 @@ const RADIO_AT_MISS: int = 8
 const RADIO_MINE_LAYING: int = 9
 const RADIO_MINE_ARMED: int = 10
 const RADIO_MINE_TRIGGERED: int = 11
+## "Närskydd!": the squad takes up close protection (F), after "Avsittning!" if mounted.
+const RADIO_ESCORT: int = 12
 
 ## Orders in TankCommand.squad_order.
 const ORDER_NONE: int = 0
@@ -460,6 +462,7 @@ func get_goal() -> Vector3:
 func order(kind: int, target: Vector3) -> void:
 	if net_puppet or not is_instance_valid(tank) or tank.is_knocked_out() or _state == State.WIPED:
 		return
+	var was_escorting: bool = _escort
 	if kind != ORDER_NONE:
 		_escort = false
 	match kind:
@@ -471,6 +474,8 @@ func order(kind: int, target: Vector3) -> void:
 			# Escorting it fights whatever comes in reach, those in sight now too.
 			_order_known.clear()
 			_cancel_mine()
+			if not was_escorting:
+				radio.emit(RADIO_ESCORT, Vector3.ZERO)
 			_escort = true
 			_escort_timer = 0.0
 			_escort_dir = _attack_direction(true)
@@ -637,6 +642,11 @@ func _on_mine_triggered(_victim: Tank) -> void:
 func _cancel_mine() -> void:
 	_mine_goal = Vector3.INF
 	_mine_layer = -1
+
+
+## On its way to lay a mine, or laying it.
+func is_mine_job() -> bool:
+	return _mine_goal != Vector3.INF
 
 
 func is_laying_mine(i: int) -> bool:

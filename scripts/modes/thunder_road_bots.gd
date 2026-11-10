@@ -3,9 +3,10 @@ extends Node
 ## Bots in ThunderRoad (ThunderRoadMode): fills both teams to MatchSettings.team_size and
 ## gives every BotController its orders. Attackers drive to a good spot inside the next
 ## checkpoint's radius; defenders take posts in their corridor between the next
-## checkpoint and the one after (find_position, facing the attackers), move when the
-## front moves or now and then, and send their squad to mine the road towards the
-## attackers (it then lies in ambush by itself). A bot outside its corridor is sent
+## checkpoint's zone and the attackers, in the zone or just behind it (find_position,
+## facing the attackers; ThunderRoadData.defender_post_*), move when the front moves or
+## now and then, and send their squad to mine the road towards the attackers (it then
+## lies in ambush by itself). A bot outside its corridor is sent
 ## back in. Fighting itself is the BotController's own.
 
 @export var mode: ThunderRoadMode
@@ -16,18 +17,31 @@ static var instance: ThunderRoadBots
 const AT_CHECKPOINT_SHARE: float = 0.8
 ## Bots leave their spawn one by one this far apart (s).
 const DEPART_INTERVAL_S: float = 2.0
-## Defender posts: this far beyond the next checkpoint, up to this far (m: covering it from
-## behind, not standing on it), at most this share
-## of the corridor's half width from the road, searched within this radius (m).
-const POST_BEYOND_MIN_M: float = 40.0
-const POST_BEYOND_M: float = 250.0
+## Defender posts (shares in ThunderRoadData.defender_post_*): ahead of the zone from at
+## least this far past the front up to this far before the zone (m); behind it up to
+## this far past the zone (m); at most this share of the corridor's half width from the
+## road, searched within this radius (m).
+const POST_FRONT_CLEAR_M: float = 120.0
+const POST_AHEAD_M: float = 250.0
+const POST_BEHIND_M: float = 180.0
 const POST_ACROSS_SHARE: float = 0.6
 const POST_RADIUS_M: float = 80.0
 ## Defenders look this far back along the road (m), over this width (m).
 const LOOK_BACK_M: float = 300.0
 const LOOK_SPREAD_M: float = 400.0
-## A defender sends its squad to mine after standing at its post this long (s).
-const MINE_AFTER_S: float = 5.0
+## A defender sends its squad to mine after standing (at its post, or halted) this long
+## (s), and
+## thinks about mines again this often (s).
+const MINE_AFTER_S: float = 3.0
+const MINE_THINK_S: float = 4.0
+## Slower than this (m/s) a defender counts as standing for mining.
+const MINE_STILL_MPS: float = 1.5
+## Mines go between the checkpoint's zone and the attackers this share of the time, else
+## in the zone; this far off the road's middle at most (m).
+const MINE_BEFORE_ZONE_SHARE: float = 0.65
+const MINE_ACROSS_M: float = 6.0
+## Soldiers walk slowly: a mine goes at most this far along the road from the tank (m).
+const MINE_WALK_MAX_M: float = 240.0
 ## A bot outside its corridor this long (s) is ordered back in, at most this often (s).
 const OUTSIDE_ORDER_S: float = 5.0
 const OUTSIDE_REORDER_S: float = 10.0
@@ -46,7 +60,8 @@ var _ordered_front: Dictionary = {}  # defenders: front (s) when the post was gi
 var _post_s: Dictionary = {}         # defenders: their post's place along the road
 var _repost: Dictionary = {}         # defenders: seconds to a new post
 var _standing: Dictionary = {}       # seconds at the post with no orders left
-var _mine_sent: Dictionary = {}      # the squad was sent to mine from this post
+var _mine_think: Dictionary = {}     # seconds to the next look at mines
+var _mine_front: Dictionary = {}     # front (s) when the last mine was sent
 var _depart: Dictionary = {}         # seconds before it may leave
 var _urgent: Dictionary = {}         # next order is urgent (respawned)
 var _back_in: Dictionary = {}        # seconds since it was ordered back into the corridor
@@ -238,7 +253,7 @@ func _reset_all() -> void:
 
 
 func _forget(bot: BotController) -> void:
-	for d: Dictionary in [_ordered_cp, _ordered_front, _post_s, _repost, _standing, _mine_sent,
+	for d: Dictionary in [_ordered_cp, _ordered_front, _post_s, _repost, _standing, _mine_think, _mine_front,
 			_depart, _urgent, _back_in]:
 		d.erase(bot)
 
@@ -289,7 +304,7 @@ func _update_outside(bot: BotController, role: ThunderRoadMode.Role, delta: floa
 	var at: Vector2 = mode.project(bot.tank.global_position)
 	var s: float = at.x
 	if role == ThunderRoadMode.Role.DEFEND:
-		s = maxf(s, mode.get_front_s() + 50.0)
+		s = maxf(s, mode.get_front_s() + 50.0)   # back in well ahead of the line
 	var goal: Vector3 = mode.point_at(s, _side_of(bot.tank.global_position, at.x)
 			* minf(at.y, mode.half_width(role) * 0.5))
 	bot.order_path(goal, _travel_throttle(bot), true)
@@ -331,25 +346,64 @@ func _update_defender(bot: BotController, delta: float) -> void:
 	var moved: bool = float(_ordered_front.get(bot, -1.0)) != front
 	_repost[bot] = float(_repost.get(bot, 0.0)) - delta
 	if moved or (float(_repost[bot]) <= 0.0 and not bot.has_orders_left()):
+		if moved:
+			_mine_step(bot, front)   # the squad sets off before the tank drives away
 		_give_post(bot, front)
 		return
-	if bot.has_orders_left():
+	# Standing = hardly moving (a bot halted to fight still has orders left).
+	if bot.has_orders_left() and bot.tank.linear_velocity.length() > MINE_STILL_MPS:
 		_standing[bot] = 0.0
 		return
 	_standing[bot] = float(_standing.get(bot, 0.0)) + delta
-	if float(_standing[bot]) >= MINE_AFTER_S and not _mine_sent.has(bot) and _send_mine(bot):
-		_mine_sent[bot] = true
+	if float(_standing[bot]) < MINE_AFTER_S:
+		return
+	_mine_think[bot] = float(_mine_think.get(bot, 0.0)) - delta
+	if float(_mine_think[bot]) <= 0.0:
+		_mine_think[bot] = MINE_THINK_S
+		_mine_step(bot, front)
+
+
+## Defenders mine all they can: a carried mine goes out (unless all are out and the
+## front hasn't moved since the last one); with none left the squad comes back to the
+## tank to refill (SquadData.mine_refill_s), then goes again.
+func _mine_step(bot: BotController, front: float) -> void:
+	var squad: Squad = bot.tank.squad
+	if squad == null or not is_instance_valid(squad) or squad.data.mine == null \
+			or squad.get_state() == Squad.State.WIPED or squad.get_state() == Squad.State.RETURNING \
+			or squad.is_mine_job():
+		return
+	var all_out: bool = squad.get_mines_out() >= squad.data.max_mines_out
+	if squad.get_mines_carried() > 0:
+		if all_out and float(_mine_front.get(bot, -1.0)) == front:
+			return
+		if _send_mine(bot):
+			_mine_front[bot] = front
+	elif squad.is_out() and not all_out:
+		bot.order_squad(Squad.ORDER_RECALL, Vector3.ZERO)
 
 
 func _give_post(bot: BotController, front: float) -> void:
 	_ordered_front[bot] = front
 	_repost[bot] = _rng.randf_range(mode.data.defender_repost_min_s, mode.data.defender_repost_max_s)
 	_standing.erase(bot)
-	_mine_sent.erase(bot)
 	var next: int = mode.get_next_checkpoint()
 	var cp_s: float = mode.get_checkpoint_s(next)
-	var lo: float = maxf(front + 40.0, cp_s + POST_BEYOND_MIN_M)
-	var hi: float = minf(cp_s + POST_BEYOND_M, mode.get_length() - 20.0)
+	var half: float = mode.data.capture_half_length_m
+	# A defence starts between the enemy and the objective: mostly ahead of the zone,
+	# some in it, the rest watching it from just behind.
+	var lo: float = cp_s - half
+	var hi: float = cp_s + half
+	var roll: float = _rng.randf()
+	var ahead_lo: float = maxf(front + POST_FRONT_CLEAR_M, cp_s - half - POST_AHEAD_M)
+	var ahead_hi: float = cp_s - half - 10.0
+	if roll < mode.data.defender_post_ahead_share and ahead_hi > ahead_lo + 20.0:
+		lo = ahead_lo
+		hi = ahead_hi
+	elif roll >= mode.data.defender_post_ahead_share + mode.data.defender_post_zone_share:
+		lo = cp_s + half
+		hi = cp_s + half + POST_BEHIND_M
+	hi = minf(hi, mode.get_length() - 20.0)
+	lo = minf(lo, hi)
 	var role := ThunderRoadMode.Role.DEFEND
 	var goal := Vector3.INF
 	var post_s: float = lo
@@ -371,19 +425,34 @@ func _give_post(bot: BotController, front: float) -> void:
 	_urgent.erase(bot)
 
 
-## The squad (on the tank or out) lays its mine on the road between the post and the
-## attackers. False if it can't now (no mine, wiped out, too far).
+## The squad (on the tank or out) lays its mine on the road where the attackers must
+## come: mostly between the next checkpoint's zone and the front, else in the zone,
+## within MINE_WALK_MAX_M along the road from the tank (as near the attackers as that
+## allows). False if it can't now.
 func _send_mine(bot: BotController) -> bool:
 	var squad: Squad = bot.tank.squad
 	if squad == null or not is_instance_valid(squad) or squad.get_mines_carried() <= 0 \
 			or squad.get_state() == Squad.State.WIPED or squad.get_state() == Squad.State.RETURNING:
 		return false
-	var post_s: float = float(_post_s.get(bot, mode.project(bot.tank.global_position).x))
-	var s: float = post_s - _rng.randf_range(mode.data.defender_mine_min_m, mode.data.defender_mine_max_m)
-	s = maxf(s, mode.get_front_s() + 20.0)
-	var target: Vector3 = mode.point_at(s, _rng.randf_range(-3.0, 3.0))
-	if Vector2(target.x - bot.tank.global_position.x, target.z - bot.tank.global_position.z).length() \
-			> squad.data.max_distance_from_tank_m - 20.0:
+	var front: float = mode.get_front_s()
+	var cp_s: float = mode.get_checkpoint_s(mode.get_next_checkpoint())
+	var half: float = mode.data.capture_half_length_m
+	var here: Vector3 = bot.tank.global_position
+	var tank_s: float = mode.project(here).x
+	# The stretch the squad can reach, and of it the parts before the zone and in it.
+	var lo: float = maxf(front + 25.0, tank_s - MINE_WALK_MAX_M)
+	var hi: float = minf(cp_s + half, tank_s + MINE_WALK_MAX_M * 0.5)
+	if hi <= lo:
+		return false
+	var before_hi: float = minf(cp_s - half, hi)
+	var s: float
+	if before_hi > lo + 10.0 and _rng.randf() < MINE_BEFORE_ZONE_SHARE:
+		s = _rng.randf_range(lo, before_hi)
+	else:
+		s = _rng.randf_range(maxf(lo, cp_s - half), hi) if hi > maxf(lo, cp_s - half) \
+				else _rng.randf_range(lo, hi)
+	var target: Vector3 = mode.point_at(s, _rng.randf_range(-MINE_ACROSS_M, MINE_ACROSS_M))
+	if Squad._flat(target - here).length() > squad.data.max_distance_from_tank_m - 30.0:
 		return false
 	bot.order_squad(Squad.ORDER_MINE, target)
 	return true

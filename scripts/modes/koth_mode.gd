@@ -65,7 +65,7 @@ var _in_zone: Dictionary = {}  # team -> tanks in the zone at the last count (un
 var _over: bool = false
 var _winner: int = -1
 var _connected: Dictionary = {}  # tank instance id -> true (shot_landed connected)
-## Scoreboard: tank instance id -> [name, team, knock-outs, losses, points]. Clients get
+## Scoreboard: tank instance id -> [name, team, knock-outs, losses, points, assists]. Clients get
 ## the host's list (as an Array) in the net state.
 var _stats: Dictionary = {}
 var _net_stats: Array = []
@@ -721,7 +721,7 @@ func _majority_team() -> int:
 	return -1 if tied else best_team
 
 
-## Every tank's [name, team, knock-outs, losses, points], best first (the host's list
+## Every tank's [name, team, knock-outs, losses, points, assists], best first (the host's list
 ## on clients).
 func get_stats() -> Array:
 	if NetRole.is_client():
@@ -772,11 +772,25 @@ func _connect_new_tanks() -> void:
 		_connected[tank.get_instance_id()] = true
 		tank.shot_landed.connect(_on_shot_landed.bind(tank))
 		_stats[tank.get_instance_id()] = _carried.get(tank.get_instance_id(),
-				[tank.get_display_label(), tank.team, 0, 0, 0.0])
+				[tank.get_display_label(), tank.team, 0, 0, 0.0, 0])
 		_carried.erase(tank.get_instance_id())
 		tank.knocked_out.connect(func() -> void:
 			if not _over:
 				_stat_add(tank, 3, 1))
+		tank.eliminated.connect(_on_eliminated)
+
+
+## A knock-out counts for the killer (fire and ammo included); every other enemy that
+## damaged the tank this life gets an assist and assist_points of its own.
+func _on_eliminated(killer: Tank, assists: Array[Tank]) -> void:
+	if _over:
+		return
+	if killer != null and is_instance_valid(killer):
+		_stat_add(killer, 2, 1)
+	for t: Tank in assists:
+		if is_instance_valid(t):
+			_stat_add(t, 5, 1)
+			_stat_add(t, 4, data.assist_points)
 
 
 func _on_shot_landed(result: HitResult, shooter: Tank) -> void:
@@ -785,7 +799,7 @@ func _on_shot_landed(result: HitResult, shooter: Tank) -> void:
 	var victim := result.target as Tank
 	if victim == null or not shooter.is_enemy_of(victim):
 		return
-	_stat_add(shooter, 2, 1)
+	# (the knock-out itself is counted in _on_eliminated)
 	if not is_in_zone(victim.global_position):
 		return
 	if data.kill_bonus_needs_shooter_in_zone and not is_in_zone(shooter.global_position):

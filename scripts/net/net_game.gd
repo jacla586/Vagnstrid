@@ -40,6 +40,8 @@ const BOT_SPAWN_OFFSET_M: float = 15.0
 const KOTH_SEND_INTERVAL_S: float = 0.5
 ## Infantry squads to clients this often (unreliable).
 const SQUAD_SEND_HZ: float = 10.0
+## Pushed wrecks: moved ones go to the clients this often (Wreck.collect_moves).
+const WRECK_SEND_HZ: float = 5.0
 ## A team swap request stays open this long (s).
 const SWAP_OFFER_S: float = 60.0
 
@@ -68,6 +70,7 @@ var _my_rig: Node
 var _map: Node
 var _koth_timer: float = 0.0
 var _squad_clock := PackedFloat32Array([0.0])
+var _wreck_clock := PackedFloat32Array([0.0])
 var _koth_hooked: KothMode
 var _thunder_timer: float = 0.0
 var _thunder_hooked: ThunderRoadMode
@@ -183,6 +186,9 @@ func _register(tank: Tank, owner_peer: int) -> int:
 	tank.fired.connect(_on_fired.bind(tank))
 	tank.shot_landed.connect(_on_shot_landed.bind(tank))
 	tank.spotted.connect(_on_spotted.bind(tank))
+	tank.eliminated.connect(func(killer: Tank, _assists: Array[Tank]) -> void:
+		if killer != null and is_instance_valid(killer) and not multiplayer.get_peers().is_empty():
+			NetSession.instance.rpc("rpc_kill_feed", KillFeed.entry_of(killer, tank)))
 	tank.wreck_left.connect(func(at: Transform3D, yaw: float, pitch: float) -> void:
 		_wrecks.append([TankBuilder.spec_of(tank), at, yaw, pitch])
 		if _wrecks.size() > Tank.MAX_WRECKS:
@@ -204,6 +210,10 @@ func _register(tank: Tank, owner_peer: int) -> int:
 		var owner_id: int = int(owners.get(net_id, 0))
 		if owner_id > 1 and multiplayer.get_peers().has(owner_id):
 			NetSession.instance.rpc_id(owner_id, "rpc_near_miss", direction))
+	tank.optics_dirtied.connect(func(amount: float) -> void:
+		var owner_id: int = int(owners.get(net_id, 0))
+		if owner_id > 1 and multiplayer.get_peers().has(owner_id):
+			NetSession.instance.rpc_id(owner_id, "rpc_optics_dirt", amount))
 	tank.smoke_launched.connect(func(points: PackedVector3Array) -> void:
 		if not multiplayer.get_peers().is_empty():
 			NetSession.instance.rpc("rpc_tank_smoke", net_id, points))
@@ -240,6 +250,11 @@ func _register(tank: Tank, owner_peer: int) -> int:
 			if ThunderRoadMode.instance == null:   # ThunderRoad brings tanks back itself
 				_respawn_timers[net_id] = RESPAWN_DELAY_S)
 	return net_id
+
+
+## Client: a knock-out for the kill feed (KillFeed entry from the host).
+func on_kill_feed(entry: Array) -> void:
+	KillFeed.add_all(get_tree(), entry)
 
 
 ## Host: creates the tank for a player (the host's own in a PlayerRig).
@@ -480,6 +495,16 @@ func on_client_ready(peer: int) -> void:
 		NetSession.instance.rpc_id(peer, "rpc_tree_felled", f[0], f[1], f[2])
 	for w: Array in _wrecks:
 		NetSession.instance.rpc_id(peer, "rpc_wreck", w[0], w[1], w[2], w[3])
+	# Wrecks pushed before the peer came: where they are now.
+	var keys := PackedVector3Array()
+	var poses: Array[Transform3D] = []
+	for node: Node in get_tree().get_nodes_in_group(&"wrecks"):
+		var wreck := node as Wreck
+		if wreck != null and not wreck.is_queued_for_deletion():
+			keys.append(wreck.made_at)
+			poses.append(wreck.global_transform)
+	if not keys.is_empty():
+		NetSession.instance.rpc_id(peer, "rpc_wreck_moves", keys, poses)
 	for node: Node in get_tree().get_nodes_in_group(Mine.GROUP):
 		var mine := node as Mine
 		if mine != null and not mine.is_queued_for_deletion():
@@ -592,6 +617,7 @@ func _physics_process(delta: float) -> void:
 	_update_koth(delta)
 	_update_thunder(delta)
 	_send_squads()
+	_send_wreck_moves()
 	for net_id: int in _respawn_timers.keys():
 		_respawn_timers[net_id] -= delta
 		if _respawn_timers[net_id] > 0.0:
@@ -657,6 +683,24 @@ func _send_koth_state(mode: KothMode) -> void:
 		return
 	NetSession.instance.rpc("rpc_koth_state", mode.get_net_state())
 	NetSession.instance.count_out(160)
+
+
+## Host: wrecks pushed since the last send (keyed by where they were made).
+func _send_wreck_moves() -> void:
+	if not Ticks.due(_wreck_clock, get_physics_process_delta_time(), WRECK_SEND_HZ) \
+			or multiplayer.get_peers().is_empty():
+		return
+	var moves: Array = Wreck.collect_moves(get_tree())
+	if (moves[0] as PackedVector3Array).is_empty():
+		return
+	NetSession.instance.rpc("rpc_wreck_moves", moves[0], moves[1])
+	NetSession.instance.count_out((moves[0] as PackedVector3Array).size() * 60)
+
+
+## Client: the host pushed these wrecks (made at `keys`) to `poses`.
+func on_wreck_moves(keys: PackedVector3Array, poses: Array) -> void:
+	for i: int in mini(keys.size(), poses.size()):
+		Wreck.apply_move(get_tree(), keys[i], poses[i])
 
 
 ## Host: every registered tank's squad to every client (10 Hz, one unreliable packet).
@@ -899,6 +943,13 @@ func on_tank_smoke(net_id: int, points: PackedVector3Array) -> void:
 
 
 ## Client: a gun round landed close to the own tank (the crew shouts).
+## Client: dirt on the own tank's optics (an HE burst near it on the host).
+func on_optics_dirt(amount: float) -> void:
+	var tank: Tank = _my_rig.get_node_or_null("Tank") as Tank if _my_rig != null else null
+	if tank != null:
+		tank.add_optics_dirt(amount)
+
+
 func on_near_miss(direction: Vector3) -> void:
 	var tank: Tank = _my_rig.get_node_or_null("Tank") as Tank if _my_rig != null else null
 	if tank != null:

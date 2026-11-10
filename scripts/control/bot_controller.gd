@@ -36,6 +36,14 @@ const DETOUR_SIDE_M: float = 25.0
 const DETOUR_AHEAD_M: float = 10.0
 ## Infantry: the bot thinks about its squad this often (s)...
 const SQUAD_THINK_S: float = 3.0
+## How often the crew thinks about which round to load (s).
+const AMMO_THINK_S: float = 2.0
+## A target's face counts as its front within this of straight ahead (deg), its rear
+## within this of straight behind; between is its side (ammo choice).
+const FRONT_ASPECT_DEG: float = 40.0
+const REAR_ASPECT_DEG: float = 40.0
+## Squads are shelled with HE within this (m).
+const HE_SQUAD_RANGE_M: float = 800.0
 ## A known enemy mine within this (m) makes a bot on a planned path plan again.
 const MINE_REPLAN_M: float = 250.0
 ## ...sends it to look about this far ahead / towards a threat (m)...
@@ -150,6 +158,10 @@ var _scoot_time: float = 0.0
 var _hits: Array[float] = []
 ## Pulling back: true from the order until relocate_hold_s after arriving.
 var _relocating: bool = false
+# Close fight (TacticsData.close_fight_*): charging round a near enemy's flank.
+var _close_fight: bool = false
+# Ammo choice (_choose_ammo): seconds to the next look.
+var _ammo_think: float = 0.0
 var _relocate_hold: float = 0.0
 var _clock: float = 0.0
 ## Grid cells where this tank got stuck on something (newest last).
@@ -178,6 +190,7 @@ func _ready() -> void:
 		tank.fired.connect(_on_fired)
 		tank.shell_threat.connect(_on_shell_threat)
 		tank.squad_contact.connect(_on_squad_contact)
+		tank.optics_dirtied.connect(func(_amount: float) -> void: _settle_time = 0.0)
 
 
 ## The enemy tank this bot is engaging, or null.
@@ -394,6 +407,14 @@ func _physics_process(delta: float) -> void:
 		_progress_at = Vector3.INF
 		_no_progress_s = 0.0
 		_forget_all()
+		# Nothing from this life carries over: a pull-back or old route would keep the
+		# respawned tank from its new orders (the directors skip relocating bots).
+		_relocating = false
+		_scoot = Scoot.NONE
+		_close_fight = false
+		if not _orders.is_empty():
+			var none: Array[Vector3] = []
+			order_move(none, 0.0)
 		_update_respawn(delta)
 		return
 	_scan_timer -= delta
@@ -427,6 +448,8 @@ func _physics_process(delta: float) -> void:
 			_relocating = false
 	if _target != null and not is_instance_valid(_target):
 		_target = null
+	_update_close_fight()
+	_choose_ammo(delta)
 	if _target != null:
 		_engage(_target, delta)
 	elif _squad_target != null and is_instance_valid(_squad_target) and _squad_target.is_out():
@@ -452,6 +475,8 @@ func _physics_process(delta: float) -> void:
 	if repairing:
 		_command.throttle = 0.0
 		_command.steering = 0.0
+	elif _close_fight:
+		_close_fight_step(delta)
 	elif not _orders.is_empty():
 		if not _halting:
 			_order_step(delta)
@@ -492,7 +517,13 @@ func _spot_time() -> float:
 
 
 func _spot_time_for(other: Tank) -> float:
-	return _spot_time() * (0.5 if _reported.has(other) else 1.0)
+	return _spot_time() * (0.5 if _reported.has(other) else 1.0) * _dirt_factor()
+
+
+## Dirty optics (an HE burst near): spotting takes longer, up to
+## TankData.optics_dirt_spot_factor times at full dirt.
+func _dirt_factor() -> float:
+	return lerpf(1.0, tank.data.optics_dirt_spot_factor, tank.get_optics_dirt())
 
 
 func _scan(dt: float) -> void:
@@ -610,11 +641,7 @@ func _can_see_point(point: Vector3, collider: CollisionObject3D,
 
 
 func _pick_target() -> void:
-	if _target != null and is_instance_valid(_target) and is_spotted(_target) \
-			and not _target.is_knocked_out():
-		return
-	var previous: Tank = _target
-	_target = null
+	var nearest: Tank = null
 	var best_distance: float = INF
 	for other: Tank in _awareness.keys():
 		if not is_instance_valid(other) or not is_spotted(other) or other.is_knocked_out():
@@ -622,7 +649,14 @@ func _pick_target() -> void:
 		var distance: float = tank.global_position.distance_to(other.global_position)
 		if distance < best_distance:
 			best_distance = distance
-			_target = other
+			nearest = other
+	var previous: Tank = _target
+	var keep: bool = _target != null and is_instance_valid(_target) and is_spotted(_target) \
+			and not _target.is_knocked_out()
+	# Keep the target, unless another enemy is close (the close fight comes first).
+	if keep and (nearest == _target or best_distance > _tactics().close_fight_range_m):
+		return
+	_target = nearest
 	if _target != null and _target != previous:
 		# New target: a fresh range estimate, off by up to range_error_start.
 		_range_error = _rng.randf_range(-1.0, 1.0) * bot_data.range_error_start
@@ -630,6 +664,94 @@ func _pick_target() -> void:
 				* bot_data.lay_error_mrad * 0.001
 		_lead_error = _rng.randf_range(-1.0, 1.0) * bot_data.lead_error
 		_settle_time = 0.0
+
+
+## Which round to load, like a crew would: AP for a tank whose facing plate it can get
+## through, HE for one it can't (blast, modules, dirt on its optics) and for infantry.
+## Only with a round in the breech (a change costs a reload), every AMMO_THINK_S.
+func _choose_ammo(delta: float) -> void:
+	_ammo_think -= delta
+	if _ammo_think > 0.0 or not tank.is_loaded():
+		return
+	_ammo_think = AMMO_THINK_S
+	var ap: int = -1
+	var he: int = -1
+	for i: int in tank.data.ammo.size():
+		var s: ShellData = tank.data.ammo[i]
+		if s == null:
+			continue
+		if s.is_explosive():
+			he = i if he < 0 else he
+		elif ap < 0:
+			ap = i
+	var want: int = -1
+	if _target != null:
+		want = ap if ap >= 0 and (he < 0 or _can_penetrate(_target, tank.data.ammo[ap])) else he
+	elif _squad_target != null and is_instance_valid(_squad_target) and _squad_target.is_out() \
+			and tank.global_position.distance_to(_squad_target.global_position) <= HE_SQUAD_RANGE_M:
+		want = he
+	if want >= 0 and want != tank.get_ammo_index():
+		_command.ammo_select = want
+
+
+## Does `shell` (at muzzle speed, a little lost on the way) get through the plate of
+## `target`'s hull that faces this tank (front, side or rear; the chassis' slope)?
+func _can_penetrate(target: Tank, shell: ShellData) -> bool:
+	var a: ArmourData = target.data.armour
+	if a == null:
+		return true
+	var to_me: Vector3 = tank.global_position - target.global_position
+	var fwd: Vector3 = -target.global_basis.z
+	to_me.y = 0.0
+	fwd.y = 0.0
+	var aspect: float = rad_to_deg(fwd.angle_to(to_me)) if to_me.length() > 0.1 else 0.0
+	var slopes: Array = TankModel.SLOPES.get(target.data.model_style, [0.0, 0.0, 0.0])
+	var mm: float = a.hull_side_mm / cos(deg_to_rad(float(slopes[1])))
+	if aspect <= FRONT_ASPECT_DEG:
+		mm = a.hull_front_mm / cos(deg_to_rad(float(slopes[0])))
+	elif aspect >= 180.0 - REAR_ASPECT_DEG:
+		mm = a.hull_rear_mm
+	var lost: float = clampf(to_me.length() / 2000.0, 0.0, 0.3)   # rough speed loss
+	return shell.penetration_mm * (1.0 - lost) >= mm
+
+
+## Close fight on or off: a target within close_fight_range_m (let go past the release
+## share), the tank able to drive. Ending it, the bot takes up its orders again by a
+## fresh path from where the fight left it.
+func _update_close_fight() -> void:
+	var t: TacticsData = _tactics()
+	var was: bool = _close_fight
+	_close_fight = false
+	if t.close_fight_range_m > 0.0 and _target != null and not _target.is_knocked_out() \
+			and not tank.is_immobilised() and tank.get_speed_factor() > 0.0:
+		var reach: float = t.close_fight_range_m * (t.close_fight_release_share if was else 1.0)
+		_close_fight = tank.global_position.distance_to(_target.global_position) <= reach
+	if _close_fight and not was:
+		_scoot = Scoot.NONE   # no backing off to reload at this range
+		_relocating = false
+	elif was and not _close_fight and has_orders_left() and _path_goal != Vector3.INF:
+		order_path(_path_goal, _path_throttle, true)
+
+
+## Drives round to the target's side or rear (the nearer side), close_fight_flank_m off
+## its hull, so the gun meets side armour and the turret rear; the turret is _engage's.
+func _close_fight_step(delta: float) -> void:
+	if _reverse_time > 0.0:
+		_reverse_time -= delta
+		_command.throttle = -1.0
+		return
+	var t: TacticsData = _tactics()
+	var enemy_at: Vector3 = _target.global_position
+	var their_fwd: Vector3 = -_target.global_basis.z
+	their_fwd.y = 0.0
+	their_fwd = their_fwd.normalized() if their_fwd.length() > 0.01 else Vector3.FORWARD
+	var their_right: Vector3 = their_fwd.cross(Vector3.UP)
+	var side: float = 1.0 if (tank.global_position - enemy_at).dot(their_right) >= 0.0 else -1.0
+	var goal: Vector3 = enemy_at + their_right * side * t.close_fight_flank_m \
+			- their_fwd * t.close_fight_flank_m * 0.6
+	if _steer_towards(goal, t.close_fight_throttle):
+		return   # at its flank: stand and shoot
+	_update_stuck(delta)
 
 
 func _forget(other: Tank) -> void:
@@ -716,12 +838,13 @@ func _engage(target: Tank, delta: float) -> void:
 	# only beside cover and within transit_fire_range_m; in the open, fire on the move
 	# when close enough (BotData.move_fire_*), else hold fire and drive on to a better
 	# place.
-	var on_the_way: bool = has_orders_left()
-	var halt_ok: bool = not on_the_way or (distance <= _tactics().transit_fire_range_m
-			and _is_covered_here())
+	var on_the_way: bool = has_orders_left() or _close_fight
+	var halt_ok: bool = not _close_fight and (not on_the_way
+			or (distance <= _tactics().transit_fire_range_m and _is_covered_here()))
 	var fire_moving: bool = on_the_way and not halt_ok and distance <= bot_data.move_fire_range_m
 	if fire_moving and not coax_turn:
-		var extra: float = tank.linear_velocity.length() * bot_data.move_lay_error_mrad_per_mps * 0.001
+		var extra: float = tank.linear_velocity.length() * bot_data.move_lay_error_mrad_per_mps * 0.001 \
+				* (1.0 - tank.data.gun_stabiliser)
 		var to_aim: Vector3 = gun_aim - muzzle.origin
 		var right: Vector3 = to_aim.cross(Vector3.UP).normalized()
 		gun_aim += (right * _move_error_dir.x + Vector3.UP * _move_error_dir.y) * extra * to_aim.length()
@@ -873,10 +996,40 @@ func _engage_squad(enemy: Squad, delta: float) -> void:
 	if roof:
 		_command.mg_aim_point = aim
 		_command.mg_use_roof = true
+	_fire_he_at_squad(aim, delta)
 	if (-muzzle.basis.z).angle_to(aim - muzzle.origin) > deg_to_rad(bot_data.mg_aim_tolerance_deg):
 		return
 	_mg_time += delta
 	_command.fire_mg = fmod(_mg_time, bot_data.mg_burst_s + bot_data.mg_pause_s) < bot_data.mg_burst_s
+
+
+## With HE in the breech, the main gun goes at the soldier too (at his feet, allowing for
+## drop), once laid and steady like any shot.
+func _fire_he_at_squad(soldier: Vector3, delta: float) -> void:
+	var shell: ShellData = tank.get_loaded_shell()
+	if shell == null or not shell.is_explosive() or not tank.is_loaded():
+		_settle_time = 0.0
+		return
+	var muzzle: Transform3D = tank.get_muzzle_transform()
+	var feet: Vector3 = soldier - Vector3.UP * 0.6
+	var horizontal: float = _horizontal_distance(muzzle.origin, feet)
+	if horizontal > HE_SQUAD_RANGE_M:
+		return
+	var gun_aim: Vector3 = _with_lay_error(feet + Vector3.UP * horizontal
+			* tan(Ballistics.superelevation_for_range(shell, horizontal * (1.0 + _range_error))),
+			muzzle.origin)
+	_command.aim_point = gun_aim
+	_command.has_aim = true
+	var still: bool = tank.linear_velocity.length() * 3.6 <= bot_data.max_fire_speed_kmh
+	if still and (-muzzle.basis.z).angle_to(gun_aim - muzzle.origin) <= deg_to_rad(bot_data.aim_tolerance_deg):
+		_settle_time += delta
+	else:
+		_settle_time = 0.0
+	if _settle_time >= bot_data.aim_settle_s:
+		_command.fire = true
+		_settle_time = 0.0
+		_range_error *= bot_data.range_error_correction
+		_lay_error *= bot_data.range_error_correction
 
 
 ## The own squad saw an enemy: a radio contact for this crew.
@@ -887,7 +1040,8 @@ func _on_squad_contact(enemy: Node3D, at: Vector3) -> void:
 ## Uses the own squad like a player would (orders via the command), sparingly: only
 ## when the tank has stood a while near the fight (a known enemy, an alert, the fight
 ## focus) does it go out, to look over the ground towards the fight that the tank
-## can't see; it is called back when hurt, left behind, or the tank drives on, and
+## can't see; it is called back when hurt, left behind, or the tank drives on (not
+## while it is out to lay a mine), and
 ## then stays on the tank for SQUAD_RESEND_COOLDOWN_S.
 func _update_squad(delta: float) -> void:
 	var squad: Squad = tank.squad
@@ -909,6 +1063,11 @@ func _update_squad(delta: float) -> void:
 		var left_behind: bool = Squad._flat(squad.global_position - tank.global_position).length() \
 				> SQUAD_RECALL_DISTANCE_M
 		var driving_on: bool = _driving_time >= SQUAD_RECALL_DRIVE_S
+		# Sent to lay a mine, it finishes the job (Squad keeps it within its reach of
+		# the tank) even if the tank drives off to its post meanwhile.
+		if squad.is_mine_job():
+			left_behind = false
+			driving_on = false
 		if lost_half or left_behind or driving_on:
 			_squad_order(Squad.ORDER_RECALL, Vector3.ZERO)
 			_squad_look = Vector3.INF
@@ -990,7 +1149,8 @@ func _squad_look_point(fight: Vector3) -> Vector3:
 ## After a shot at a tank: back into a spot the target can't see while reloading.
 func _on_fired(_shell: Shell) -> void:
 	var t: TacticsData = _tactics()
-	if not t.shoot_and_scoot or _target == null or not is_instance_valid(_target) or _scoot != Scoot.NONE:
+	if not t.shoot_and_scoot or _target == null or not is_instance_valid(_target) or _scoot != Scoot.NONE \
+			or _close_fight:
 		return
 	if _rng.randf() >= t.scoot_chance:
 		return   # stays up and keeps fighting
@@ -1085,7 +1245,7 @@ func _reverse_towards(point: Vector3) -> void:
 ## too exposed, and smokes and moves to a new position away from the threat.
 func _check_relocation(from_dir: Vector3) -> void:
 	var t: TacticsData = _tactics()
-	if t.relocate_chance_by_hits.is_empty() or _tactical_map() == null or _relocating:
+	if t.relocate_chance_by_hits.is_empty() or _tactical_map() == null or _relocating or _close_fight:
 		return
 	if not _hits.is_empty() and _clock - _hits[_hits.size() - 1] > t.relocate_window_s:
 		_hits.clear()

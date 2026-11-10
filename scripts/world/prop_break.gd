@@ -38,6 +38,7 @@ var _spans_of: Array = []                 # prop -> Array[MeshInstance3D] it dro
 var _templates: Array[Mesh] = []
 var _fall_templates: Array[Mesh] = []     # per kind: what topples (traffic lights: unlit)
 var _signal_materials: Dictionary = {}    # lens name -> ShaderMaterial
+var _sign_backs: Dictionary = {}         # face texture -> sign back ShaderMaterial
 var _kind_names: PackedStringArray = PackedStringArray()
 var _kind_margin: PackedFloat32Array = PackedFloat32Array()   # per kind: tank_margin_m + kind_reach_m
 # playground pieces
@@ -114,6 +115,7 @@ func _collect() -> void:
 	var root: Node = get_tree().current_scene
 	if root == null:
 		return
+	_fix_sign_backs(root)
 	for group: Node in root.find_children("Valtbart", "", true, false):
 		_collect_props(group)
 	for group: Node in root.find_children("Lekplatser", "", true, false):
@@ -225,6 +227,37 @@ func _collect_props(group: Node) -> void:
 	for child: Node in group.get_children():
 		if child.name.begins_with("Mall_") or (child.name.contains("__") and not child.name.begins_with("Ledning")):
 			child.queue_free()
+
+
+## Sign backs (geodata materials ending in data.sign_back_suffix: the face's texture
+## darkened, which showed mirrored text) become plain metal with the face's outline
+## (data.sign_back_shader), on every mesh in the map; templates copy them from there.
+func _fix_sign_backs(root: Node) -> void:
+	var done: Dictionary = {}   # mesh instance id -> true
+	for node: Node in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (node as MeshInstance3D).mesh
+		if mesh == null or done.has(mesh.get_instance_id()):
+			continue
+		done[mesh.get_instance_id()] = true
+		for s: int in mesh.get_surface_count():
+			var back: Material = _sign_back(mesh.surface_get_material(s))
+			if back != null:
+				mesh.surface_set_material(s, back)
+
+
+func _sign_back(mat: Material) -> Material:
+	var std := mat as BaseMaterial3D
+	if std == null or not std.resource_name.ends_with(data.sign_back_suffix):
+		return null
+	var tex: Texture2D = std.albedo_texture
+	if _sign_backs.has(tex):
+		return _sign_backs[tex]
+	var sm := ShaderMaterial.new()
+	sm.resource_name = std.resource_name
+	sm.shader = data.sign_back_shader
+	sm.set_shader_parameter("face_texture", tex)
+	_sign_backs[tex] = sm
+	return sm
 
 
 ## A template: its mesh children merged into one mesh (a surface per material).

@@ -284,6 +284,12 @@ func rpc_shot_result(text: String, outcome: int) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 2)
+func rpc_kill_feed(entry: Array) -> void:
+	if game != null:
+		game.on_kill_feed(entry)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
 func rpc_hit_record(data: Array) -> void:
 	if game != null:
 		game.on_hit_record(data)
@@ -318,6 +324,12 @@ func rpc_mine_known(id: int, team: int) -> void:
 func rpc_mine_gone(id: int, exploded: bool) -> void:
 	if game != null:
 		game.on_mine_gone(id, exploded)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_wreck_moves(keys: PackedVector3Array, poses: Array) -> void:
+	if game != null:
+		game.on_wreck_moves(keys, poses)
 
 
 @rpc("authority", "call_remote", "reliable", 2)
@@ -396,6 +408,12 @@ func rpc_turret_toss(net_id: int, velocity: Vector3, spin: Vector3) -> void:
 func rpc_tank_smoke(net_id: int, points: PackedVector3Array) -> void:
 	if game != null:
 		game.on_tank_smoke(net_id, points)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_optics_dirt(amount: float) -> void:
+	if game != null:
+		game.on_optics_dirt(amount)
 
 
 @rpc("authority", "call_remote", "reliable", 2)

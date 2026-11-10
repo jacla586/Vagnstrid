@@ -6,10 +6,12 @@
 [ext_resource type="Resource" path="res://data/configs/2_t34.tres" id="c1"]
 [ext_resource type="Resource" path="res://data/configs/3_pz4.tres" id="c2"]
 [ext_resource type="Resource" path="res://data/configs/4_kv2.tres" id="c3"]
+[ext_resource type="Resource" path="res://data/configs/5_sherman.tres" id="c4"]
 
 [resource]
 script = ExtResource("1_data")
 defender_half_width_m = 250.0
+defender_behind_front_m = 150.0
 attacker_half_width_m = 300.0
 outside_mark_s = 4.0
 outside_grace_s = 20.0
@@ -23,15 +25,13 @@ start_time_s = 240.0
 time_per_capture_s = 120.0
 start_lives_per_tank = 2
 lives_per_capture = 2
-wave_interval_s = 60.0
+wave_interval_s = 40.0
 attacker_spawn_back_m = 250.0
 defender_respawn_s = 15.0
-defender_spawn_checkpoints = 2
+defender_spawn_checkpoints = 1
 defender_spawn_beyond_m = 60.0
-defender_start_checkpoints = 1
+defender_start_in_zone = true
 round_break_s = 10.0
-bot_configs = Array[ExtResource("2_cfg")]([ExtResource("c0"), ExtResource("c1"), ExtResource("c2"), ExtResource("c3")])
+bot_configs = Array[ExtResource("2_cfg")]([ExtResource("c0"), ExtResource("c1"), ExtResource("c2"), ExtResource("c3"), ExtResource("c4")])
 defender_repost_min_s = 60.0
 defender_repost_max_s = 120.0
-defender_mine_min_m = 80.0
-defender_mine_max_m = 150.0

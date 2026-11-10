@@ -7,6 +7,9 @@
 [resource]
 script = ExtResource("1_shell")
 breaks_tracks = true
+blast_hp = 3.0
+blast_module_reach_m = 0.8
+optics_dirt_radius_m = 5.0
 display_name = "HE 37 mm"
 short_name = "HE"
 muzzle_velocity_mps = 600.0

@@ -4,8 +4,12 @@ extends Resource
 ## defenders hold a corridor along it and fall back. Two rounds, sides swap.
 
 @export_group("Corridors")
-## Defenders keep within this of the road (m, each side) and ahead of the front...
+## Defenders keep within this of the road (m, each side) and ahead of the front less
+## defender_behind_front_m...
 @export var defender_half_width_m: float = 250.0
+## ...which lets defenders posted forward (or in the zone) fight on a while when a
+## checkpoint falls instead of finding themselves outside at once (m).
+@export var defender_behind_front_m: float = 150.0
 ## ...attackers within this (m, each side), anywhere along it.
 @export var attacker_half_width_m: float = 300.0
 ## Outside its corridor a tank can't fire, shows on the other team's maps this often (s)...
@@ -42,16 +46,20 @@ extends Resource
 @export var lives_per_capture: int = 2
 ## Knocked-out attackers come back together: at every capture or this often (s), each
 ## costing a life, this far behind the front (m).
-@export var wave_interval_s: float = 60.0
+@export var wave_interval_s: float = 40.0
 @export var attacker_spawn_back_m: float = 250.0
 ## Defenders come back after this long (s) at the checkpoint this many past the next one
 ## (not at the far end), a little further on.
 @export var defender_respawn_s: float = 15.0
 @export var defender_spawn_checkpoints: int = 2
 @export var defender_spawn_beyond_m: float = 60.0
-## At the round's start defenders begin this many checkpoints past the first (closer
-## than a respawn, so they reach their posts before the attackers' drive is over).
-@export var defender_start_checkpoints: int = 1
+## ...but never closer than this (m along the road) past the next checkpoint, so they
+## drive a bit before they are in the fight. Past the road's end (the last checkpoint is
+## at it) the spawn lies on along the road's last direction.
+@export var defender_spawn_min_ahead_m: float = 320.0
+## At the round's start defenders begin in the first checkpoint's zone (ready to dig
+## in: posts, mines) rather than at a respawn spawn.
+@export var defender_start_in_zone: bool = true
 
 @export_group("Rounds")
 ## Pause between the rounds and after the match (s), showing the result.
@@ -64,6 +72,8 @@ extends Resource
 ## Defenders move to a new post this often (s, random in range) if the front holds.
 @export var defender_repost_min_s: float = 60.0
 @export var defender_repost_max_s: float = 120.0
-## A defending bot's squad lays its mine on the road this far towards the attackers (m).
-@export var defender_mine_min_m: float = 80.0
-@export var defender_mine_max_m: float = 150.0
+## Where defenders post: this share between the attackers and the next checkpoint's zone
+## (a defence starts in front of the objective), this share in the zone, the rest just
+## behind it (overwatch).
+@export var defender_post_ahead_share: float = 0.5
+@export var defender_post_zone_share: float = 0.3

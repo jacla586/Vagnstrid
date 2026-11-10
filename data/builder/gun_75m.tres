@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="GunData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/gun_data.gd" id="1_gun"]
+[ext_resource type="Script" path="res://scripts/data/shell_data.gd" id="2_shell"]
+[ext_resource type="Resource" path="res://data/shells/ap_75m.tres" id="3_ap"]
+[ext_resource type="Resource" path="res://data/shells/he_75l.tres" id="4_he"]
+[ext_resource type="Resource" path="res://data/sounds/cannon_fire.tres" id="5_snd"]
+
+[resource]
+script = ExtResource("1_gun")
+id = &"gun_75m"
+display_name = "75 mm M3"
+caliber_mm = 75.0
+ammo = Array[ExtResource("2_shell")]([ExtResource("3_ap"), ExtResource("4_he")])
+reload_time_s = 5.0
+recoil_impulse_ns = 31000.0
+mass_kg = 1100.0
+gun_length_m = 3.9
+barrel_radius_m = 0.08
+min_turret_radius_m = 1.05
+fire_sound = ExtResource("5_snd")
+cost = 60

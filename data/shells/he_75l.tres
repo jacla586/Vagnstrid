@@ -7,6 +7,9 @@
 [resource]
 script = ExtResource("1_shell")
 breaks_tracks = true
+blast_hp = 8.0
+blast_module_reach_m = 1.5
+optics_dirt_radius_m = 8.0
 display_name = "HE 75 mm L"
 short_name = "HE"
 muzzle_velocity_mps = 480.0
@@ -20,7 +23,7 @@ damage_hp = 25.0
 module_damage = 30.0
 module_reach_m = 1.50
 wear_mm = 6.5
-fragment_module_damage = 15.0
+fragment_module_damage = 11.0
 tracer_color = Color(1, 0.85, 0.3, 1)
 fragment_lethal_radius_m = 4.0
 fragment_max_radius_m = 20.0

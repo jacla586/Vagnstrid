@@ -68,11 +68,13 @@ done
 for n in under-anfall avsittning uppsittning på-plats skott-kommer träff miss pansar skyttar träffade närträff föraren-träffad skytten-träffad vagnchef-träffad mina-band-utslaget upprättar-minering mina-armerad mina-utlöst; do
   trim "$S/ElevenLabs_$n.mp3" "$T/$n.wav"
 done
+trim "$S/ElevenLabs_Närskydd.mp3" "$T/närskydd.wav"
 ffmpeg -loglevel error -y -f lavfi -t 0.12 -i "anullsrc=r=22050:cl=mono" "$T/gap.wav"
 
 radio under_attack "$T/under-anfall.wav" -16
 radio dismount "$T/avsittning.wav" -18
 radio returning "$T/uppsittning.wav" -18
+radio escort "$T/närskydd.wav" -18
 radio in_position "$T/på-plats.wav" -18
 radio at_fire "$T/skott-kommer.wav" -13
 radio at_hit "$T/träff.wav" -14

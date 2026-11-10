@@ -1,7 +1,7 @@
 class_name TankNetState
 extends RefCounted
 ## One tank's state as the host sends it to clients, packed small: about 38 bytes for
-## everyone plus 9 bytes only for the tank's owner (hp, modules, reload, ...). Enemy hp
+## everyone plus 13 bytes only for the tank's owner (hp, modules, reload, ...). Enemy hp
 ## is never sent. Read and written by Tank (get/apply_net_state) and the net code.
 
 const FLAG_KNOCKED_OUT: int = 1
@@ -32,6 +32,9 @@ var hp_fraction: float = 1.0
 var module_states: PackedInt32Array = PackedInt32Array()
 var reload_s: float = 0.0
 var ammo_index: int = 0
+## Coaxial and roof MG: rounds left (-1 endless; sent as 255) and reload time left (s).
+var mg_rounds := PackedInt32Array([-1, -1])
+var mg_reload := PackedFloat32Array([0.0, 0.0])
 ## Own tank: standing-still time left of the repair, and its total (s).
 var repair_left_s: float = 0.0
 var repair_total_s: float = 0.0
@@ -64,6 +67,9 @@ func write(buf: StreamPeerBuffer) -> void:
 		buf.put_u8(_tenths(reload_s)); buf.put_u8(ammo_index)
 		buf.put_u16(clampi(roundi(repair_left_s * 10.0), 0, 65535)); buf.put_u8(ceili(clampf(repair_total_s, 0.0, 255.0)))
 		buf.put_u8(_tenths(spot_cooldown_s)); buf.put_u8(ceili(clampf(wound_s, 0.0, 255.0)))
+		for i: int in 2:
+			buf.put_u8(255 if mg_rounds[i] < 0 else mini(mg_rounds[i], 254))
+			buf.put_u8(_tenths(mg_reload[i]))
 
 
 static func read(buf: StreamPeerBuffer) -> TankNetState:
@@ -90,6 +96,10 @@ static func read(buf: StreamPeerBuffer) -> TankNetState:
 		s.repair_total_s = buf.get_u8()
 		s.spot_cooldown_s = buf.get_u8() / 10.0
 		s.wound_s = buf.get_u8()
+		for i: int in 2:
+			var r: int = buf.get_u8()
+			s.mg_rounds[i] = -1 if r == 255 else r
+			s.mg_reload[i] = buf.get_u8() / 10.0
 	return s
 
 

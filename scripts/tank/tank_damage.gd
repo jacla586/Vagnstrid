@@ -243,6 +243,7 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 		turret_from: Vector3, turret_dir: Vector3) -> bool:
 	if knocked_out:
 		return false
+	var hp_before: float = hp
 	if shell.stops_repair_on_hit or (result.outcome == HitResult.Outcome.PENETRATION
 			and shell.caliber_mm >= Tank.THREAT_MIN_CALIBER_MM):
 		_restart_repair()
@@ -260,24 +261,36 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 			hit.append(m.id)
 	if result.outcome == HitResult.Outcome.NO_PENETRATION:
 		_wear_at(part, face, local_point, shell.wear_mm)
+		if shell.is_explosive():
+			_blast(shell, hull_from, turret_from, hit)
 	elif result.outcome == HitResult.Outcome.PENETRATION:
-		hp -= shell.damage_hp
+		# The more to spare, the more harm inside (none of it for HE: the burst does it).
+		var share: float = shell.penetration_damage_share(result.penetration_mm - result.effective_mm)
+		result.weak = share < HitResult.WEAK_SHARE
+		hp -= shell.damage_hp * share
+		var reach: float = shell.module_reach_m * share
 		for m: ModuleData in _modules.values():
 			if m.external or hit.has(m.id):
 				continue
 			var from: Vector3 = turret_from if m.frame == &"turret" else hull_from
 			var dir: Vector3 = turret_dir if m.frame == &"turret" else hull_dir
-			if _segment_hits_box(m, from, dir, shell.module_reach_m):
-				_damage_module(m.id, shell.module_damage)
+			if _segment_hits_box(m, from, dir, reach):
+				var frontal_ammo: bool = m.id == &"ammo" and _from_front(hull_dir)
+				var amount: float = shell.module_damage * share
+				if frontal_ammo:   # damaged at worst, never blown up from the front
+					amount = minf(amount, float(_module_hp[m.id]) - 0.01)
+				_damage_module(m.id, amount)
 				hp -= m.structure_damage_hp
 				hit.append(m.id)
-				if m.id == &"ammo" and not shell.cannot_knock_out:
+				if m.id == &"ammo" and not shell.cannot_knock_out and not shell.finishes_only \
+						and not frontal_ammo:
 					knocked_out = true
 					ammo_exploded = true
-				elif m.id == &"fuel" and state(&"fuel") != State.OK:
+				elif m.id == &"fuel" and state(&"fuel") != State.OK and shell.sets_fire:
 					fire_left = data.fire_duration_s
-		if shell.cannot_knock_out:
-			hp = maxf(hp, 1.0)
+	if shell.cannot_knock_out or (shell.finishes_only
+			and hp_before > data.structure_hp * shell.finish_below_share):
+		hp = maxf(hp, 1.0)   # penetration or blast: not the last points
 	if hp <= 0.0:
 		knocked_out = true
 	hit.sort_custom(func(a: StringName, b: StringName) -> bool: return _rank(a) < _rank(b))
@@ -287,12 +300,39 @@ func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 	return knocked_out
 
 
-## A mine under track `id`: thrown (destroyed), and repairs start over.
-func apply_mine(id: StringName) -> void:
+## An HE round burst on the plate without getting in: ShellData.blast_hp, and the
+## exposed modules (ModuleData.blast_exposed: engine, turret ring) within
+## blast_module_reach_m of the burst take fragment_module_damage.
+func _blast(shell: ShellData, hull_at: Vector3, turret_at: Vector3, hit: Array[StringName]) -> void:
+	hp -= shell.blast_hp
+	if shell.blast_module_reach_m <= 0.0:
+		return
+	for m: ModuleData in _modules.values():
+		if not m.blast_exposed or m.crew or hit.has(m.id):
+			continue
+		var at: Vector3 = turret_at if m.frame == &"turret" else hull_at
+		if _box_distance(m, at) <= shell.blast_module_reach_m * m.blast_reach_share:
+			_damage_module(m.id, shell.fragment_module_damage)
+			hit.append(m.id)
+
+
+## A round flying `hull_dir` (hull space; the hull faces -z) came from the front, within
+## TankData.ammo_safe_front_deg.
+func _from_front(hull_dir: Vector3) -> bool:
+	var flat := Vector2(hull_dir.x, hull_dir.z)
+	if flat.length() < 1e-4:
+		return false   # straight down: the roof
+	return flat.normalized().dot(Vector2(0.0, 1.0)) >= cos(deg_to_rad(data.ammo_safe_front_deg))
+
+
+## A mine under track `id`: thrown (destroyed), the blast takes `blast_hp` structure
+## (never the last points: a mine never knocks out), and repairs start over.
+func apply_mine(id: StringName, blast_hp: float = 0.0) -> void:
 	if knocked_out or not _modules.has(id):
 		return
 	_restart_repair()
 	_damage_module(id, float(_module_hp[id]))
+	hp = maxf(hp - blast_hp, minf(hp, 1.0))
 
 
 ## HE fragments reaching an external module.
@@ -357,6 +397,12 @@ func _in_box(m: ModuleData, p: Vector3, margin: float) -> bool:
 	var d: Vector3 = (p - m.center).abs()
 	var half: Vector3 = m.size * 0.5 + Vector3.ONE * margin
 	return d.x <= half.x and d.y <= half.y and d.z <= half.z
+
+
+## Distance from `p` to the module's box (0 inside).
+func _box_distance(m: ModuleData, p: Vector3) -> float:
+	var d: Vector3 = ((p - m.center).abs() - m.size * 0.5).max(Vector3.ZERO)
+	return d.length()
 
 
 ## Slab test: does the segment from `from` along `dir` (unit) for `reach` m cross the box?

@@ -40,6 +40,9 @@ extends Resource
 ## True: the bonus needs the shooter in the zone too. False: any knock-out of an enemy
 ## in the zone pays, wherever it was fired from (support from outside counts).
 @export var kill_bonus_needs_shooter_in_zone: bool = true
+## An assist (a gun round that damaged an enemy later knocked out by someone else) gives
+## the tank this many points of its own (scoreboard only, not the team's score).
+@export var assist_points: float = 15.0
 ## First team to this many points wins.
 @export var score_to_win: float = 3000.0
 ## How often the zone is counted (s).

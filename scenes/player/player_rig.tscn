@@ -42,6 +42,8 @@
 [ext_resource type="Script" path="res://scripts/world/ground_cover/ground_cover_canopy.gd" id="91_ground_canopy"]
 [ext_resource type="Script" path="res://scripts/world/water_look.gd" id="92_water_look"]
 [ext_resource type="Script" path="res://scripts/world/stone_look.gd" id="96_stone_look"]
+[ext_resource type="Script" path="res://scripts/ui/kill_feed.gd" id="97_kill_feed"]
+[ext_resource type="Script" path="res://scripts/ui/optics_dirt.gd" id="98_optics_dirt"]
 [ext_resource type="Script" path="res://scripts/world/prop_break.gd" id="93_prop_break"]
 [ext_resource type="Resource" path="res://data/world/prop_break.tres" id="94_prop_break_data"]
 
@@ -97,6 +99,16 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("37_rain_glass")
+views = NodePath("../../PlayerViews")
+
+[node name="OpticsDirt" type="ColorRect" parent="HUD" node_paths=PackedStringArray("views")]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("98_optics_dirt")
 views = NodePath("../../PlayerViews")
 
 [node name="ViewOverlay" type="ColorRect" parent="HUD" node_paths=PackedStringArray("views")]
@@ -210,6 +222,10 @@ killcam = NodePath("../../Killcam")
 layout_mode = 3
 mouse_filter = 2
 script = ExtResource("23_damage_panel")
+views = NodePath("../../PlayerViews")
+
+[node name="KillFeed" type="VBoxContainer" parent="HUD" node_paths=PackedStringArray("views")]
+script = ExtResource("97_kill_feed")
 views = NodePath("../../PlayerViews")
 
 [node name="ScorePanel" type="Control" parent="HUD" node_paths=PackedStringArray("views")]

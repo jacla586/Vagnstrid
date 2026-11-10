@@ -6,6 +6,7 @@
 [ext_resource type="Resource" path="res://data/configs/2_t34.tres" id="c1"]
 [ext_resource type="Resource" path="res://data/configs/3_pz4.tres" id="c2"]
 [ext_resource type="Resource" path="res://data/configs/4_kv2.tres" id="c3"]
+[ext_resource type="Resource" path="res://data/configs/5_sherman.tres" id="c4"]
 
 [resource]
 script = ExtResource("1_koth")
@@ -22,4 +23,4 @@ assembly_distance_m = 300.0
 support_per_team = 1
 spawn_distance_m = 650.0
 bot_respawn_delay_s = 22.0
-bot_configs = Array[ExtResource("2_cfg")]([ExtResource("c0"), ExtResource("c1"), ExtResource("c2"), ExtResource("c3")])
+bot_configs = Array[ExtResource("2_cfg")]([ExtResource("c0"), ExtResource("c1"), ExtResource("c2"), ExtResource("c3"), ExtResource("c4")])

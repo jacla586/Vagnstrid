@@ -9,6 +9,9 @@ extends Resource
 ## The squad gets off the tank.
 @export var dismount: AudioStream
 @export var dismount_text: String = "Avsittning!"
+## Close protection (F): the squad escorts the tank.
+@export var escort: AudioStream
+@export var escort_text: String = "Närskydd!"
 @export var returning: AudioStream
 @export var returning_text: String = "Uppsittning!"
 @export var in_position: AudioStream

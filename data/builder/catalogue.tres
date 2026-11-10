@@ -7,8 +7,9 @@
 [ext_resource type="Resource" path="res://data/builder/chassis_medium.tres" id="c1"]
 [ext_resource type="Resource" path="res://data/builder/chassis_medium_h.tres" id="c2"]
 [ext_resource type="Resource" path="res://data/builder/chassis_heavy.tres" id="c3"]
+[ext_resource type="Resource" path="res://data/builder/chassis_medium_s.tres" id="c4"]
 
 [resource]
 script = ExtResource("1_cat")
-chassis = Array[ExtResource("2_chassis_script")]([ExtResource("c0"), ExtResource("c1"), ExtResource("c2"), ExtResource("c3")])
+chassis = Array[ExtResource("2_chassis_script")]([ExtResource("c0"), ExtResource("c1"), ExtResource("c2"), ExtResource("c4"), ExtResource("c3")])
 rules = ExtResource("3_rules")

@@ -4,7 +4,8 @@ extends RefCounted
 ## using the builder catalogue's parts and rules (data/builder/). Copies the chassis'
 ## base TankData and sets what the parts change: mass, mobility, turret traverse,
 ## armour, ammunition, reload, recoil, gun sound, structure, size (hull, turret, gun),
-## the module layout scaled to the hull, camouflage and cost. Built TankData is cached
+## the module layout scaled to the hull, the chassis' character (sight, stabiliser,
+## terrain, smoke, silhouette), camouflage and cost. Built TankData is cached
 ## per config, so every machine builds the same tank from the same few ids.
 
 const CATALOGUE_PATH: String = "res://data/builder/catalogue.tres"
@@ -52,7 +53,7 @@ static func build(config: TankConfig) -> TankData:
 	d.pitch_rock_kick_lever_m = chassis.base.pitch_rock_kick_lever_m * rock_scale
 	d.turret_traverse_speed_deg = clampf(
 			r.reference_traverse_deg * pow(r.reference_gun_mass_kg / gun.mass_kg, r.traverse_exponent),
-			r.min_traverse_deg, r.max_traverse_deg)
+			r.min_traverse_deg, r.max_traverse_deg) * chassis.traverse_factor
 	d.structure_hp = clampf(mass / 1000.0 * r.hp_per_ton, r.min_structure_hp, r.max_structure_hp)
 	# Gun.
 	d.ammo = gun.ammo.duplicate()
@@ -87,8 +88,18 @@ static func build(config: TankConfig) -> TankData:
 	d.barrel_radius_m = gun.barrel_radius_m
 	d.layout = _scaled_layout(chassis.base.layout, d.hull_size / base_hull,
 			d.turret_radius_m / maxf(chassis.base.turret_radius_m, 0.01))
+	# The chassis' own character.
+	if not chassis.gunner_sight_fov_deg.is_empty():
+		d.gunner_sight_fov_deg = chassis.gunner_sight_fov_deg.duplicate()
+	d.gun_stabiliser = chassis.gun_stabiliser
+	if chassis.max_climb_deg > 0.0:
+		d.max_climb_deg = chassis.max_climb_deg
+	if chassis.ford_slow_share >= 0.0:
+		d.ford_slow_share = chassis.ford_slow_share
+	if chassis.smoke_salvos >= 0:
+		d.smoke_salvos = chassis.smoke_salvos
 	# Camouflage and cost.
-	d.camo_spot_factor = r.camo_spot_factor if config.camo else 1.0
+	d.camo_spot_factor = (r.camo_spot_factor if config.camo else 1.0) * chassis.signature_spot_factor
 	d.cost = chassis.cost + gun.cost + pack.cost + (r.camo_cost if config.camo else 0)
 	_cache[key] = d
 	return d

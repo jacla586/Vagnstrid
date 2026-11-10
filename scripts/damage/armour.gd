@@ -47,8 +47,8 @@ static func resolve(shell: ShellData, speed: float, thickness_mm: float, angle: 
 	result.angle_deg = rad_to_deg(angle)
 	result.effective_mm = effective_thickness(thickness_mm, angle)
 	result.penetration_mm = penetration_at(shell, speed)
-	if result.angle_deg > ricochet_angle_deg:
-		result.outcome = HitResult.Outcome.RICOCHET
+	if result.angle_deg > ricochet_angle_deg and not shell.is_explosive():
+		result.outcome = HitResult.Outcome.RICOCHET   # HE bursts on the plate instead
 	elif result.penetration_mm >= result.effective_mm:
 		result.outcome = HitResult.Outcome.PENETRATION
 	else:

@@ -22,6 +22,10 @@ var calibre_mm: float = 0.0
 var origin: Vector3 = Vector3.ZERO
 var impact: Vector3 = Vector3.ZERO
 var shooter_label: String = ""
+## Host only (not sent): the shooting Tank's instance id, 0 = unknown.
+var shooter_id: int = 0
+## Host only: what it came from for the kill feed ("Bazooka"; "" = the tank's gun).
+var weapon: String = ""
 var distance_m: float = 0.0
 ## This hit knocked the tank out (penetration damage or the ammo).
 var killed: bool = false
@@ -31,6 +35,12 @@ var set_fire: bool = false
 
 func is_penetration() -> bool:
 	return outcome == HitResult.Outcome.PENETRATION
+
+
+## The round did damage (an assist when the tank goes): not a bounce or a stopped round.
+func dealt_damage() -> bool:
+	return outcome == HitResult.Outcome.PENETRATION \
+			or outcome == HitResult.Outcome.HIT and not modules.is_empty()
 
 
 func to_array() -> Array:

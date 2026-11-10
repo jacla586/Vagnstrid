@@ -39,6 +39,18 @@ extends Resource
 @export var turn_acceleration_deg: float = 90.0
 ## Max sideways acceleration the tracks can take before sliding (m/s²).
 @export var track_lateral_grip: float = 8.0
+## Pressing against another tank or a wreck (low gear, full torque) the tracks pull up to
+## this (m/s² of the tank's own mass) instead of `acceleration`: more than a braking
+## tank's brake_deceleration, so a tank can shove another one, slowly.
+@export var push_accel: float = 6.0
+## The extra pull fades to plain `acceleration` at this speed (km/h), so a shoved tank
+## (which brakes) or wreck (which drags) only moves at a crawl: a wreck faster.
+@export var push_fade_speed_kmh: float = 18.0
+## The wreck a knocked-out tank leaves: this share of its mass, with this friction and
+## damping, so tanks push it out of the way far more easily than a live tank.
+@export var wreck_mass_share: float = 0.35
+@export var wreck_friction: float = 0.7
+@export var wreck_damp: float = 0.6
 
 @export_group("Suspension")
 ## Length of each suspension ray: how far the road wheels reach below the hull (m).
@@ -72,6 +84,10 @@ extends Resource
 @export_group("Turret")
 ## How fast the turret turns relative to the hull (degrees/s).
 @export var turret_traverse_speed_deg: float = 20.0
+## Gun stabiliser 0..1: the turret and gun drives also take out this share of the hull's
+## own pitch and turn (driving rocks the gun less, the turret holds on a turning hull);
+## bots' error firing on the move shrinks by the same share.
+@export_range(0.0, 1.0) var gun_stabiliser: float = 0.0
 ## How fast the gun elevates/depresses (degrees/s).
 @export var gun_elevation_speed_deg: float = 5.0
 ## Max gun elevation above the turret's horizontal plane (degrees).
@@ -144,6 +160,15 @@ extends Resource
 ## A hit fuel tank burns this long (s), taking fire_hp_per_s. No repairs while burning.
 @export var fire_duration_s: float = 10.0
 @export var fire_hp_per_s: float = 3.0
+## Dirt from a near HE burst on the commander's and gunner's optics fades away with
+## this time constant (s): exponential, about gone after 3-4 times it.
+@export var optics_dirt_fade_s: float = 6.0
+## Bots with dirty optics spot this many times slower at full dirt (in proportion).
+@export var optics_dirt_spot_factor: float = 2.5
+## Rounds coming within this angle of straight from the front (hull's facing, deg) never
+## set off the ammo: it can be damaged but not blown up from the front (more fun: a
+## frontal duel isn't decided by one lucky round). From the sides and rear it can.
+@export var ammo_safe_front_deg: float = 40.0
 ## While the fuel burns the crew fights the fire: the tank stands still...
 @export var fire_immobilises: bool = true
 ## ...and the smoke cuts the view: bots see this share of their range, the player gets
@@ -164,12 +189,12 @@ extends Resource
 @export var broken_track_immobilises: bool = true
 ## A wounded driver (crew module "driver") answers each throttle/steering change this
 ## much later, rolled per change (s).
-@export var driver_wounded_lag_min_s: float = 0.5
-@export var driver_wounded_lag_max_s: float = 1.5
+@export var driver_wounded_lag_min_s: float = 0.3
+@export var driver_wounded_lag_max_s: float = 0.9
 ## A wounded gunner (crew module "gunner") lays the gun and fires this much later (s; the
 ## delay drifts between min and max).
-@export var gunner_wounded_lag_min_s: float = 0.3
-@export var gunner_wounded_lag_max_s: float = 0.8
+@export var gunner_wounded_lag_min_s: float = 0.2
+@export var gunner_wounded_lag_max_s: float = 0.5
 ## An ammo explosion throws the turret this high (m): min + (max - min) * u^bias with u
 ## random in 0..1, so short throws are common and long ones rare...
 @export var turret_toss_min_m: float = 6.0
@@ -185,6 +210,9 @@ extends Resource
 @export var ammo: Array[ShellData] = []
 ## Time to reload the main gun after a shot (s).
 @export var reload_time_s: float = 6.0
+## Changing round type with one in the breech (unload, load the other) takes this share
+## of reload_time_s; while loading anyway the change costs nothing and saves nothing.
+@export_range(0.0, 1.0) var ammo_swap_share: float = 0.4
 ## Backward impulse on the tank when firing (N·s). Tuned for feel, not history.
 @export var recoil_impulse_ns: float = 30000.0
 ## Machine gun beside the main gun; aims with it. Null = none.

@@ -37,6 +37,10 @@ extends Resource
 ## (geodata vagkant.py: the junction's offset in thousandths of the cycle, and which of its
 ## two directions), and their lens surfaces (materials starting with `signal_material_prefix`)
 ## get `signal_shader`, which switches them. A toppled light is dark (the plain materials).
+## Sign backs: materials ending in this get sign_back_shader (plain metal, the face's
+## outline), not the darkened face texture they come with.
+@export var sign_back_suffix: String = "_bak"
+@export var sign_back_shader: Shader = preload("res://assets/shaders/sign_back.gdshader")
 @export var signal_kind_prefix: String = "Trafikljus"
 @export var signal_material_prefix: String = "Signal_"
 @export var signal_shader: Shader = preload("res://assets/shaders/signal_light.gdshader")

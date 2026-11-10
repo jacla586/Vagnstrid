@@ -8,6 +8,10 @@ extends Resource
 ## A burst lasts this long, then the gunner pauses (s).
 @export var burst_time_s: float = 1.5
 @export var burst_pause_s: float = 1.2
+## Rounds in a belt (0 = never runs dry); then the crew reloads for reload_s (tank MGs:
+## Tank counts them, the HUD shows them).
+@export var belt_rounds: int = 0
+@export var reload_s: float = 6.0
 ## Random spread of each bullet around the aim (mrad, radius).
 @export var dispersion_mrad: float = 10.0
 ## Won't engage targets farther than this (m).

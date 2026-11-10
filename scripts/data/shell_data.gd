@@ -31,8 +31,15 @@ extends Resource
 @export var module_reach_m: float = 2.5
 ## Armour worn off the hit spot by a hit that doesn't penetrate (mm).
 @export var wear_mm: float = 0.0
-## Damage HE fragments do to external modules (tracks) they hit.
+## Damage HE fragments do to external modules (tracks) they hit, and an HE burst on the
+## hull to the exposed modules near it (ModuleData.blast_exposed).
 @export var fragment_module_damage: float = 0.0
+## A penetration does full damage (damage_hp, module_damage, module_reach_m) with this
+## much penetration to spare, as a share of the calibre (0.5: 18 mm for 37 mm, 38 mm for
+## 75 mm); with less it falls towards pen_damage_floor (just through: little left to
+## do harm). Explosive rounds always do full damage inside (the burst does it).
+@export var full_damage_surplus_calibres: float = 0.5
+@export_range(0.0, 1.0) var pen_damage_floor: float = 0.35
 
 @export_group("Explosive")
 ## Fragments always hit exposed targets within this distance of the burst (m).
@@ -42,10 +49,29 @@ extends Resource
 
 ## Landing on a track breaks it (HE, AT rounds); other rounds only damage it.
 @export var breaks_tracks: bool = false
+## An explosive round bursts on the plate (never glances off). Not penetrating, the blast
+## still takes this much structure hp...
+@export var blast_hp: float = 0.0
+## ...and damages exposed modules (engine, turret ring) within this of the burst by
+## fragment_module_damage (m).
+@export var blast_module_reach_m: float = 0.0
+## Bursting within this of a tank (m; a direct hit counts as 0) it throws dirt over the
+## crew's optics (Tank.add_optics_dirt): full at the plate, none at the edge.
+@export var optics_dirt_radius_m: float = 0.0
 
 @export_group("Infantry")
-## Never knocks a tank out (AT rounds): no last structure points, no ammo blow-up.
+## Never knocks a tank out: no last structure points, no ammo blow-up.
 @export var cannot_knock_out: bool = false
+## Knocks out only by taking a tank's last structure points, and only one already
+## down to finish_below_share of its structure hp before the hit (finishing off a
+## nearly dead one, the squad AT round: possible but rare); never sets off the ammo.
+@export var finishes_only: bool = false
+@export_range(0.0, 1.0) var finish_below_share: float = 0.15
+## A hit on the fuel tank sets it burning (off for the AT round: a fire would make its
+## kills common).
+@export var sets_fire: bool = true
+## Named in the kill feed instead of the shooter's tank type ("Bazooka"; "" = the tank).
+@export var kill_feed_name: String = ""
 ## Any hit restarts the crew's repair, penetrating or not (AT rounds). Otherwise only
 ## a penetrating gun round does.
 @export var stops_repair_on_hit: bool = false
@@ -63,3 +89,12 @@ extends Resource
 
 func is_explosive() -> bool:
 	return fragment_max_radius_m > 0.0
+
+
+## Share of the full damage a penetration with `surplus_mm` to spare does
+## (full_damage_surplus_calibres, pen_damage_floor); explosive rounds: always 1.
+func penetration_damage_share(surplus_mm: float) -> float:
+	if is_explosive():
+		return 1.0
+	var full: float = maxf(caliber_mm * full_damage_surplus_calibres, 0.001)
+	return lerpf(pen_damage_floor, 1.0, clampf(surplus_mm / full, 0.0, 1.0))

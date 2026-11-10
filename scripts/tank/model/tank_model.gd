@@ -19,6 +19,7 @@ const STYLE_LIGHT: StringName = &"light"
 const STYLE_SLOPED: StringName = &"sloped"
 const STYLE_BOXY: StringName = &"boxy"
 const STYLE_HEAVY: StringName = &"heavy"
+const STYLE_TALL: StringName = &"tall"
 const VARIANT_BOX_TURRET: StringName = &"box_turret"
 ## BT-like turret: top radius as a share of the base (a cone, sides ~22° at 0.65 m high).
 const LIGHT_TOP: float = 0.7
@@ -30,6 +31,7 @@ const SLOPES: Dictionary = {
 	STYLE_SLOPED: [60.0, 40.0, 30.0],
 	STYLE_BOXY: [10.0, 0.0, 10.0],
 	STYLE_HEAVY: [30.0, 0.0, 20.0],
+	STYLE_TALL: [56.0, 0.0, 10.0],
 }
 
 static var _cache: Dictionary = {}
@@ -104,6 +106,8 @@ func _build(d: TankData) -> Dictionary:
 			_sloped()
 		STYLE_BOXY:
 			_boxy()
+		STYLE_TALL:
+			_tall()
 		_:
 			_heavy(d.turret_variant == VARIANT_BOX_TURRET)
 	_details(d.model_style)
@@ -316,6 +320,86 @@ func _boxy() -> void:
 			MeshKit.Mat.PAINT, [[Vector3(0, TH * 0.28, -0.3), Vector3(0, 1, -1.2)],
 			[Vector3(0, -TH * 0.28, -0.3), Vector3(0, -1, -1.2)]])
 	mantlet.cylinder(Vector3(0, 0, -0.3), Vector3(0, 0, -0.55), BR * 2.0, BR * 1.8, 10, MeshKit.Mat.PAINT)
+
+
+## Sherman-like: a tall hull with a long glacis at 56°, upright sides out over the
+## tracks, six small wheels in three bogies with return rollers on top, and a rounded
+## cast turret (lofted rings) with a bustle and a broad mantlet.
+func _tall() -> void:
+	tw = 0.15 * W
+	yk = yb + 0.4 * H
+	yf = yb + 0.18 * H
+	var rise: float = yk - yb
+	_tracks(0.3 * rise, 6, 0.33 * L, true, 3)
+	# Bogie brackets: one between each pair of wheels, a roller on top (the rollers).
+	for s: float in [-1.0, 1.0]:
+		for k: int in 3:
+			var z: float = lerpf(-0.33 * L, 0.33 * L, (float(k * 2) + 0.5) / 5.0)
+			hull.box(Vector3(s * (W * 0.5 - tw * 0.5), yb + 0.3 * rise + 0.03, z),
+					Vector3(tw * 0.55, 0.3 * rise, 0.42), MeshKit.Mat.DARK)
+	var zf: float = -L * 0.5
+	var zr: float = L * 0.5 * 0.98
+	# Rounded nose casting low at the front, upright-ish rear.
+	# The glacis starts above the track tops, over a rounded nose casting.
+	var nose: float = yk + 0.18 * (yt - yk)
+	_lower_hull(zf, zr, yk, 48.0, 12.0)
+	hull.block(Vector3(-(W * 0.5 - tw - 0.02), yk, zf), Vector3(W * 0.5 - tw - 0.02, nose, zf + 0.5),
+			MeshKit.Mat.PAINT, [[Vector3(0, yk, zf), _n_front(35.0, true)]], "h_nose")
+	_hull_groups.append("h_nose")
+	_upper_hull(zf + 0.12, zr, nose, 56.0, yk + 0.35 * (yt - yk), 6.0, 0.0)
+	# Driver's and co-driver's hoods where the glacis meets the roof, hull MG between.
+	var top_front: float = zf + 0.12 + (yt - nose) * tan(deg_to_rad(56.0))
+	for s: float in [-1.0, 1.0]:
+		hull.block(Vector3(s * W * 0.22 - 0.28, yt - 0.28, top_front - 0.3),
+				Vector3(s * W * 0.22 + 0.28, yt + 0.06, top_front + 0.25), MeshKit.Mat.PAINT,
+				[[Vector3(0, yt + 0.06, top_front - 0.3), _n_front(40.0, true)]])
+	var mg_y: float = nose + (yt - nose) * 0.5
+	var mg_z: float = zf + 0.12 + (mg_y - nose) * tan(deg_to_rad(56.0))
+	var n: Vector3 = _n_front(56.0, true)
+	hull.cylinder(Vector3(W * 0.2, mg_y, mg_z) - n * 0.02, Vector3(W * 0.2, mg_y, mg_z) + n * 0.09,
+			0.11, 0.09, 10, MeshKit.Mat.PAINT)
+	hull.cylinder(Vector3(W * 0.2, mg_y, mg_z) + n * 0.09, Vector3(W * 0.2, mg_y, mg_z) + n * 0.32,
+			0.022, 0.02, 6, MeshKit.Mat.DARK)
+	_exhausts(zr, 2, 0.07)
+	if heavy_look:
+		_glacis_plate(zf + 0.12, nose, 56.0, 0.04)
+		for s: float in [-1.0, 1.0]:
+			hull.box(Vector3(s * (W * 0.5 + 0.03), yk + (yt - yk) * 0.5, -L * 0.02),
+					Vector3(0.04, (yt - yk) * 0.6, 0.9), MeshKit.Mat.PAINT)
+	var tz: float = -0.06 * L
+	out["turret_pos"] = Vector3(0.0, yt, tz)
+	# Cast turret: rings from the ring up to a domed roof, a little longer than wide.
+	var rings: Array = []
+	for level: Array in [[0.0, 1.0], [0.55, 0.97], [0.85, 0.86], [1.0, 0.7]]:
+		var y: float = TH * float(level[0])
+		var k: float = float(level[1])
+		var ring := PackedVector3Array()
+		for i: int in 18:
+			var a: float = TAU * float(i) / 18.0
+			ring.append(Vector3(cos(a) * R * k, y, sin(a) * R * 1.12 * k + R * 0.08))
+		rings.append(ring)
+	turret.loft(rings, MeshKit.Mat.PAINT, "t_body")
+	turret.block(Vector3(-R * 0.6, TH * 0.15, R * 0.7), Vector3(R * 0.6, TH * 0.78, R * 1.35),
+			MeshKit.Mat.PAINT, [[Vector3(0, TH * 0.78, R * 1.35), Vector3(0, 0.6, 1)],
+			[Vector3(R * 0.6, 0, R * 1.35), Vector3(0.6, 0, 1)], [Vector3(-R * 0.6, 0, R * 1.35), Vector3(-0.6, 0, 1)]],
+			"t_bustle")
+	_turret_groups.append_array(["t_body", "t_bustle"])
+	_roof_scale = 0.8
+	_side_x0 = R
+	_side_deg = 8.0
+	_number_y = TH * 0.3
+	_turret_back = R * 1.35
+	turret.cylinder(Vector3(0, TH * 0.4, R * 0.08), Vector3(0, TH * 0.6, R * 0.08), R * 1.0 + 0.015,
+			R * 0.97 + 0.015, 18, MeshKit.Mat.MARK)
+	_roof_panel(TH * 0.85, R * 0.1)
+	_turret_common(Vector3(0.0, TH * 0.45, -R * 1.02), Vector3(-R * 0.35, TH * 0.9, R * 0.3))
+	out["turret_top"] = TH * 0.88
+	# Broad mantlet with a rounded face (the gun's rotor shield).
+	mantlet.block(Vector3(-R * 0.6, -TH * 0.3, -0.32), Vector3(R * 0.6, TH * 0.3, 0.05),
+			MeshKit.Mat.PAINT, [[Vector3(0, TH * 0.3, -0.32), Vector3(0, 1, -0.9)],
+			[Vector3(0, -TH * 0.3, -0.32), Vector3(0, -1, -0.9)],
+			[Vector3(R * 0.6, 0, -0.32), Vector3(1, 0, -0.5)], [Vector3(-R * 0.6, 0, -0.32), Vector3(-1, 0, -0.5)]])
+	mantlet.cylinder(Vector3(0, 0, -0.32), Vector3(0, 0, -0.5), BR * 1.9, BR * 1.7, 10, MeshKit.Mat.PAINT)
 
 
 ## KV-like: big and square, upright sides, six small wheels and return rollers, a heavy

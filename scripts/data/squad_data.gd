@@ -162,6 +162,9 @@ extends Resource
 @export var scan_interval_s: float = 0.5
 
 @export_group("Rifles")
+## HE fragments reach soldiers this much farther than other targets (both the lethal and
+## the max radius): men in the open are what HE is for.
+@export var fragment_radius_factor: float = 1.25
 @export var rifle_bullet: ShellData
 ## Each soldier fires bursts of this many shots, this often (s), while holding still.
 @export var rifle_burst_shots: int = 3

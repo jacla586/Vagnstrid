@@ -1,7 +1,7 @@
 class_name WeaponStatus
 extends Label
 ## Bottom-left gun status: "AP – LOADED" or "HE – RELOADING 3.4 s", and the smoke
-## salvos left ("SMOKE 2 (X)"). Hidden in the debug view.
+## salvos left ("SMOKE 2 (X)") and the active MG's belt ("MG 63", "MG RELOADING 4.2 s"). Hidden in the debug view.
 
 @export var views: PlayerViews
 @export var font_size: int = 22
@@ -33,8 +33,19 @@ func _process(_delta: float) -> void:
 	if smoke != "" and smoke_wait > 0.0 and tank.get_smoke_left() > 0:
 		smoke += " (%d s)" % ceili(smoke_wait)
 	var loaded: bool = tank.is_loaded()
-	text = prefix + ("LOADED" if loaded else "RELOADING %.1f s" % tank.get_reload_remaining()) + smoke
+	text = prefix + ("LOADED" if loaded else "RELOADING %.1f s" % tank.get_reload_remaining()) + smoke \
+			+ _mg_text(tank)
 	# A theme override re-lays the label out even when unchanged: only on a change.
 	if int(loaded) != _shown_loaded:
 		_shown_loaded = int(loaded)
 		add_theme_color_override("font_color", loaded_color if loaded else reloading_color)
+
+
+## "    MG 63" (rounds left in the active MG's belt) or "    MG RELOADING 4.2 s".
+func _mg_text(tank: Tank) -> String:
+	var roof: bool = tank.is_roof_mg_active()
+	var reload: float = tank.get_mg_reload_left(roof)
+	if reload > 0.0:
+		return "    MG RELOADING %.1f s" % reload
+	var left: int = tank.get_mg_rounds_left(roof)
+	return "    MG %d" % left if left >= 0 else ""

@@ -44,16 +44,21 @@ shows on the minimap. This is what we test first.
 - Damage model (`TankDamage`, owned by Tank): structure hp (`TankData.structure_hp`) and
   modules from `TankData.layout` (`ModuleLayoutData`, e.g. `data/tanks/layout_medium.tres`:
   engine, fuel, tracks, turret ring, ammo in the turret rear). A penetration takes
-  `ShellData.damage_hp` and damages modules on the shell's path (`module_reach_m`), each
+  `ShellData.damage_hp` and damages modules on the shell's path (`module_reach_m`), all three times
+  `ShellData.penetration_damage_share`: full with `full_damage_surplus_calibres` (0.5) × calibre of
+  penetration to spare, falling to `pen_damage_floor` (0.35) when just through (HE and the squad AT
+  round: always full); under 0.7 the shooter reads "WEAK PENETRATION" (`HitResult.weak`). Each
   internal module hit taking `ModuleData.structure_damage_hp` more (engine 20, fuel/ring 15, crew 10); ammo =
-  knocked out, fuel = fire. Hits that don't penetrate wear their plate cell (`ArmourData`
+  knocked out (never from within `TankData.ammo_safe_front_deg` (40) of straight ahead of the hull:
+  then damaged at worst, `TankDamage._from_front`), fuel = fire. Hits that don't penetrate wear their plate cell (`ArmourData`
   wear settings, `ShellData.wear_mm`). Tracks are external: a gun round landing on one breaks
   it if `ShellData.breaks_tracks` (HE, AT rounds), else damages it; HE fragments
   (`ModuleFragmentTarget`) damage them. Effects (`TankDamage.speed_factor/turn_factor/
   traverse_factor`, shares in TankData): engine damaged 50 % speed, destroyed stopped; fire
   stands the tank still, a haze for the player (`FireHaze`), bots see
   `fire_view_range_factor`; ring 50 % / 10 % traverse; damaged track 80 % speed and 55 % turn
-  rate, destroyed = immobilised. Standing still (no throttle, no steering) `repair_time_s` repairs
+  rate, destroyed = immobilised (a braked track stops its own side's travel,
+  `Tank._track_hold_force`, so a stuck tank that was turning stops turning). Standing still (no throttle, no steering) `repair_time_s` repairs
   modules (firing and MG hits don't interrupt; a penetrating gun round, an AT round
   (`ShellData.stops_repair_on_hit`) or fire restarts it; a module breaking meanwhile
   takes its full time), then hp creeps back to `repair_hp_max_fraction`. The player sees own hp/modules
@@ -63,8 +68,8 @@ shows on the minimap. This is what we test first.
   only ever wounded (never destroyed or a knock-out), heal `heal_time_s` (60) after the last
   wound whatever the tank does, and don't count for repairs. Wounded, they answer late
   (`CrewLag`, applied by Tank on the host, so bots too; `Tank.get_command()` is the
-  controller's command): driver `TankData.driver_wounded_lag_*` (0.5-1.5 s per change),
-  gunner `gunner_wounded_lag_*` (0.3-0.8 s, drifting) on aim, gun and coax fire; the own
+  controller's command): driver `TankData.driver_wounded_lag_*` (0.3-0.9 s per change),
+  gunner `gunner_wounded_lag_*` (0.2-0.5 s, drifting) on aim, gun and coax fire; the own
   client follows the host's turret then instead of predicting. HUD: a WOUNDED line in
   `DamagePanel`.
 - Infantry squads (`Squad`, `scripts/squad/`; data `SquadData`, `data/squads/`,
@@ -78,7 +83,8 @@ shows on the minimap. This is what we test first.
   it halts and fights infantry and exposed commanders in reach like a moving squad, finds
   mines as squads do, and withdraws when hit; no "in position" calls. Any other order, a
   recall, mounting or the tank's loss ends it (`Squad._escort`; packet flags bit 6, HUD
-  "ESCORTING"). Mounted it rides unseen; sent out it gets
+  "ESCORTING"); radio "Närskydd!" (`RADIO_ESCORT`) when it starts, after "Avsittning!" if mounted.
+  Mounted it rides unseen; sent out it gets
   off behind the tank and walks paths from `TacticalMap.for_scene(scene, tactics)`
   with infantry costs (`data/squads/tactics_infantry.tres`), at most
   `max_distance_from_tank_m` (300) from the tank; recalled or left behind it runs back
@@ -96,8 +102,12 @@ shows on the minimap. This is what we test first.
   driving over him (`Squad._check_run_over`, host: hull footprint, `SquadData.run_over_*`); one is
   "Wilhelm" (10 % scream, 100 m, on Master so the hatch doesn't muffle it:
   `SoundSetData.bus`). Holding still they fire rifles (`rifle_bullet.tres`,
-  low accuracy) at exposed commanders and soldiers, and AT rounds (`squad_at.tres`,
-  `ShellData.cannot_knock_out`: never a kill) at tanks within 150 m, aimed at the track
+  low accuracy) at exposed commanders and soldiers, and AT rounds (`squad_at.tres`, an HE charge: 30 mm,
+  breaks the track it lands on, blast, dirt on the optics, small fragments;
+  `ShellData.finishes_only`: knocks out only by taking the last points of a tank already under
+  `finish_below_share` (15 %) of its hp before the hit, never the ammo, never sets fire (`sets_fire`):
+  rare but possible; credit goes to the squad's tank, `Tank._shooter_tank`, kill feed "Bazooka",
+  `ShellData.kill_feed_name` -> `HitRecord.weapon`, `Tank.get_kill_weapon`) at tanks within 150 m, aimed at the track
   facing them (shots allow for drop). The AT gunner stands, turns to the tank, swaps
   his rifle for a plain launcher tube (`SquadData.at_launcher_*`, "aim" animation),
   radios "Skott kommer! Klart bakåt!" (`RADIO_AT_FIRE`, first in the queue) and fires
@@ -161,7 +171,8 @@ shows on the minimap. This is what we test first.
   removes the oldest; radio "Upprättar minering!" on the order, "Mina armerad!" when laid,
   "Mina utlöst!" when an enemy sets it off, `RADIO_MINE_*`, `Mine.triggered`; on a road it lies on the visible surface, `RoadSurface`: road meshes have no collision). A magnetic fuze: an enemy tank anywhere over it, belly included (host,
   `Mine._track_over`), throws its nearer track
-  (`Tank.on_mine` -> `TankDamage.apply_mine`; never a knock-out, nobody scores; signal
+  (`Tank.on_mine` -> `TankDamage.apply_mine`), takes `MineData.blast_hp` (10) and dirties the optics
+  (`optics_dirt` 0.8); never a knock-out, nobody scores; signal
   `Tank.mine_hit`, clients `rpc_mine_hit`: the crew calls "Mina! Bandet utslaget!",
   `CrewVoiceData.mine`, instead of "Vi är träffade!"); own team
   drives over safely. Gun rounds of another team landing within `destroy_by_gun_m` (HE
@@ -240,6 +251,10 @@ shows on the minimap. This is what we test first.
   `Ledning__<track>_<i>`); playground pieces (`Lekplatser`) fall apart into their solids (at most
   `debris_max_parts`, thrown and spinning). Fallen things lie `lie_s` (30 s), sink and are gone until
   ThunderRoad's map reset (`PropBreak.restore_all`).
+- Sign backs: the glb's `*_bak` materials (road and place-name signs) are the face texture darkened,
+  which showed mirrored text; `PropBreak._fix_sign_backs` swaps them at load for
+  `assets/shaders/sign_back.gdshader` (plain sheet metal, outline from the face's alpha) on every mesh
+  and template (`PropBreakData.sign_back_suffix/shader`).
 - Place-name signs (geodata `vagkant.py` `_ortnamn`): where a road passes from one district/village to
   another (OSM place=* by `geodata/scripts/platser.py` -> `work/platser.json`; a point belongs to the
   place nearest relative to its reach by kind), a white sign with black frame and text on the right for
@@ -252,6 +267,22 @@ shows on the minimap. This is what we test first.
   node per piece in group `Lekplatser` (vertex colours); `PropBreak` (player rig) gives them a
   vertex-colour material and breaks a piece apart when a tank (group "tanks", puppets too) drives into
   it (no collision, nothing sent).
+- Changing ammo (Tank._update_gun): with a round in the breech it takes `TankData.ammo_swap_share`
+  (0.4) of the reload; while loading (after a shot or mid-change) only the round type changes, the
+  time left stays (no way round a reload).
+- HE ("disables, AP kills"): never ricochets (`Armour.resolve`); not getting in it still takes
+  `ShellData.blast_hp` (75 mm 8, 152 mm 25) and `fragment_module_damage` (75 mm 11) on exposed
+  modules within `blast_module_reach_m` of the burst (`ModuleData.blast_exposed`: engine at
+  `blast_reach_share` 0.7, turret ring 0.4, from the box surface; two 75 mm bursts make either yellow; `TankDamage._blast`); a track it lands on breaks, fragments damage
+  near ones. Bursting within `optics_dirt_radius_m` (75 mm 8 m) of an enemy tank it dirties its optics
+  (`Explosion._dirty_optics` -> `Tank.add_optics_dirt`, signal `optics_dirtied`, clients
+  `rpc_optics_dirt`): `OpticsDirt` (player rig, `optics_dirt.gdshader`, commander and gunner views)
+  fades exponentially (`TankData.optics_dirt_fade_s` 6, gone in ~20 s); bots spot up to
+  `optics_dirt_spot_factor` (2.5) slower and lose their lay. Soldiers: fragments reach
+  `SquadData.fragment_radius_factor` (1.25) farther. Bots pick rounds (`BotController._choose_ammo`,
+  only with one in the breech): AP for a tank whose facing hull plate it gets through
+  (`_can_penetrate`), else HE; HE for squads, then the main gun fires at them too
+  (`_fire_he_at_squad`).
 - Hits and wrecks: a gun round (>= 20 mm) on a tank emits `Tank.struck(outcome, dir)`
   (clients get it for their own tank by `rpc_struck`) and jolts the hull
   (`TankData.hit_jolt_factor`); `HitReaction` in the player rig shakes the commander/gunner
@@ -268,10 +299,28 @@ shows on the minimap. This is what we test first.
   An ammo knock-out (`TankDamage.ammo_exploded`) throws the turret (`Tank.toss_turret`: a
   charred RigidBody in group `wrecks`, frozen at rest; height `TankData.turret_toss_*`,
   min + span·u^bias, so mostly short; clients by `rpc_turret_toss`); the wreck has no turret.
-  Knocked-out tanks leave a static charred wreck (`Tank.leave_wreck`, group `wrecks`, from
-  `KothMode.place_tank` / a puppet's respawn jump) for the whole match.
+  Knocked-out tanks leave a charred wreck (`Tank.leave_wreck`, `Wreck`, group `wrecks`, from
+  `KothMode.place_tank` / a puppet's respawn jump) for the whole match. Wrecks can be pushed: on the
+  host a RigidBody of `TankData.wreck_mass_share` (0.35) of the tank's mass (`wreck_friction`,
+  `wreck_damp`), standing on a track-footprint block; clients' copies are frozen and follow the host
+  (`NetGame._send_wreck_moves`, 5 Hz, only moved ones, `rpc_wreck_moves`, keyed by `Wreck.made_at`
+  = where it was made, matched within 4 m; late joiners get all poses). Tanks push: pressing against
+  a tank or wreck (contacts), the drive may pull `TankData.push_accel` (6 m/s², more than a braking
+  tank's 4) fading to plain acceleration at `push_fade_speed_kmh` (18): a wreck goes ~12 km/h, a
+  braking tank ~8 km/h, sideways never (lateral grip).
   The host lists wrecks (`Tank.wreck_left`) and sends them to late joiners (`rpc_wreck`:
   a throw-away `wreck_only` tank of the same spec makes the copy, `make_wreck_here`).
+- Kill credit: on the host every knock-out emits `Tank.eliminated(killer, assists)`: killer =
+  `HitRecord.kill_of`'s shooter (`HitRecord.shooter_id`, host only), assists = other enemies whose
+  rounds `dealt_damage()` (penetration, or a hit that damaged modules) this life; abandoning has no
+  killer. Modes count KO and assists from it (KotH rows [name, team, KO, lost, points, assists]:
+  an assist also gives `KothData.assist_points` (15) personal points, not team score; ThunderRoad
+  rows [name, team, KO, lost, assists]); `Scoreboard._table` takes column indices. Kill feed
+  (`KillFeed`, player rig HUD, above the minimap): "<name> <type> → <name> <type>", killer first,
+  own team blue, enemy red (`TeamLook.viewer_team`), `Tank.get_player_name()` ("You"/"Bot"/player
+  name) and `get_type_name()` (config name, e.g. "T-34"; the killing round's `kill_feed_name` instead,
+  e.g. "Bazooka"); 5 lines, 9 s; clients get entries by
+  `rpc_kill_feed` from NetGame.
 - Killcam: the host records every gun round (>= 20 mm) on a tank as a `HitRecord`
   (`Tank.get_hits_this_life`, signal `hit_recorded`; origin from `Shell` via
   `Tank.note_incoming`, killed / set-fire flags; the owner's client gets them by
@@ -299,7 +348,10 @@ shows on the minimap. This is what we test first.
   fragments (`fragment_shielded`, optional fragment-target method used by `Explosion`); gun rounds go
   through. No collider (the commander's own sight lines aren't blocked).
 - Tanks have a coaxial MG and a roof MG (`TankData.coax_mg`/`roof_mg`). The roof MG
-  only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`.
+  only works with the hatch fully open, aimed at `TankCommand.mg_aim_point`. Belts:
+  `MachineGunData.belt_rounds` (100) then `reload_s` (6) per gun (`Tank.get_mg_rounds_left/
+  get_mg_reload_left`; counted on the host and the own client, owner data in the snapshot;
+  `WeaponStatus` shows "MG 63" / "MG RELOADING").
 - Bots: `BotController` (extends `TargetTankController`, so patrols waypoints) with
   crew skill in `BotData` (`data/bots/*.tres`). Spots only via `Vision` from its own
   commander's eye (hatch open: all round, far, fast; closed: periscope sector),
@@ -358,7 +410,8 @@ shows on the minimap. This is what we test first.
   `TeamLook.version` or their team changes. `Tank.paint_color` is no longer used.
 - Tank models (`scripts/tank/model/`): `TankModel.build(data)` makes the look AND the
   armour shapes from `TankData.model_style` (chassis: light = BT-like, sloped = T-34-like,
-  boxy = Pz IV-like, heavy = KV-like; only loose visual inspiration), the geometry
+  boxy = Pz IV-like, heavy = KV-like, tall = Sherman-like (tall hull, 56° glacis, six small
+  wheels in bogies, a rounded cast turret lofted from rings); only loose visual inspiration), the geometry
   fields, `turret_variant` (gun, e.g. box_turret for the 152 mm), `muzzle_brake` and
   `armour_look` (heavy package: skirts/appliqué). `TankModel._details` adds looks only (no
   armour shapes) to every style: headlights, spare links and driver's hatch on the front
@@ -384,11 +437,20 @@ shows on the minimap. This is what we test first.
   test_medium). Paint replaces the PAINT material per surface. Pictures without the game:
   `godot --path . --script res://tools/render_tank_models.gd -- <dir> [preset...]`
   (needs a window; `renders/` is git-ignored).
-- Four presets only, `data/configs/1_bt7 .. 4_kv2.tres` (main menu, `KothData.bot_configs`;
-  default T-34). Tank builder / garage: `TankConfig` (only part ids: chassis, gun, armour package,
+- Five presets, `data/configs/1_bt7 .. 5_sherman.tres` (main menu, `KothData.bot_configs`,
+  `ThunderRoadData.bot_configs`; default T-34), each with a clear strength and weakness:
+  BT-7 flanker (fastest, can't get through fronts), T-34 brawler (48 km/h, sloped armour, best
+  terrain: climb 36°, fords; weakest optics 22/15°, 76 mm 100 mm pen, strong HE), Pz IV sniper
+  (145 mm pen at 700 m/s, 34 dmg, 5.5 s, three sight levels 24/12/8°; 36 km/h, slow traverse,
+  50/30 mm turret, 20 mm rear), Sherman all-rounder on the move (gun stabiliser 0.7, traverse
+  ×1.5, 5 s reload, 4 smoke salvos; tall: spotted sooner, `signature_spot_factor` 0.85; 105 mm
+  pen), KV-2 breaker. The chassis' character lives in `ChassisData` "Character"
+  (`traverse_factor`, `gunner_sight_fov_deg`, `gun_stabiliser` -> `TankData.gun_stabiliser`:
+  turret/gun drives also take out that share of the hull's turn and pitch, bots' moving lay error
+  shrinks by it; `max_climb_deg`, `ford_slow_share`, `smoke_salvos`, `signature_spot_factor`). Tank builder / garage: `TankConfig` (only part ids: chassis, gun, armour package,
   camouflage) -> `TankBuilder.build()` -> `TankData` (cached per `key()`), from the
   catalogue `data/builder/catalogue.tres` (`ChassisData` light, medium (T-34-like),
-  medium_h (Pz IV-like), heavy (KV-like); the tank destroyer is gone; each with its
+  medium_h (Pz IV-like), medium_s (Sherman-like), heavy (KV-like); the tank destroyer is gone; each with its
   `GunData` 37-152 mm and `ArmourPackageData`; coefficients in
   `BuilderRules`: speed and acceleration from kW/t, turn rate from mass, traverse from
   gun mass, hp per tonne capped at `max_structure_hp` 200, camouflage). The chassis' `base` TankData supplies the rest.
@@ -443,7 +505,10 @@ shows on the minimap. This is what we test first.
   only beside cover (`TacticalMap.is_covered`) within `transit_fire_range_m`; in the
   open it fires on the move within `BotData.move_fire_range_m` (looser lay, error per
   m/s), else holds fire. Bots stop to repair only for a destroyed module, a thrown
-  track or hp below `BotData.repair_stop_hp_fraction`. Hunting (KothBots, `TacticsData`
+  track or hp below `BotData.repair_stop_hp_fraction`. Close fight (`TacticsData.close_fight_*`, BotController): a spotted enemy within 50 m becomes
+  the target at once and the bot leaves its orders to charge round to its side/rear (14 m off the
+  hull, firing on the move, no scoot or relocation), let go past 1.4 × range, then a fresh path to
+  its order goal. A knocked-out bot drops its orders, relocation and scoot. Hunting (KothBots, `TacticsData`
   `hunt_*`): bots radio spots to the team and go after known enemies, those in the open
   zone first (any range, no time limit, pressing closer), others near the zone for
   `hunt_max_s`; firing spots for an enemy in the zone are inside it. Needs a baked grid. Without a baked grid bots drive
@@ -506,10 +571,15 @@ shows on the minimap. This is what we test first.
   `capture_half_width_m` across, `capture_half_length_m` along); each capture moves the front, tops up the time bank and the
   attackers' shared lives and brings a wave. Knocked-out attackers wait for the wave (on a
   capture or every `wave_interval_s`, a life each, behind the front); defenders come back
-  after `defender_respawn_s` `defender_spawn_checkpoints` past the next checkpoint (at the round start `defender_start_checkpoints`, closer; the route has no checkpoint in its first spacing, a free drive to the fight).
+  after `defender_respawn_s` `defender_spawn_checkpoints` past the next checkpoint, never nearer than
+  `defender_spawn_min_ahead_m` (320) past it (past the road's end, the last checkpoint, the spawn goes
+  on straight: `_slot_point`, and `project` extrapolates the last segment) (`defender_spawn_checkpoints` 1; at the round start in the first checkpoint's zone,
+  `defender_start_in_zone`, to dig in; the route has no checkpoint in its first spacing, a free drive to the fight).
+  Waves every `wave_interval_s` (40).
   Time up with a living attacker in the checkpoint's zone: overtime (`is_overtime`, HUD
   "OVERTIME"); the round ends `overtime_grace_s` (3 s) after the last one left or fell.
-  Corridors: defenders within `defender_half_width_m` of the road and ahead of the front,
+  Corridors: defenders within `defender_half_width_m` of the road and ahead of the front less
+  `defender_behind_front_m` (150; `get_defender_line_s`, so forward defenders fight on when a checkpoint falls),
   attackers within `attacker_half_width_m`. Outside: `Tank.fire_blocked` (no gun or MG),
   a spot mark for the other team every `outside_mark_s`, `Tank.wound_commander()` after
   `outside_grace_s`. Round 1 team 0 attacks, round 2 sides swap; more checkpoints wins,
@@ -525,9 +595,12 @@ shows on the minimap. This is what we test first.
   `TreeField.restore_all`, signal `map_reset`) comes with the break; clients reset 1.5 s
   after the round's end. The first round waits for `ThunderRoadBots` to fill the teams
   (`hold_start`/`release_start`). Bots: attackers to a `find_position` spot in the next
-  checkpoint; defenders take posts beyond it in their corridor, move when the front
-  moves, and send their squad to mine the road towards the attackers
-  (`BotController.order_squad`). HUD `ThunderPanel`; `MapView._draw_route` draws road,
+  checkpoint; defenders take posts (`defender_post_ahead_share` 0.5 between
+  the attackers and the zone, `defender_post_zone_share` 0.3 in it, the rest just behind), move when
+  the front moves, and mine all they can (`ThunderRoadBots._mine_step` every 4 s once standing
+  (hardly moving, orders or not) and as the front moves: a carried mine goes out, 65 % between the
+  next checkpoint's zone and the front, else in the zone, within 240 m along the road of the tank;
+  empty, the squad is recalled to refill; BotController doesn't recall a squad out on a mine job) (`BotController.order_squad`). HUD `ThunderPanel`; `MapView._draw_route` draws road,
   own corridor and checkpoints. `RespawnAtStart` leaves respawns to the mode. Online: the
   host runs it, clients get `ThunderRoadMode.get_net_state()` (`rpc_thunder_state`, 2 Hz and
   on checkpoints/rounds/end; per-tank wave/respawn/outside by net_id, stats rows), emit the

@@ -11,6 +11,11 @@ extends Resource
 ## The blast lifts the tank: an upward kick of this speed (m/s) on its mass, at the mine.
 @export var jolt_speed_mps: float = 0.6
 
+## Besides throwing the track the blast takes this much structure hp (never a
+## knock-out) and throws this much dirt over the crew's optics (0..1, Tank.add_optics_dirt).
+@export var blast_hp: float = 10.0
+@export_range(0.0, 1.0) var optics_dirt: float = 0.8
+
 @export_group("Destroyed by gunfire")
 ## Any gun round (>= 20 mm, not of the mine's team) landing this close destroys it (m)...
 @export var destroy_by_gun_m: float = 2.0

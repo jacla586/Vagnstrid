@@ -406,6 +406,34 @@
 			],
 			"look_height_m": 1.0,
 			"fov": 70
+		},
+		{
+			"name": "30_sign_back",
+			"at": [
+				2857.5,
+				1702.1
+			],
+			"height_m": 1.9,
+			"look_at": [
+				2853.5,
+				1702.4
+			],
+			"look_height_m": 1.9,
+			"fov": 40
+		},
+		{
+			"name": "31_sign_front",
+			"at": [
+				2849.5,
+				1702.7
+			],
+			"height_m": 1.9,
+			"look_at": [
+				2853.5,
+				1702.4
+			],
+			"look_height_m": 1.9,
+			"fov": 40
 		}
 	],
 	"linghem": [
