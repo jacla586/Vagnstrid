@@ -521,11 +521,16 @@ func _add_commander_figure() -> void:
 	($Visual/Turret/Cupola as Node3D).add_child(_commander_figure)
 
 
-## Puts the commander's figure on render layer `layer` alone: the own commander's view
-## (CommanderCamera) doesn't render it, so his own head isn't in the way.
+## Puts the commander's figure and the roof MG's pintle post on render layer `layer` alone:
+## the own commander's view (CommanderCamera) doesn't render them, so his own head and the
+## post right in front of the cupola aren't in the way. The gun itself stays visible.
 func set_commander_figure_layer(layer: int) -> void:
+	var mask: int = 1 << (clampi(layer, 1, 20) - 1)
 	if _commander_figure != null:
-		_commander_figure.layers = 1 << (clampi(layer, 1, 20) - 1)
+		_commander_figure.layers = mask
+	var mount := get_node_or_null("Visual/Turret/RoofMG/Mount") as MeshInstance3D
+	if mount != null:
+		mount.layers = mask
 
 
 ## The roof MG's look (RoofMgModel, a Browning M2-like gun) on every tank, model or not.
