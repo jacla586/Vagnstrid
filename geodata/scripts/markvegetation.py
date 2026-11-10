@@ -34,7 +34,7 @@ VASS_VATTEN_M = 6.0
 GRAS = {49, 50, 53, 54, 57, 58, 59, 62, 63, 64, 65, 66, 77, 80, 90, 95}
 
 
-def bygg(lc, CIDX, T, shape, data_dir, byggnader, ut_dir, forhands=None, sjoar=None, RES=2.0):
+def bygg(lc, CIDX, T, shape, data_dir, byggnader, ut_dir, forhands=None, sjoar=None, RES=2.0, gräsmattor=None):
     namn_av = {i: n for n, i in CIDX.items()}
     mv = np.zeros(shape, np.uint8)
     for idx, namn in namn_av.items():
@@ -67,6 +67,10 @@ def bygg(lc, CIDX, T, shape, data_dir, byggnader, ut_dir, forhands=None, sjoar=N
         natur = np.isin(mv, [K['kort gräs'], K['högt gräs'], K['våtmark'], K['snår']])
         vass = (~sjo & (land_avst <= VASS_LAND_M) & natur) | (sjo & (vatten_avst <= VASS_VATTEN_M))
         mv[vass] = K['vass']
+    # lekplatser och liknande (OSM): klippt gräs
+    if gräsmattor:
+        g = rasterize([(p, 1) for p in gräsmattor if not p.is_empty], out_shape=shape, transform=T).astype(bool)
+        mv[g & (mv != K['ingen'])] = K['gräsmatta']
     # vägrenen (en cell utanför asfalten och gruset) hålls kort
     vag_idx = [CIDX[n] for n in ('väg_asfalt', 'väg_grus') if n in CIDX]
     if vag_idx:

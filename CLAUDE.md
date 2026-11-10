@@ -206,6 +206,13 @@ shows on the minimap. This is what we test first.
   NVDB's limit changes, give-way/stop signs and bus stop signs from OSM nodes, bus shelters from OSM
   (shelter nodes and platforms with shelter=yes); sign faces from a generated atlas (alpha). Rural
   roads get 0.6 m ditches in the carving.
+- Playgrounds (geodata `lekplatser.py`): every OSM playground gets equipment (climbing tower with roof,
+  net/wall and slide, slide, swing set or basket swing, roundabout, zip line in big parks, sandpit,
+  basketball hoop, seesaw, benches, playhouse), unique per park (seeded by its OSM id: choice, count,
+  colours, sizes, layout; OSM equipment nodes placed where mapped), sand or rubber under them. One glb
+  node per piece in group `Lekplatser` (vertex colours); `PlaygroundBreak` (player rig) gives them a
+  vertex-colour material and squashes a piece flat when a tank (group "tanks", puppets too) drives over
+  it (no collision, nothing sent).
 - Hits and wrecks: a gun round (>= 20 mm) on a tank emits `Tank.struck(outcome, dir)`
   (clients get it for their own tank by `rpc_struck`) and jolts the hull
   (`TankData.hit_jolt_factor`); `HitReaction` in the player rig shakes the commander/gunner

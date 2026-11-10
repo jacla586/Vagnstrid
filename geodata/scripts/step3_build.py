@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant, lekplatser
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -197,7 +197,8 @@ BANA.marktacke(lc, CIDX['väg_grus'], (H, W), T)
 import markvegetation
 MV = markvegetation.bygg(lc, CIDX, T, (H, W), WORK.parent / 'data' if WORK.name == 'work' and WORK.parent != ROOT else ROOT / 'data',
                     [gm for gm, _ in feat['buildings']], OUT,
-                    str(ROOT / 'forhandsbilder' / f'markvegetation_{NAMN}.png'), water_polys, RES)
+                    str(ROOT / 'forhandsbilder' / f'markvegetation_{NAMN}.png'), water_polys, RES,
+                    [x[0] for x in feat.get('lekplatser', [])])
 markvegetation.vatten(water_polys, water_levels, T, (H, W), OUT)   # sjöarnas nivåer för vadningen
 pal = np.array([c for _, c in CLASSES], np.uint8)
 Image.fromarray(lc).save(f'{OUT}/landcover_index.png')
@@ -329,6 +330,24 @@ BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 
 scene.graph.update(frame_to='Vagkant', frame_from=scene.graph.base_frame)
 vagkant.Vagkant(roads, MARK.korsningar, feat.get('vagpunkter', []), h, np.load(str(WORK / 'h_raw.npy')).astype(np.float64),
                 sample, to_world, add_merged, mat).bygg()
+# Lekplatser (lekplatser.py): redskap i OSM:s lekplatsytor, unika per park
+scene.graph.update(frame_to='Lekplatser', frame_from=scene.graph.base_frame)
+scene.graph.update(frame_to='Lekplatsunderlag', frame_from=scene.graph.base_frame)
+_lek_stopp = np.isin(lc, [CIDX['väg_asfalt'], CIDX['väg_grus'], CIDX['sjö'], CIDX['hav']])
+if feat['buildings']:
+    _lek_stopp |= rasterize([(gm.buffer(1.0), 1) for gm, _ in feat['buildings']], out_shape=(H, W), transform=T).astype(bool)
+def _lek_hinder(E, N):
+    c, r_ = to_px(E, N)
+    i_, j_ = int(round(r_)), int(round(c))
+    return not (0 <= i_ < H and 0 <= j_ < W) or bool(_lek_stopp[i_, j_])
+_lek = lekplatser.bygg([x for x in feat.get('lekplatser', []) if x[0].intersects(BOX)], feat.get('lekredskap', []),
+                       sample, h, to_world, scene, add_merged, mat, _lek_hinder)
+_lek_mask = np.zeros((H, W), bool)   # step4: inga träd eller buskar på redskapen
+for _poly, _pts in _lek:
+    for _p in _pts:
+        c, r_ = to_px(*_p)
+        _lek_mask[max(int(r_) - 2, 0):int(r_) + 3, max(int(c) - 2, 0):int(c) + 3] = True
+np.save(str(WORK / 'lekplatser_mask.npy'), _lek_mask)
 # Vägtrummor (trummor.py, Trafikverket): rörändar i vägbankarna
 scene.graph.update(frame_to='Trummor', frame_from=scene.graph.base_frame)
 trummor.bygg(TRUMMOR, h, sample, to_world, add_merged, mat)

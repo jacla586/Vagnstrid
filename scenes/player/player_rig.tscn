@@ -41,6 +41,7 @@
 [ext_resource type="Script" path="res://scripts/world/ground_cover/ground_cover_field.gd" id="90_ground_cover"]
 [ext_resource type="Script" path="res://scripts/world/ground_cover/ground_cover_canopy.gd" id="91_ground_canopy"]
 [ext_resource type="Script" path="res://scripts/world/water_look.gd" id="92_water_look"]
+[ext_resource type="Script" path="res://scripts/world/playground_break.gd" id="93_playground"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -266,6 +267,9 @@ script = ExtResource("91_ground_canopy")
 
 [node name="WaterLook" type="Node" parent="."]
 script = ExtResource("92_water_look")
+
+[node name="PlaygroundBreak" type="Node" parent="."]
+script = ExtResource("93_playground")
 
 [node name="WeatherView" type="Node" parent="." node_paths=PackedStringArray("tank")]
 script = ExtResource("35_weather_view")
