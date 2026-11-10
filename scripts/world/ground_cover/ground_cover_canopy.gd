@@ -72,7 +72,7 @@ func _load() -> bool:
 	add_child(root)
 	var heights := PackedFloat32Array()
 	var colors := PackedVector3Array()
-	for i: int in 8:
+	for i: int in 16:   # the shader's class arrays
 		var k: GroundCoverClassData = _gc.rules.classes[i] if i < _gc.rules.classes.size() else null
 		heights.append(k.height_m if k != null else 0.0)
 		# the blades' colour seen from afar: mostly tips, a little shadow between them

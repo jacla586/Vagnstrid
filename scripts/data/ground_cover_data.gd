@@ -9,6 +9,9 @@ extends Resource
 @export var height: int = 0
 @export var cell_m: float = 2.0
 @export var classes: PackedByteArray = PackedByteArray()
+## Lakes: id per cell (0 = none, n = water_levels[n - 1]), same grid (geodata vatten.bin).
+@export var water_ids: PackedByteArray = PackedByteArray()
+@export var water_levels: PackedFloat32Array = PackedFloat32Array()
 
 
 func class_at(pos: Vector3) -> int:
@@ -17,6 +20,18 @@ func class_at(pos: Vector3) -> int:
 	if c < 0 or r < 0 or c >= width or r >= height:
 		return 0
 	return classes[r * width + c]
+
+
+## Lake surface height at `pos`, NAN where there is no lake.
+func water_level_at(pos: Vector3) -> float:
+	if water_ids.is_empty():
+		return NAN
+	var c: int = int(roundf(pos.x / cell_m))
+	var r: int = int(roundf(pos.z / cell_m))
+	if c < 0 or r < 0 or c >= width or r >= height:
+		return NAN
+	var id: int = water_ids[r * width + c]
+	return water_levels[id - 1] if id > 0 and id <= water_levels.size() else NAN
 
 
 ## The ground cover for the scene's terrain (Terrain3D data_directory res://terrain/<map>),

@@ -169,6 +169,7 @@ var _wreck_pending_s: float = 0.0
 var _wreck_pending_no_turret: bool = false
 ## Smoothed drive effort that pitches the hull (-1 full braking .. 1 full throttle), and
 ## a slow copy of it: the difference is the kick while the effort changes.
+var _ford: float = 1.0   # _ford_factor
 var _rock: float = 0.0
 var _rock_slow: float = 0.0
 var _commander_wound_remaining: float = 0.0
@@ -1859,6 +1860,20 @@ func _apply_suspension(state: PhysicsDirectBodyState3D, rays: Array[RayCast3D],
 		normals.append(ray.get_collision_normal())
 
 
+## Speed share left in water (lakes): 1 on land. Looked up a few times a second.
+func _ford_factor() -> float:
+	if Engine.get_physics_frames() % Ticks.every(5.0) == 0:
+		var gc: GroundCover = GroundCover.of(self)
+		var depth: float = gc.water_depth(global_position) if gc != null else 0.0
+		if depth <= 0.0:
+			_ford = 1.0
+		elif depth > data.ford_depth_m:
+			_ford = data.too_deep_speed_factor
+		else:
+			_ford = 1.0 - data.ford_slow_share * depth / maxf(data.ford_depth_m, 0.01)
+	return _ford
+
+
 func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 		left_points: Array[Vector3], left_normals: Array[Vector3],
 		right_points: Array[Vector3], right_normals: Array[Vector3]) -> void:
@@ -1868,7 +1883,7 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	# Longitudinal: chase the target speed, limited by acceleration / braking.
 	var throttle: float = 0.0 if move_blocked else clampf(_command.throttle, -1.0, 1.0)
 	var top_speed_kmh: float = data.max_forward_speed_kmh if throttle >= 0.0 else data.max_reverse_speed_kmh
-	var target_speed: float = throttle * top_speed_kmh * KMH_TO_MS * _damage.speed_factor()
+	var target_speed: float = throttle * top_speed_kmh * KMH_TO_MS * _damage.speed_factor() * _ford_factor()
 	var speed: float = linear_velocity.dot(forward)
 	var speeding_up: bool = target_speed * speed >= 0.0 and absf(target_speed) > absf(speed)
 	var accel_limit: float = data.acceleration if speeding_up else data.brake_deceleration

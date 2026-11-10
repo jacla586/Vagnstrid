@@ -1,8 +1,8 @@
 // Shared by ground_cover_canopy.gdshader (near: dithered) and ground_cover_canopy_far.gdshader
 // (opaque). The mesh (geodata markvegetation.lager_glb) lies on the ground with the class index in
 // UV.x; height and colour per class come from data/world/ground_cover.tres (GroundCoverCanopy).
-uniform float class_height[8];
-uniform vec3 class_color[8];
+uniform float class_height[16];
+uniform vec3 class_color[16];
 
 varying vec3 world_pos;
 varying vec3 canopy_color;
@@ -20,7 +20,7 @@ float noise2(vec2 p) {
 }
 
 void vertex() {
-	int ci = clamp(int(UV.x + 0.5), 0, 7);
+	int ci = clamp(int(UV.x + 0.5), 0, 15);
 	VERTEX.y += class_height[ci];
 	canopy_color = class_color[ci];
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;

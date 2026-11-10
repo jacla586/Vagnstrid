@@ -58,6 +58,15 @@ func ground_y(x: float, z: float) -> float:
 	return td.call("get_height", Vector3(x, 0.0, z)) if td != null else NAN
 
 
+## Water depth (m) over the ground at `pos` in a lake, 0 outside one.
+func water_depth(pos: Vector3) -> float:
+	var level: float = data.water_level_at(pos)
+	if is_nan(level):
+		return 0.0
+	var g: float = ground_y(pos.x, pos.z)
+	return maxf(level - g, 0.0) if not is_nan(g) else 0.0
+
+
 ## Share (0..1) of a body `body_height` m tall at `pos` hidden by the vegetation, seen
 ## from `viewer`: full along the ground, less when looked down on from above.
 func hidden_share(pos: Vector3, body_height: float, viewer: Vector3) -> float:

@@ -266,6 +266,62 @@
 			],
 			"look_height_m": 0.0,
 			"fov": 60
+		},
+		{
+			"name": "20_lake_shore",
+			"at": [
+				505,
+				2554
+			],
+			"height_m": 2.5,
+			"look_at": [
+				323,
+				2554
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		},
+		{
+			"name": "21_pond",
+			"at": [
+				905,
+				756
+			],
+			"height_m": 2.5,
+			"look_at": [
+				842,
+				756
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		},
+		{
+			"name": "22_lake_above",
+			"at": [
+				520,
+				2620
+			],
+			"height_m": 40.0,
+			"look_at": [
+				400,
+				2554
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		},
+		{
+			"name": "23_culvert",
+			"at": [
+				379,
+				1741
+			],
+			"height_m": 1.6,
+			"look_at": [
+				389,
+				1746
+			],
+			"look_height_m": 0.3,
+			"fov": 60
 		}
 	],
 	"linghem": [

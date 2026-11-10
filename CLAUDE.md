@@ -192,7 +192,15 @@ shows on the minimap. This is what we test first.
   (4 m cells on the ground, class in UV.x; height and colour from the .tres by shader): opaque far,
   dithered near the blade field's edge and thinned when looked down on (same angles as the rule), so a
   man lying in a far field is hidden to the eye as to bots, with nothing marking him. Cost ~0.1-1 ms.
-  So far: Vidingsjö.
+  So far: Vidingsjö. Class 8 'vass' (reed, 1.6 m) belts the lakes' shores (4 m up the land, 6 m
+  into the water).
+- Water: `WaterLook` (player rig) puts `assets/shaders/water.gdshader` on the map glb's water meshes
+  (`Sjo_*`, `Hav_*`, group `Vattendrag`): colour by thickness over the bottom (depth buffer), a pale
+  rim at the shore, normal maps drifting with `WeatherData.wind_mps`, rain rings by `rain_intensity`.
+  Fording: `GroundCoverData.water_ids/water_levels` (lakes, from geodata `vatten.bin`),
+  `GroundCover.water_depth()`; `Tank._ford_factor()` slows the drive by `TankData.ford_slow_share` at
+  `ford_depth_m` (1.2 m), deeper `too_deep_speed_factor` (a crawl). Culverts (Trafikverket, state
+  roads): pipe ends in hollows at the road banks (geodata `trummor.py`, glb group `Trummor`).
 - Hits and wrecks: a gun round (>= 20 mm) on a tank emits `Tank.struck(outcome, dir)`
   (clients get it for their own tank by `rpc_struck`) and jolts the hull
   (`TankData.hit_jolt_factor`); `HitReaction` in the player rig shakes the commander/gunner

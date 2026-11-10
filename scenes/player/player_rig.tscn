@@ -40,6 +40,7 @@
 [ext_resource type="Resource" path="res://data/ui/killcam.tres" id="40_killcam_data"]
 [ext_resource type="Script" path="res://scripts/world/ground_cover/ground_cover_field.gd" id="90_ground_cover"]
 [ext_resource type="Script" path="res://scripts/world/ground_cover/ground_cover_canopy.gd" id="91_ground_canopy"]
+[ext_resource type="Script" path="res://scripts/world/water_look.gd" id="92_water_look"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -262,6 +263,9 @@ script = ExtResource("90_ground_cover")
 
 [node name="GroundCoverCanopy" type="Node3D" parent="."]
 script = ExtResource("91_ground_canopy")
+
+[node name="WaterLook" type="Node" parent="."]
+script = ExtResource("92_water_look")
 
 [node name="WeatherView" type="Node" parent="." node_paths=PackedStringArray("tank")]
 script = ExtResource("35_weather_view")

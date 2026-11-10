@@ -106,6 +106,11 @@ func _save_ground_cover() -> void:
 	gc.height = int(info["height"])
 	gc.cell_m = 2.0
 	gc.classes = FileAccess.get_file_as_bytes(bin)
+	# lakes for fording (vatten.bin/.json): id per cell and the levels
+	if FileAccess.file_exists(_geo_out + "/vatten.bin") and FileAccess.file_exists(_geo_out + "/vatten.json"):
+		var w: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(_geo_out + "/vatten.json"))
+		gc.water_ids = FileAccess.get_file_as_bytes(_geo_out + "/vatten.bin")
+		gc.water_levels = PackedFloat32Array(w["nivaer"])
 	var path: String = "res://data/maps/%s_groundcover.res" % _name
 	_save_keeping_uid(gc, path)
 	print("%s: ground cover %d x %d -> %s" % [_name, gc.width, gc.height, path])

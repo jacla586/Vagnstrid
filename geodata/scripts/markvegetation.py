@@ -12,6 +12,7 @@ i spelets data/world/ground_cover.tres, som har höjder och utseende):
   5 våtmark       starr och vass
   6 snår          buskmark, sly (lågt ris mellan buskarna)
   7 skogsbotten   ris, blåbär och ljung under träden
+  8 vass          bälte längs sjöarnas stränder: VASS_LAND_M upp på land (naturmark) och VASS_VATTEN_M ut i sjön
 Grödor ur `<data>/jordbruk_skiften.geojson` (hamta_jordbruk.py) går före OSM:s åker/äng.
 """
 import json
@@ -20,7 +21,7 @@ import numpy as np
 from rasterio.features import rasterize
 from shapely.geometry import shape as geo_shape
 
-KLASSER = ['ingen', 'gräsmatta', 'kort gräs', 'högt gräs', 'gröda', 'våtmark', 'snår', 'skogsbotten']
+KLASSER = ['ingen', 'gräsmatta', 'kort gräs', 'högt gräs', 'gröda', 'våtmark', 'snår', 'skogsbotten', 'vass']
 K = {n: i for i, n in enumerate(KLASSER)}
 # marktäcke (step3 CLASSES) -> klass
 FRAN_MARKTACKE = {'hav': 'ingen', 'mark': 'kort gräs', 'skog': 'skogsbotten', 'åker': 'gröda', 'äng': 'högt gräs',
@@ -28,10 +29,12 @@ FRAN_MARKTACKE = {'hav': 'ingen', 'mark': 'kort gräs', 'skog': 'skogsbotten', '
                   'buskmark': 'snår', 'strand': 'ingen', 'sjö': 'ingen', 'väg_asfalt': 'ingen', 'väg_grus': 'ingen'}
 # Jordbruksverkets grödkoder (huvudgröda): bete kort, vall/äng/skyddszon högt, annars gröda
 BETE = {52, 55, 56, 61}
+VASS_LAND_M = 4.0
+VASS_VATTEN_M = 6.0
 GRAS = {49, 50, 53, 54, 57, 58, 59, 62, 63, 64, 65, 66, 77, 80, 90, 95}
 
 
-def bygg(lc, CIDX, T, shape, data_dir, byggnader, ut_dir, forhands=None):
+def bygg(lc, CIDX, T, shape, data_dir, byggnader, ut_dir, forhands=None, sjoar=None, RES=2.0):
     namn_av = {i: n for n, i in CIDX.items()}
     mv = np.zeros(shape, np.uint8)
     for idx, namn in namn_av.items():
@@ -55,6 +58,15 @@ def bygg(lc, CIDX, T, shape, data_dir, byggnader, ut_dir, forhands=None):
             satt = (r != 255) & oppen
             mv[satt] = r[satt]
             n_sk = len(former)
+    if sjoar:
+        # vass: ett bälte längs stränderna, på naturmark och ut i grunt vatten
+        from scipy import ndimage as ndi
+        sjo = rasterize([(p, 1) for p in sjoar], out_shape=shape, transform=T).astype(bool)
+        land_avst = ndi.distance_transform_edt(~sjo) * RES
+        vatten_avst = ndi.distance_transform_edt(sjo) * RES
+        natur = np.isin(mv, [K['kort gräs'], K['högt gräs'], K['våtmark'], K['snår']])
+        vass = (~sjo & (land_avst <= VASS_LAND_M) & natur) | (sjo & (vatten_avst <= VASS_VATTEN_M))
+        mv[vass] = K['vass']
     if byggnader:
         mv[rasterize([(b, 1) for b in byggnader], out_shape=shape, transform=T).astype(bool)] = K['ingen']
     ut = Path(ut_dir)
@@ -67,13 +79,13 @@ def bygg(lc, CIDX, T, shape, data_dir, byggnader, ut_dir, forhands=None):
     if forhands:
         from PIL import Image
         pal = np.array([(90, 90, 90), (120, 170, 80), (150, 175, 90), (190, 200, 90), (225, 200, 90),
-                         (90, 140, 130), (100, 120, 60), (60, 90, 50)], np.uint8)
+                         (90, 140, 130), (100, 120, 60), (60, 90, 50), (150, 120, 60)], np.uint8)
         Image.fromarray(pal[mv]).save(forhands)
     return mv
 
 
 # ---------- växtlagret på avstånd (spelets GroundCoverCanopy) ----------
-LAGER_KLASSER = (3, 4, 5, 6)   # högt gräs, gröda, våtmark, snår: höjer sig över en liggande soldat
+LAGER_KLASSER = (3, 4, 5, 6, 8)   # högt gräs, gröda, våtmark, snår, vass: höjer sig över en liggande soldat
 LAGER_RUTA = 2                 # 2 × 2 celler = 4 m
 LAGER_TILE_M = 250.0
 
@@ -129,3 +141,18 @@ def lager_glb(mv, h, RES, ut_fil):
     scene.export(ut_fil)
     print(f'markvegetation: växtlager {len(ii)} rutor i {len(nycklar)} bitar -> {ut_fil}')
     return len(ii)
+
+
+
+def vatten(sjoar, nivaer, T, shape, ut_dir):
+    """Sjöarnas id per 2 m-cell (uint8, 0 = inget, n = sjö n) och vattennivåerna, för spelets vadning
+    (GroundCoverData.water_ids/water_levels): out/vatten.bin + vatten.json."""
+    ids = np.zeros(shape, np.uint8)
+    former = [(p, min(k + 1, 255)) for k, p in enumerate(sjoar)]
+    if former:
+        ids = rasterize(former, out_shape=shape, transform=T, fill=0).astype(np.uint8)
+    ut = Path(ut_dir)
+    ids.tofile(ut / 'vatten.bin')
+    json.dump(dict(width=int(shape[1]), height=int(shape[0]),
+                   nivaer=[round(float(v), 3) for v in nivaer[:255]]), open(ut / 'vatten.json', 'w'))
+    print(f'vatten: {len(sjoar)} sjöar, {int((ids > 0).sum())} celler')

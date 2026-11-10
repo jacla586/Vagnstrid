@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -133,6 +133,8 @@ for geom, t in feat['waterways']:
     h[wm] -= depth * 0.7
 h = ndi.gaussian_filter(h, 0.6) * 0.5 + h * 0.5  # mjuka kanter efter schaktning
 BRO.schakta(h, sample, (H, W), T, OX, OY, RES)   # undergångar: fri höjd under däcken
+TRUMMOR = trummor.las((X0, Y1 - H * RES, X0 + W * RES, Y1))   # vägtrummor (trummor.py)
+trummor.schakta(TRUMMOR, h, (H, W), T, OX, OY, RES)
 BRO.spara_mask(str(WORK / 'broar_mask.npy'), (H, W), T)   # step4: inga träd i schakt och på broar
 # Järnväg (jarnvag.py): profil ur den orörda höjdmodellen, banvallen formas sist
 BANA = jarnvag.Jarnvag(feat.get('rails', []), feat.get('platforms', []), BOX,
@@ -188,7 +190,8 @@ BANA.marktacke(lc, CIDX['väg_grus'], (H, W), T)
 import markvegetation
 MV = markvegetation.bygg(lc, CIDX, T, (H, W), WORK.parent / 'data' if WORK.name == 'work' and WORK.parent != ROOT else ROOT / 'data',
                     [gm for gm, _ in feat['buildings']], OUT,
-                    str(ROOT / 'forhandsbilder' / f'markvegetation_{NAMN}.png'))
+                    str(ROOT / 'forhandsbilder' / f'markvegetation_{NAMN}.png'), water_polys, RES)
+markvegetation.vatten(water_polys, water_levels, T, (H, W), OUT)   # sjöarnas nivåer för vadningen
 pal = np.array([c for _, c in CLASSES], np.uint8)
 Image.fromarray(lc).save(f'{OUT}/landcover_index.png')
 Image.fromarray(pal[lc]).save(f'{OUT}/landcover_color.png')
@@ -314,6 +317,9 @@ vagmarkering.Markering(roads, NV).bygg(add_merged, mat, to_world)
 scene.graph.update(frame_to='Broar', frame_from=scene.graph.base_frame)
 BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 0.95),
                 mat('Tra', (120, 88, 58), 0.9), mat('Racke', (72, 74, 76), 0.6))
+# Vägtrummor (trummor.py, Trafikverket): rörändar i vägbankarna
+scene.graph.update(frame_to='Trummor', frame_from=scene.graph.base_frame)
+trummor.bygg(TRUMMOR, h, sample, to_world, add_merged, mat)
 if BANA:
     for grupp in ('Jarnvag', 'Banhinder'):
         scene.graph.update(frame_to=grupp, frame_from=scene.graph.base_frame)

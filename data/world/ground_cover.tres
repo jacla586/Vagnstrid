@@ -123,6 +123,21 @@ color_b = Color(0.373, 0.439, 0.204, 1)
 heads = 0
 head_color = Color(0.784, 0.706, 0.431, 1)
 
+[sub_resource type="Resource" id="Klass_8"]
+script = ExtResource("2_cls")
+name = "vass"
+height_m = 1.6
+density = 3.0
+blades = 9
+blade_width_m = 0.03
+spread_m = 0.14
+height_jitter = 0.2
+lean = 0.12
+color_a = Color(0.5, 0.52, 0.28, 1)
+color_b = Color(0.62, 0.58, 0.34, 1)
+heads = 3
+head_color = Color(0.36, 0.26, 0.17, 1)
+
 [resource]
 script = ExtResource("1_set")
-classes = Array[ExtResource("2_cls")]([SubResource("Klass_0"), SubResource("Klass_1"), SubResource("Klass_2"), SubResource("Klass_3"), SubResource("Klass_4"), SubResource("Klass_5"), SubResource("Klass_6"), SubResource("Klass_7")])
+classes = Array[ExtResource("2_cls")]([SubResource("Klass_0"), SubResource("Klass_1"), SubResource("Klass_2"), SubResource("Klass_3"), SubResource("Klass_4"), SubResource("Klass_5"), SubResource("Klass_6"), SubResource("Klass_7"), SubResource("Klass_8")])

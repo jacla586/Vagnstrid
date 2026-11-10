@@ -20,6 +20,11 @@ extends Resource
 ## Steepest slope the tracks can still climb (degrees). The tracks cancel gravity on
 ## slopes up to this; steeper and the tank stalls or slides back.
 @export var max_climb_deg: float = 32.0
+## Fording (lakes, GroundCover.water_depth at the hull): speed falls with the water's depth,
+## by ford_slow_share at ford_depth_m; deeper the tank only crawls (too_deep_speed_factor).
+@export var ford_depth_m: float = 1.2
+@export var ford_slow_share: float = 0.55
+@export var too_deep_speed_factor: float = 0.12
 ## Thickest tree trunk this tank can push over (m). Thicker trees stop it.
 @export var tree_push_max_diameter_m: float = 0.7
 ## Hitting a pushable tree at least this fast fells it at once (km/h).
