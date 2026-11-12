@@ -4,6 +4,7 @@ Hämtar Lantmäteriets ortofoto (STAC-bild, CC BY 4.0) för ett spelområde som 
 
     .venv/bin/python scripts/hamta_ortofoto.py lista --omrade vidingsjo
     .venv/bin/python scripts/hamta_ortofoto.py hamta --omrade vidingsjo [--upplosning 0.5] [--samling orto-l2-2025]
+    .venv/bin/python scripts/hamta_ortofoto.py hamta --omrade linghem,campus    # flera med en inloggning
 
   lista  -> vilka flygningar (samlingar) som täcker rutan, ingen inloggning
   hamta  -> <omrade>/data/ortofoto_<omrade>.tif (RGB + IR, SWEREF 99 TM, vald upplösning)
@@ -111,20 +112,22 @@ def hamta(ruta, items, ut, upplosning):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("steg", choices=["lista", "hamta"])
-    ap.add_argument("--omrade", required=True)
+    ap.add_argument("--omrade", required=True, help="ett eller flera områden, kommaseparerade (en inloggning)")
     ap.add_argument("--samling", help="t.ex. orto-l2-2025 (förval: senaste 0.16 m som täcker rutan)")
     ap.add_argument("--upplosning", type=float, default=0.5, help="meter per pixel (förval 0.5)")
     a = ap.parse_args()
-    ruta = ruta_for(a.omrade)
-    per = sok(ruta)
-    if a.steg == "lista":
-        for s in sorted(per, key=lambda s: s.rsplit("-", 1)[-1], reverse=True):
-            hel = "hela" if _tacker([i["properties"].get("proj:bbox") for i in per[s]], ruta) else "delvis"
-            print(f"{s:28s} {len(per[s]):3d} rutor  {hel:6s} {info(per[s])}")
-        return
-    s = valj_samling(per, ruta, a.samling)
-    print(f"Samling {s}: {info(per[s])}")
-    hamta(ruta, per[s], str(GEO / a.omrade / "data" / f"ortofoto_{a.omrade}.tif"), a.upplosning)
+    for omrade in a.omrade.split(","):
+        print(f"== {omrade}")
+        ruta = ruta_for(omrade)
+        per = sok(ruta)
+        if a.steg == "lista":
+            for s in sorted(per, key=lambda s: s.rsplit("-", 1)[-1], reverse=True):
+                hel = "hela" if _tacker([i["properties"].get("proj:bbox") for i in per[s]], ruta) else "delvis"
+                print(f"{s:28s} {len(per[s]):3d} rutor  {hel:6s} {info(per[s])}")
+            continue
+        s = valj_samling(per, ruta, a.samling)
+        print(f"Samling {s}: {info(per[s])}")
+        hamta(ruta, per[s], str(GEO / omrade / "data" / f"ortofoto_{omrade}.tif"), a.upplosning)
 
 
 if __name__ == "__main__":

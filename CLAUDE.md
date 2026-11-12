@@ -785,7 +785,9 @@ shows on the minimap. This is what we test first.
   which step4 lays out as rows of low-poly 'hack' bushes (3 tufts, 240 tris, 1 m apart, stretched along the hedge);
   laser bushes in a hedge and not much taller are replaced, big bushes stay. OSM hedges become the same rows.
   Previews `geodata/forhandsbilder/hackar_vidingsjo_*.png`; views 34-38 in `render_views.json`. Cost +0.2 ms
-  average (+0.6 max) in Vidingsjö (63k hedge bushes); the first try with full `buske` models cost +0.8/+2.9. Done: vidingsjo.
+  average (+0.6 max) in Vidingsjö (63k hedge bushes); the first try with full `buske` models cost +0.8/+2.9. Hedges on
+  all maps (vidingsjo, linghem, campus, road_to_science, corson; tactical grids rebaked, bushes count as cover); the
+  orthophoto colour map only on vidingsjo (the only map with terrain textures).
 - House style (types, colours, facades with windows, semi-realistic areas) comes from
   `geodata/stilar.json`; rebuild the map to apply changes.
 - Real maps such as `scenes/maps/vidingsjo.tscn`
