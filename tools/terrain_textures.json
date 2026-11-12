@@ -36,5 +36,7 @@
 	"macro_variation": true,
 	"macro_variation1": [0.86, 0.9, 0.78],
 	"macro_variation2": [0.94, 0.9, 0.84],
-	"blend_sharpness": 0.75
+	"blend_sharpness": 0.75,
+	"_doc_ortho": "ortho_tint: with <out>/<file> (geodata/scripts/ortofoto_tint.py, from Lantmäteriet's orthophoto) the import uses it as the colour map instead of the land cover colours and multiplies every texture's albedo_color by 1/neutral_linear (the colour map can only darken, so neutral is encoded at neutral_linear). enabled false = land cover colours as before.",
+	"ortho_tint": {"enabled": true, "file": "ortofoto_tint.png", "neutral_linear": 0.55}
 }

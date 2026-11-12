@@ -16,6 +16,6 @@
  "buskar": {
   "buske": {"fargvariation": 0.16, "varianter": [{"generera": "buske"}, {"generera": "buske"}, {"generera": "buske"}]},
   "sly": {"fargvariation": 0.16, "varianter": [{"generera": "sly"}, {"generera": "sly"}]},
-  "hack": {"fargvariation": 0.08, "varianter": [{"generera": "hack"}]}
+  "hack": {"fargvariation": 0.04, "varianter": [{"generera": "hack"}, {"generera": "hack"}]}
  }
 }

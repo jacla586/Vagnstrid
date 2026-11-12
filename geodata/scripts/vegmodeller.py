@@ -285,17 +285,16 @@ def sly(rng):
 
 
 def hack(rng):
-    """Klippt häck: avlång rundad låda, x från -1 till 1 (längs häcken), z från -0,5 till 0,5."""
-    m = trimesh.creation.box(extents=[2.0, 1.0, 1.0])
-    m = m.subdivide().subdivide()
-    v = np.asarray(m.vertices).copy()
-    v[:, 1] += 0.5
-    v[:, [0, 2]] *= 1 + rng.uniform(-0.03, 0.03, (len(v), 1))
-    v[:, 1] *= 1 + rng.uniform(-0.04, 0.04, len(v))
-    v[:, 2] *= 0.5
-    v[:, 1] = np.clip(v[:, 1], 0, 1)
-    m.vertices = v
-    return _farga(m, (60, 94, 46), rng, variation=0.07, mork_nere=0.35)
+    """Häckbuske: 3 tussar i en tät, jämnhög klump (få trianglar: häckar är tiotusentals buskar i rad,
+    step4 ställer dem tätt så att de flyter ihop). Jämn färg, mörkare nertill."""
+    delar = []
+    for k in range(3):
+        a = 2 * math.pi * k / 3 + rng.uniform(-0.4, 0.4); d = rng.uniform(0.2, 0.35)
+        r = rng.uniform(0.42, 0.5)
+        delar.append(_farga(_klump([math.cos(a) * d, rng.uniform(0.45, 0.55), math.sin(a) * d],
+                                   r, rng.uniform(0.5, 0.58), r, rng, jitter=0.15),
+                            (62, 98, 46), rng, variation=0.05, mork_nere=0.4))
+    return _normalisera(trimesh.util.concatenate(delar))
 
 
 GENERATORER = dict(gran=gran, tall=tall, bjork=bjork, ek=ek, buske=buske, sly=sly, hack=hack)

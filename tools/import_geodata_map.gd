@@ -135,7 +135,38 @@ func _control_image(size: Vector2i) -> Image:
 
 
 func _color_image() -> Image:
+	var ortho: String = _ortho_tint_path()
+	if ortho != "":
+		print("  colour map from the orthophoto: %s" % ortho)
+		return _pad_to_regions(_ortho_image(ortho))
 	return _pad_to_regions(_tint_image(ProjectSettings.globalize_path(_geo_out + "/landcover_color.png")))
+
+
+## The orthophoto tint (geodata/scripts/ortofoto_tint.py) when the config wants it and the map has one;
+## only with textures (it is encoded round neutral_linear and the textures are brightened to match).
+func _ortho_tint_path() -> String:
+	var ortho: Dictionary = _config.get("ortho_tint", {})
+	if not _textures_only or not bool(ortho.get("enabled", false)):
+		return ""
+	var path: String = ProjectSettings.globalize_path(_geo_out + "/" + String(ortho.get("file", "")))
+	return path if FileAccess.file_exists(path) else ""
+
+
+## How much the textures are brightened so the orthophoto tint's neutral comes out as 1. Terrain3D
+## takes albedo_color as sRGB (it is linearised for the shader), so the linear factor is encoded.
+func _albedo_boost() -> float:
+	if _ortho_tint_path() == "":
+		return 1.0
+	return Color(1.0 / float(_config["ortho_tint"].get("neutral_linear", 1.0)), 0.0, 0.0).linear_to_srgb().r
+
+
+func _ortho_image(path: String) -> Image:
+	var image := Image.load_from_file(path)
+	image.convert(Image.FORMAT_RGBA8)
+	var data: PackedByteArray = image.get_data()
+	for k: int in data.size() / 4:
+		data[k * 4 + 3] = 128  # alpha = roughness modifier, 0.5 is neutral
+	return Image.create_from_data(image.get_width(), image.get_height(), false, Image.FORMAT_RGBA8, data)
 
 
 # --- Textures only (--textures) -----------------------------------------------------
@@ -201,7 +232,8 @@ func _set_texture_list(assets: Terrain3DAssets) -> void:
 		texture.detiling_rotation = float(entry.get("detiling_rotation", 0.0))
 		texture.detiling_shift = float(entry.get("detiling_shift", 0.0))
 		var tint: Array = entry.get("albedo_color", [1.0, 1.0, 1.0])
-		texture.albedo_color = Color(float(tint[0]), float(tint[1]), float(tint[2]))
+		var boost: float = _albedo_boost()
+		texture.albedo_color = Color(float(tint[0]) * boost, float(tint[1]) * boost, float(tint[2]) * boost)
 		assets.set_texture_asset(i, texture)
 	# Drop textures beyond the list (an older, longer list).
 	for i: int in range(assets.get_texture_count() - 1, textures.size() - 1, -1):

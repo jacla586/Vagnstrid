@@ -59,6 +59,10 @@ def main():
     run(S / 'step2_terrain.py', dem, a.dem_typ, env=env)
     run(S / 'platser.py', proj, '--osm', osm, env=env)   # ortnamn till step3:s ortnamnsskyltar
     run(S / 'step3_build.py', out, objekt, env=env)
+    # Ortofoto (hamta_ortofoto.py): markens färgvariation och häckar
+    if (proj / 'data' / f'ortofoto_{proj.name}.tif').exists() and Path(objekt).exists():
+        run(S / 'ortofoto_tint.py', proj.name, env=env)
+        run(S / 'hackar.py', proj.name, env=env)
     if Path(objekt).exists():
         run(S / 'step4_trees.py', objekt, out, nmd, env=env)
     else:

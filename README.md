@@ -68,8 +68,8 @@ spelkort från de senaste åren rekommenderas.
 
 Pipelinen i [`geodata/`](geodata/) hämtar och bearbetar öppna data (Python):
 
-- **Lantmäteriet:** höjdmodell och laserdata. Ur laserpunkterna plockas varje enskilt träd ut,
-  med höjd och krona, och placeras där det står.
+- **Lantmäteriet:** höjdmodell, laserdata och ortofoto. Ur laserpunkterna plockas varje enskilt träd ut,
+  med höjd och krona, och placeras där det står. Flygfotot ger markens färgvariation.
 - **OpenStreetMap:** hus, vägar, järnväg, vatten, lekplatser, busshållplatser, trafikljus, ortnamn.
 - **Trafikverket (NVDB):** vägbredd, beläggning, hastighet och övergångsställen, och vägtrummor.
 - **Jordbruksverket:** vad som odlas på varje åker, så att man kan ligga gömd i vetet men inte i vallen.

@@ -109,7 +109,7 @@ Ligger i `vidingsjo/` med egna `data/`, `work/` och `out/`. Se `CLAUDE.md` för 
 
 - © OpenStreetMap contributors, ODbL
 - Copernicus DEM GLO-30: © DLR e.V. 2010–2014 och © Airbus Defence and Space GmbH 2014–2018, tillhandahållen under COPERNICUS av EU och ESA
-- Lantmäteriet: Markhöjdmodell Nedladdning och Laserdata Nedladdning, skog. © Lantmäteriet, CC BY 4.0, bearbetad
+- Lantmäteriet: Markhöjdmodell Nedladdning, Laserdata Nedladdning, skog och Ortofoto Nedladdning. © Lantmäteriet, CC BY 4.0, bearbetad
 - NMD, Naturvårdsverket, CC0
 
 ## Takformer

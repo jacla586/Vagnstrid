@@ -7,3 +7,4 @@ trimesh
 pillow
 matplotlib
 laspy[lazrs]
+scikit-image

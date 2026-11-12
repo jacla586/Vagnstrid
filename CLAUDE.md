@@ -774,6 +774,18 @@ shows on the minimap. This is what we test first.
   `tools/import_geodata_map.gd -- <map> res://geodata/<map>/out --textures` puts list, material
   (auto shader off, macro variation) and control/colour maps on an imported map without
   touching heights (nor the object glb: run the plain import first). Then rerun `render_map_image`. Done: vidingsjo (others still auto shader).
+  Orthophoto (Lantmäteriet, `geodata/scripts/hamta_ortofoto.py`, 0.5 m from the 16 cm 2025 flight): with
+  `<out>/ortofoto_tint.png` (`ortofoto_tint.py`: the land cover tint times the photo's variation within each class;
+  trees, houses, shadows and forest neutral) and `ortho_tint.enabled` the `--textures` import uses it as the colour
+  map. The colour map can only darken, so neutral is encoded at `neutral_linear` (0.55) and every texture's
+  `albedo_color` is raised to match; Terrain3D takes albedo_color as sRGB, so the factor is encoded sRGB. Hedges:
+  `hackar.py` finds straight lines in each block's grid (direction from OSM house edges and streets per 80 m tile;
+  laser 0.5-2.8 m hits projected on 1 m bands, gaps up to 6 m bridged unless a house, road or non-green area is in
+  between; green in the IR band, even height, broken where something taller stands) -> `work/hackar.pkl` segments,
+  which step4 lays out as rows of low-poly 'hack' bushes (3 tufts, 240 tris, 1 m apart, stretched along the hedge);
+  laser bushes in a hedge and not much taller are replaced, big bushes stay. OSM hedges become the same rows.
+  Previews `geodata/forhandsbilder/hackar_vidingsjo_*.png`; views 34-38 in `render_views.json`. Cost +0.2 ms
+  average (+0.6 max) in Vidingsjö (63k hedge bushes); the first try with full `buske` models cost +0.8/+2.9. Done: vidingsjo.
 - House style (types, colours, facades with windows, semi-realistic areas) comes from
   `geodata/stilar.json`; rebuild the map to apply changes.
 - Real maps such as `scenes/maps/vidingsjo.tscn`

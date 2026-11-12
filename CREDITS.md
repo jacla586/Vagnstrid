@@ -9,8 +9,8 @@ The maps are built from open data by the pipeline in `geodata/`.
 
 - **OpenStreetMap** contributors, [ODbL](https://www.openstreetmap.org/copyright): roads, houses,
   railways, water, playgrounds, signs, traffic lights, place names.
-- **Lantmäteriet**, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): elevation model and
-  laser point clouds (terrain, single trees and their heights), processed.
+- **Lantmäteriet**, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): elevation model,
+  laser point clouds (terrain, single trees and their heights) and orthophoto (ground colour), processed.
 - **Naturvårdsverket**, Nationella marktäckedata (NMD), CC0: land cover.
 - **Trafikverket**, NVDB (road widths, surfaces, speed limits, crossings) and culverts, open data.
 - **Jordbruksverket**, field blocks and crops (what grows in each field), open data.

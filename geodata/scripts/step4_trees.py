@@ -213,31 +213,73 @@ def ok_plats(E_, N_):
     bra &= korridor.inne(WORK, E_, N_, rng.random(np.size(E_)))
     return bra
 
+# Häckar: rader av små buskar längs linjer, ur hackar.py (ortofoto + laser, kvarterets rutnät) och OSM
+HACK_STEG_M = 1.0                     # häckbuskar (modellen 'hack': 3 tussar, få trianglar), radier:
+HACK_LANGS_M, HACK_TVARS_M = (0.8, 0.95), (0.55, 0.7)   # längs häcken (flyter ihop) och tvärs
+HACK_NARA_M, HACK_HOGRE_M = 1.0, 0.8   # laserbuskar så nära en häck och inte mer än så högre ersätts av häcken
+hack_seg = np.zeros((0, 5))
+if (WORK / 'hackar.pkl').exists():
+    hack_seg = np.asarray(pickle.load(open(str(WORK / 'hackar.pkl'), 'rb')).get('segment', hack_seg)).reshape(-1, 5)
+osm_hack = []
+for line in feat.get('hedges', []):
+    for a_, b_ in zip(line.coords[:-1], line.coords[1:]):
+        osm_hack.append([a_[0], a_[1], b_[0], b_[1], float(rng.uniform(1.2, 1.6))])
+alla_hack = np.vstack([hack_seg, np.array(osm_hack).reshape(-1, 5)]) if osm_hack else hack_seg
+
+def hackpunkter(seg_):
+    """Buskpunkter var HACK_STEG_M längs varje segment: E, N, höjd, riktning (rad, i E/N-planet)."""
+    E_l, N_l, H_l, A_l = [], [], [], []
+    for E0_, N0_, E1_, N1_, hh_ in seg_:
+        L_ = math.hypot(E1_ - E0_, N1_ - N0_)
+        if L_ < 0.5:
+            continue
+        t_ = (np.arange(0, L_ + 1e-6, L_ / max(round(L_ / HACK_STEG_M), 1))) / L_
+        E_l.append(E0_ + t_ * (E1_ - E0_)); N_l.append(N0_ + t_ * (N1_ - N0_)); H_l.append(np.full(t_.size, hh_))
+        A_l.append(np.full(t_.size, math.atan2(N1_ - N0_, E1_ - E0_)))
+    if not E_l:
+        return np.zeros(0), np.zeros(0), np.zeros(0), np.zeros(0)
+    return np.concatenate(E_l), np.concatenate(N_l), np.concatenate(H_l), np.concatenate(A_l)
+
+hpE, hpN, hpH, hpA = hackpunkter(alla_hack)
+hack_trad = cKDTree(np.c_[hpE, hpN]) if hpE.size else None
+
+def ersatt_av_hack(E_, N_, h_):
+    """Laserbuskar som står i en häck och inte är mycket högre: häcken tar deras plats."""
+    if hack_trad is None:
+        return np.zeros(np.size(E_), bool)
+    d_, k_ = hack_trad.query(np.c_[E_, N_], distance_upper_bound=HACK_NARA_M)
+    nara = np.isfinite(d_)
+    ut = np.zeros(np.size(E_), bool)
+    ut[nara] = h_[nara] <= hpH[k_[nara]] + HACK_HOGRE_M
+    return ut
+
 # 1) Laserdatan: låg vegetation 0,7–3 m med många flerekon (inte tak, inte träd)
 lag = (b1 >= 0.7) & (b1 < 3.0) & has & (frac_s > 30) & ~roof
 rr_, cc_ = np.nonzero(lag & (rng.random(lag.shape) < (cres * cres) / 6.0))
 E_ = T.c + (cc_ + 0.5) * cres + rng.uniform(-0.4, 0.4, rr_.size)
 N_ = T.f - (rr_ + 0.5) * cres + rng.uniform(-0.4, 0.4, rr_.size)
 h_ = b1[rr_, cc_] * rng.uniform(0.85, 1.0, rr_.size)
-keep_ = ok_plats(E_, N_)
+keep_ = ok_plats(E_, N_) & ~ersatt_av_hack(E_, N_, h_)
 E_, N_, h_ = E_[keep_], N_[keep_], h_[keep_]
 r_ = np.clip(0.5 + 0.35 * h_, 0.6, 1.6)
 for t_, m_ in (('sly', h_ > 2.0), ('buske', h_ <= 2.0)):
     lagg(E_[m_], N_[m_], h_[m_], r_[m_], r_[m_], rng.uniform(0, 2 * math.pi, m_.sum()), t_)
 n_laser = E_.size
 
-# 2) OSM-häckar: en häckbit var 1,5 m längs linjen
+# 2) Häckar (hackar.py och OSM barrier=hedge): täta rader av små buskar, jämnhöga per häck
 n_hack = 0
-for line in feat.get('hedges', []):
-    L_ = line.length
-    if L_ < 1:
-        continue
-    for d_ in np.arange(0.75, L_, 1.5):
-        a_ = line.interpolate(max(d_ - 0.5, 0)); b_ = line.interpolate(min(d_ + 0.5, L_)); m_ = line.interpolate(d_)
-        ang = math.atan2(b_.y - a_.y, b_.x - a_.x)
-        if ok_plats(np.array([m_.x]), np.array([m_.y]))[0]:
-            # transformens x-axel blir (E, N) = (cos, sin): vinkeln i E/N-planet direkt
-            lagg(m_.x, m_.y, rng.uniform(1.2, 1.6), 0.5, 0.85, ang, 'hack'); n_hack += 1
+if hpE.size:
+    E_, N_, H_ = hpE, hpN, hpH
+    # längs häcken (x-axeln = (E, N) = (cos, sin)), lite vriden, ibland vänd så varianterna inte upprepas
+    ang_ = hpA + rng.uniform(-0.25, 0.25, E_.size) + np.pi * (rng.random(E_.size) < 0.5)
+    E_ = E_ + rng.uniform(-0.1, 0.1, E_.size); N_ = N_ + rng.uniform(-0.1, 0.1, E_.size)
+    keep_ = ok_plats(E_, N_)
+    E_, N_, ang_ = E_[keep_], N_[keep_], ang_[keep_]
+    H_ = np.clip(H_[keep_], 0.9, 2.2) * rng.uniform(0.95, 1.05, keep_.sum())
+    rl_ = rng.uniform(*HACK_LANGS_M, E_.size); rt_ = rng.uniform(*HACK_TVARS_M, E_.size)
+    lagg(E_, N_, H_, rt_, rl_, ang_, 'hack')   # lagg(r = tvärs (z), l = längs (x))
+    n_hack = E_.size
+print(f'häckar: {len(hack_seg)} segment ur hackar.py, {len(osm_hack)} OSM-bitar, {n_hack} buskar')
 
 # 3) Buskmark (OSM natural=scrub): cirka en buske per 40 m²
 n_mark = 0

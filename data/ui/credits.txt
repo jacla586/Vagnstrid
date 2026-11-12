@@ -3,7 +3,7 @@ A hobby game by Jacob, written with Claude Code (Anthropic).
 
 MAPS FROM OPEN DATA
 OpenStreetMap contributors (ODbL), openstreetmap.org/copyright
-Lantmäteriet: elevation model and laser data (CC BY 4.0), processed
+Lantmäteriet: elevation model, laser data and orthophoto (CC BY 4.0), processed
 Naturvårdsverket: Nationella marktäckedata (CC0)
 Trafikverket: NVDB road data and culverts (open data)
 Jordbruksverket: field blocks and crops (open data)
