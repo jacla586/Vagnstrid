@@ -36,6 +36,8 @@ enum Kind { LIGHT, MEDIUM, HEAVY, TANK_DESTROYER }
 @export var gunner_sight_fov_deg: PackedFloat32Array = PackedFloat32Array()
 ## Gun stabiliser 0..1 (TankData.gun_stabiliser): fires well on the move.
 @export_range(0.0, 1.0) var gun_stabiliser: float = 0.0
+## The fastest hull pitch it takes out (deg/s, TankData.gun_stabiliser_max_rate_deg).
+@export var gun_stabiliser_max_rate_deg: float = 0.0
 ## Steepest climb (deg; 0 = the base's) and speed lost at ford depth (share; < 0 = the
 ## base's): wide tracks and a strong engine take rough ground better.
 @export var max_climb_deg: float = 0.0
@@ -44,6 +46,9 @@ enum Kind { LIGHT, MEDIUM, HEAVY, TANK_DESTROYER }
 @export var smoke_salvos: int = -1
 ## Silhouette: spot time times this (tall < 1: seen sooner), times camouflage.
 @export var signature_spot_factor: float = 1.0
+
+## How bots use it (BotRoleData; none = a brawler).
+@export var bot_role: BotRoleData
 
 @export_group("Options")
 @export var guns: Array[GunData] = []

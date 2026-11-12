@@ -20,6 +20,11 @@ extends TargetTankController
 ## guess of where the shot came from).
 signal contact(enemy: Tank, at: Vector3)
 
+## Smoke screens (request_screen): fired when the turret bears within this of the
+## point (deg), given up after this long (s); the last this many salvos are kept.
+const SCREEN_BEAR_DEG: float = 25.0
+const SCREEN_MAX_WAIT_S: float = 4.0
+const SCREEN_KEEP_SALVOS: int = 1
 ## Points on an enemy tank (its local space) that the commander tries to see: hull
 ## centre, turret top, front and rear of the hull. The more show, the faster he spots it.
 ## Spotting time is divided by the share of points in sight, but never by less than this.
@@ -41,6 +46,11 @@ const AMMO_THINK_S: float = 2.0
 ## A target's face counts as its front within this of straight ahead (deg), its rear
 ## within this of straight behind; between is its side (ammo choice).
 const FRONT_ASPECT_DEG: float = 40.0
+## An enemy whose gun points within this of us is laying on us (deg)...
+const LAID_ON_DEG: float = 12.0
+## ...within this range a role that avoids front duels slips away, at most this often (m, s).
+const DODGE_RANGE_M: float = 900.0
+const DODGE_COOLDOWN_S: float = 12.0
 const REAR_ASPECT_DEG: float = 40.0
 ## Squads are shelled with HE within this (m).
 const HE_SQUAD_RANGE_M: float = 800.0
@@ -62,10 +72,12 @@ const SQUAD_FIGHT_RANGE_M: float = 600.0
 ## within SQUAD_FOCUS_RANGE_M of the tank...
 const SQUAD_ENEMY_MAX_AGE_S: float = 60.0
 const SQUAD_FOCUS_RANGE_M: float = 450.0
-## ...and only once the tank has stood this long (not for short halts) (s)...
-const SQUAD_MIN_STAND_S: float = 6.0
-## ...and not again this soon after it was called back (s).
+## ...only once the tank has stood its role's squad_stand_s (not for short halts), and
+## not again this soon after it was called back (s; times the role's share).
 const SQUAD_RESEND_COOLDOWN_S: float = 45.0
+## Bots whose tank has no BotRoleData play as this.
+const DEFAULT_ROLE_PATH: String = "res://data/bots/roles/brawler.tres"
+static var _default_role: BotRoleData
 ## Shoot and scoot: hidden backing out of sight, or returning to fire.
 enum Scoot { NONE, HIDING, RETURNING }
 ## Hide spot candidates: angles off straight back from the target (degrees).
@@ -142,8 +154,22 @@ var _progress_at: Vector3 = Vector3.INF
 var _no_progress_s: float = 0.0
 ## A smoke salvo wanted at the next physics frame (decided in a signal handler).
 var _smoke_pending: bool = false
+## A smoke screen asked for by the director (request_screen): towards this point, as
+## soon as the turret bears on it; given up after SCREEN_MAX_WAIT_S. INF: none.
+var _screen_at: Vector3 = Vector3.INF
+var _screen_wait: float = 0.0
 ## Where the fighting is for this bot's squad (KothBots sets the zone); INF = none.
 var fight_focus: Vector3 = Vector3.INF
+## A role given for now instead of the tank's favourite (null: the favourite).
+var role_override: BotRoleData
+## The mode's limit on where the bot may go (Vector3 -> Vector3, e.g. ThunderRoad's
+## corridor): every goal it drives to, ordered or its own (dash, relocation, hiding),
+## goes through it. Empty: anywhere on the map.
+var keep_goal: Callable
+## Hit and run (BotRoleData.hit_and_run): rounds fired from this spot; when an enemy
+## laying its gun on us last made us slip away.
+var _visit_shots: int = 0
+var _dodged_at: float = -INF
 ## A squad order from outside (a game mode's bot director), sent in the bot's next frame.
 var _pending_squad_order: int = 0
 var _pending_squad_target: Vector3 = Vector3.ZERO
@@ -208,6 +234,20 @@ func get_cover_of(other: Tank) -> float:
 
 
 ## Drives `points` in order once, at `throttle`, then stops. Replaces the patrol.
+## How this bot uses its tank now: a role it was given (set_role, e.g. by a team's
+## commander), else its tank's favourite (the chassis' BotRoleData; none: a brawler).
+func get_role() -> BotRoleData:
+	if role_override != null:
+		return role_override
+	if tank != null and tank.data != null and tank.data.bot_role != null:
+		return tank.data.bot_role
+	if _default_role == null:
+		_default_role = load(DEFAULT_ROLE_PATH) as BotRoleData
+		if _default_role == null:
+			_default_role = BotRoleData.new()
+	return _default_role
+
+
 func order_move(points: Array[Vector3], throttle: float) -> void:
 	_orders = points.duplicate()
 	_order_index = 0
@@ -221,6 +261,10 @@ func order_move(points: Array[Vector3], throttle: float) -> void:
 ## `via` = go by this point first (a flank, so not every bot takes the same way).
 func order_path(goal: Vector3, throttle: float, urgent: bool = false,
 		via: Vector3 = Vector3.INF) -> void:
+	_visit_shots = 0   # a new place: hit and run counts afresh
+	goal = _kept(goal)
+	if via != Vector3.INF:
+		via = _kept(via)
 	var points: Array[Vector3] = []
 	if via != Vector3.INF and _tactical_map() != null and not _tactical_map().is_blocked(via):
 		points = _plan_path(via, tank.global_position)
@@ -236,6 +280,11 @@ func order_path(goal: Vector3, throttle: float, urgent: bool = false,
 	if not urgent and map != null:
 		var path := PackedVector3Array(points)
 		_scout_points = map.scout_points(tank.global_position, path, _tactics())
+
+
+## `goal` moved where the mode lets the bot go (keep_goal), else as it is.
+func _kept(goal: Vector3) -> Vector3:
+	return keep_goal.call(goal) if keep_goal.is_valid() else goal
 
 
 ## Where this crew believes the enemy is (flat direction from the tank), from what it
@@ -459,6 +508,7 @@ func _physics_process(delta: float) -> void:
 		_settle_time = 0.0
 		_mg_time = 0.0
 		_look_ahead_or_at_threat()
+	_update_screen(delta)
 	_command.squad_order = Squad.ORDER_NONE
 	_update_squad(delta)
 	if _pending_squad_order != Squad.ORDER_NONE:
@@ -685,7 +735,9 @@ func _choose_ammo(delta: float) -> void:
 		elif ap < 0:
 			ap = i
 	var want: int = -1
-	if _target != null:
+	if _target != null and he >= 0 and get_role().track_he:
+		want = he   # at the tracks: slows them down for the others
+	elif _target != null:
 		want = ap if ap >= 0 and (he < 0 or _can_penetrate(_target, tank.data.ammo[ap])) else he
 	elif _squad_target != null and is_instance_valid(_squad_target) and _squad_target.is_out() \
 			and tank.global_position.distance_to(_squad_target.global_position) <= HE_SQUAD_RANGE_M:
@@ -815,6 +867,7 @@ func _update_superelevation(target: Tank) -> void:
 
 
 func _engage(target: Tank, delta: float) -> void:
+	_check_dodge(target)
 	var muzzle: Transform3D = tank.get_muzzle_transform()
 	var hull_seen: bool = bool(_hull_visible.get(target, false))
 	var head_seen: bool = bool(_head_visible.get(target, false))
@@ -830,8 +883,11 @@ func _engage(target: Tank, delta: float) -> void:
 				tank.get_coax_muzzle_transform().origin, _mg_superelevation,
 				tank.get_active_mg(false).bullet)
 	else:
-		gun_aim = _aim_point(target.global_position + target.global_basis.y * 0.3, target,
-				muzzle.origin, _gun_superelevation, tank.get_loaded_shell())
+		var loaded: ShellData = tank.get_loaded_shell()
+		var point: Vector3 = target.global_position + target.global_basis.y * 0.3
+		if get_role().track_he and loaded != null and loaded.is_explosive():
+			point = _track_point(target, muzzle.origin)
+		gun_aim = _aim_point(point, target, muzzle.origin, _gun_superelevation, loaded)
 		gun_aim = _with_lay_error(gun_aim, muzzle.origin)
 
 	# How to shoot. Holding a spot: halt and fire. On the way somewhere: a short halt
@@ -918,6 +974,37 @@ static func _horizontal_distance(a: Vector3, b: Vector3) -> float:
 
 
 # --- Turret and hatch out of combat --------------------------------------------
+
+## A smoke screen towards `point` (world): the salvo lands ahead of the turret, so the
+## turret turns there first (unless it is on a target) and fires it once it bears
+## within SCREEN_BEAR_DEG. Refused (false) while it has fewer than SCREEN_KEEP_SALVOS + 1
+## salvos (the last is kept for its own escape) or smoke is cooling down.
+func request_screen(point: Vector3) -> bool:
+	if tank.get_smoke_left() <= SCREEN_KEEP_SALVOS or tank.get_smoke_cooldown() > 0.0 \
+			or _screen_at != Vector3.INF or tank.is_knocked_out():
+		return false
+	_screen_at = point
+	_screen_wait = SCREEN_MAX_WAIT_S
+	return true
+
+
+func _update_screen(delta: float) -> void:
+	if _screen_at == Vector3.INF:
+		return
+	_screen_wait -= delta
+	var to := Vector3(_screen_at.x - tank.global_position.x, 0.0, _screen_at.z - tank.global_position.z)
+	if _screen_wait <= 0.0 or to.length() < 1.0:
+		_screen_at = Vector3.INF
+		return
+	if _target == null:
+		_command.aim_point = tank.get_commander_eye_position() + to.normalized() * 200.0
+		_command.has_aim = true
+	var yaw: float = tank.get_turret_global_yaw()
+	var turret := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	if rad_to_deg(turret.angle_to(to.normalized())) <= SCREEN_BEAR_DEG:
+		_command.smoke = true
+		_screen_at = Vector3.INF
+
 
 ## No target: point the turret where the last hit came from, else along the hull.
 func _look_ahead_or_at_threat() -> void:
@@ -1042,7 +1129,7 @@ func _on_squad_contact(enemy: Node3D, at: Vector3) -> void:
 ## focus) does it go out, to look over the ground towards the fight that the tank
 ## can't see; it is called back when hurt, left behind, or the tank drives on (not
 ## while it is out to lay a mine), and
-## then stays on the tank for SQUAD_RESEND_COOLDOWN_S.
+## then stays on the tank for SQUAD_RESEND_COOLDOWN_S (the role's share of it).
 func _update_squad(delta: float) -> void:
 	var squad: Squad = tank.squad
 	if squad == null or not is_instance_valid(squad) or squad.net_puppet:
@@ -1075,7 +1162,8 @@ func _update_squad(delta: float) -> void:
 			return
 	elif not squad.is_mounted() or squad.get_alive_count() < squad.data.soldier_count:
 		return   # wiped out, or refilling on the tank
-	elif _standing_time < SQUAD_MIN_STAND_S or _since_squad_recall < SQUAD_RESEND_COOLDOWN_S \
+	elif _standing_time < get_role().squad_stand_s \
+			or _since_squad_recall < SQUAD_RESEND_COOLDOWN_S * get_role().squad_cooldown_share \
 			or is_scouting():
 		return   # mounted: out only for a proper stop, not every halt
 	if _driving_time > 0.0:
@@ -1147,8 +1235,15 @@ func _squad_look_point(fight: Vector3) -> Vector3:
 # --- Shoot and scoot, relocation ----------------------------------------------------
 
 ## After a shot at a tank: back into a spot the target can't see while reloading.
+## Hit and run: after shots_per_visit rounds, a long dash sideways instead.
 func _on_fired(_shell: Shell) -> void:
 	var t: TacticsData = _tactics()
+	var role: BotRoleData = get_role()
+	if role.hit_and_run and _target != null and is_instance_valid(_target) and not _close_fight:
+		_visit_shots += 1
+		if _visit_shots >= role.shots_per_visit:
+			_dash(_target)
+		return
 	if not t.shoot_and_scoot or _target == null or not is_instance_valid(_target) or _scoot != Scoot.NONE \
 			or _close_fight:
 		return
@@ -1166,6 +1261,68 @@ func _on_fired(_shell: Shell) -> void:
 	if spot != Vector3.INF:
 		_start_hiding(spot, away)
 	# Nowhere to hide nearby: stay and fight.
+
+
+## The middle of `target`'s track on the side facing `from` (HE there throws it).
+func _track_point(target: Tank, from: Vector3) -> Vector3:
+	var best := Vector3.INF
+	if target.data.layout != null:
+		for m: ModuleData in target.data.layout.modules:
+			if m.frame != &"hull" or not (m.id == &"track_left" or m.id == &"track_right"):
+				continue
+			var outer: Vector3 = m.center + Vector3(signf(m.center.x) * m.size.x * 0.5, 0.0, 0.0)
+			var p: Vector3 = target.to_global(outer)
+			if best == Vector3.INF or from.distance_to(p) < from.distance_to(best):
+				best = p
+	return best if best != Vector3.INF else target.global_position
+
+
+## Hit and run: off to the side of `from_target` (and a little back), dash_min_m..
+## dash_max_m away, to a spot facing it; held there dash_hold_s, then the director's
+## orders again. The shots from the old spot are forgotten.
+func _dash(from_target: Tank) -> void:
+	_visit_shots = 0
+	var map: TacticalMap = _tactical_map()
+	if map == null:
+		return
+	var role: BotRoleData = get_role()
+	var t: TacticsData = _tactics()
+	var here: Vector3 = tank.global_position
+	var to_them := Vector3(from_target.global_position.x - here.x, 0.0, from_target.global_position.z - here.z)
+	if to_them.length() < 1.0:
+		return
+	to_them = to_them.normalized()
+	var dist: float = _rng.randf_range(role.dash_min_m, role.dash_max_m)
+	var side: Vector3 = to_them.cross(Vector3.UP) * (1.0 if _rng.randf() < 0.5 else -1.0)
+	var center: Vector3 = here + side * dist * 0.85 - to_them * dist * 0.35
+	if map.is_blocked(center):
+		center = here - side * dist * 0.85 - to_them * dist * 0.35
+	var friends := PackedVector3Array()
+	var spot: Vector3 = map.find_position(tank.get_world_3d(), center, dist * 0.3, to_them,
+			from_target.global_position, role.harass_range_max_m, here, friends, t, _rng, [tank.get_rid()])
+	_scoot = Scoot.NONE
+	order_path(spot, 1.0, true)
+	_relocating = true
+	_relocate_hold = role.dash_hold_s
+
+
+## A role that avoids front duels slips away (a dash) when an enemy within
+## DODGE_RANGE_M lays its gun on it and our gun can't get through its front.
+func _check_dodge(target: Tank) -> void:
+	var role: BotRoleData = get_role()
+	if not role.avoid_front_duels or _relocating or _close_fight or _clock - _dodged_at < DODGE_COOLDOWN_S:
+		return
+	var here: Vector3 = tank.global_position
+	if here.distance_to(target.global_position) > DODGE_RANGE_M:
+		return
+	var their_gun: Vector3 = -target.get_muzzle_transform().basis.z
+	if their_gun.angle_to(here - target.get_muzzle_transform().origin) > deg_to_rad(LAID_ON_DEG):
+		return
+	for s: ShellData in tank.data.ammo:
+		if s != null and not s.is_explosive() and _can_penetrate(target, s):
+			return   # we can answer: no running from it
+	_dodged_at = _clock
+	_dash(target)
 
 
 ## A spot close behind the tank (along `away`) hidden from an eye at `their_eye`, or INF.
@@ -1195,8 +1352,8 @@ func _start_hiding(spot: Vector3, away: Vector3) -> void:
 	var t: TacticsData = _tactics()
 	var side: Vector3 = away.cross(Vector3.UP) * (1.0 if _rng.randf() < 0.5 else -1.0)
 	var peek: Vector3 = tank.global_position + side * _rng.randf_range(t.peek_side_min_m, t.peek_side_max_m)
-	_peek_point = tank.global_position if _tactical_map().is_blocked(peek) else peek
-	_scoot_point = spot
+	_peek_point = tank.global_position if _tactical_map().is_blocked(peek) else _kept(peek)
+	_scoot_point = _kept(spot)
 	_scoot = Scoot.HIDING
 	_scoot_time = 0.0
 

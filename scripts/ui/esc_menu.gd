@@ -24,6 +24,8 @@ var _tank: Tank
 var _game: NetGame
 ## Swap offers shown on the main page (rebuilt when they change or run out).
 var _shown_offers: int = -1
+## The tank picker while the TANKS page is open.
+var _picker: DeployScreen
 
 
 func _ready() -> void:
@@ -69,6 +71,10 @@ func _build() -> void:
 		_box.remove_child(child)
 		child.queue_free()
 	_abandon = null
+	if _picker != null:
+		_picker.queue_free()
+		_picker = null
+	_panel.visible = true
 	match _page:
 		Page.MAIN: _build_main()
 		Page.TANKS: _build_tanks()
@@ -105,23 +111,20 @@ func _build_main() -> void:
 			get_tree().change_scene_to_file(MENU_SCENE))
 
 
+## The tank picker (DeployScreen's tank page) over the game; the panel hides meanwhile.
 func _build_tanks() -> void:
-	var line: String = "You respawn at the spawn in the new tank"
+	var line: String = "You respawn at the spawn in the new tank."
 	if _tank != null and _tank.is_knocked_out():
-		line = "The new tank comes at your respawn"
+		line = "The new tank comes at your respawn."
 	elif not TankSwitch.is_fresh(_tank):
-		line += " (counts as a loss, like abandoning)"
-	_label(line)
-	var current: String = _tank.config.key() if _tank != null and _tank.config != null else ""
-	var chosen: TankConfig = TankConfigs.get_selected()
-	for cfg: TankConfig in TankConfigs.all():
-		var mark: String = ""
-		if cfg.key() == current:
-			mark = "  (driving)"
-		elif chosen != null and cfg.resource_path == chosen.resource_path:
-			mark = "  (next)"
-		_button(cfg.display_name + mark, func() -> void: _pick_tank(cfg))
-	_button("Back", func() -> void: _go(Page.MAIN))
+		line = "You respawn at the spawn in the new tank. It counts as a loss, like abandoning."
+	_panel.visible = false
+	_picker = DeployScreen.new()
+	add_child(_picker)
+	_picker.set_tank_page(line, "Drive this tank", true)
+	_picker.show_page(DeployScreen.Page.TANKS)
+	_picker.tank_chosen.connect(_pick_tank)
+	_picker.back_pressed.connect(func() -> void: _go(Page.MAIN))
 
 
 func _build_swap() -> void:
@@ -144,6 +147,10 @@ func _go(page: Page) -> void:
 
 
 func _close() -> void:
+	if _picker != null:
+		_picker.queue_free()
+		_picker = null
+		_panel.visible = true
 	_page = Page.MAIN
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	visible = false

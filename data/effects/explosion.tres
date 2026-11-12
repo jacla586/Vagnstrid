@@ -1,13 +1,14 @@
-[gd_resource type="Resource" script_class="EffectData" load_steps=9 format=3]
+[gd_resource type="Resource" script_class="EffectData" format=3 uid="uid://dfwo32v0qlhia"]
 
-[ext_resource type="Script" path="res://scripts/data/effect_data.gd" id="1_effect"]
-[ext_resource type="Script" path="res://scripts/data/burst_data.gd" id="2_burst"]
+[ext_resource type="Script" uid="uid://ccdx8vqvyg658" path="res://scripts/data/effect_data.gd" id="1_effect"]
+[ext_resource type="Script" uid="uid://d2my37k26eucx" path="res://scripts/data/burst_data.gd" id="2_burst"]
 
 [sub_resource type="Resource" id="Burst_fireball"]
-script = ExtResource("2_burst")
 resource_name = "fireball"
+script = ExtResource("2_burst")
 amount = 20
 lifetime_s = 0.35
+lifetime_randomness = 0.5
 spread_deg = 80
 speed_min_mps = 6
 speed_max_mps = 14
@@ -20,13 +21,13 @@ size_randomness = 0.5
 color_start = Color(1, 0.62, 0.22, 1)
 color_end = Color(0.85, 0.25, 0.05, 0)
 additive = true
-lifetime_randomness = 0.5
 
 [sub_resource type="Resource" id="Burst_flash"]
-script = ExtResource("2_burst")
 resource_name = "flash"
+script = ExtResource("2_burst")
 amount = 3
 lifetime_s = 0.08
+lifetime_randomness = 0
 spread_deg = 60
 speed_min_mps = 0
 speed_max_mps = 2
@@ -36,13 +37,13 @@ size_end_m = 4
 color_start = Color(1, 0.9, 0.6, 1)
 color_end = Color(1, 0.6, 0.2, 0)
 additive = true
-lifetime_randomness = 0
 
 [sub_resource type="Resource" id="Burst_smoke"]
-script = ExtResource("2_burst")
 resource_name = "smoke"
+script = ExtResource("2_burst")
 amount = 24
 lifetime_s = 6
+lifetime_randomness = 0.4
 spread_deg = 35
 speed_min_mps = 5
 speed_max_mps = 16
@@ -55,11 +56,10 @@ size_end_m = 5
 size_randomness = 0.5
 color_start = Color(0.13, 0.12, 0.11, 0.8)
 color_end = Color(0.3, 0.28, 0.26, 0)
-lifetime_randomness = 0.4
 
 [sub_resource type="Resource" id="Burst_dirt"]
-script = ExtResource("2_burst")
 resource_name = "dirt"
+script = ExtResource("2_burst")
 amount = 40
 lifetime_s = 2.2
 spread_deg = 25
@@ -73,10 +73,11 @@ color_end = Color(0.22, 0.17, 0.11, 1)
 soft = false
 
 [sub_resource type="Resource" id="Burst_skirt"]
-script = ExtResource("2_burst")
 resource_name = "skirt"
+script = ExtResource("2_burst")
 amount = 18
 lifetime_s = 4
+lifetime_randomness = 0.4
 spread_deg = 85
 speed_min_mps = 8
 speed_max_mps = 16
@@ -89,11 +90,10 @@ size_end_m = 3.5
 size_randomness = 0.5
 color_start = Color(0.52, 0.45, 0.35, 0.6)
 color_end = Color(0.58, 0.53, 0.45, 0)
-lifetime_randomness = 0.4
 
 [sub_resource type="Resource" id="Burst_fragments"]
-script = ExtResource("2_burst")
 resource_name = "fragments"
+script = ExtResource("2_burst")
 amount = 24
 lifetime_s = 0.3
 spread_deg = 80

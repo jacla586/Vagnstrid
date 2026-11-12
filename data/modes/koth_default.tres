@@ -10,5 +10,8 @@
 
 [resource]
 script = ExtResource("1_koth")
+bot_attack_axes = true
+display_name = "King of the Hill"
+briefing = "Zones open one at a time; the next one shows on the map.\nEvery tank of yours inside the zone scores. More tanks there than the enemy: faster.\nZones shrink as they go, then close.\nA knock-out in the zone from inside it gives a bonus.\nFirst team to {score} points wins."
 radius_start_m = 175.0
 bot_configs = Array[ExtResource("2_cfg")]([ExtResource("c0"), ExtResource("c1"), ExtResource("c2"), ExtResource("c3"), ExtResource("c4")])

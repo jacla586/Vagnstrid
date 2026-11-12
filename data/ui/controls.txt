@@ -1,0 +1,32 @@
+# Controls shown by the main menu's Controls button (ControlsPanel).
+# "## Heading" starts a section. Other lines: actions | text
+#   actions: Input Map action names, comma separated: their keys/buttons are shown in the key column.
+#   {action} in the text is replaced by that action's key.
+# Lines starting with "# " (hash and space) are comments.
+
+## THE TANK
+move_forward,turn_left,move_backward,turn_right | Drive. Reversing steers like a car.
+fire | In the gunner's sight: fire the main gun. Shells drop with range: use the range marks.
+select_ammo_1,select_ammo_2 | Load AP (kills tanks) or HE (wrecks tracks, engines and soldiers).
+fire_mg | Fire the machine gun: the roof MG from the commander's view with the hatch open, otherwise the coaxial MG.
+smoke | Fire a smoke salvo ahead of the turret. Smoke hides you from everyone, bots too.
+
+## LOOKING AND SPOTTING
+toggle_gunner_sight | Switch between the commander's view and the gunner's sight.
+sight_zoom_in,sight_zoom_out | Zoom the gunner's sight.
+toggle_hatch | Open or close the hatch. Open: you see all round, far and clearly, but shrapnel and rifles can hit you. Closed: you are safe but only see through the periscope.
+binoculars | Binoculars: look far, from the commander's view or your squad leader's eyes.
+turret_to_view | Turn the turret to where the commander is looking.
+spot | In the commander's view: spot the enemy you are looking at. It shows on your team's maps. Enemies never get markers in the world.
+
+## YOUR SQUAD
+toggle_squad_map | Open the squad map. {squad_order} sends the soldiers there, {squad_mine} lays a mine.
+squad_escort | The soldiers dismount and guard your tank, walking ahead of it.
+squad_recall | Call the soldiers back. They run to the tank and climb aboard.
+toggle_squad_view | Look through your squad leader's eyes (when they are off the tank).
+
+## THE MATCH
+toggle_map | The big map.
+scoreboard | The scoreboard.
+release_mouse | Menu: change tank, switch team, abandon the tank, leave.
+net_stats | Statistics: FPS and network.

@@ -22,6 +22,7 @@
 [ext_resource type="Script" path="res://scripts/audio/hatch_muffle.gd" id="24_hatch_muffle"]
 [ext_resource type="Script" path="res://scripts/ui/score_panel.gd" id="25_score_panel"]
 [ext_resource type="Script" path="res://scripts/ui/thunder_panel.gd" id="90_thunder_panel"]
+[ext_resource type="Script" path="res://scripts/ui/free_fight_panel.gd" id="91_free_panel"]
 [ext_resource type="Script" path="res://scripts/camera/squad_camera.gd" id="26_squad_camera"]
 [ext_resource type="Script" path="res://scripts/ui/squad_panel.gd" id="27_squad_panel"]
 [ext_resource type="Script" path="res://scripts/ui/squad_map.gd" id="28_squad_map"]
@@ -234,6 +235,10 @@ views = NodePath("../../PlayerViews")
 
 [node name="ThunderPanel" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
 script = ExtResource("90_thunder_panel")
+views = NodePath("../../PlayerViews")
+
+[node name="FreeFightPanel" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
+script = ExtResource("91_free_panel")
 views = NodePath("../../PlayerViews")
 
 [node name="SquadRadio" type="Label" parent="HUD" node_paths=PackedStringArray("views")]

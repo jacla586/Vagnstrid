@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/maps/vidingsjo.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scripts/modes/free_fight.gd" id="2_free"]
+[ext_resource type="Resource" path="res://data/modes/free_fight.tres" id="3_free_data"]
+
+[node name="VidingsjoFree" instance=ExtResource("1_base")]
+
+[node name="FreeFight" type="Node" parent="."]
+script = ExtResource("2_free")
+data = ExtResource("3_free_data")

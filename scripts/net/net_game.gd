@@ -16,6 +16,13 @@ extends Node
 ## Client: puppets for every tank (NetPuppets), its own inside a PlayerRig with turret
 ## prediction; sends its commands (NetInput).
 ##
+## Joining: nobody gets a tank on arrival. MatchLobby (added here, on every machine)
+## shows the mode, the teams and the tanks; the player picks a team (pick_team: the
+## roster shows them "choosing a tank") and then a tank (request_deploy): the host spawns
+## them at the team's spawn, a bot of that team making room (the director's make_room)
+## and the director refilling so the teams stay even. The roster (every tank and
+## choosing player) goes to everyone twice a second when it changes.
+##
 ## Team swaps and tank changes (Esc menu): the player's tank goes and a new one comes
 ## (respawn_player). A switch takes a bot's place on the other team (or a free place);
 ## with only players there, the player picks one to ask, who accepts or declines in
@@ -25,6 +32,8 @@ extends Node
 
 ## The Esc menu has something new to show (swap choices or offers).
 signal menu_changed
+## The roster (who is on which team) changed.
+signal roster_changed
 
 const TANK_SCENE: PackedScene = preload("res://scenes/tank/tank.tscn")
 ## Loaded when needed, not preloaded: the rig's EscMenu refers to NetGame (a cycle).
@@ -44,6 +53,8 @@ const SQUAD_SEND_HZ: float = 10.0
 const WRECK_SEND_HZ: float = 5.0
 ## A team swap request stays open this long (s).
 const SWAP_OFFER_S: float = 60.0
+## The roster goes to everyone this often when it changed.
+const ROSTER_HZ: float = 2.0
 
 ## net_id -> Tank (every replicated tank)
 var tanks: Dictionary = {}
@@ -74,6 +85,8 @@ var _wreck_clock := PackedFloat32Array([0.0])
 var _koth_hooked: KothMode
 var _thunder_timer: float = 0.0
 var _thunder_hooked: ThunderRoadMode
+var _free_timer: float = 0.0
+var _free_hooked: FreeFight
 ## Host: peer -> peers who asked it to swap teams.
 var _offers: Dictionary = {}
 ## Players of the other team this player may ask to swap ([[peer, name], ...]; filled
@@ -81,6 +94,10 @@ var _offers: Dictionary = {}
 var swap_choices: Array = []
 ## Players who asked this player to swap teams: [[peer, name, Time.get_ticks_msec()], ...].
 var swap_offers: Array = []
+## Who is on which team: [[team, name, kind (DeployScreen.Kind), tank type, peer], ...]
+## (host: made here; clients: the host's).
+var roster: Array = []
+var _roster_clock := PackedFloat32Array([0.0])
 
 
 func _ready() -> void:
@@ -93,9 +110,7 @@ func _ready() -> void:
 		add_child(_replicator)
 		for field: TreeField in _tree_fields():
 			field.tree_index_felled.connect(_on_tree_felled.bind(_map.get_path_to(field)))
-		teams[1] = 0
 		_names[1] = NetSession.instance.player_name
-		_spawn_player(1)
 	else:
 		_puppets = NetPuppets.new()
 		add_child(_puppets)
@@ -103,11 +118,19 @@ func _ready() -> void:
 		_input.process_physics_priority = 100   # after PlayerController has set the command
 		add_child(_input)
 		NetSession.instance.rpc_id(1, "rpc_ready")
+	var lobby := MatchLobby.new()
+	lobby.name = "MatchLobby"
+	_map.add_child.call_deferred(lobby)
 
 
 func _exit_tree() -> void:
 	if NetSession.instance.game == self:
 		NetSession.instance.game = null
+
+
+## True once this machine's player has a tank (the lobby is done).
+func has_own_tank() -> bool:
+	return is_instance_valid(_my_rig)
 
 
 func tank_of_peer(peer: int) -> Tank:
@@ -247,7 +270,8 @@ func _register(tank: Tank, owner_peer: int) -> int:
 			if peer != 0 and TankSwitch.wants_other(tank, _config_of(peer)):
 				respawn_player.call_deferred(peer))
 		tank.knocked_out.connect(func() -> void:
-			if ThunderRoadMode.instance == null:   # ThunderRoad brings tanks back itself
+			# ThunderRoad and free fight bring tanks back themselves.
+			if ThunderRoadMode.instance == null and FreeFight.instance == null:
 				_respawn_timers[net_id] = RESPAWN_DELAY_S)
 	return net_id
 
@@ -434,11 +458,10 @@ func on_swap_answer(peer: int, from_peer: int, accept: bool) -> void:
 
 
 ## Host: `peer` picked another tank type.
-func on_change_tank(peer: int, config_key: String, tank_name: String) -> void:
-	var cfg: TankConfig = TankConfig.from_key(config_key)
-	if cfg == null or TankBuilder.build(cfg) == null:
+func on_change_tank(peer: int, config_key: String, _tank_name: String) -> void:
+	var cfg: TankConfig = TankConfigs.preset_of_key(config_key)
+	if cfg == null:
 		return
-	cfg.display_name = tank_name.strip_edges().left(24)
 	if peer != 1:
 		_configs[peer] = cfg   # the host's own is its garage choice (TankConfigs)
 	var tank: Tank = tank_of_peer(peer)
@@ -452,11 +475,108 @@ func on_change_tank(peer: int, config_key: String, tank_name: String) -> void:
 	_notify(peer, "Now driving %s" % cfg.display_name)
 
 
+# --- Lobby: team, tank, roster ---------------------------------------------------------
+
+## Any machine: this player wants `team` (before it has a tank).
+func pick_team(team: int) -> void:
+	if NetRole.is_host():
+		on_pick_team(1, team)
+	else:
+		NetSession.instance.rpc_id(1, "rpc_pick_team", team)
+
+
+## Any machine: this player is ready, in `cfg` (a preset).
+func request_deploy(cfg: TankConfig) -> void:
+	if NetRole.is_host():
+		on_deploy(1, cfg.key())
+	else:
+		NetSession.instance.rpc_id(1, "rpc_deploy", cfg.key())
+
+
+## Host: `peer` (without a tank) picked a team.
+func on_pick_team(peer: int, team: int) -> void:
+	if team < 0 or team > 1 or tank_of_peer(peer) != null:
+		return
+	teams[peer] = team
+	_push_roster()
+
+
+## Host: `peer` chose its tank: it spawns on its team, a bot there making room.
+func on_deploy(peer: int, config_key: String) -> void:
+	if not teams.has(peer) or tank_of_peer(peer) != null:
+		return
+	var cfg: TankConfig = TankConfigs.preset_of_key(config_key)
+	if cfg == null:
+		cfg = load(TankConfigs.DEFAULT_PRESET) as TankConfig
+	if peer != 1:
+		_configs[peer] = cfg   # the host's own is its TankConfigs choice (the lobby set it)
+	var director: Node = _bots_director()
+	if director != null:
+		var bot_tank: Tank = director.make_room(int(teams[peer]))
+		if bot_tank != null:
+			remove_tank(bot_tank)
+	_spawn_player(peer)
+	if director != null:
+		director.refill.call_deferred()   # a team over full: the other side gets a bot
+	_push_roster()
+
+
+## Player tanks (not bots) on `team`.
+func player_count(team: int) -> int:
+	var n: int = 0
+	for net_id: int in tanks:
+		var t: Tank = tanks[net_id]
+		if int(owners.get(net_id, 0)) > 0 and is_instance_valid(t) and not t.is_queued_for_deletion() \
+				and t.team == team:
+			n += 1
+	return n
+
+
+func _make_roster() -> Array:
+	var rows: Array = []
+	for net_id: int in tanks:
+		var t: Tank = tanks[net_id]
+		if not is_instance_valid(t) or t.is_queued_for_deletion():
+			continue
+		var peer: int = int(owners.get(net_id, 0))
+		rows.append([t.team, _name_of(peer) if peer > 0 else "Bot",
+				DeployScreen.Kind.PLAYER if peer > 0 else DeployScreen.Kind.BOT, t.get_type_name(), peer])
+	for peer: int in teams:
+		if tank_of_peer(peer) == null:
+			rows.append([int(teams[peer]), _name_of(peer), DeployScreen.Kind.CHOOSING, "", peer])
+	rows.sort_custom(func(a: Array, b: Array) -> bool:
+		if a[0] != b[0]:
+			return int(a[0]) < int(b[0])
+		if a[2] != b[2]:
+			return int(a[2]) < int(b[2])
+		return str(a[1]) < str(b[1]))
+	return rows
+
+
+## Host: the roster to everyone if it changed.
+func _push_roster() -> void:
+	var rows: Array = _make_roster()
+	if rows == roster:
+		return
+	roster = rows
+	roster_changed.emit()
+	if not multiplayer.get_peers().is_empty():
+		NetSession.instance.rpc("rpc_roster", rows)
+
+
+## Client: the host's roster.
+func on_roster(rows: Array) -> void:
+	roster = rows
+	roster_changed.emit()
+
+
 ## Where a player of `team` (re)spawns: the King of the Hill spawn for the current zone
 ## if there is one, else the map's start for the team.
 func _spawn_for(team: int, tank: Tank) -> Transform3D:
 	if ThunderRoadMode.instance != null:
 		return ThunderRoadMode.instance.spawn_for_new(team, tank)
+	if FreeFight.instance != null:
+		return FreeFight.instance.spawn_for_new(team, tank)
 	var mode: KothMode = KothMode.instance
 	if mode != null and mode.has_started():
 		return mode.get_free_spawn(team, tank)
@@ -471,24 +591,13 @@ func _send_spawn(peer: int, net_id: int) -> void:
 
 func on_client_hello(peer: int, player_name: String, config_key: String) -> void:
 	_names[peer] = player_name.strip_edges().left(20)
-	var cfg: TankConfig = TankConfig.from_key(config_key)
-	if cfg != null and TankBuilder.build(cfg) != null:
+	var cfg: TankConfig = TankConfigs.preset_of_key(config_key)
+	if cfg != null:
 		_configs[peer] = cfg
-	# Teams alternate between 0 and 1 as players join.
-	var counts: Array[int] = [0, 0]
-	for p: int in teams:
-		if teams[p] < 2:
-			counts[teams[p]] += 1
-	teams[peer] = 0 if counts[0] <= counts[1] else 1
+	# No team yet: the player picks one in the lobby (on_pick_team).
 
 
 func on_client_ready(peer: int) -> void:
-	# A team filled up with bots: one leaves to make room for the player.
-	var director: Node = _bots_director()
-	if director != null:
-		var bot_tank: Tank = director.make_room(int(teams.get(peer, 1)))
-		if bot_tank != null:
-			remove_tank(bot_tank)
 	for net_id: int in tanks:
 		_send_spawn(peer, net_id)
 	for f: Array in _felled:
@@ -510,7 +619,9 @@ func on_client_ready(peer: int) -> void:
 		if mine != null and not mine.is_queued_for_deletion():
 			NetSession.instance.rpc_id(peer, "rpc_mine_laid", mine.net_id, mine.data.resource_path,
 					mine.global_position, mine.team, mine.get_known_teams())
-	_spawn_player(peer)
+	# No tank yet: the player chooses team and tank in the lobby first.
+	_push_roster()
+	NetSession.instance.rpc_id(peer, "rpc_roster", roster)
 
 
 func on_client_left(peer: int) -> void:
@@ -533,12 +644,15 @@ func on_client_left(peer: int) -> void:
 	var director: Node = _bots_director()
 	if director != null:
 		director.refill.call_deferred()
+	_push_roster()
 
 
 ## The mode's bot director (KothBots or ThunderRoadBots: make_room, refill), or null.
 func _bots_director() -> Node:
 	if KothBots.instance != null:
 		return KothBots.instance
+	if FreeFight.instance != null:
+		return FreeFight.instance
 	return ThunderRoadBots.instance
 
 
@@ -616,6 +730,9 @@ func _physics_process(delta: float) -> void:
 		return
 	_update_koth(delta)
 	_update_thunder(delta)
+	_update_free(delta)
+	if Ticks.due(_roster_clock, delta, ROSTER_HZ):
+		_push_roster()
 	_send_squads()
 	_send_wreck_moves()
 	for net_id: int in _respawn_timers.keys():
@@ -671,6 +788,25 @@ func _update_thunder(delta: float) -> void:
 		_send_thunder_state(mode)
 
 
+## Host: free fight state to every client, twice a second and at once on its events.
+func _update_free(delta: float) -> void:
+	var mode: FreeFight = FreeFight.instance
+	if mode == null:
+		return
+	if mode != _free_hooked:
+		_free_hooked = mode
+		mode.wave_started.connect(func(_r: int) -> void: _free_timer = 0.0)
+		mode.wave_attacking.connect(func() -> void: _free_timer = 0.0)
+		mode.wave_cleared.connect(func(_r: int) -> void: _free_timer = 0.0)
+		mode.match_over.connect(func(_c: int) -> void: _free_timer = 0.0)
+	_free_timer -= delta
+	if _free_timer <= 0.0:
+		_free_timer = KOTH_SEND_INTERVAL_S
+		if not multiplayer.get_peers().is_empty():
+			NetSession.instance.rpc("rpc_free_state", mode.get_net_state())
+			NetSession.instance.count_out(120)
+
+
 func _send_thunder_state(mode: ThunderRoadMode) -> void:
 	if multiplayer.get_peers().is_empty() or not mode.has_started():
 		return
@@ -715,7 +851,8 @@ func _send_squads() -> void:
 	var count: int = 0
 	for net_id: int in tanks:
 		var tank: Tank = tanks[net_id]
-		if not is_instance_valid(tank) or tank.squad == null or not is_instance_valid(tank.squad):
+		if not is_instance_valid(tank) or tank.squad == null or not is_instance_valid(tank.squad) \
+				or not tank.squad.is_inside_tree():   # a new tank's squad comes in a frame late
 			continue
 		buf.put_u16(net_id)
 		tank.squad.write_net_state(buf)
@@ -836,6 +973,11 @@ func on_squad_shot(net_id: int, kind: int, from: Vector3, velocity: Vector3) -> 
 func on_koth_state(state: Dictionary) -> void:
 	if KothMode.instance != null:
 		KothMode.instance.apply_net_state(state)
+
+
+func on_free_state(state: Dictionary) -> void:
+	if FreeFight.instance != null:
+		FreeFight.instance.apply_net_state(state)
 
 
 func on_thunder_state(state: Dictionary) -> void:

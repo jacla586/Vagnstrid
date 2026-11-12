@@ -88,6 +88,10 @@ extends Resource
 ## own pitch and turn (driving rocks the gun less, the turret holds on a turning hull);
 ## bots' error firing on the move shrinks by the same share.
 @export_range(0.0, 1.0) var gun_stabiliser: float = 0.0
+## The stabiliser takes out the hull's pitch only up to this rate (deg/s; 0 = no limit):
+## it holds the gun through the slow rocking of steady driving, while sharp jolts (a
+## throttle kick, braking, a bump) get through and throw the aim off.
+@export var gun_stabiliser_max_rate_deg: float = 0.0
 ## How fast the gun elevates/depresses (degrees/s).
 @export var gun_elevation_speed_deg: float = 5.0
 ## Max gun elevation above the turret's horizontal plane (degrees).
@@ -265,6 +269,10 @@ extends Resource
 @export_group("Infantry")
 ## The squad riding on this tank. Null = none.
 @export var squad: SquadData
+
+@export_group("Bots")
+## How bots drive this tank (BotRoleData, from the chassis; null = a brawler).
+@export var bot_role: BotRoleData
 
 @export_group("Sound")
 ## Engine, tracks, gun and hatch sounds. Null = silent tank.

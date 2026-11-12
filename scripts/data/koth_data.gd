@@ -8,6 +8,12 @@ extends Resource
 ## knocking out an enemy in the zone from inside it gives a bonus. Each new zone moves
 ## the teams' spawns: south team south of it, the others north.
 
+@export_group("Briefing")
+## Shown when a player joins (DeployScreen): the mode's name and its rules in a few
+## short lines ({score} = score_to_win where the mode has one).
+@export var display_name: String = "King of the Hill"
+@export_multiline var briefing: String = ""
+
 @export_group("Zones")
 ## Zones per match; after the last the best score wins. 0 = no limit (score_to_win).
 @export var zone_count: int = 0

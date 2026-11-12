@@ -1,0 +1,108 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/maps/campus.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://b7igmt2mm5h11" path="res://scripts/modes/koth_mode.gd" id="2_koth"]
+[ext_resource type="Resource" path="res://data/modes/koth_tactical.tres" id="3_koth_data"]
+[ext_resource type="Script" uid="uid://demkwdtsf2c6x" path="res://scripts/modes/koth_bots.gd" id="4_koth_bots"]
+[ext_resource type="PackedScene" path="res://scenes/tank/tank.tscn" id="5_tank"]
+[ext_resource type="Script" uid="uid://t1duuxcrtose" path="res://scripts/control/bot_controller.gd" id="6_bot"]
+[ext_resource type="Resource" uid="uid://xul8ehta6d3o" path="res://data/bots/bot_regular.tres" id="7_bot_data"]
+[ext_resource type="Script" uid="uid://bc1odctfft7i4" path="res://scripts/control/respawn_at_start.gd" id="8_respawn"]
+
+[node name="CampusKoth" instance=ExtResource("1_base")]
+
+[node name="KothZone" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1060, 75, 940)
+script = ExtResource("2_koth")
+data = ExtResource("3_koth_data")
+
+[node name="SpotCampus" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+
+[node name="SpotRyd" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -600, 0, 80)
+
+[node name="SpotNorthField" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -500, 0, -560)
+
+[node name="SpotAllotments" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 500, 0, -280)
+
+[node name="SpotVallastaden" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 480, 0, 480)
+
+[node name="SpotSouthWest" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -300, 0, 500)
+
+[node name="KothBots" type="Node" parent="." node_paths=PackedStringArray("mode")]
+script = ExtResource("4_koth_bots")
+mode = NodePath("../KothZone")
+
+[node name="PlayerRespawn" type="Node" parent="." node_paths=PackedStringArray("tank")]
+script = ExtResource("8_respawn")
+tank = NodePath("../PlayerRig/Tank")
+
+[node name="Enemies" type="Node3D" parent="."]
+
+[node name="Enemy1" parent="Enemies" instance=ExtResource("5_tank")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 995.0, 85, 300)
+team = 1
+
+[node name="Enemy1Bot" type="Node" parent="Enemies" node_paths=PackedStringArray("tank")]
+script = ExtResource("6_bot")
+bot_data = ExtResource("7_bot_data")
+tank = NodePath("../Enemy1")
+
+[node name="Enemy2" parent="Enemies" instance=ExtResource("5_tank")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1010.0, 85, 300)
+team = 1
+
+[node name="Enemy2Bot" type="Node" parent="Enemies" node_paths=PackedStringArray("tank")]
+script = ExtResource("6_bot")
+bot_data = ExtResource("7_bot_data")
+tank = NodePath("../Enemy2")
+
+[node name="Enemy3" parent="Enemies" instance=ExtResource("5_tank")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1025.0, 85, 300)
+team = 1
+
+[node name="Enemy3Bot" type="Node" parent="Enemies" node_paths=PackedStringArray("tank")]
+script = ExtResource("6_bot")
+bot_data = ExtResource("7_bot_data")
+tank = NodePath("../Enemy3")
+
+[node name="Enemy4" parent="Enemies" instance=ExtResource("5_tank")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1040.0, 85, 300)
+team = 1
+
+[node name="Enemy4Bot" type="Node" parent="Enemies" node_paths=PackedStringArray("tank")]
+script = ExtResource("6_bot")
+bot_data = ExtResource("7_bot_data")
+tank = NodePath("../Enemy4")
+
+[node name="Friend1" parent="Enemies" instance=ExtResource("5_tank")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 995.0, 85, 1600)
+team = 0
+
+[node name="Friend1Bot" type="Node" parent="Enemies" node_paths=PackedStringArray("tank")]
+script = ExtResource("6_bot")
+bot_data = ExtResource("7_bot_data")
+tank = NodePath("../Friend1")
+
+[node name="Friend2" parent="Enemies" instance=ExtResource("5_tank")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1010.0, 85, 1600)
+team = 0
+
+[node name="Friend2Bot" type="Node" parent="Enemies" node_paths=PackedStringArray("tank")]
+script = ExtResource("6_bot")
+bot_data = ExtResource("7_bot_data")
+tank = NodePath("../Friend2")
+
+[node name="Friend3" parent="Enemies" instance=ExtResource("5_tank")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1025.0, 85, 1600)
+team = 0
+
+[node name="Friend3Bot" type="Node" parent="Enemies" node_paths=PackedStringArray("tank")]
+script = ExtResource("6_bot")
+bot_data = ExtResource("7_bot_data")
+tank = NodePath("../Friend3")

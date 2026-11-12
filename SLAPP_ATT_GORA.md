@@ -18,7 +18,7 @@ Regler: `Tävlingsvillkor.txt`, `Tävling1–3.png` (inte i git). Bidragstexten:
 
 ### Licenser (måste vara klart före släpp)
 - [ ] **Orienteringskartorna:** Jacob har mejlat klubbarna (Linghem, Linköping). Stenblock, snår, myrar
-      och bäckar i `vidingsjo`, `linghem`, `road_to_science` (och `campus`) kommer därifrån.
+      och bäckar i `vidingsjo`, `linghem`, `road_to_science` och `campus` (Campus: sprintkartan och Lambohovskartan, nya 11 nov) kommer därifrån.
       Nej eller inget svar → bygg om de kartorna utan `okarta.py` (se `geodata/CLAUDE.md`).
       Ja → nämn klubbarna i `CREDITS.md` och `data/ui/credits.txt`.
 

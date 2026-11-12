@@ -42,6 +42,8 @@ const SPAWN_LIFT_M: float = 1.5
 ## Client: the new round's map reset waits this long, so wrecks the puppets leave as
 ## they jump to the new spawns go too (s).
 const NET_RESET_DELAY_S: float = 1.5
+## How far the corridor drawing runs on past the road's end (the rule goes on forever).
+const CORRIDOR_RUN_OUT_M: float = 3000.0
 
 @export var data: ThunderRoadData
 
@@ -177,6 +179,28 @@ func point_at(s: float, across: float = 0.0) -> Vector3:
 	if across == 0.0:
 		return p
 	return p + _segment_tangent(i).cross(Vector3.UP) * across
+
+
+## Outline(s) of `role`'s corridor in world (x, z), the area is_inside allows: all within
+## half_width of the road, round behind its start (attackers) or cut square at the
+## defender line, going on straight past the road's end like `project`. Clipper may
+## return several polygons (holes where the road loops).
+func corridor_outline(role: Role) -> Array[PackedVector2Array]:
+	var line := PackedVector2Array()
+	var from: float = maxf(get_defender_line_s(), 0.0) if role == Role.DEFEND else 0.0
+	if _route.size() < 2 or from >= get_length():
+		return []
+	var p0: Vector3 = point_at(from)
+	line.append(Vector2(p0.x, p0.z))
+	for i: int in _route.size():
+		if _along[i] > from:
+			line.append(Vector2(_route[i].x, _route[i].z))
+	var t: Vector3 = _segment_tangent(_route.size() - 2)
+	var end: Vector3 = _route[_route.size() - 1] + t * CORRIDOR_RUN_OUT_M
+	line.append(Vector2(end.x, end.z))
+	var end_type: Geometry2D.PolyEndType = Geometry2D.END_BUTT if role == Role.DEFEND \
+			else Geometry2D.END_ROUND
+	return Geometry2D.offset_polyline(line, half_width(role), Geometry2D.JOIN_ROUND, end_type)
 
 
 ## The road's direction at `s` (flat unit vector, towards the end).
@@ -548,7 +572,7 @@ func _setup_round(number: int) -> void:
 	_attackers_in = 0
 	_overtime = false
 	_time_left = data.start_time_s
-	_lives = data.start_lives_per_tank * _team_tanks(_attack_team).size()
+	_lives = data.start_lives_per_tank * _team_tanks(_attack_team).size() + data.start_lives_extra
 	_wave_left = data.wave_interval_s
 	_waiting.clear()
 	_def_respawn.clear()
@@ -813,7 +837,7 @@ func _free_slot(s: float, facing: Vector3, tank: Tank) -> Transform3D:
 	var found_first: bool = false
 	for row: int in SLOT_ROWS:
 		for across: float in SLOT_ACROSS_M:
-			var p: Vector3 = _slot_point(s + back * row * SLOT_ROW_M, across)
+			var p: Vector3 = slot_point(s + back * row * SLOT_ROW_M, across)
 			var hit: Dictionary = KothMode.ground_hit(get_world_3d(), p)
 			if hit.is_empty():
 				continue
@@ -825,7 +849,7 @@ func _free_slot(s: float, facing: Vector3, tank: Tank) -> Transform3D:
 			if _slot_ok(hit, tank):
 				return xform
 	if not found_first:
-		var hit: Dictionary = KothMode.ground_hit(get_world_3d(), _slot_point(s, 0.0))
+		var hit: Dictionary = KothMode.ground_hit(get_world_3d(), slot_point(s, 0.0))
 		if hit.is_empty():
 			s = minf(s, get_length() - 10.0)   # off the map past the road's end
 			hit = KothMode.ground_hit(get_world_3d(), point_at(s, 0.0))
@@ -835,7 +859,7 @@ func _free_slot(s: float, facing: Vector3, tank: Tank) -> Transform3D:
 
 
 ## point_at, but past the road's ends it goes on straight along the end's direction.
-func _slot_point(s: float, across: float) -> Vector3:
+func slot_point(s: float, across: float) -> Vector3:
 	var length: float = get_length()
 	if s <= length:
 		return point_at(s, across)

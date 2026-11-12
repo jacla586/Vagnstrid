@@ -39,8 +39,17 @@ extends Control
 ## as the view.
 @export var view_cone_color: Color = Color(1.0, 1.0, 0.85, 0.22)
 @export var view_cone_length_px: float = 46.0
+## The map's invisible edge (MapEdge): a line, the area outside it darkened.
+@export var edge_color: Color = Color(1.0, 0.35, 0.25, 0.7)
+@export var outside_edge_color: Color = Color(0.0, 0.0, 0.0, 0.35)
+## Free fight: the circle a holding wave stands in.
+@export var wave_color: Color = Color(1.0, 0.2, 0.15, 0.85)
+@export var wave_fill_color: Color = Color(1.0, 0.2, 0.15, 0.12)
 
 var _map_image: MapImageData
+## ThunderRoad corridor outline (world x, z) and what it was made for (role, width, start).
+var _corridor: Array[PackedVector2Array] = []
+var _corridor_key := Vector3(-1.0, 0.0, 0.0)
 var _map_looked_up: bool = false
 ## Maps redraw this often, not every frame (a full map redraw costs ~2 ms of CPU).
 const REDRAW_HZ: float = 20.0
@@ -74,7 +83,9 @@ func draw_map(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 				Rect2(_to_screen(world.position, rect, centre, scale_px), world.size * scale_px),
 				false)
 	_draw_grid(rect, centre, scale_px)
+	_draw_edge(rect, centre, scale_px)
 	_draw_zone(rect, centre, scale_px)
+	_draw_wave(rect, centre, scale_px)
 	_draw_route(rect, centre, scale_px)
 	_draw_squads(rect, centre, scale_px)
 	_draw_mines(rect, centre, scale_px)
@@ -115,6 +126,50 @@ func _to_screen(world: Vector2, rect: Rect2, centre: Vector2, scale_px: float) -
 	return rect.get_center() + (world - centre) * scale_px
 
 
+## Free fight: the holding wave's circle (gone once it attacks).
+func _draw_wave(rect: Rect2, centre: Vector2, scale_px: float) -> void:
+	var mode: FreeFight = FreeFight.instance
+	if mode == null or not mode.is_defending():
+		return
+	var c3: Vector3 = mode.get_centre()
+	var p: Vector2 = _to_screen(Vector2(c3.x, c3.z), rect, centre, scale_px)
+	var r: float = maxf(mode.get_radius() * scale_px, 4.0)
+	if not rect.grow(r).has_point(p):
+		return
+	draw_circle(p, r, wave_fill_color)
+	var dashes: int = 24
+	for i: int in dashes:
+		if i % 2 == 0:
+			draw_arc(p, r, TAU * i / dashes, TAU * (i + 1) / dashes, 4, wave_color, 2.0, true)
+
+
+## The playable area's edge (MapEdge): outside it darkened (within `rect`), a thin line.
+func _draw_edge(rect: Rect2, centre: Vector2, scale_px: float) -> void:
+	var inner: Rect2 = MapEdge.inner_rect(get_tree())
+	if not inner.has_area():
+		return
+	var a: Vector2 = _to_screen(inner.position, rect, centre, scale_px)
+	var b: Vector2 = _to_screen(inner.end, rect, centre, scale_px)
+	var screen := Rect2(a, b - a)
+	if screen.encloses(rect):
+		return
+	# Four bands round the inner rect, cut to the drawing area.
+	for band: Rect2 in [Rect2(rect.position.x, rect.position.y, rect.size.x, a.y - rect.position.y),
+			Rect2(rect.position.x, b.y, rect.size.x, rect.end.y - b.y),
+			Rect2(rect.position.x, a.y, a.x - rect.position.x, b.y - a.y),
+			Rect2(b.x, a.y, rect.end.x - b.x, b.y - a.y)]:
+		var cut: Rect2 = band.abs().intersection(rect)
+		if cut.has_area():
+			draw_rect(cut, outside_edge_color)
+	var corners := PackedVector2Array([a, Vector2(b.x, a.y), b, Vector2(a.x, b.y), a])
+	for i: int in 4:
+		var p: Vector2 = corners[i].clamp(rect.position, rect.end)
+		var q: Vector2 = corners[i + 1].clamp(rect.position, rect.end)
+		if p.distance_to(q) > 0.5 and (rect.grow(-0.5).has_point(p.lerp(q, 0.5)) \
+				or corners[i].is_equal_approx(p) or corners[i + 1].is_equal_approx(q)):
+			draw_line(p, q, edge_color, 1.5, true)
+
+
 ## Own team's dismounted squads: a dot (and a line to where it's going).
 func _draw_squads(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 	var tank: Tank = get_tank()
@@ -137,34 +192,34 @@ func _draw_squads(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 			draw_circle(p, 3.0, squad_color)
 
 
-## ThunderRoad: the road, the own corridor (edges every ~40 m along), the checkpoints.
+## ThunderRoad: the road, the own corridor's outline, the checkpoints.
 func _draw_route(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 	var mode: ThunderRoadMode = ThunderRoadMode.instance
 	var tank: Tank = get_tank()
 	if mode == null or tank == null or mode.get_round() == 0 or mode.is_over():
 		return
 	var role: ThunderRoadMode.Role = mode.role_of(tank.team)
-	var w: float = mode.half_width(role)
-	var start: float = maxf(mode.get_defender_line_s(), 0.0) if role == ThunderRoadMode.Role.DEFEND else 0.0
 	var length: float = mode.get_length()
 	var road := PackedVector2Array()
-	var left := PackedVector2Array()
-	var right := PackedVector2Array()
 	var steps: int = maxi(ceili(length / 40.0), 2)
 	for i: int in steps + 1:
-		var s: float = length * i / steps
-		var p: Vector3 = mode.point_at(s)
+		var p: Vector3 = mode.point_at(length * i / steps)
 		road.append(_to_screen(Vector2(p.x, p.z), rect, centre, scale_px))
-		if s >= start:
-			var l: Vector3 = mode.point_at(s, -w)
-			var r: Vector3 = mode.point_at(s, w)
-			left.append(_to_screen(Vector2(l.x, l.z), rect, centre, scale_px))
-			right.append(_to_screen(Vector2(r.x, r.z), rect, centre, scale_px))
 	draw_polyline(road, route_color, 2.0, true)
-	if left.size() >= 2:
-		draw_polyline(left, corridor_color, 1.5, true)
-		draw_polyline(right, corridor_color, 1.5, true)
-		draw_line(left[0], right[0], corridor_color, 1.5, true)
+	# The corridor's outline (world polygons, rebuilt only when the role or the defender
+	# line changes), so tight bends and the start's roundabout don't cross the edges.
+	var key := Vector3(role, mode.half_width(role),
+			mode.get_defender_line_s() if role == ThunderRoadMode.Role.DEFEND else 0.0)
+	if key != _corridor_key:
+		_corridor_key = key
+		_corridor = mode.corridor_outline(role)
+	for poly: PackedVector2Array in _corridor:
+		var screen := PackedVector2Array()
+		screen.resize(poly.size() + 1)
+		for i: int in poly.size():
+			screen[i] = _to_screen(poly[i], rect, centre, scale_px)
+		screen[poly.size()] = screen[0]
+		draw_polyline(screen, corridor_color, 1.5, true)
 	var next: int = mode.get_next_checkpoint()
 	for i: int in mode.get_checkpoint_count():
 		var c3: Vector3 = mode.get_checkpoint_point(i)

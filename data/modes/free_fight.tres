@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="FreeFightData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/free_fight_data.gd" id="1_ff"]
+[ext_resource type="Resource" path="res://data/bots/bot_easy.tres" id="2_easy"]
+[ext_resource type="Script" path="res://scripts/data/tank_config.gd" id="9_cfg"]
+[ext_resource type="Resource" uid="uid://xul8ehta6d3o" path="res://data/bots/bot_regular.tres" id="3_hard"]
+[ext_resource type="Resource" path="res://data/configs/1_bt7.tres" id="4_bt7"]
+[ext_resource type="Resource" path="res://data/configs/2_t34.tres" id="5_t34"]
+[ext_resource type="Resource" path="res://data/configs/3_pz4.tres" id="6_pz4"]
+[ext_resource type="Resource" path="res://data/configs/4_kv2.tres" id="7_kv2"]
+[ext_resource type="Resource" path="res://data/configs/5_sherman.tres" id="8_sherman"]
+
+[resource]
+script = ExtResource("1_ff")
+briefing = "Survive the waves.\nEach wave waits in its circle on the map and attacks once it spots you.\nBeat it and a bigger, better one comes. Knocked out, you are back when your team beats the wave."
+easy_bot = ExtResource("2_easy")
+hard_bot = ExtResource("3_hard")
+easy_configs = Array[ExtResource("9_cfg")]([ExtResource("4_bt7"), ExtResource("5_t34")])
+hard_configs = Array[ExtResource("9_cfg")]([ExtResource("4_bt7"), ExtResource("5_t34"), ExtResource("6_pz4"), ExtResource("7_kv2"), ExtResource("8_sherman")])

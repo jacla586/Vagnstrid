@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant, lekplatser, valtbart
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant, lekplatser, valtbart, idrott, landmarken, overfarter
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -139,6 +139,7 @@ for geom, t in feat['waterways']:
     wm = rasterize([(gg.buffer(1.5), 1)], out_shape=(H, W), transform=T).astype(bool)
     h[wm] -= depth * 0.7
 h = ndi.gaussian_filter(h, 0.6) * 0.5 + h * 0.5  # mjuka kanter efter schaktning
+overfarter.forma(overfarter.las(WORK.parent), h, OX, OY, RES)   # körbara diken (<projekt>/overfarter.json)
 BRO.schakta(h, sample, (H, W), T, OX, OY, RES)   # undergångar: fri höjd under däcken
 TRUMMOR = trummor.las((X0, Y1 - H * RES, X0 + W * RES, Y1))   # vägtrummor (trummor.py)
 trummor.schakta(TRUMMOR, h, (H, W), T, OX, OY, RES)
@@ -147,6 +148,10 @@ BRO.spara_mask(str(WORK / 'broar_mask.npy'), (H, W), T)   # step4: inga träd i 
 BANA = jarnvag.Jarnvag(feat.get('rails', []), feat.get('platforms', []), BOX,
                        np.load(str(WORK / 'h_raw.npy')).astype(np.float64), sample)
 BANA.forma(h, (H, W), T, OX, OY, RES)
+# Idrottsplatser (idrott.py): löparbanor plattas till, läktare tas ur husen (byggs längre ned)
+IDROTT = idrott.Idrott(feat, BOX)
+LANDMARKEN = landmarken.Landmarken(feat, BOX)   # landmarken.py: hus som byggs efter sina OSM-delar
+IDROTT.forma(h, (H, W), T, RES)
 BANA.spara_mask(str(WORK / 'jarnvag_mask.npy'), (H, W), T)   # step4: inga träd nära spåret
 
 # ---------- Heightmap-export ----------
@@ -193,12 +198,15 @@ for r in roads:
     mm = rasterize([(r['line'].buffer(r['width'] / 2), 1)], out_shape=(H, W), transform=T).astype(bool)
     lc[mm] = CIDX['väg_asfalt' if r['surface'] == 'asfalt' else 'väg_grus']
 BANA.marktacke(lc, CIDX['väg_grus'], (H, W), T)
+if IDROTT.planer():   # innerplanerna: gräsmatta (tomt), tartanen under banan: grus
+    lc[rasterize([(p_, 1) for p_ in IDROTT.planer()], out_shape=(H, W), transform=T).astype(bool)] = CIDX['tomt']
+    lc[rasterize([(p_, 1) for p_ in IDROTT.tartan()], out_shape=(H, W), transform=T).astype(bool)] = CIDX['väg_grus']
 # Markvegetation för spelet (markvegetation.py): klass per 2 m-cell
 import markvegetation
 MV = markvegetation.bygg(lc, CIDX, T, (H, W), WORK.parent / 'data' if WORK.name == 'work' and WORK.parent != ROOT else ROOT / 'data',
-                    [gm for gm, _ in feat['buildings']], OUT,
+                    [gm for gm, _ in feat['buildings']] + IDROTT.tartan() + [l for l, _, _ in IDROTT.laktare], OUT,
                     str(ROOT / 'forhandsbilder' / f'markvegetation_{NAMN}.png'), water_polys, RES,
-                    [x[0] for x in feat.get('lekplatser', [])])
+                    [x[0] for x in feat.get('lekplatser', [])] + IDROTT.planer())   # gräsmatta
 markvegetation.vatten(water_polys, water_levels, T, (H, W), OUT)   # sjöarnas nivåer för vadningen
 pal = np.array([c for _, c in CLASSES], np.uint8)
 Image.fromarray(lc).save(f'{OUT}/landcover_index.png')
@@ -351,6 +359,15 @@ for _poly, _pts in _lek:
         c, r_ = to_px(*_p)
         _lek_mask[max(int(r_) - 2, 0):int(r_) + 3, max(int(c) - 2, 0):int(c) + 3] = True
 np.save(str(WORK / 'lekplatser_mask.npy'), _lek_mask)
+# Löparbanor och läktare (idrott.py)
+if IDROTT:
+    for grupp in ('Idrott', 'Byggnader_laktare'):
+        scene.graph.update(frame_to=grupp, frame_from=scene.graph.base_frame)
+    IDROTT.bygg(sample, h, to_world, add_merged, mat)
+np.save(str(WORK / 'idrott_mask.npy'), IDROTT.mask((H, W), T))   # step4: inga träd eller buskar
+if LANDMARKEN.lista:
+    scene.graph.update(frame_to='Byggnader_landmarken', frame_from=scene.graph.base_frame)
+    LANDMARKEN.bygg(sample, h, to_world, add_merged)
 # Vägtrummor (trummor.py, Trafikverket): rörändar i vägbankarna
 scene.graph.update(frame_to='Trummor', frame_from=scene.graph.base_frame)
 trummor.bygg(TRUMMOR, h, sample, to_world, add_merged, mat)
@@ -557,8 +574,10 @@ n_h = 0
 for k, (gm, t) in enumerate(osm_b):
     hh = laser.heights_in(gm) if laser else None
     n_h += hh is not None
-    add_building(gm, t, 'Byggnader_OSM', hh)
     bpolys.append(gm)
+    if LANDMARKEN.ar(t):
+        continue   # byggs av landmarken.py
+    add_building(gm, t, 'Byggnader_OSM', hh)
 print('OSM-byggnader', len(osm_b), 'varav med laserhöjd', n_h)
 
 if laser:
@@ -566,7 +585,7 @@ if laser:
     scene.graph.update(frame_to='Byggnader_laser', frame_from=scene.graph.base_frame)
     excl = unary_union([b.buffer(1.0) for b in bpolys]
                        + [r['line'].buffer(r['width'] / 2 + 1.0) for r in roads if r['tags']['highway'] not in ('path', 'footway')]
-                       + water_polys)
+                       + water_polys + IDROTT.ytor())
     n_l = 0
     for rect, poly in laser.detect(exclude=excl):
         c_, r_ = to_px(rect.centroid.x, rect.centroid.y)

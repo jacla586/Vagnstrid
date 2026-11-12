@@ -549,5 +549,107 @@
 			"look_height_m": 0.0,
 			"fov": 60
 		}
+	],
+	"campus": [
+		{
+			"name": "1_isovalen_ost",
+			"at": [
+				1659,
+				1098
+			],
+			"height_m": 35,
+			"look_at": [
+				1509,
+				1138
+			],
+			"look_height_m": 0,
+			"fov": 55
+		},
+		{
+			"name": "2_isovalen_vast",
+			"at": [
+				1359,
+				1178
+			],
+			"height_m": 35,
+			"look_at": [
+				1509,
+				1138
+			],
+			"look_height_m": 0,
+			"fov": 55
+		},
+		{
+			"name": "3_isovalen_mark",
+			"at": [
+				1519,
+				1158
+			],
+			"height_m": 1.8,
+			"look_at": [
+				1449,
+				1138
+			],
+			"look_height_m": 3,
+			"fov": 60
+		},
+		{
+			"name": "4_isovalen_mark2",
+			"at": [
+				1499,
+				1118
+			],
+			"height_m": 1.8,
+			"look_at": [
+				1569,
+				1138
+			],
+			"look_height_m": 3,
+			"fov": 60
+		}
+	],
+	"road_to_science": [
+		{
+			"name": "1_mjardevi_ost",
+			"at": [
+				772,
+				664
+			],
+			"height_m": 2.5,
+			"look_at": [
+				542,
+				624
+			],
+			"look_height_m": 22,
+			"fov": 60
+		},
+		{
+			"name": "2_mjardevi_syd",
+			"at": [
+				582,
+				824
+			],
+			"height_m": 2.5,
+			"look_at": [
+				542,
+				624
+			],
+			"look_height_m": 22,
+			"fov": 60
+		},
+		{
+			"name": "3_mjardevi_hogt",
+			"at": [
+				712,
+				744
+			],
+			"height_m": 60,
+			"look_at": [
+				542,
+				624
+			],
+			"look_height_m": 15,
+			"fov": 55
+		}
 	]
 }

@@ -3,6 +3,12 @@ extends Resource
 ## Rules of ThunderRoad (a gauntlet): attackers clear a road checkpoint by checkpoint,
 ## defenders hold a corridor along it and fall back. Two rounds, sides swap.
 
+@export_group("Briefing")
+## Shown when a player joins (DeployScreen): the mode's name and its rules in a few
+## short lines ({score} = score_to_win where the mode has one).
+@export var display_name: String = "ThunderRoad"
+@export_multiline var briefing: String = ""
+
 @export_group("Corridors")
 ## Defenders keep within this of the road (m, each side) and ahead of the front less
 ## defender_behind_front_m...
@@ -36,13 +42,15 @@ extends Resource
 
 @export_group("Time and lives")
 ## The attackers' time bank (s), topped up per checkpoint taken.
-@export var start_time_s: float = 240.0
+@export var start_time_s: float = 390.0
 @export var time_per_capture_s: float = 120.0
 ## Time up with attackers in the zone: overtime, the round runs on while one is alive
 ## there and ends this long after the last one left or fell (s).
 @export var overtime_grace_s: float = 3.0
 ## Attackers' shared lives: per tank in the team at the start, and per checkpoint taken.
 @export var start_lives_per_tank: int = 2
+## ...plus this many for the whole team at the start.
+@export var start_lives_extra: int = 5
 @export var lives_per_capture: int = 2
 ## Knocked-out attackers come back together: at every capture or this often (s), each
 ## costing a life, this far behind the front (m).

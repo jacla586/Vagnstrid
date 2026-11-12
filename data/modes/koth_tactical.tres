@@ -10,6 +10,8 @@
 
 [resource]
 script = ExtResource("1_koth")
+display_name = "King of the Hill – tactical"
+briefing = "Zones open one at a time; the next one shows on the map.\nEvery tank of yours inside the zone scores. More tanks there than the enemy: faster.\nA slower game: zones shrink little and last long.\nKnocking out any enemy inside the zone gives a bonus.\nFirst team to {score} points wins."
 radius_start_m = 175.0
 radius_end_m = 110.0
 zone_hold_s = 240.0

@@ -33,6 +33,8 @@ static var instance: KothMode
 
 ## Below this the terrain counts as sea (m).
 const SEA_LEVEL_LIMIT_M: float = 0.5
+## Spawns keep this far inside the map's edge (MapEdge), room for the rows of tanks (m).
+const SPAWN_EDGE_INSET_M: float = 30.0
 ## Spawns put the tank's origin (mid-hull) this far above the ground, so it drops onto
 ## its suspension instead of starting inside the terrain (m).
 const SPAWN_LIFT_M: float = 1.5
@@ -324,15 +326,21 @@ func _slot_fit(at: Vector3, exclude: Tank) -> bool:
 	if hit.is_empty() or not (hit["collider"] is Terrain3D) \
 			or (hit["normal"] as Vector3).angle_to(Vector3.UP) > deg_to_rad(SPAWN_MAX_SLOPE_DEG):
 		return false
+	return box_clear(get_world_3d(), hit["position"], exclude.get_rid() if exclude != null else RID())
+
+
+## A tank-sized box standing on `ground` touches nothing solid but the terrain (no house,
+## tree trunk, stone, wreck or tank; `skip` = a body to ignore, e.g. the tank itself).
+static func box_clear(world: World3D, ground: Vector3, skip: RID = RID()) -> bool:
 	var box := BoxShape3D.new()
 	box.size = SPAWN_BOX_M
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = box
 	query.collision_mask = 1
-	query.transform = Transform3D(Basis(), (hit["position"] as Vector3) + Vector3.UP * (SPAWN_BOX_M.y * 0.5 + SPAWN_BOX_CLEARANCE_M))
-	if exclude != null:
-		query.exclude = [exclude.get_rid()]
-	for h: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 8):
+	query.transform = Transform3D(Basis(), ground + Vector3.UP * (SPAWN_BOX_M.y * 0.5 + SPAWN_BOX_CLEARANCE_M))
+	if skip.is_valid():
+		query.exclude = [skip]
+	for h: Dictionary in world.direct_space_state.intersect_shape(query, 8):
 		if not (h["collider"] is Terrain3D):
 			return false
 	return true
@@ -572,10 +580,10 @@ static func _flat_dir(centre: Vector3, enemy: Vector3) -> Vector3:
 ## Tries the axis turned a little, then closer distances; first only spots clear of
 ## enemy tanks (spawn_enemy_clear_m), then any.
 func _find_spawn(side: int) -> Transform3D:
-	var map_rect: Rect2 = Rect2()
-	var map_image: MapImageData = MapImageData.find_for_scene(get_tree().current_scene)
-	if map_image != null:
-		map_rect = map_image.world_rect.grow(-50.0)
+	# Inside the map's edge, with room for the spawn rows.
+	var map_rect: Rect2 = MapEdge.inner_rect(get_tree())
+	if map_rect.has_area():
+		map_rect = map_rect.grow(-SPAWN_EDGE_INSET_M)
 	var dir: Vector3 = _spawn_axis * float(side)
 	var enemies: Array[Vector3] = []
 	if _time > 0.0:   # at match start the tanks aren't placed yet

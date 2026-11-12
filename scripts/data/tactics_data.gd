@@ -122,3 +122,31 @@ extends Resource
 @export var hunt_engage_m: float = 250.0
 ## Give a hunt up after this long (s) and go back to the zone orders.
 @export var hunt_max_s: float = 40.0
+
+@export_group("Situation")
+## How a team reads the fight (TeamSituation, every situation_interval_s), from what it
+## knows: enemies spotted within situation_memory_s, knock-outs (the kill feed) within
+## momentum_window_s, its own tanks, the score and the clock.
+@export var situation_interval_s: float = 2.0
+@export var situation_memory_s: float = 30.0
+@export var momentum_window_s: float = 60.0
+## The upper hand: this many more own tanks in the zone than known enemies there, or
+## this many more knock-outs than losses lately.
+@export var advantage_margin: int = 2
+@export var momentum_advantage: int = 2
+## Pressure to take the zone: behind on score with this little time left in the zone
+## (s) or this share of its points left; or no more than pressure_few_defenders known
+## enemies there while behind or short of time.
+@export var pressure_time_s: float = 90.0
+@export_range(0.0, 1.0) var pressure_budget_share: float = 0.35
+@export var pressure_few_defenders: int = 1
+## Known enemies within this of the zone's edge count as near it (m); none near and a
+## knock-out lately: the enemy is pushed back.
+@export var near_zone_m: float = 300.0
+## Once a bot goes in on the upper hand or pressure, it keeps at it at least this long (s).
+@export var enter_hold_s: float = 30.0
+## Its own knock-out of an enemy counts as the moment for this long (s; flankers).
+@export var own_kill_moment_s: float = 20.0
+## At least this share of a team's living tanks always goes in: with too few brawlers
+## (random line-ups) flankers, then snipers go in without waiting for the moment.
+@export_range(0.0, 1.0) var min_spearhead_share: float = 0.5

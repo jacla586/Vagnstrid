@@ -11,6 +11,8 @@
 [ext_resource type="Resource" path="res://data/builder/armour_standard.tres" id="p1"]
 [ext_resource type="Resource" path="res://data/builder/armour_heavy.tres" id="p2"]
 
+[ext_resource type="Resource" path="res://data/bots/roles/scout.tres" id="role_scout"]
+
 [sub_resource type="Resource" id="Armour_light"]
 script = ExtResource("2_armour")
 hull_front_mm = 25.0
@@ -40,3 +42,4 @@ armour = SubResource("Armour_light")
 guns = Array[ExtResource("4_gun_script")]([ExtResource("g0"), ExtResource("g1")])
 armour_packages = Array[ExtResource("5_pack_script")]([ExtResource("p0"), ExtResource("p1"), ExtResource("p2")])
 cost = 100
+bot_role = ExtResource("role_scout")

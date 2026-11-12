@@ -151,6 +151,12 @@ extends Resource
 ## ...and distance: normal up to soldier_easy_range_m, then this much longer per 100 m.
 @export var soldier_easy_range_m: float = 150.0
 @export var soldier_spot_per_100m: float = 0.8
+## Close by, cover and ground vegetation hide less: within this their effect on the spot
+## time fades with (distance / this)² (m; a man running through crops 20 m away is seen).
+@export var soldier_close_range_m: float = 80.0
+## A group shows: each other soldier of the same squad in sight adds this share of a
+## look to every one in sight (4 men running: about 4 times as quick to spot).
+@export var group_spot_share: float = 1.0
 ## A soldier who just fired shows: for this long after a rifle shot / an AT round (back
 ## blast) (s) the factor is only reveal_spot_factor (no cover, stance or distance).
 @export var reveal_rifle_s: float = 3.0
@@ -223,7 +229,9 @@ extends Resource
 @export_group("Smoke and withdrawal")
 ## Smoke grenades per sortie (refilled on the tank).
 @export var smoke_grenades: int = 1
-## A soldier down: smoke this far towards the threat, then run for cover at most
+## With this many men down the squad smokes and pulls back (fewer: it fights on).
+@export var withdraw_after_losses: int = 2
+## Withdrawing: smoke this far towards the threat, then run for cover at most
 ## fallback_m away (m), or to the tank if that is nearer or there is none.
 @export var smoke_ahead_m: float = 8.0
 @export var fallback_m: float = 80.0
@@ -236,6 +244,32 @@ extends Resource
 @export var smoke_radius_m: float = 6.5
 @export var smoke_height_m: float = 5.2
 @export var smoke_lifetime_s: float = 30.0
+
+@export_group("Infantry fight")
+## An enemy squad spotted within this is a threat: the squad goes for it (it leaves a
+## move order for it and walks on afterwards; a recall or a withdrawal are kept) (m).
+@export var engage_range_m: float = 55.0
+## Out of rifle reach it closes to this share of rifle_range_m from the enemy.
+@export_range(0.1, 1.0) var engage_approach_share: float = 0.8
+## Only this many men or more start a fight (fewer still shoot back).
+@export var engage_min_alive: int = 3
+## The fight is over when no soldier of the enemy squad has been seen this long (s).
+@export var engage_forget_s: float = 10.0
+## Fired on by a squad it wasn't fighting: surprised this long (s), its rifles spread
+## this many times wider meanwhile.
+@export var surprised_s: float = 3.0
+@export var surprised_dispersion_factor: float = 2.5
+## The upper hand (it downed one of theirs before losing a man): a fast assault in
+## pairs, one pair running assault_leap_m past the other while the other fires...
+@export var assault_leap_m: float = 10.0
+## ...at this times its running pace...
+@export var assault_speed_factor: float = 1.4
+## ...the pair in place firing at least this long before the next pair runs (s)...
+@export var assault_overwatch_s: float = 1.5
+## ...in a line this far apart across the attack...
+@export var assault_spacing_m: float = 6.0
+## ...until this close to the enemy (m); then it holds and fights there.
+@export var assault_close_m: float = 35.0
 
 @export_group("Losses")
 ## Mounted, one missing soldier comes back this often (s); AT rounds and smoke are

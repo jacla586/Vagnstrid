@@ -1,13 +1,14 @@
-[gd_resource type="Resource" script_class="EffectData" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="EffectData" format=3 uid="uid://b3dkosjmnq1os"]
 
-[ext_resource type="Script" path="res://scripts/data/effect_data.gd" id="1_effect"]
-[ext_resource type="Script" path="res://scripts/data/burst_data.gd" id="2_burst"]
+[ext_resource type="Script" uid="uid://ccdx8vqvyg658" path="res://scripts/data/effect_data.gd" id="1_effect"]
+[ext_resource type="Script" uid="uid://d2my37k26eucx" path="res://scripts/data/burst_data.gd" id="2_burst"]
 
 [sub_resource type="Resource" id="Burst_ring"]
-script = ExtResource("2_burst")
 resource_name = "ring"
+script = ExtResource("2_burst")
 amount = 24
 lifetime_s = 2.5
+lifetime_randomness = 0.4
 spread_deg = 88
 speed_min_mps = 10
 speed_max_mps = 20
@@ -19,7 +20,6 @@ size_end_m = 2.8
 size_randomness = 0.5
 color_start = Color(0.62, 0.56, 0.46, 0.5)
 color_end = Color(0.65, 0.6, 0.5, 0)
-lifetime_randomness = 0.4
 
 [resource]
 script = ExtResource("1_effect")

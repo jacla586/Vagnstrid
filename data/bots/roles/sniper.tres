@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BotRoleData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/bot_role_data.gd" id="1_role"]
+
+[resource]
+script = ExtResource("1_role")
+kind = 2
+display_name = "Sniper"
+axis_spread_deg = 35.0
+standoff_min_m = 250.0
+standoff_max_m = 500.0
+enters = 1
+enters_on_pressure = true
+hold_min_s = 30.0
+hold_max_s = 50.0
+hunt_engage_m = 600.0
+post = 2

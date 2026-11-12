@@ -20,3 +20,6 @@ __pycache__/
 /*/*.tif
 /texturer/*/
 /vegetation_paket/
+
+# Orienteringskartor i original (klubbarnas, bara privat bruk)
+/orientering*.png

@@ -32,6 +32,8 @@ static func count_change(tank: Tank) -> void:
 		KothMode.instance.count_loss(tank)
 	if ThunderRoadMode.instance != null:
 		ThunderRoadMode.instance.count_loss(tank)
+	if FreeFight.instance != null:
+		FreeFight.instance.count_loss(tank)
 
 
 ## True if `tank` is not of the type `cfg` (null cfg: no wish).
@@ -46,6 +48,8 @@ static func wants_other(tank: Tank, cfg: TankConfig) -> bool:
 static func offline_spawn_for(tank: Tank) -> Transform3D:
 	if ThunderRoadMode.instance != null:
 		return ThunderRoadMode.instance.spawn_for_new(tank.team, tank)
+	if FreeFight.instance != null:
+		return FreeFight.instance.spawn_for_new(tank.team, tank)
 	var mode: KothMode = KothMode.instance
 	if mode != null and mode.has_started():
 		return mode.get_free_spawn(tank.team, tank)
@@ -87,3 +91,5 @@ static func carry_stats(from: Tank, to: Tank) -> void:
 		KothMode.instance.carry_stats(from, to)
 	if ThunderRoadMode.instance != null:
 		ThunderRoadMode.instance.carry_stats(from, to)
+	if FreeFight.instance != null:
+		FreeFight.instance.carry_stats(from, to)

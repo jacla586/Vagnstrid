@@ -7,8 +7,8 @@
 script = ExtResource("2_module")
 center = Vector3(0, 0.1, 2.3)
 size = Vector3(2, 1, 1.6)
-structure_damage_hp = 20.0
 hp = 70.0
+structure_damage_hp = 20.0
 blast_exposed = true
 blast_reach_share = 0.7
 
@@ -17,9 +17,9 @@ script = ExtResource("2_module")
 id = &"fuel"
 center = Vector3(0, -0.1, 1.1)
 size = Vector3(2.4, 0.7, 0.5)
-structure_damage_hp = 15.0
 hp = 30.0
 damaged_below = 1.0
+structure_damage_hp = 15.0
 
 [sub_resource type="Resource" id="Module_track_left"]
 script = ExtResource("2_module")
@@ -66,8 +66,8 @@ script = ExtResource("2_module")
 id = &"driver"
 center = Vector3(-0.6, 0.05, -2.2)
 size = Vector3(0.7, 0.9, 0.9)
-structure_damage_hp = 10.0
 damaged_below = 1.0
+structure_damage_hp = 10.0
 crew = true
 
 [sub_resource type="Resource" id="Module_gunner"]
@@ -76,8 +76,8 @@ id = &"gunner"
 frame = &"turret"
 center = Vector3(-0.45, -0.1, -0.2)
 size = Vector3(0.6, 0.9, 0.7)
-structure_damage_hp = 10.0
 damaged_below = 1.0
+structure_damage_hp = 10.0
 crew = true
 
 [resource]

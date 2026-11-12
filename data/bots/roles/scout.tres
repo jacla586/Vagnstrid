@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="BotRoleData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/bot_role_data.gd" id="1_role"]
+[ext_resource type="Resource" path="res://data/bots/roles/harasser.tres" id="2_harasser"]
+
+[resource]
+script = ExtResource("1_role")
+kind = 0
+display_name = "Scout"
+contact_role = ExtResource("2_harasser")
+axis_spread_deg = 75.0
+standoff_min_m = 150.0
+standoff_max_m = 350.0
+enters = 3
+hold_min_s = 8.0
+hold_max_s = 15.0
+hunt_engage_m = 300.0
+avoid_front_duels = true
+post = 0
+mines_first = true
+squad_stand_s = 2.0
+squad_cooldown_share = 0.5

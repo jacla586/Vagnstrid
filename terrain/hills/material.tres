@@ -1,5 +1,0 @@
-[gd_resource type="Terrain3DMaterial" format=3]
-
-[resource]
-world_background = 0
-auto_shader_enabled = true

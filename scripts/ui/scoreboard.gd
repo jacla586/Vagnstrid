@@ -64,11 +64,13 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var koth: KothMode = KothMode.instance
 	var thunder: ThunderRoadMode = ThunderRoadMode.instance
+	var free: FreeFight = FreeFight.instance
 	var tank: Tank = views.get_tank() if views != null else null
-	if (koth == null and thunder == null) or tank == null:
+	if (koth == null and thunder == null and free == null) or tank == null:
 		visible = false
 		return
-	var over: bool = koth.is_over() if koth != null else thunder.is_over()
+	var over: bool = koth.is_over() if koth != null else (thunder.is_over() if thunder != null \
+			else free.is_over())
 	var in_break: bool = thunder != null and thunder.is_in_break()
 	var show: bool = over or in_break or Input.is_action_pressed("scoreboard")
 	if over and not _was_over:
@@ -89,8 +91,10 @@ func _process(delta: float) -> void:
 		_refresh = REFRESH_S
 		if koth != null:
 			_rebuild(koth, tank)
-		else:
+		elif thunder != null:
 			_rebuild_thunder(thunder, tank)
+		else:
+			_rebuild_free(free, tank)
 
 
 func _set_title(over: bool, winner: int, own_team: int) -> void:
@@ -127,6 +131,23 @@ func _rebuild_thunder(mode: ThunderRoadMode, tank: Tank) -> void:
 			own_color, headers, cols))
 	_tables.add_child(_table("Enemy", stats, func(t: int) -> bool: return t != tank.team,
 			enemy_color, headers, cols))
+
+
+## Free fight: how far the team got, the players' knock-outs and losses.
+func _rebuild_free(mode: FreeFight, tank: Tank) -> void:
+	_title.visible = mode.is_over()
+	_title.text = "DEFEATED"
+	_title.add_theme_color_override("font_color", enemy_color)
+	var waves: int = mode.get_cleared()
+	if mode.is_over():
+		_subtitle.text = "You beat %d wave%s" % [waves, "" if waves == 1 else "s"]
+	else:
+		_subtitle.text = "Wave %d   ·   %d beaten" % [maxi(mode.get_wave_number(), 1), waves]
+	for child: Node in _tables.get_children():
+		child.queue_free()
+	_tables.add_child(_table("Your team", mode.get_stats(),
+			func(t: int) -> bool: return t == tank.team, own_color,
+			["KO", "Assists", "Lost"] as Array[String], [2, 4, 3] as Array[int]))
 
 
 func _rebuild(mode: KothMode, tank: Tank) -> void:

@@ -1,11 +1,11 @@
-[gd_resource type="Resource" script_class="EffectData" load_steps=5 format=3]
+[gd_resource type="Resource" script_class="EffectData" format=3 uid="uid://v45agro02osd"]
 
-[ext_resource type="Script" path="res://scripts/data/effect_data.gd" id="1_effect"]
-[ext_resource type="Script" path="res://scripts/data/burst_data.gd" id="2_burst"]
+[ext_resource type="Script" uid="uid://ccdx8vqvyg658" path="res://scripts/data/effect_data.gd" id="1_effect"]
+[ext_resource type="Script" uid="uid://d2my37k26eucx" path="res://scripts/data/burst_data.gd" id="2_burst"]
 
 [sub_resource type="Resource" id="Burst_chips"]
-script = ExtResource("2_burst")
 resource_name = "chips"
+script = ExtResource("2_burst")
 amount = 14
 lifetime_s = 1.2
 spread_deg = 40
@@ -19,10 +19,11 @@ color_end = Color(0.62, 0.6, 0.56, 1)
 soft = false
 
 [sub_resource type="Resource" id="Burst_dust"]
-script = ExtResource("2_burst")
 resource_name = "dust"
+script = ExtResource("2_burst")
 amount = 16
 lifetime_s = 3
+lifetime_randomness = 0.4
 spread_deg = 60
 speed_min_mps = 5
 speed_max_mps = 10
@@ -34,7 +35,6 @@ size_end_m = 2.8
 size_randomness = 0.5
 color_start = Color(0.78, 0.76, 0.72, 0.6)
 color_end = Color(0.8, 0.78, 0.75, 0)
-lifetime_randomness = 0.4
 
 [resource]
 script = ExtResource("1_effect")

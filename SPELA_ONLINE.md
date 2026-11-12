@@ -28,8 +28,11 @@ Tailscale måste värden öppna UDP 24680 i routern och ge kompisen sin publika 
 
 ## I spelet
 
-- Lagen fördelas automatiskt: värden i lag 0, nästa spelare i lag 1, och så vidare.
-- Lag 0 startar där spelarens vagn står i kartan, lag 1 vid kartans första fiendevagn.
+- När du kommer in i matchen visas spelläget och reglerna i korthet. Du väljer lag (Team 1
+  eller Team 2; listan visar vem som redan är var, så du kan välja din kompis lag) och sedan
+  vagn. Först då spawnar du. Botar flyttas automatiskt så att lagen blir lika stora.
+- Utan spelläge startar Team 1 där spelarens vagn står i kartan, Team 2 vid kartans första
+  fiendevagn.
 - **Bots** (kryssruta vid Host) lägger till kartans botar som ett tredje lag mot alla.
 - Utslagen vagn kommer tillbaka vid lagets start efter 10 s.
 - **Lägen:** King of the Hill (`*_koth`) och ThunderRoad (`vidingsjo_thunder_*`) går att
@@ -55,8 +58,7 @@ godot --path . -- --join 100.101.102.103 [--name Kompis]
 - Träffar avgörs på värden mot var vagnarna är där. Med hög ping kan skott mot vagnar i
   full fart missa lite.
 - Ingen lobby eller lagval än, och inga spellägen. Det är fri strid med respawn.
-- Kartan `hills` stöds inte i nätverksläge, men alla geodatakartor gör det (Vidingsjö,
-  Vikbolandet/Hackerstad, Campus, Linghem).
+- Alla kartor fungerar i nätverksläge (Vidingsjö, Campus, Linghem, Road to Science, Corson).
 
 ## Om något krånglar
 

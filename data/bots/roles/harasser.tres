@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="BotRoleData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/bot_role_data.gd" id="1_role"]
+
+[resource]
+script = ExtResource("1_role")
+kind = 5
+display_name = "Harasser"
+axis_spread_deg = 70.0
+standoff_min_m = 200.0
+standoff_max_m = 400.0
+enters = 3
+hold_min_s = 6.0
+hold_max_s = 12.0
+hunt_engage_m = 400.0
+avoid_front_duels = true
+hit_and_run = true
+shots_per_visit = 2
+dash_min_m = 200.0
+dash_max_m = 400.0
+dash_hold_s = 6.0
+track_he = true
+harass_range_min_m = 300.0
+harass_range_max_m = 500.0
+harass_close_share = 0.25
+harass_close_min_m = 120.0
+post = 0
+mines_first = true
+squad_stand_s = 2.0
+squad_cooldown_share = 0.5

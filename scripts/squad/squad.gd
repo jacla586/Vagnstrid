@@ -143,6 +143,12 @@ const GROUND_PROBE_UP_M: float = 1.5
 const PROBE_HZ: float = 15.0
 ## A new probe comes early when the way the walker wants to go turns more than this.
 const PROBE_KEEP_DEG: float = 20.0
+## A soldier down within this long of the enemy squad's last shot at us counts as theirs (s).
+const FOE_CREDIT_S: float = 2.0
+## A pair member this close to his place has arrived (m).
+const ASSAULT_ARRIVED_M: float = 1.5
+## Out of reach: a new approach goal when the enemy has moved this far from the old (m).
+const APPROACH_REGOAL_M: float = 25.0
 
 var tank: Tank
 var data: SquadData
@@ -279,6 +285,18 @@ var _resume_wait: float = 0.0
 var _order_known: Dictionary = {}
 # Losses
 var _refill_timer: float = 0.0
+# Infantry fight (host): the enemy squad it fights, when one of it was last seen, where
+# to walk on afterwards, men lost in this fight, the assault in pairs, being surprised.
+var _foe: Squad
+var _foe_seen_at: float = 0.0
+var _engage_resume: Vector3 = Vector3.INF
+var _fight_losses: int = 0
+var _assault: bool = false
+var _assault_pair: int = 0
+var _assault_wait: float = 0.0
+var _assault_dir: Vector3 = Vector3.FORWARD
+var _surprised_until: float = -INF
+var _fired_on_at: float = -INF
 var _wipe_timer: float = 0.0
 # Network puppet: the host's numbers
 var _net_position: Vector3 = Vector3.ZERO
@@ -408,10 +426,15 @@ func soldier_spot_time_factor(index: int, viewer: Vector3, conceal: ConcealmentD
 	if _revealed[index] > 0.0:
 		return data.reveal_spot_factor
 	var factor: float = data.camo_spot_factor * Weather.current().spot_time_factor
+	var distance: float = viewer.distance_to(_soldiers[index].global_position)
+	# Close by, cover and vegetation hide less (soldier_close_range_m).
+	var hide_share: float = clampf(distance / maxf(data.soldier_close_range_m, 1.0), 0.0, 1.0)
+	hide_share *= hide_share
+	var hiding: float = 1.0
 	if conceal != null:
 		# Cover as for tanks; still as for tanks, but a running man is no tank at speed.
 		var cover: float = Concealment.cover(get_world_3d(), _hitboxes[index], conceal)
-		factor *= 1.0 + cover * conceal.cover_spot_time_factor
+		hiding *= 1.0 + cover * conceal.cover_spot_time_factor
 		factor *= conceal.stationary_spot_time_factor if _speed[index] <= conceal.stationary_speed_mps \
 				else data.moving_spot_factor
 	if _prone[index] >= 0.5:
@@ -421,9 +444,10 @@ func soldier_spot_time_factor(index: int, viewer: Vector3, conceal: ConcealmentD
 	# Grass, crops and reed hide the body by its height (GroundCover; less seen from above).
 	var gc: GroundCover = GroundCover.of(self)
 	if gc != null:
-		factor *= gc.spot_time_factor(gc.hidden_share(_soldiers[index].global_position,
+		hiding *= gc.spot_time_factor(gc.hidden_share(_soldiers[index].global_position,
 				gc.body_height(_prone[index], _kneel[index]), viewer))
-	var beyond: float = viewer.distance_to(_soldiers[index].global_position) - data.soldier_easy_range_m
+	factor *= 1.0 + (hiding - 1.0) * hide_share
+	var beyond: float = distance - data.soldier_easy_range_m
 	if beyond > 0.0:
 		factor *= 1.0 + beyond / 100.0 * data.soldier_spot_per_100m
 	return factor
@@ -465,6 +489,13 @@ func order(kind: int, target: Vector3) -> void:
 	var was_escorting: bool = _escort
 	if kind != ORDER_NONE:
 		_escort = false
+		# A new order ends the fight; an enemy squad still in sight starts a new one
+		# (the squad then walks on to the new goal afterwards).
+		if _assault:
+			_spots_chosen = false
+		_foe = null
+		_assault = false
+		_engage_resume = Vector3.INF
 	match kind:
 		ORDER_ESCORT:
 			if _state == State.MOUNTED:
@@ -568,9 +599,12 @@ func _physics_process(delta: float) -> void:
 		_scan_timer += data.scan_interval_s
 		_scan(data.scan_interval_s)
 		_update_contact_halt(data.scan_interval_s)
+		_update_engagement()
 	_update_at_aim(delta)
 	_update_ambush(delta)
 	if _state == State.HOLDING:
+		if _assault:
+			_update_assault(delta)
 		_update_mine_laying(delta)
 		_fight(delta)
 
@@ -578,7 +612,7 @@ func _physics_process(delta: float) -> void:
 ## Automatic ambush: holding ambush_after_s the squad lies down and holds fire beyond
 ## ambush_rifle_range_m until it has fired or lost a man (sprung). Moving ends it.
 func _update_ambush(delta: float) -> void:
-	if _state == State.HOLDING:
+	if _state == State.HOLDING and not _assault:
 		_hold_time += delta
 	else:
 		_hold_time = 0.0
@@ -702,6 +736,9 @@ func _dismount() -> void:
 
 
 func _mount() -> void:
+	_foe = null
+	_assault = false
+	_engage_resume = Vector3.INF
 	_cancel_at_aim()
 	_cancel_mine()
 	for i: int in _aim_point.size():
@@ -913,6 +950,8 @@ func _move_soldiers(delta: float) -> void:
 				_size_hitbox(i)
 				to = Vector3.ZERO
 		var stride: float = data.run_speed_mps * CATCH_UP_FACTOR * _pace[i] * delta
+		if _assault:
+			stride *= data.assault_speed_factor
 		var step: float = minf(to.length(), stride)
 		if net_puppet:
 			# The host already kept them off roofs: just follow its positions.
@@ -1190,10 +1229,18 @@ func _scan(dt: float) -> void:
 		var enemy := node as Squad
 		if enemy == null or enemy == self or not enemy.is_out() or enemy.get_team() == get_team():
 			continue
+		var in_view: Array[SoldierHitbox] = []
 		for hb: SoldierHitbox in enemy.get_hitboxes():
 			if enemy.is_soldier_exposed(hb.index):
 				_look(hb, eye, [[hb.get_aim_point(), hb]], enemy.data.soldier_spot_factor, dt,
 						seen_now)
+				if seen_now.has(hb):
+					in_view.append(hb)
+		# A group shows: the others in sight help spot each one (group_spot_share).
+		if in_view.size() > 1:
+			var extra: float = dt * float(in_view.size() - 1) * data.group_spot_share
+			for hb: SoldierHitbox in in_view:
+				_awareness[hb] = float(_awareness.get(hb, 0.0)) + extra
 	_look_for_mines(eye, dt)
 	for target: Variant in _awareness.keys():
 		if is_instance_valid(target) and seen_now.has(target):
@@ -1331,7 +1378,8 @@ func _update_contact_halt(dt: float) -> void:
 		return
 	var contact: bool = false
 	for target: Node3D in _targets_in_sight():
-		if not _order_known.has(_enemy_of(target)) and _in_reach(target):
+		var enemy: Node3D = _enemy_of(target)
+		if (not _order_known.has(enemy) or enemy is Squad or enemy == _foe) and _in_reach(target):
 			contact = true
 			break
 	if _state == State.MOVING:
@@ -1368,14 +1416,21 @@ func _fight(delta: float) -> void:
 	for i: int in _soldiers.size():
 		if not _alive[i] or i == _at_gunner or _launcher_hold[i] > 0.0:
 			continue
+		if _assault and _speed[i] > STANDING_SPEED:
+			continue   # running in the assault: the other pair fires
 		_burst_timer[i] -= delta
 		if _burst_left[i] > 0:
 			_shot_timer[i] -= delta
 			if _shot_timer[i] <= 0.0 and rifle_target != null:
 				_shot_timer[i] = data.rifle_shot_gap_s
 				_burst_left[i] -= 1
-				_fire(i, data.rifle_bullet, rifle_aim, rifle_target, data.rifle_dispersion_mrad,
-						data.rifle_sound)
+				var spread: float = data.rifle_dispersion_mrad
+				if _clock < _surprised_until:
+					spread *= data.surprised_dispersion_factor
+				_fire(i, data.rifle_bullet, rifle_aim, rifle_target, spread, data.rifle_sound)
+				var foe_soldier := rifle_target as SoldierHitbox
+				if foe_soldier != null and foe_soldier.squad != null:
+					foe_soldier.squad.fired_on_by(self)
 		elif _burst_timer[i] <= 0.0 and rifle_target != null:
 			_burst_left[i] = data.rifle_burst_shots
 			_shot_timer[i] = 0.0
@@ -1568,6 +1623,195 @@ func _first_alive() -> int:
 	return -1
 
 
+# --- Infantry fight --------------------------------------------------------------
+
+## Every scan: an enemy squad seen within engage_range_m is a threat and the squad goes
+## for it (a move order waits: it walks on there afterwards), closing to rifle reach,
+## where the contact halt holds it to fight. Not mounted, recalled or withdrawing.
+func _update_engagement() -> void:
+	if _state == State.MOUNTED or _state == State.WIPED or _state == State.RETURNING \
+			or _retreating or tank.is_knocked_out():
+		if _foe != null:
+			_end_engagement(false)
+		return
+	if _foe != null and (not is_instance_valid(_foe) or not _foe.is_out() or _foe.get_alive_count() == 0):
+		_end_engagement(true)
+	var seen: SoldierHitbox = _nearest_enemy_soldier()
+	if seen != null and _foe == null and not _escort \
+			and get_alive_count() >= data.engage_min_alive:
+		_start_engagement(seen.squad)
+	if _foe == null:
+		return
+	var foe_soldier: SoldierHitbox = _nearest_enemy_soldier(_foe)
+	if foe_soldier != null:
+		_foe_seen_at = _clock
+	elif _clock - _foe_seen_at > data.engage_forget_s:
+		_end_engagement(true)
+		return
+	if _assault or _escort or foe_soldier == null:
+		return
+	# Out of reach: close in (the contact halt stops it once in reach).
+	for hb: SoldierHitbox in _foe.get_hitboxes():
+		if _in_sight.has(hb) and _spotted.has(hb) and _in_reach(hb):
+			return
+	var from_foe: Vector3 = _flat(global_position - foe_soldier.global_position)
+	var goal: Vector3 = foe_soldier.global_position \
+			+ from_foe.normalized() * data.rifle_range_m * data.engage_approach_share
+	goal = _clamp_to_tank(goal)
+	goal.y = _ground_height(goal, global_position.y, 200.0)
+	if _flat(goal - global_position).length() < WAYPOINT_RADIUS_M * 2.0:
+		return   # as near as the leash lets it
+	if _state == State.HOLDING and _resume_goal == Vector3.INF \
+			or _state == State.MOVING and _flat(goal - _goal).length() > APPROACH_REGOAL_M:
+		_move_to(goal)
+
+
+## The nearest spotted soldier in sight of an enemy squad (only `of`, if given) within
+## engage_range_m; null if none.
+func _nearest_enemy_soldier(of: Squad = null) -> SoldierHitbox:
+	var best: SoldierHitbox = null
+	var best_d: float = data.engage_range_m
+	for target: Variant in _in_sight.keys():
+		var hb := target as SoldierHitbox
+		if hb == null or not is_instance_valid(hb) or not _spotted.has(hb) or hb.squad == null \
+				or (of != null and hb.squad != of) or not hb.squad.is_soldier_exposed(hb.index):
+			continue
+		var d: float = global_position.distance_to(hb.global_position)
+		if d <= best_d:
+			best = hb
+			best_d = d
+	return best
+
+
+func _start_engagement(foe: Squad) -> void:
+	_foe = foe
+	_foe_seen_at = _clock
+	_fight_losses = 0
+	_assault = false
+	_order_known.erase(foe)
+	if _engage_resume == Vector3.INF:
+		if _resume_goal != Vector3.INF:
+			_engage_resume = _resume_goal
+		elif _state == State.MOVING:
+			_engage_resume = _goal
+
+
+## The fight is over (`resume`: walk on to where it was going before it).
+func _end_engagement(resume: bool) -> void:
+	if _assault:
+		_spots_chosen = false   # spread round the point again
+	_foe = null
+	_assault = false
+	var goal: Vector3 = _engage_resume
+	_engage_resume = Vector3.INF
+	if resume and goal != Vector3.INF and (_state == State.HOLDING or _state == State.MOVING) \
+			and not _retreating:
+		_move_to(goal)
+
+
+## Host: a soldier of `attacker` fired at us. Not fighting it yet: we were attacked
+## first, surprised for surprised_s (worse aim), and fight back.
+func fired_on_by(attacker: Squad) -> void:
+	if net_puppet or attacker == null:
+		return
+	_fired_on_at = _clock
+	if attacker == _foe:
+		return
+	_surprised_until = _clock + data.surprised_s
+	if _foe == null and _state != State.MOUNTED and _state != State.RETURNING and not _retreating:
+		_start_engagement(attacker)
+
+
+## Host: `victim` (the squad we fight) lost a man to us. Before we lost one: the upper
+## hand, a fast assault in pairs.
+func on_foe_soldier_down(victim: Squad) -> void:
+	if victim != _foe or _assault or _fight_losses > 0 or _state == State.RETURNING or _retreating \
+			or _escort:
+		return
+	_assault = true
+	_assault_pair = 0
+	_assault_wait = 0.0
+	_assault_dir = _flat(victim.global_position - global_position).normalized()
+	if _assault_dir.length_squared() < 0.5:
+		_assault_dir = _heading
+	_path.clear()
+	_state = State.HOLDING
+	_resume_goal = Vector3.INF
+	_lying = false
+	_hold_time = 0.0
+	_heading = _assault_dir
+	# A line across the attack, everyone where he is along it.
+	var right: Vector3 = Vector3.UP.cross(_assault_dir).normalized()
+	var n: int = _soldiers.size()
+	for i: int in n:
+		_spot[i] = right * (float(i) - float(n - 1) * 0.5) * data.assault_spacing_m
+	_spots_chosen = true
+
+
+## The assault: one pair runs assault_leap_m past the other pair's line while the other
+## fires; once it is there and has fired a while, the other runs. It stops closing at
+## assault_close_m from the enemy or at the tank's leash, and holds there.
+func _update_assault(delta: float) -> void:
+	if not is_instance_valid(_foe) or _foe.get_alive_count() == 0:
+		_end_engagement(true)
+		return
+	var target: SoldierHitbox = _nearest_enemy_soldier(_foe)
+	var foe_at: Vector3 = target.global_position if target != null else _foe.global_position
+	var to_foe: Vector3 = _flat(foe_at - global_position)
+	if to_foe.length() > 1.0:
+		_assault_dir = to_foe.normalized()
+	# The running pair first gets to its places.
+	for i: int in _soldiers.size():
+		if _alive[i] and i % 2 == _assault_pair \
+				and _flat(_last_pos[i] - (global_position + _spot[i])).length() > ASSAULT_ARRIVED_M:
+			return
+	_assault_wait -= delta
+	if _assault_wait > 0.0:
+		return
+	if to_foe.length() <= data.assault_close_m:
+		return
+	_assault_pair = 1 - _assault_pair
+	_assault_wait = data.assault_overwatch_s
+	# The other pair's line, along the attack.
+	var other_depth: float = -INF
+	for i: int in _soldiers.size():
+		if _alive[i] and i % 2 != _assault_pair:
+			other_depth = maxf(other_depth, _spot[i].dot(_assault_dir))
+	if other_depth == -INF:
+		other_depth = 0.0   # the other pair is gone: the rest leaps on alone
+	var map: TacticalMap = _tactical_map()
+	var right: Vector3 = Vector3.UP.cross(_assault_dir).normalized()
+	var moved: bool = false
+	for i: int in _soldiers.size():
+		if not _alive[i] or i % 2 != _assault_pair:
+			continue
+		var lateral: float = _spot[i].dot(right)
+		var spot: Vector3 = right * lateral + _assault_dir * (other_depth + data.assault_leap_m)
+		var p: Vector3 = global_position + spot
+		if _flat(p - tank.global_position).length() > data.max_distance_from_tank_m:
+			continue
+		if map != null and map.is_blocked(p):
+			continue
+		_spot[i] = spot
+		moved = true
+	if not moved:
+		return
+	# The squad's point follows the middle of its men's places (they don't move for it).
+	var middle := Vector3.ZERO
+	var count: int = 0
+	for i: int in _soldiers.size():
+		if _alive[i]:
+			middle += _spot[i]
+			count += 1
+	middle = _flat(middle / maxf(count, 1))
+	var new_point: Vector3 = global_position + middle
+	new_point.y = _ground_height(new_point, global_position.y)
+	var shift: Vector3 = new_point - global_position
+	for i: int in _soldiers.size():
+		_spot[i] -= _flat(shift)
+	global_position = new_point
+
+
 # --- Being hit ---------------------------------------------------------------------
 
 ## Host: soldiers under a moving enemy tank's hull are run over.
@@ -1599,11 +1843,17 @@ func soldier_hit(index: int) -> HitResult:
 	var screamed: bool = index == _wilhelm and _rng.randf() < data.scream_chance
 	_sprung = true
 	_put_down(index, screamed)
+	if is_instance_valid(_foe):
+		_fight_losses += 1
+		if _clock - _fired_on_at < FOE_CREDIT_S:
+			_foe.on_foe_soldier_down(self)
 	var result := HitResult.new()
 	result.note = "SOLDIER DOWN"
 	if get_alive_count() == 0:
+		_end_engagement(false)
 		_wipe()
-	else:
+	elif _soldiers.size() - get_alive_count() >= data.withdraw_after_losses:
+		_end_engagement(false)
 		_withdraw()
 	return result
 
@@ -1634,8 +1884,8 @@ func _put_down(index: int, screamed: bool) -> void:
 	soldier_down.emit(index, screamed)
 
 
-## A man down: smoke towards the threat, then run for cover, or to the tank if that is
-## nearer or there is no cover.
+## Men down (withdraw_after_losses): smoke towards the threat, then run for cover, or to
+## the tank if that is nearer or there is no cover.
 func _withdraw() -> void:
 	if _withdraw_timer > 0.0 or not is_instance_valid(tank):
 		return
@@ -1694,6 +1944,8 @@ func throw_smoke(at: Vector3) -> void:
 
 
 func _wipe() -> void:
+	_foe = null
+	_assault = false
 	_state = State.WIPED
 	_wipe_timer = 0.0
 	_path.clear()

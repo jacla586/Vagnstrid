@@ -25,7 +25,7 @@ const PACKET_SNAPSHOT: int = 1
 const PACKET_COMMAND: int = 2
 const PACKET_SQUADS: int = 3
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
-const DEFAULT_MAP: String = "res://scenes/maps/vidingsjo.tscn"
+const DEFAULT_MAP: String = "res://scenes/scenarios/vidingsjo_free.tscn"
 ## ENet drops a peer it hasn't heard from in this long (ms). Loading a big map (and the
 ## first frames' shader compiles) can stall a machine for many seconds.
 const PEER_TIMEOUT_MIN_MS: int = 30000
@@ -153,8 +153,15 @@ func my_id() -> int:
 	return multiplayer.get_unique_id()
 
 
-## Loads the map on a thread (so the connection keeps being serviced), then adds NetGame.
-func _load_map(path: String) -> void:
+## Single player: loads the map like a hosted one and adds the deploy lobby
+## (MatchLobby) instead of NetGame.
+func play_offline(path: String) -> void:
+	_load_map(path, true)
+
+
+## Loads the map on a thread (so the connection keeps being serviced), then adds NetGame
+## (offline: MatchLobby).
+func _load_map(path: String, offline: bool = false) -> void:
 	_set_status("loading %s ..." % path.get_file().get_basename())
 	ResourceLoader.load_threaded_request(path)
 	while ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
@@ -166,6 +173,11 @@ func _load_map(path: String) -> void:
 	get_tree().change_scene_to_packed(packed)
 	while get_tree().current_scene == null or get_tree().current_scene.scene_file_path != path:
 		await get_tree().process_frame
+	if offline:
+		var lobby := MatchLobby.new()
+		lobby.name = "MatchLobby"
+		get_tree().current_scene.add_child(lobby)
+		return
 	var g := NetGame.new()
 	g.name = "NetGame"
 	get_tree().current_scene.add_child(g)
@@ -350,6 +362,25 @@ func rpc_tree_felled(field: NodePath, index: int, direction: Vector3) -> void:
 		game.on_tree_felled(field, index, direction)
 
 
+## Lobby (MatchLobby): client -> host team and tank, host -> clients the roster.
+@rpc("any_peer", "call_remote", "reliable", 2)
+func rpc_pick_team(team: int) -> void:
+	if NetRole.is_host() and game != null:
+		game.on_pick_team(multiplayer.get_remote_sender_id(), team)
+
+
+@rpc("any_peer", "call_remote", "reliable", 2)
+func rpc_deploy(config_key: String) -> void:
+	if NetRole.is_host() and game != null:
+		game.on_deploy(multiplayer.get_remote_sender_id(), config_key)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_roster(rows: Array) -> void:
+	if game != null:
+		game.on_roster(rows)
+
+
 ## Client -> host: switch team (0: a bot's or a free place, else ask that player).
 @rpc("any_peer", "call_remote", "reliable", 2)
 func rpc_team_switch(with_peer: int) -> void:
@@ -462,6 +493,12 @@ func rpc_squad_shot(net_id: int, kind: int, from: Vector3, velocity: Vector3) ->
 func rpc_koth_state(state: Dictionary) -> void:
 	if game != null:
 		game.on_koth_state(state)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_free_state(state: Dictionary) -> void:
+	if game != null:
+		game.on_free_state(state)
 
 
 @rpc("authority", "call_remote", "reliable", 2)

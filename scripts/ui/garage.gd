@@ -1,21 +1,20 @@
 class_name Garage
 extends Control
-## The garage: pick chassis, gun, armour package and camouflage, see what the tank
-## becomes (a turning 3D preview, stats with bars), save your own configs and choose
-## which tank to drive. Built in code like the main menu, in MenuTheme's look.
+## The garage: look at the tanks (the presets) before a match: a turning 3D preview,
+## the strengths and weaknesses in short (TankSummary) and the numbers with bars. The
+## tank itself is chosen in the match (DeployScreen). Built in code in MenuTheme's look.
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
-const TANK_SCENE: PackedScene = preload("res://scenes/tank/tank.tscn")
-const PREVIEW_TURN_DEG_S: float = 20.0
 ## Layout in the 1152x648 canvas (the window scales it).
 const MARGIN: int = 32
 const GAP: int = 24
 const LIST_WIDTH: float = 200.0
-const PARTS_WIDTH: float = 230.0
+const SUMMARY_WIDTH: float = 290.0
 
 ## [label, getter, unit, format, higher is better]
 var _stat_defs: Array = [
 	["Top speed", func(d: TankData) -> float: return d.max_forward_speed_kmh, "km/h", "%.0f", true],
+	["Reverse speed", func(d: TankData) -> float: return d.max_reverse_speed_kmh, "km/h", "%.0f", true],
 	["Acceleration", func(d: TankData) -> float: return d.acceleration, "", "%.2f", true],
 	["Turn rate", func(d: TankData) -> float: return d.max_turn_rate_deg, "°/s", "%.0f", true],
 	["Turret traverse", func(d: TankData) -> float: return d.turret_traverse_speed_deg, "°/s", "%.0f", true],
@@ -32,33 +31,21 @@ var _stat_defs: Array = [
 	["Spotting time", func(d: TankData) -> float: return d.camo_spot_factor, "×", "%.2f", false],
 ]
 
-var _cat: BuilderCatalogue
-var _cfg: TankConfig = TankConfig.new()
 var _configs: Array[TankConfig] = []
 var _max: Array[float] = []
 var _list: ItemList
-var _name: LineEdit
-var _chassis: OptionButton
-var _gun: OptionButton
-var _armour: OptionButton
-var _camo: CheckButton
 var _title: Label
-var _cost: Label
-var _status: Label
+var _summary: VBoxContainer
 var _bars: Array[ProgressBar] = []
 var _values: Array[Label] = []
-var _preview_root: Node3D
-var _preview_tank: Node3D
-var _camera: Camera3D
-var _floor: MeshInstance3D
-var _updating: bool = false
+var _preview: TankPreview
 
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	theme = MenuTheme.get_theme()
-	_cat = TankBuilder.catalogue()
+	_configs = TankConfigs.presets()
 	_compute_maxima()
 	MenuTheme.add_backdrop(self, false, 0.82)
 	var margin := MarginContainer.new()
@@ -71,20 +58,20 @@ func _ready() -> void:
 	margin.add_child(row)
 	row.add_child(_build_list())
 	row.add_child(_build_centre())
-	row.add_child(_build_parts())
-	_refresh_list()
+	row.add_child(_build_summary())
 	var chosen: TankConfig = TankConfigs.get_selected()
-	_load_config(chosen if chosen != null else _first_preset())
-
-
-func _process(delta: float) -> void:
-	if _preview_root != null:
-		_preview_root.rotate_y(deg_to_rad(PREVIEW_TURN_DEG_S) * delta)
+	var first: int = 0
+	for i: int in _configs.size():
+		if chosen != null and _configs[i].resource_path == chosen.resource_path:
+			first = i
+	if not _configs.is_empty():
+		_list.select(first)
+		_show(_configs[first])
 
 
 # --- Layout -----------------------------------------------------------------------
 
-## Left: title, the tanks to choose from, drive / back.
+## Left: title, the tanks, back.
 func _build_list() -> Control:
 	var box := VBoxContainer.new()
 	box.custom_minimum_size = Vector2(LIST_WIDTH, 0)
@@ -96,16 +83,21 @@ func _build_list() -> Control:
 	box.add_child(MenuTheme.caption("Tanks"))
 	_list = ItemList.new()
 	_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_list.item_selected.connect(func(i: int) -> void: _load_config(_configs[i]))
+	for c: TankConfig in _configs:
+		_list.add_item(c.display_name)
+	_list.item_selected.connect(func(i: int) -> void: _show(_configs[i]))
 	box.add_child(_list)
-	var drive: Button = _button("Drive this tank", _on_use)
-	MenuTheme.make_primary(drive)
-	box.add_child(drive)
-	box.add_child(_button("Back", _on_back))
+	var caption := MenuTheme.caption("You choose your tank in the match.")
+	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(caption)
+	var back := Button.new()
+	back.text = "Back"
+	back.pressed.connect(func() -> void: get_tree().change_scene_to_file(MENU_SCENE))
+	box.add_child(back)
 	return box
 
 
-## Middle: the turning tank with its name and cost, the stats under it.
+## Middle: the turning tank with its name, the stats under it.
 func _build_centre() -> Control:
 	var box := VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -113,68 +105,35 @@ func _build_centre() -> Control:
 	var frame := PanelContainer.new()
 	frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	frame.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-	frame.add_child(_build_preview())
-	var head := VBoxContainer.new()
-	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	head.add_theme_constant_override("separation", 0)
+	_preview = TankPreview.new()
+	frame.add_child(_preview)
 	var head_margin := MarginContainer.new()
 	head_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for side: String in ["left", "top"]:
 		head_margin.add_theme_constant_override("margin_" + side, 14)
-	head_margin.add_child(head)
-	frame.add_child(head_margin)
 	_title = Label.new()
 	_title.add_theme_font_size_override("font_size", 24)
 	_title.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.7))
-	head.add_child(_title)
-	_cost = MenuTheme.caption("")
-	_cost.add_theme_color_override("font_color", MenuTheme.ACCENT)
-	_cost.add_theme_font_size_override("font_size", 12)
-	head.add_child(_cost)
+	_title.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	head_margin.add_child(_title)
+	frame.add_child(head_margin)
 	box.add_child(frame)
 	box.add_child(_build_stats())
 	return box
 
 
-## Right: name and parts, save / delete.
-func _build_parts() -> Control:
+## Right: strengths and weaknesses in short.
+func _build_summary() -> Control:
 	var box := VBoxContainer.new()
-	box.custom_minimum_size = Vector2(PARTS_WIDTH, 0)
+	box.custom_minimum_size = Vector2(SUMMARY_WIDTH, 0)
 	box.add_theme_constant_override("separation", 9)
-	_name = LineEdit.new()
-	_name.placeholder_text = "Name"
-	_name.text_changed.connect(func(t: String) -> void: _title.text = t)
-	box.add_child(_field("Name", _name))
-	_chassis = OptionButton.new()
-	for c: ChassisData in _cat.chassis:
-		_chassis.add_item(c.display_name)
-	_chassis.item_selected.connect(func(_i: int) -> void: _on_parts_changed(true))
-	box.add_child(_field("Chassis", _chassis))
-	_gun = OptionButton.new()
-	_gun.item_selected.connect(func(_i: int) -> void: _on_parts_changed(false))
-	box.add_child(_field("Gun", _gun))
-	_armour = OptionButton.new()
-	_armour.item_selected.connect(func(_i: int) -> void: _on_parts_changed(false))
-	box.add_child(_field("Armour", _armour))
-	_camo = CheckButton.new()
-	_camo.text = "Camouflage"
-	_camo.toggled.connect(func(_on: bool) -> void: _on_parts_changed(false))
-	box.add_child(_camo)
 	var gap := Control.new()
-	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	gap.custom_minimum_size.y = 50
 	box.add_child(gap)
-	_status = MenuTheme.caption("")
-	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_status)
-	var buttons := HBoxContainer.new()
-	buttons.add_theme_constant_override("separation", 8)
-	var save: Button = _button("Save", _on_save)
-	var delete: Button = _button("Delete", _on_delete)
-	save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	delete.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	buttons.add_child(save)
-	buttons.add_child(delete)
-	box.add_child(buttons)
+	box.add_child(MenuTheme.caption("In short"))
+	_summary = VBoxContainer.new()
+	_summary.add_theme_constant_override("separation", 10)
+	box.add_child(_summary)
 	return box
 
 
@@ -219,139 +178,20 @@ func _build_stats() -> Control:
 	return grid
 
 
-func _build_preview() -> Control:
-	var container := SubViewportContainer.new()
-	container.stretch = true
-	container.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	container.custom_minimum_size = Vector2(320, 240)
-	var vp := SubViewport.new()
-	vp.own_world_3d = true
-	vp.transparent_bg = true
-	vp.msaa_3d = Viewport.MSAA_4X
-	container.add_child(vp)
-	var env := WorldEnvironment.new()
-	env.environment = Environment.new()
-	env.environment.background_mode = Environment.BG_CLEAR_COLOR
-	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.environment.ambient_light_color = Color(0.45, 0.45, 0.48)
-	env.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	vp.add_child(env)
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-50, -30, 0)
-	sun.light_color = Color(1.0, 0.9, 0.8)
-	sun.shadow_enabled = true
-	vp.add_child(sun)
-	var rim := DirectionalLight3D.new()
-	rim.rotation_degrees = Vector3(-20, 150, 0)
-	rim.light_color = MenuTheme.ACCENT
-	rim.light_energy = 0.3
-	vp.add_child(rim)
-	# Only the shadow and a soft dark round floor show; the picture is behind.
-	var ground := MeshInstance3D.new()
-	var disc := CylinderMesh.new()
-	disc.top_radius = 1.0
-	disc.bottom_radius = 1.0
-	disc.height = 0.02
-	disc.radial_segments = 64
-	var floor_mat := StandardMaterial3D.new()
-	floor_mat.albedo_color = Color(0.1, 0.1, 0.11, 0.65)
-	floor_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
-	floor_mat.roughness = 1.0
-	disc.material = floor_mat
-	ground.mesh = disc
-	vp.add_child(ground)
-	_floor = ground
-	_preview_root = Node3D.new()
-	vp.add_child(_preview_root)
-	_camera = Camera3D.new()
-	_camera.fov = 40.0
-	vp.add_child(_camera)
-	return container
-
-
 # --- Behaviour ----------------------------------------------------------------------
 
-func _refresh_list() -> void:
-	_configs = TankConfigs.all()
-	_list.clear()
-	var chosen: TankConfig = TankConfigs.get_selected()
-	for c: TankConfig in _configs:
-		var driven: bool = chosen != null and c.resource_path == chosen.resource_path
-		var i: int = _list.add_item(("●  " if driven else "    ") + c.display_name)
-		if TankConfigs.is_preset(c):
-			_list.set_item_tooltip(i, "Preset")
-		if driven:
-			_list.set_item_custom_fg_color(i, MenuTheme.ACCENT)
-			_list.set_item_tooltip(i, "You drive this tank")
-
-
-func _first_preset() -> TankConfig:
-	var p: Array[TankConfig] = TankConfigs.presets()
-	for c: TankConfig in p:
-		if c.key() == TankConfig.new().key():  # today's medium tank
-			return c
-	return p[0] if not p.is_empty() else TankConfig.new()
-
-
-func _load_config(cfg: TankConfig) -> void:
-	_cfg = cfg.duplicate()
-	_updating = true
-	_name.text = _cfg.display_name
-	_title.text = _cfg.display_name
-	for i: int in _cat.chassis.size():
-		if _cat.chassis[i].id == _cfg.chassis:
-			_chassis.select(i)
-	_fill_part_lists()
-	_camo.button_pressed = _cfg.camo
-	_updating = false
-	_on_parts_changed(false)
-
-
-func _current_chassis() -> ChassisData:
-	return _cat.chassis[maxi(_chassis.selected, 0)]
-
-
-## Gun and armour lists for the chosen chassis; keeps the config's part if it fits.
-func _fill_part_lists() -> void:
-	var ch: ChassisData = _current_chassis()
-	_gun.clear()
-	var gun_index: int = 0
-	for i: int in ch.guns.size():
-		_gun.add_item(ch.guns[i].display_name)
-		if ch.guns[i].id == _cfg.gun:
-			gun_index = i
-	_gun.select(gun_index)
-	_armour.clear()
-	var armour_index: int = 0
-	for i: int in ch.armour_packages.size():
-		_armour.add_item(ch.armour_packages[i].display_name)
-		if ch.armour_packages[i].id == _cfg.armour:
-			armour_index = i
-	_armour.select(armour_index)
-
-
-func _on_parts_changed(chassis_changed: bool) -> void:
-	if _updating:
-		return
-	var ch: ChassisData = _current_chassis()
-	_cfg.chassis = ch.id
-	if chassis_changed:
-		_updating = true
-		_fill_part_lists()
-		_updating = false
-	_cfg.gun = ch.guns[maxi(_gun.selected, 0)].id
-	_cfg.armour = ch.armour_packages[maxi(_armour.selected, 0)].id
-	_cfg.camo = _camo.button_pressed
-	var d: TankData = TankBuilder.build(_cfg)
+func _show(cfg: TankConfig) -> void:
+	var d: TankData = TankBuilder.build(cfg)
 	if d == null:
 		return
+	_title.text = cfg.display_name
 	for i: int in _stat_defs.size():
 		var def: Array = _stat_defs[i]
 		var v: float = (def[1] as Callable).call(d)
 		_bars[i].value = v / maxf(_max[i], 0.001)
 		_values[i].text = (def[3] as String) % v + " " + def[2] + _effective_note(d, String(def[0]), v)
-	_cost.text = "Cost %d" % d.cost
-	_show_preview(d)
+	TankSummary.fill(_summary, cfg)
+	_preview.show_tank(d)
 
 
 ## Sloped plates: the effective thickness straight on, e.g. " (90)".
@@ -363,103 +203,13 @@ func _effective_note(d: TankData, stat: String, mm: float) -> String:
 	return " (%d)" % roundi(mm / cos(deg_to_rad(float(slopes[index]))))
 
 
-func _show_preview(d: TankData) -> void:
-	if _preview_tank != null:
-		_preview_tank.queue_free()
-	var tank: Tank = TANK_SCENE.instantiate()
-	tank.data = d
-	tank.apply_geometry()
-	var visual: Node3D = tank.get_node("Visual")
-	visual.get_node("Turret/Cupola/CommanderHitbox").free()
-	tank.remove_child(visual)
-	tank.free()
-	_preview_root.add_child(visual)
-	Tank.paint_visual(visual, true)
-	visual.position = Vector3(0.0, d.hull_size.y * 0.5, 0.0)
-	_preview_tank = visual
-	var size: float = maxf(d.hull_size.z, d.gun_length_m + d.turret_radius_m * 2.0)
-	_floor.scale = Vector3(size * 0.62, 1.0, size * 0.62)
-	_camera.position = Vector3(0.0, size * 0.42, size * 1.35)
-	_camera.look_at(Vector3(0.0, d.hull_size.y * 0.55, 0.0))
-
-
-func _on_save() -> void:
-	_cfg.display_name = _name.text.strip_edges()
-	if _cfg.display_name == "":
-		_status.text = "Give the tank a name."
-		return
-	var saved: TankConfig = TankConfigs.save(_cfg)
-	if saved == null:
-		_status.text = "Could not save."
-		return
-	_status.text = "Saved \"%s\"." % saved.display_name
-	_refresh_list()
-
-
-func _on_delete() -> void:
-	for c: TankConfig in _configs:
-		if not TankConfigs.is_preset(c) and c.display_name == _name.text.strip_edges():
-			TankConfigs.remove(c)
-			_status.text = "Deleted \"%s\"." % c.display_name
-			_refresh_list()
-			return
-	_status.text = "Only your own saved tanks can be deleted."
-
-
-## Drives the tank as shown: saves it first unless it is an unchanged preset.
-func _on_use() -> void:
-	_cfg.display_name = _name.text.strip_edges()
-	var chosen: TankConfig = null
-	for c: TankConfig in _configs:
-		if c.key() == _cfg.key() and c.display_name == _cfg.display_name:
-			chosen = c
-	if chosen == null:
-		if _cfg.display_name == "":
-			_cfg.display_name = "My tank"
-		chosen = TankConfigs.save(_cfg)
-	if chosen == null:
-		_status.text = "Could not save."
-		return
-	TankConfigs.select(chosen)
-	_status.text = "You drive \"%s\"." % chosen.display_name
-	_refresh_list()
-
-
-func _on_back() -> void:
-	get_tree().change_scene_to_file(MENU_SCENE)
-
-
-## Each stat's largest value over every buildable tank (bars are shares of it).
+## Each stat's largest value over the tanks shown (bars are shares of it).
 func _compute_maxima() -> void:
 	_max.resize(_stat_defs.size())
 	_max.fill(0.0)
-	for ch: ChassisData in _cat.chassis:
-		for g: GunData in ch.guns:
-			for p: ArmourPackageData in ch.armour_packages:
-				for camo: bool in [false, true]:
-					var c := TankConfig.new()
-					c.chassis = ch.id
-					c.gun = g.id
-					c.armour = p.id
-					c.camo = camo
-					var d: TankData = TankBuilder.build(c)
-					if d == null:
-						continue
-					for i: int in _stat_defs.size():
-						_max[i] = maxf(_max[i], (_stat_defs[i][1] as Callable).call(d))
-
-
-## A small caption above a control.
-func _field(caption: String, control: Control) -> Control:
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 4)
-	v.add_child(MenuTheme.caption(caption))
-	v.add_child(control)
-	return v
-
-
-func _button(t: String, cb: Callable) -> Button:
-	var b := Button.new()
-	b.text = t
-	b.pressed.connect(cb)
-	return b
+	for c: TankConfig in _configs:
+		var d: TankData = TankBuilder.build(c)
+		if d == null:
+			continue
+		for i: int in _stat_defs.size():
+			_max[i] = maxf(_max[i], (_stat_defs[i][1] as Callable).call(d))

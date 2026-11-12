@@ -48,7 +48,13 @@ def mappar(projekt):
 
 
 def las_karta(path, ds=1):
-    im = np.asarray(Image.open(path).convert('RGB'))
+    bild = Image.open(path)
+    if bild.mode in ('RGBA', 'LA', 'P'):
+        # genomskinligt utanför kartan (svart i RGB) läggs på vitt, annars blir det hus
+        bild = bild.convert('RGBA')
+        vit = Image.new('RGBA', bild.size, (255, 255, 255, 255))
+        bild = Image.alpha_composite(vit, bild)
+    im = np.asarray(bild.convert('RGB'))
     return im[::ds, ::ds] if ds > 1 else im
 
 
@@ -158,7 +164,7 @@ def kontrollpunkter(svart, blds, till_px, ruta=250.0, sok=12):
 def passa(a):
     proj, data, work = mappar(a.projekt)
     data.mkdir(parents=True, exist_ok=True)
-    mal = data / 'okarta.png'
+    mal = data / f'{a.som}.png'
     if Path(a.karta).resolve() != mal.resolve():
         shutil.copyfile(a.karta, mal)
     im = las_karta(mal)
@@ -200,8 +206,8 @@ def passa(a):
                    residual_median_m=float(np.median(res)), residual_max_m=float(res.max()),
                    kartstorlek=list(svart.shape),
                    anm='kartpixel (rad, kol) = affin @ (E - centrum_E, N - centrum_N, 1)'),
-              open(data / 'okarta.json', 'w'), indent=1)
-    print('sparat', data / 'okarta.json')
+              open(data / f'{a.som}.json', 'w'), indent=1)
+    print('sparat', data / f'{a.som}.json')
 
 
 # ---------------------------------------------------------------- klassa
@@ -325,13 +331,73 @@ def _kedja(P, steg=3.0):
     return ut[::2] if len(ut) > 4 else ut
 
 
+def kartor(data):
+    """Områdets inpassade kartor i ordning: okarta först, sedan okarta2, okarta3 ... (den första som
+    täcker en plats gäller där)."""
+    def nr(p):
+        t = p.stem[len('okarta'):]
+        return int(t) if t.isdigit() else (1 if t == '' else 10 ** 6)
+    return sorted((p for p in data.glob('okarta*.json') if (p.stem == 'okarta' or p.stem[6:].isdigit())
+                   and p.with_suffix('.png').exists()), key=nr)
+
+
 def klassa(a):
     proj, data, work = mappar(a.projekt)
-    fit = json.load(open(data / 'okarta.json'))
     grid = json.load(open(work / 'grid.json'))
     W, H, RES, x0, y1 = grid['W'], grid['H'], grid['RES'], grid['x0'], grid['y1']
+    blds = osm_hus(work)
+    kod = None; stenar_alla = []; vattendrag = []; rgb_alla = None
+    for js in kartor(data):
+        fit = json.load(open(js))
+        k, st, vd, rgb = _klassa_en(fit, las_karta(js.with_suffix('.png')), grid, blds)
+        ny = k != UTANFOR if kod is None else (kod == UTANFOR) & (k != UTANFOR)
+        print(f'{js.stem}: ny täckning {ny.mean():.0%}')
+        if kod is None:
+            kod = np.full_like(k, UTANFOR); rgb_alla = np.full_like(rgb, 255)
+        kod[ny] = k[ny]
+        f = rgb.shape[0] // H
+        ny1 = np.repeat(np.repeat(ny, f, 0), f, 1)
+        sl_ = (slice(0, ny1.shape[0]), slice(0, ny1.shape[1]))
+        rgb_alla[sl_][ny1] = rgb[sl_][ny1]
+        def nytt(E, N):
+            j = np.clip(((np.asarray(E) - x0) / RES).astype(int), 0, W - 1)
+            i = np.clip(((y1 - np.asarray(N)) / RES).astype(int), 0, H - 1)
+            return ny[i, j]
+        if len(st):
+            stenar_alla.append(st[nytt(st[:, 0], st[:, 1])])
+        vattendrag += [v for v in vd if nytt(v[:, 0], v[:, 1]).mean() > 0.5]
+    if kod is None:
+        sys.exit(f'ingen inpassad karta i {data} (kör passa först)')
+    stenar = np.concatenate(stenar_alla) if stenar_alla else np.zeros((0, 3))
+    pickle.dump(vattendrag, open(work / 'okarta_vattendrag.pkl', 'wb'))
+    print('vattendrag som linjer:', len(vattendrag))
+    np.save(work / 'okarta_klass.npy', kod)
+    inv = {v: k for k, v in KODER.items()}
+    tot = (kod != UTANFOR).sum()
+    print(f'täckning {tot / kod.size:.0%};', ', '.join(f'{inv[v]} {(kod == v).sum() / max(tot, 1):.0%}'
+                                                    for v in sorted(inv)))
+    np.save(work / 'okarta_stenar.npy', stenar)
+    print(f'stenblock {len(stenar)} (stora {int((stenar[:, 2] == 1).sum()) if len(stenar) else 0}, '
+          f'grupper {int((stenar[:, 2] == 2).sum()) if len(stenar) else 0})')
+    f = int(round(RES))
+    # kontrollbild
+    bild = Image.fromarray(rgb_alla); d = ImageDraw.Draw(bild)
+    for b in blds:
+        d.line([((x_ - x0) * f / RES, (y1 - y_) * f / RES) for x_, y_ in b.exterior.coords], fill=(255, 0, 0))
+    for E, N, s in stenar:
+        px, py = (E - x0) * f / RES, (y1 - N) * f / RES
+        r = 4 if s else 3
+        d.ellipse([px - r, py - r, px + r, py + r], outline=(0, 160, 255) if s == 2 else (255, 0, 255))
+    (ROOT / 'forhandsbilder').mkdir(exist_ok=True)
+    namn_ = proj.name if proj != ROOT else 'vikbolandet'
+    bild.save(ROOT / 'forhandsbilder' / f'okarta_{namn_}.png')
+    print('kontrollbild', ROOT / 'forhandsbilder' / f'okarta_{namn_}.png')
+
+
+def _klassa_en(fit, im, grid, blds):
+    """En karta: (klass per 2 m-cell, stenblock, vattendrag, 1 m-bild av kartan över området)."""
+    W, H, RES, x0, y1 = grid['W'], grid['H'], grid['RES'], grid['x0'], grid['y1']
     till_px = avbildning(fit)
-    im = las_karta(data / 'okarta.png')
     h0, w0 = im.shape[:2]
     # 1 m-rutnät över området
     f = int(round(RES))
@@ -380,8 +446,6 @@ def klassa(a):
                 kedja = _kedja(np.c_[rr_ + o[0].start, cc_ + o[1].start].astype(float))
                 if len(kedja) >= 2:
                     vattendrag.append(np.c_[x0 + (kedja[:, 1] + 0.5) * RES / f, y1 - (kedja[:, 0] + 0.5) * RES / f])
-    pickle.dump(vattendrag, open(work / 'okarta_vattendrag.pkl', 'wb'))
-    print('vattendrag som linjer:', len(vattendrag))
     cyan = ndi.uniform_filter((cyan_m & ~linjer).astype(np.float32), 6)
     svart = ndi.uniform_filter((klass_1m == 'svart').astype(np.float32), 8)
     gult = ndi.uniform_filter((klass_1m == 'oppen').astype(np.float32), 8)
@@ -395,34 +459,15 @@ def klassa(a):
     kod[(kod == KODER['oppen']) & (g2 > 0.5) & (s2 > 0.03) & (s2 < 0.25)] = KODER['odlad']
     kod[~tack[sl]] = UTANFOR
     kod = kod[:H, :W]
-    np.save(work / 'okarta_klass.npy', kod)
-    inv = {v: k for k, v in KODER.items()}
-    tot = (kod != UTANFOR).sum()
-    print(f'täckning {tot / kod.size:.0%};', ', '.join(f'{inv[v]} {(kod == v).sum() / max(tot, 1):.0%}'
-                                                    for v in sorted(inv)))
-    blds = osm_hus(work)
     stenar = stenblock(im, fit, till_px, grid, blds)
-    np.save(work / 'okarta_stenar.npy', stenar)
-    print(f'stenblock {len(stenar)} (stora {int((stenar[:, 2] == 1).sum()) if len(stenar) else 0}, '
-          f'grupper {int((stenar[:, 2] == 2).sum()) if len(stenar) else 0})')
-    # kontrollbild
-    bild = Image.fromarray(rgb); d = ImageDraw.Draw(bild)
-    for b in blds:
-        d.line([((x_ - x0) * f / RES, (y1 - y_) * f / RES) for x_, y_ in b.exterior.coords], fill=(255, 0, 0))
-    for E, N, s in stenar:
-        px, py = (E - x0) * f / RES, (y1 - N) * f / RES
-        r = 4 if s else 3
-        d.ellipse([px - r, py - r, px + r, py + r], outline=(0, 160, 255) if s == 2 else (255, 0, 255))
-    (ROOT / 'forhandsbilder').mkdir(exist_ok=True)
-    namn_ = proj.name if proj != ROOT else 'vikbolandet'
-    bild.save(ROOT / 'forhandsbilder' / f'okarta_{namn_}.png')
-    print('kontrollbild', ROOT / 'forhandsbilder' / f'okarta_{namn_}.png')
-
+    return kod, stenar, vattendrag, rgb
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
     p = sub.add_parser('passa'); p.add_argument('karta'); p.add_argument('--projekt', required=True)
+    p.add_argument('--som', default='okarta',
+                   help='filnamn i <mapp>/data: okarta (första kartan), okarta2, okarta3 ... fyller i där de före saknas')
     p.add_argument('--skala', default='0.3,2.0',
                    help='sökområde för kartans skala i m/px, t.ex. 0.55,0.75 (snabbare för stora kartor)')
     k = sub.add_parser('klassa'); k.add_argument('--projekt', required=True)

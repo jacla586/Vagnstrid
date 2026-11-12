@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="BotRoleData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/bot_role_data.gd" id="1_role"]
+
+[resource]
+script = ExtResource("1_role")
+kind = 1
+display_name = "Brawler"
+axis_spread_deg = 15.0
+enters = 0
+hunt_engage_m = 150.0
+post = 1

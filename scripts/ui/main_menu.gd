@@ -1,14 +1,25 @@
 class_name MainMenu
 extends Control
-## Start menu: name, tank, map, match settings, then Single player, Host (bots on/off)
+## Start menu: name, map, match settings, then Single player, Host (bots on/off)
 ## and Join (host's IP, e.g. a Tailscale address). Built in code over a picture of a
 ## fight (assets/ui/menu_background.jpg, made by tools/render_menu_background.gd).
 
 const GARAGE_SCENE: String = "res://scenes/menu/garage.tscn"
-const MAP_DIRS: Array[String] = ["res://scenes/scenarios/", "res://scenes/maps/"]
+## Only scenarios: every bare map (scenes/maps/) is the base of some.
+const MAP_DIRS: Array[String] = ["res://scenes/scenarios/"]
 const COLUMN_WIDTH: float = 330.0
 const COLUMN_MARGIN: float = 44.0
 const CREDITS_PATH: String = "res://data/ui/credits.txt"
+## Map list headings, in this order; a scenario's group comes from its name
+## (`<map>_koth`, `<map>_thunder[_variant]`, `<map>_free`; exported scenes can't be
+## read as text).
+const GROUPS: Array[String] = ["King of the Hill", "Thunder Road", "Free fight"]
+const GROUP_TAGS: Array[String] = ["_koth", "_thunder", "_free"]
+## Place names as shown (scene names have no å, ä, ö).
+const PLACE_NAMES: Dictionary = {
+	"vidingsjo": "Vidingsjö", "linghem": "Linghem", "campus": "Campus",
+	"road_to_science": "Road to Science", "corson": "Corson",
+}
 
 var _name: LineEdit
 var _map: OptionButton
@@ -16,11 +27,10 @@ var _bots: CheckButton
 var _ip: LineEdit
 var _status: Label
 var _maps: PackedStringArray = []
-var _tank: OptionButton
 var _team_size: SpinBox
 var _weather: OptionButton
-var _tank_configs: Array[TankConfig] = []
 var _credits: Control
+var _controls: ControlsPanel
 
 
 func _ready() -> void:
@@ -52,24 +62,36 @@ func _ready() -> void:
 	_name.placeholder_text = "Name"
 	box.add_child(_field("Name", _name))
 
-	_tank = OptionButton.new()
-	_fill_tanks()
-	_tank.item_selected.connect(func(i: int) -> void:
-		TankConfigs.select(_tank_configs[i]))
-	var tank_row := HBoxContainer.new()
-	tank_row.add_theme_constant_override("separation", 8)
-	_tank.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tank_row.add_child(_tank)
-	tank_row.add_child(_button("Garage", func() -> void: get_tree().change_scene_to_file(GARAGE_SCENE)))
-	box.add_child(_field("Tank", tank_row))
+	var garage: Button = _button("Garage", func() -> void:
+		get_tree().change_scene_to_file(GARAGE_SCENE))
+	box.add_child(garage)
+	box.add_child(_button("Controls", _show_controls))
 
 	_map = OptionButton.new()
 	_maps = _find_maps()
-	for i: int in _maps.size():
-		_map.add_item(_maps[i].get_file().get_basename().capitalize(), i)
-		if _maps[i] == NetSession.DEFAULT_MAP:
-			_map.select(i)
-	box.add_child(_field("Map", _map))
+	var map_field: Control = _field("Map", _map)
+	var map_caption: Label = map_field.get_child(0)
+	var by_group: Array[PackedStringArray] = []
+	for g: String in GROUPS:
+		by_group.append(PackedStringArray())
+	for path: String in _maps:
+		by_group[_group_of(path)].append(path)
+	for g: int in GROUPS.size():
+		if by_group[g].is_empty():
+			continue
+		_map.add_separator(GROUPS[g])
+		for path: String in by_group[g]:
+			_map.add_item(_map_title(path))
+			var i: int = _map.item_count - 1
+			_map.set_item_metadata(i, path)
+			_map.set_item_tooltip(i, GROUPS[g])
+			if path == NetSession.DEFAULT_MAP or _map.selected < 0:
+				_map.select(i)
+	var show_group: Callable = func(i: int) -> void:
+		map_caption.text = "Map – " + _map.get_item_tooltip(i) if i >= 0 else "Map"
+	_map.item_selected.connect(show_group)
+	show_group.call(_map.selected)
+	box.add_child(map_field)
 
 	# 0 = the map's own number; bots fill empty places.
 	_team_size = SpinBox.new()
@@ -153,6 +175,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+## Keys and what they do (ControlsPanel, data/ui/controls.txt).
+func _show_controls() -> void:
+	if _controls == null:
+		_controls = ControlsPanel.new()
+		add_child(_controls)
+	_controls.show()
+
+
 ## Who made what (data/ui/credits.txt) over a dimmed menu; Close or Esc hides it.
 func _show_credits() -> void:
 	if _credits != null:
@@ -196,19 +226,6 @@ func _add_title(box: Container) -> void:
 	box.add_child(gap)
 
 
-## The tank list: the presets, then the player's own garage configs.
-func _fill_tanks() -> void:
-	_tank_configs = TankConfigs.presets()
-	_tank_configs.append_array(TankConfigs.saved())
-	_tank.clear()
-	var chosen: TankConfig = TankConfigs.get_selected()
-	for i: int in _tank_configs.size():
-		var c: TankConfig = _tank_configs[i]
-		_tank.add_item(c.display_name)
-		if chosen != null and c.resource_path == chosen.resource_path:
-			_tank.select(i)
-
-
 ## A small caption above a control.
 func _field(caption: String, control: Control) -> Control:
 	var v := VBoxContainer.new()
@@ -238,8 +255,33 @@ func _find_maps() -> PackedStringArray:
 	return out
 
 
+## Index into GROUPS by the scene's name tag (no tag: the last group).
+func _group_of(path: String) -> int:
+	var name_: String = path.get_file().get_basename()
+	for g: int in GROUP_TAGS.size():
+		if name_.find(GROUP_TAGS[g]) > 0:
+			return g
+	return GROUPS.size() - 1
+
+
+## "vidingsjo_thunder_red" -> "Vidingsjö – Red", "campus_koth" -> "Campus".
+func _map_title(path: String) -> String:
+	var name_: String = path.get_file().get_basename()
+	var variant: String = ""
+	for tag: String in GROUP_TAGS:
+		var at: int = name_.find(tag)
+		if at > 0:
+			variant = name_.substr(at + tag.length()).trim_prefix("_")
+			name_ = name_.left(at)
+			break
+	var title: String = PLACE_NAMES.get(name_, name_.capitalize())
+	return title + (" – " + variant.capitalize() if variant != "" else "")
+
+
 func _selected_map() -> String:
-	return _maps[_map.selected] if _map.selected >= 0 else NetSession.DEFAULT_MAP
+	if _map.selected < 0:
+		return NetSession.DEFAULT_MAP
+	return str(_map.get_item_metadata(_map.selected))
 
 
 func _on_host() -> void:
@@ -255,4 +297,4 @@ func _on_join() -> void:
 
 func _on_single() -> void:
 	Weather.resolve()
-	get_tree().change_scene_to_file(_selected_map())
+	NetSession.instance.play_offline(_selected_map())

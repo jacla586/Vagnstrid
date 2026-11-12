@@ -137,6 +137,8 @@ const BASE_SPOT_POINTS: Array[Vector3] = [Vector3(0.0, 0.3, 0.0), Vector3(0.0, 1
 		Vector3(0.0, 0.4, -2.9), Vector3(0.0, 0.4, 2.9)]
 ## Visual only: how far the hatch lid swings open.
 const HATCH_OPEN_ANGLE_DEG: float = 110.0
+## Squad orders keep this far inside the map's edge (MapEdge, m).
+const SQUAD_EDGE_INSET_M: float = 10.0
 ## The hatch lid's radius if its mesh isn't a cylinder (hatch_lid_shields).
 const HATCH_LID_RADIUS_M: float = 0.32
 
@@ -266,6 +268,13 @@ var _turret_shapes: Array[CollisionShape3D] = []
 func _ready() -> void:
 	if config == null and use_player_config and not NetRole.is_online():
 		config = TankConfigs.get_selected()
+	elif config == null and not use_player_config and not wreck_only and not net_puppet \
+			and not NetRole.is_client():
+		# A map's own bot tank (test_medium data): only the garage's tanks exist, so it
+		# drives a random preset (KotH and ThunderRoad pick theirs before this).
+		var presets: Array[TankConfig] = TankConfigs.presets()
+		if not presets.is_empty():
+			config = presets[randi() % presets.size()]
 	if config != null:
 		var built: TankData = TankBuilder.build(config)
 		if built != null:
@@ -1480,6 +1489,7 @@ func _physics_process(delta: float) -> void:
 	_update_damage(delta)
 	if _command.abandon and not _knocked_out:
 		_knock_out(true)   # the crew bails out: a loss, but nobody's kill
+	_hold_inside_map()
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -1505,6 +1515,26 @@ func _physics_process(delta: float) -> void:
 	apply_central_force(right_dir * lateral_accel * mass)
 
 
+## The map's invisible edge (MapEdge): past it the speed outwards goes and the tank is
+## pushed back in, a little faster the further out it is.
+func _hold_inside_map() -> void:
+	var rect: Rect2 = MapEdge.inner_rect(get_tree())
+	var p := Vector2(global_position.x, global_position.z)
+	if not rect.has_area() or rect.has_point(p):
+		return
+	var inside: Vector2 = p.clamp(rect.position, rect.end)
+	var out: Vector2 = p - inside
+	var depth: float = out.length()
+	if depth < 0.001:
+		return
+	out /= depth
+	var v: Vector3 = linear_velocity
+	var outward: float = v.x * out.x + v.z * out.y
+	var push: float = minf(depth * MapEdge.DATA.push_mps_per_m, MapEdge.DATA.push_max_mps)
+	var change: float = maxf(outward, 0.0) + push
+	linear_velocity = Vector3(v.x - out.x * change, v.y, v.z - out.y * change)
+
+
 func _update_turret(delta: float) -> void:
 	if not _command.has_aim:
 		return
@@ -1526,7 +1556,11 @@ func _update_turret(delta: float) -> void:
 	var pitch_step: float = deg_to_rad(data.gun_elevation_speed_deg) * delta
 	if data.gun_stabiliser > 0.0:
 		# ...and against the hull's rocking (pitch), so the gun stays on the aim.
-		pitch_step += absf(angular_velocity.dot(_turret.global_basis.x)) * data.gun_stabiliser * delta
+		# Only up to its rate: steady driving is held, sharp jolts get through.
+		var hold: float = absf(angular_velocity.dot(_turret.global_basis.x)) * data.gun_stabiliser
+		if data.gun_stabiliser_max_rate_deg > 0.0:
+			hold = minf(hold, deg_to_rad(data.gun_stabiliser_max_rate_deg))
+		pitch_step += hold * delta
 	_gun_pivot.rotation.x += clampf(target_pitch - _gun_pivot.rotation.x, -pitch_step, pitch_step)
 
 
@@ -1579,7 +1613,9 @@ func report_squad_spot(enemy: Node3D, at: Vector3) -> void:
 ## Passes the command's squad order on to the squad (it acts on it once).
 func _update_squad_order() -> void:
 	if squad != null and is_instance_valid(squad) and _command.squad_order != Squad.ORDER_NONE:
-		squad.order(_command.squad_order, _command.squad_target)
+		# Never past the map's edge (MapEdge): soldiers have no wall to stop them.
+		squad.order(_command.squad_order, MapEdge.clamp_point(get_tree(), _command.squad_target,
+				SQUAD_EDGE_INSET_M))
 
 
 func _update_spotting(delta: float) -> void:

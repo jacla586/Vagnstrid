@@ -39,6 +39,8 @@ var _weights: PackedFloat32Array
 var _components: PackedInt32Array
 ## 1 = open cell right beside forest or bushes (a tree line).
 var _edge: PackedByteArray
+## The map's playable area (MapEdge; empty = none): cells outside are closed.
+var _inside: Rect2 = Rect2()
 
 
 ## The map for the scene's terrain with `tactics` path costs (null = the tanks'
@@ -51,12 +53,13 @@ static func for_scene(scene_root: Node, tactics: TacticsData = null) -> Tactical
 		tactics = DEFAULT_TACTICS
 	var key: String = "%d/%d" % [data.get_instance_id(), tactics.get_instance_id()]
 	if not _cache.has(key):
-		_cache[key] = TacticalMap.new(data, tactics)
+		_cache[key] = TacticalMap.new(data, tactics, MapEdge.inner_rect(scene_root.get_tree()))
 	return _cache[key]
 
 
-func _init(data: TacticalGridData, tactics: TacticsData) -> void:
+func _init(data: TacticalGridData, tactics: TacticsData, inside: Rect2 = Rect2()) -> void:
 	grid = data
+	_inside = inside
 	_astar = AStarGrid2D.new()
 	_astar.region = Rect2i(0, 0, grid.width, grid.height)
 	_astar.cell_size = Vector2(grid.cell_size, grid.cell_size)
@@ -71,7 +74,7 @@ func _init(data: TacticalGridData, tactics: TacticsData) -> void:
 			var c := Vector2i(x, z)
 			var i: int = grid.index_of(c)
 			var f: int = grid.flags[i]
-			if f & TacticalGridData.BLOCKED:
+			if f & TacticalGridData.BLOCKED or not _is_inside(c):
 				_astar.set_point_solid(c, true)
 				_weights[i] = INF
 				continue
@@ -186,7 +189,8 @@ func find_position(world: World3D, center: Vector3, radius: float, threat_dir: V
 		var offset: Vector2 = Vector2.from_angle(rng.randf() * TAU) * sqrt(rng.randf()) * radius
 		var p := Vector3(center.x + offset.x, 0.0, center.z + offset.y)
 		var c: Vector2i = grid.cell_of(p)
-		if not grid.has_cell(c) or grid.flags[grid.index_of(c)] & TacticalGridData.BLOCKED:
+		if not grid.has_cell(c) or grid.flags[grid.index_of(c)] & TacticalGridData.BLOCKED \
+				or not _is_inside(c):
 			continue
 		p.y = grid.heights[grid.index_of(c)]
 		if min_progress > 0.0 and start_dist - Vector2(progress_to.x - p.x,
@@ -247,7 +251,16 @@ static func _sight_clear(world: World3D, from: Vector3, to: Vector3, exclude: Ar
 
 
 func is_blocked(point: Vector3) -> bool:
-	return grid.flags_at(grid.cell_of(point)) & TacticalGridData.BLOCKED != 0
+	var c: Vector2i = grid.cell_of(point)
+	return grid.flags_at(c) & TacticalGridData.BLOCKED != 0 or not _is_inside(c)
+
+
+## The cell's centre lies in the map's playable area (MapEdge).
+func _is_inside(c: Vector2i) -> bool:
+	if not _inside.has_area():
+		return true
+	return _inside.has_point(Vector2(grid.origin.x + (c.x + 0.5) * grid.cell_size,
+			grid.origin.y + (c.y + 0.5) * grid.cell_size))
 
 
 ## How dear the way from `from` to `to` is (sum of path cost weights times metres; INF
@@ -296,7 +309,7 @@ func area_info(center: Vector3, radius: float) -> Dictionary:
 			var f: int = grid.flags[grid.index_of(cell)]
 			if f & TacticalGridData.WATER:
 				water += 1
-			if f & TacticalGridData.BLOCKED:
+			if f & TacticalGridData.BLOCKED or not _is_inside(cell):
 				blocked += 1
 			elif is_covered(grid.center_of(cell)):
 				covered += 1

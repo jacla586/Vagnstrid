@@ -124,9 +124,21 @@ shows on the minimap. This is what we test first.
   (`Squad._in_reach`: AT range with rounds left, rifle range for commanders/soldiers) and
   walks on `contact_resume_s` after none is left (`_update_contact_halt`, `_resume_goal`);
   enemies in sight when the order came don't stop it (`_order_known`), nor does a recall
-  or a withdrawal halt. Being shot at alone doesn't move them; with a man down they
-  smoke (`SmokeCloud`, a vision blocker) and run for cover within `fallback_m` or to the
-  tank, whichever is nearer (`Squad._withdraw`). Mounted they refill one by one (one a minute);
+  or a withdrawal halt. Being shot at alone doesn't move them; with two men down
+  (`SquadData.withdraw_after_losses`) they smoke (`SmokeCloud`, a vision blocker) and run for cover within `fallback_m` or to the
+  tank, whichever is nearer (`Squad._withdraw`). Infantry fight (`Squad._update_engagement`, SquadData "Infantry fight"): an enemy squad spotted
+  within `engage_range_m` (55 m) is a threat: the squad (3+ men, not recalled,
+  withdrawing or escorting) leaves its move order (walks on there afterwards, `_engage_resume`;
+  squads are never `_order_known`), closes to rifle reach and fights; over when none of it is seen
+  `engage_forget_s`. Fired on by a squad it wasn't fighting (`fired_on_by`) it is surprised
+  `surprised_s` (3 s, rifles `surprised_dispersion_factor` wider) and fights back. Downing one of
+  theirs before losing a man (`on_foe_soldier_down`) gives the upper hand: `_assault`, a line across
+  the attack, pairs (even/odd index) running `assault_leap_m` past each other at
+  `assault_speed_factor` while the other pair fires (`assault_overwatch_s`), the squad's point
+  following, until `assault_close_m`; no ambush lying meanwhile. Spotting soldiers: within
+  `soldier_close_range_m` cover and vegetation hide less ((d/range)²), and every other man of the
+  same squad in sight adds `group_spot_share` of a look to each (a group shows).
+  Mounted they refill one by one (one a minute);
   wiped out, a full squad is back after `wipe_cooldown_s`. HUD: `SquadPanel`.
   Radio (`Squad.radio` signal, kinds `RADIO_*`: under attack (withdraw), returning, in
   position, armour/infantry contact, AT round coming, mines): `SquadRadio` in the player rig plays the own
@@ -212,7 +224,7 @@ shows on the minimap. This is what we test first.
   dithered in where the blades thin (`canopy_fade_start..end` × blade range, seen distance) and thinned
   when looked down on (same angles as the rule), so a man lying in a far field is hidden to the eye as
   to bots, with nothing marking him. Cost: ~0-0.4 ms normally, ~1-1.3 ms in sight/binoculars over fields.
-  So far: Vidingsjö. Class 8 'vass' (reed, 1.6 m) belts the lakes' shores (4 m up the land, 6 m
+  So far: Vidingsjö, Linghem, campus, road_to_science. Class 8 'vass' (reed, 1.6 m) belts the lakes' shores (4 m up the land, 6 m
   into the water).
 - Water: `WaterLook` (player rig) puts `assets/shaders/water.gdshader` on the map glb's water meshes
   (`Sjo_*`, `Hav_*`, group `Vattendrag`): colour by thickness over the bottom (depth buffer), a pale
@@ -221,6 +233,8 @@ shows on the minimap. This is what we test first.
   `GroundCover.water_depth()`; `Tank._ford_factor()` slows the drive by `TankData.ford_slow_share` at
   `ford_depth_m` (1.2 m), deeper `too_deep_speed_factor` (a crawl). Culverts (Trafikverket, state
   roads): pipe ends in hollows at the road banks (geodata `trummor.py`, glb group `Trummor`).
+- Sports grounds (geodata `idrott.py`): OSM running tracks get a flat tartan oval with lane lines and a lawn infield (glb group `Idrott`, no collision); a long building beside one (or `building=grandstand`) becomes a roofed grandstand (`Byggnader_laktare`, collision). So far Isovalen on campus.
+- Landmarks (geodata `landmarken.py`, `geodata/landmarken.json` by OSM way id): built from their OSM building parts; one part can be a glass tower (taller, V-shaped, floor bands and mullions). Group `Byggnader_landmarken` (collision). So far Mjärdevi Center (campus, road_to_science).
 - Roadside (geodata `vagkant.py`, glb group `Vagkant`, no collision): reflector posts on rural roads
   from 70 km/h, street lamps every 32 m in built-up areas, guard rails on high banks, speed signs where
   NVDB's limit changes, give-way/stop signs and bus stop signs from OSM nodes, pedestrian-crossing
@@ -442,9 +456,10 @@ shows on the minimap. This is what we test first.
   BT-7 flanker (fastest, can't get through fronts), T-34 brawler (48 km/h, sloped armour, best
   terrain: climb 36°, fords; weakest optics 22/15°, 76 mm 100 mm pen, strong HE), Pz IV sniper
   (145 mm pen at 700 m/s, 34 dmg, 5.5 s, three sight levels 24/12/8°; 36 km/h, slow traverse,
-  50/30 mm turret, 20 mm rear), Sherman all-rounder on the move (gun stabiliser 0.7, traverse
-  ×1.5, 5 s reload, 4 smoke salvos; tall: spotted sooner, `signature_spot_factor` 0.85; 105 mm
-  pen), KV-2 breaker. The chassis' character lives in `ChassisData` "Character"
+  50/30 mm turret, 20 mm rear), Sherman all-rounder on the move (39 km/h, gun stabiliser 0.5 up to
+  `gun_stabiliser_max_rate_deg` 4°/s of hull pitch: steady driving held, throttle kicks get through;
+  traverse ×1.3, 5 s reload, 4 smoke salvos; tall: spotted sooner, `signature_spot_factor` 0.85;
+  100 mm pen, 37 dmg), KV-2 breaker. The chassis' character lives in `ChassisData` "Character"
   (`traverse_factor`, `gunner_sight_fov_deg`, `gun_stabiliser` -> `TankData.gun_stabiliser`:
   turret/gun drives also take out that share of the hull's turn and pitch, bots' moving lay error
   shrinks by it; `max_climb_deg`, `ford_slow_share`, `smoke_salvos`, `signature_spot_factor`). Tank builder / garage: `TankConfig` (only part ids: chassis, gun, armour package,
@@ -458,17 +473,18 @@ shows on the minimap. This is what we test first.
   gun and suspension from `TankData` geometry (scene measures are the reference, consts
   `BASE_*`); `Tank.config` builds the data at start. Camouflage
   (`TankData.camo_spot_factor`) slows bot and squad spotting; spot points scale with the
-  hull (`Tank.get_spot_points`). Garage `scenes/menu/garage.tscn` (from the main menu,
-  which also picks the tank); `TankConfigs` keeps presets (`data/configs/`), own configs
-  (`user://configs/`) and the choice (`user://garage.cfg`); it shows effective armour
-  for sloped plates (`TankModel.SLOPES`). The player rig's tank
-  (`use_player_config`) uses the choice offline; online the client sends its config key
-  in `rpc_hello` and spawns carry a spec (`TankBuilder.spec_of`/`apply_spec`: "cfg:<key>"
+  hull (`Tank.get_spot_points`). Garage `scenes/menu/garage.tscn` (from the main menu): a
+  viewer of the presets only; the tank is chosen in the match (Deploy, below). `TankConfigs` keeps
+  presets (`data/configs/`) and the last choice (`user://garage.cfg`); the garage shows effective
+  armour for sloped plates (`TankModel.SLOPES`). The player rig's tank
+  (`use_player_config`) uses the choice offline; online the host takes the key from `rpc_deploy`
+  and spawns carry a spec (`TankBuilder.spec_of`/`apply_spec`: "cfg:<key>"
   or a TankData path). KotH gives placed bot tanks random `KothData.bot_configs`
   (`KothMode._give_bots_configs`, before tanks are ready). Line-ups (three tanks within
   a budget) come later; cost is already computed.
 - The player's tank uses `data/tanks/player_medium.tres` (set in `player_rig.tscn`)
-  unless a garage tank is chosen; enemies use `test_medium.tres`. Binoculars zoom `binocular_zoom_vs_gunner` times
+  unless a garage tank is chosen; a map's own bot tanks (`test_medium.tres` data) drive a random
+  preset (`Tank._ready`: no config, not the player's, not a puppet), so only garage tanks exist. Binoculars zoom `binocular_zoom_vs_gunner` times
   the gunner's strongest sight zoom.
 - Bot navigation: `tools/bake_tactical_grid.gd -- <map>` (headless) bakes
   `data/maps/<map>_tactical.res` (`TacticalGridData`, 8 m cells: height, flags for
@@ -488,8 +504,7 @@ shows on the minimap. This is what we test first.
   scores candidate spots for cover, hull down (grid heights towards the threat), sight
   lines from the commander's eye and spacing from teammates (weights in TacticsData);
   KothBots uses it with `BotController.get_threat_direction()` (own knowledge only;
-  default: the enemy's side of the zone). Bounding (in KothBots, not BotGroup, so
-  Hackerstad is unchanged): near the zone or after contact a team's bots pair up and
+  default: the enemy's side of the zone). Bounding (in KothBots, not BotGroup): near the zone or after contact a team's bots pair up and
   move in turns (one watches, one drives to the next `find_position` spot that must
   get closer; the watcher goes anyway after `overwatch_max_s`, a move is never cut
   short). Long drives go by a random flank point (teammates prefer different flanks)
@@ -512,13 +527,45 @@ shows on the minimap. This is what we test first.
   `hunt_*`): bots radio spots to the team and go after known enemies, those in the open
   zone first (any range, no time limit, pressing closer), others near the zone for
   `hunt_max_s`; firing spots for an enemy in the zone are inside it. Needs a baked grid. Without a baked grid bots drive
-  straight. Baked so far: vidingsjo, linghem, vikbolandet, road_to_science. Spawns avoid blocked cells.
+  straight. Baked so far: vidingsjo, linghem, campus, road_to_science, corson. Spawns avoid blocked cells.
+- Bot roles (`BotRoleData`, `data/bots/roles/*.tres`; the chassis' favourite `ChassisData.bot_role`
+  -> `TankData.bot_role`; `BotController.get_role()` = `role_override` (a role given for now) or the
+  favourite, none = brawler): BT-7 scout (-> harasser in contact: `contact_role`, set by
+  `TeamSituation.apply_contact_roles` while known enemies are near the objective), T-34 brawler,
+  Pz IV sniper, Sherman flanker, KV-2 breaker. A role has its way in (`axis_spread_deg` off the
+  team's side, left/right in turn, widest first), `standoff_*` outside the zone, `enters` (ALWAYS /
+  ON_ADVANTAGE (+`enters_on_pressure`) / WITH_LEAD = `follow_m` behind the nearest brawler / NEVER),
+  hold times (scouts keep moving), `hunt_engage_m`, squad eagerness (`squad_stand_s`,
+  `squad_cooldown_share`), defence `post` (FORWARD / ZONE_FRONT / BEHIND_ZONE / FLANK_RESERVE /
+  BEHIND_LEAD) and `mines_first`. Harasser (`hit_and_run`): shows up off the known enemies' flank
+  (`pick_harass_range`: mostly 300-500 m, `harass_close_share` closer), fires `shots_per_visit`, then
+  `BotController._dash`es `dash_min_m..max_m` sideways (`_relocating`, `dash_hold_s`); `track_he`:
+  HE at the facing track (`_track_point`). `avoid_front_duels` (scout, harasser): an enemy laying its
+  gun on it (`LAID_ON_DEG`) whose front it can't get through: it dashes away (`_check_dodge`).
+  `TeamSituation` (`scripts/ai/`, every `TacticsData.situation_interval_s`, fair knowledge only: own
+  tanks, team-known enemies, the public kill feed (`TeamSituation.KnockoutLog`), score and clock):
+  `advantage`, `pressure` (behind with time short, or few known defenders while behind/short),
+  `pushed_back`, `enemy_centre`; `has_moment`/`holds_outside` (kept `enter_hold_s`; own knock-out
+  `own_kill_moment_s`); `ensure_spearhead`: at least `min_spearhead_share` of a team goes in
+  (flankers, then snipers, when brawlers are short). KotH (`KothBots`, axes on in both rule sets):
+  outside roles are `_support` until their moment; harassers at `_harass_spot`. ThunderRoad
+  (`ThunderRoadBots`): attackers by job (`ThunderRoadBots.Job`, `_job_of`; phase per
+  checkpoint in `_update_assault`): DEVELOP first (scouts/harassers on the flanks, snipers to firing spots
+  `SNIPER_RANGE_*` from the known defenders, the rest bound in pairs, `_develop_step`/`_start_leg`, to their lane
+  on a line `DEVELOP_STANDOFF_M` short of the zone), ASSAULT with the upper hand (near the checkpoint >= known
+  defenders + `ASSAULT_MARGIN` after `DEVELOP_MIN_S`, a kill run, or time short / overtime; into the zone,
+  breakers behind a brawler, snipers closer; back to DEVELOP when the upper hand is lost), and a RESERVE
+  (`RESERVE_SHARE`, at least one) `RESERVE_BACK_M` back until time is short), defender posts by `post` (every other ZONE_FRONT brawler posts out on its flank for crossfire,
+  breakers follow their lead's side, near-road posts keep `POST_CENTRE_GAP` off the road; BEHIND_ZONE moves to the zone's
+  front when `pushed_back`; FLANK_RESERVE counterattacks the attackers in the zone from the side,
+  `_update_counter`); `ThunderRoadData.defender_post_*_share` no longer used.
 - `BotGroup` moves bots together: column along a route, on the first contact
   (shared to all members) line abreast towards an objective, short halts to fire.
   Bots on an ordered route that get stuck reverse and detour sideways.
 - Scenarios are scenes inherited from a map (`scenes/scenarios/*.tscn`, base e.g.
-  `vikbolandet.tscn`), so map edits carry over. `hackerstad.tscn`: player at
-  Hackerstad, 6 bots advance from Ring along the road (Vikbolandet).
+  `vidingsjo.tscn`), so map edits carry over. (The Hackerstad scenario and the
+  `test_hackerstad` map were dropped 2026-11-11; raw data kept in `geodata/test_hackerstad/`,
+  so `BotGroup` has no scene using it now.)
 - King of the Hill (`KothMode`, node `KothZone` in a scenario; its Marker3D children
   are the spots where zones may open; rules in `data/modes/koth_default.tres`,
   `KothData`). Zones one at a time: open at full size, hold, shrink while scoring
@@ -535,7 +582,7 @@ shows on the minimap. This is what we test first.
   Tanks go to their spawn at the start; respawns (`RespawnAtStart`, `KothBots`) use the
   current spawn. `KothBots` orders every BotController into the (next) zone. Runs
   offline/host only. HUD: `ScorePanel`; `MapView` draws zone and own spawn.
-  Scenarios: `vidingsjo_koth`, `linghem_koth`, `vikbolandet_koth` (`scenes/scenarios/`, listed in the main menu; a map needs a baked tactical grid, a map image, KothZone with spots, KothBots, PlayerRespawn and at least one placed bot; default 4 v 4). Move a zone by moving its Marker3D; keep them ≥ ~400 m plus the zone radius from map edges where possible. Tanks per team (main menu number, `MatchSettings.team_size`,
+  Scenarios: `vidingsjo_koth`, `linghem_koth`, `campus_koth` (`scenes/scenarios/`, listed in the main menu (`MainMenu`: only `scenes/scenarios/`, grouped under King of the Hill / Thunder Road / Free fight by the name tags `_koth`/`_thunder`/`_free`, place names with å/ä/ö in `PLACE_NAMES`); a map needs a baked tactical grid, a map image, KothZone with spots, KothBots, PlayerRespawn and at least one placed bot; default 4 v 4). Move a zone by moving its Marker3D; keep them ≥ ~400 m plus the zone radius from map edges where possible. Tanks per team (main menu number, `MatchSettings.team_size`,
   `user://settings.cfg`; offline and hosting with bots): `KothBots._fill_teams` adds copies
   of a placed bot or removes extras; on the host a joining player replaces a bot of his team
   (`KothBots.make_room`, `NetGame.remove_tank`) and a leaving one is replaced
@@ -550,7 +597,7 @@ shows on the minimap. This is what we test first.
   Every placement calls `Tank.face_forward()` (turret and gun straight ahead, `placed_version`
   bumped; a puppet's respawn jump too): commander view, gunner sight and the player's aim snap
   to the hull's front.
-  Rule sets: `koth_default.tres` (Vikbolandet) and `koth_tactical.tres` (Vidingsjö, Linghem:
+  Rule sets: `koth_default.tres` (unused since Vikbolandet went) and `koth_tactical.tres` (Vidingsjö, Linghem, campus:
   slower, less shrink, kill bonus for any knock-out of an enemy in the zone
   (`kill_bonus_needs_shooter_in_zone` false), `zone_placement` ROAMING and bot attack axes).
   ROAMING: after the first (marker) zone, `KothMode._choose_roaming_zone` tries
@@ -563,6 +610,27 @@ shows on the minimap. This is what we test first.
   (wait <= `assembly_wait_max_s`; respawns don't wait), then bound towards their axis'
   entry point; `support_per_team` bots watch from outside and don't hunt. The gap is not
   a hurry then.
+- Free fight (`FreeFight`, node in `scenes/scenarios/{vidingsjo,linghem,campus}_free.tscn`; rules
+  `data/modes/free_fight.tres`, `FreeFightData`; host/offline, also the bot director): the players (team 0,
+  co-op) against waves of bots (`bot_team` 1). Start: a random open spot in a circle round the map's centre
+  (`spawn_edge_margin_m` inside the edge). Round r: `start_count` + r/2 bots × (1 + `extra_player_share` per
+  extra player), easy (`bot_easy.tres`, BT-7/T-34) on even rounds, hard (`bot_regular.tres`, any preset) on
+  odd ones, spot times and gun errors × `creep_per_round`^r (floor `creep_floor`). A wave spawns
+  `wave_distance_*_m` from the living players, preferably where none can see (`_seen_by_players`), each bot at a
+  `find_position` spot within `wave_radius_m` (moved to the nearest open ground if it isn't: terrain under it and
+  nothing solid in a tank-sized box, `KothMode.box_clear`; the grid misses small houses), and holds (DEFEND: no orders; the maps draw its circle,
+  `MapView._draw_wave`) until a crew spots a player or is hit (`BotController.contact`): the wave hears of it
+  (`share_contact`) and attacks (ATTACK: every `attack_think_s` each bot drives to a `find_position` spot
+  `attack_range_m` from the nearest known player, `attack_step_m` closer each arrival, down to `attack_min_m`).
+  Beaten: knocked-out players come back beside a living teammate (`spawn_for_new`), next wave after
+  `wave_gap_s` (the old bots go then, wrecks stay). All players out: `is_over()` (Scoreboard "DEFEATED", waves
+  beaten, KO/assists/lost). HUD `FreeFightPanel`. NetGame starts no respawn timers with it; clients get
+  `get_net_state()` by `rpc_free_state` (2 Hz and on its signals). The map's placed enemies are removed.
+- Map edge (`MapEdge`, `scripts/world/map_edge.gd`, `data/world/map_edge.tres`): the playable area is the map
+  picture's `world_rect` less `margin_m` (50). No physics body (every ray with the default mask would hit
+  it): `Tank._hold_inside_map` takes a tank's speed outwards past it and pushes it back in; `TacticalMap`
+  closes cells outside (paths, `find_position`, `is_blocked`); squad orders are clamped (`Tank.SQUAD_EDGE_INSET_M`);
+  KotH spawns keep `SPAWN_EDGE_INSET_M` inside; the maps darken outside it and draw a line.
 - ThunderRoad (a gauntlet; `ThunderRoadMode` node `ThunderRoad` in a scenario with children
   `Route` (Path3D along a road) and `Checkpoints` (Marker3Ds, projected onto the route;
   movable), rules in `data/modes/thunder_road.tres` (`ThunderRoadData`), bots by
@@ -572,8 +640,8 @@ shows on the minimap. This is what we test first.
   attackers' shared lives and brings a wave. Knocked-out attackers wait for the wave (on a
   capture or every `wave_interval_s`, a life each, behind the front); defenders come back
   after `defender_respawn_s` `defender_spawn_checkpoints` past the next checkpoint, never nearer than
-  `defender_spawn_min_ahead_m` (320) past it (past the road's end, the last checkpoint, the spawn goes
-  on straight: `_slot_point`, and `project` extrapolates the last segment) (`defender_spawn_checkpoints` 1; at the round start in the first checkpoint's zone,
+  `defender_spawn_min_ahead_m` (470, `defender_spawn_beyond_m` 210; 150 m further back since 2026-11-12) past it (past the road's end, the last checkpoint, the spawn goes
+  on straight: `slot_point`, and `project` extrapolates the last segment) (`defender_spawn_checkpoints` 1; at the round start in the first checkpoint's zone,
   `defender_start_in_zone`, to dig in; the route has no checkpoint in its first spacing, a free drive to the fight).
   Waves every `wave_interval_s` (40).
   Time up with a living attacker in the checkpoint's zone: overtime (`is_overtime`, HUD
@@ -582,7 +650,10 @@ shows on the minimap. This is what we test first.
   `defender_behind_front_m` (150; `get_defender_line_s`, so forward defenders fight on when a checkpoint falls),
   attackers within `attacker_half_width_m`. Outside: `Tank.fire_blocked` (no gun or MG),
   a spot mark for the other team every `outside_mark_s`, `Tank.wound_commander()` after
-  `outside_grace_s`. Round 1 team 0 attacks, round 2 sides swap; more checkpoints wins,
+  `outside_grace_s`. Bots never aim to go outside: `BotController.keep_goal` (set by ThunderRoadBots,
+  `_keep_inside`) moves every goal they drive to, ordered or their own (dash, relocation, hiding), `INSIDE_MARGIN_M`
+  (40) inside the corridor. Corridors 400 m (attackers) / 350 m (defenders) half width since 2026-11-12; attackers
+  start with `start_lives_per_tank` × tanks + `start_lives_extra` (5) lives and `start_time_s` 390. Round 1 team 0 attacks, round 2 sides swap; more checkpoints wins,
   then more time left. Taking every checkpoint should be rare: the match is meant to be
   won on the count. The `round_break_s` (10 s) pause blocks all fire; after round 1 the
   tanks go to round 2's starts at once (`_setup_round`, repaired, map reset) and stand locked
@@ -611,9 +682,17 @@ shows on the minimap. This is what we test first.
   own PlayerRig isn't counted when filling teams. Missions: `vidingsjo_thunder_red` (Haningeleden) and
   `vidingsjo_thunder_orange` (Ålerydsvägen + Haningeleden), made by
   `tools/thunder_route_from_osm.py` (named OSM roads between two points -> scene; rerun
-  overwrites checkpoint moves; `--join=M` across roundabouts), and `road_to_science_thunder` (Vidingsjö -> Vallastaden,
-  5.4 km, 15 checkpoints) on the corridor map `road_to_science` (see below), made with
-  `--path=geodata/road_to_science/korridor.json` (a ready route of any roads/paths).
+  overwrites checkpoint moves; `--join=M` across roundabouts), and `road_to_science_thunder` (Åsmestadsrondellen at
+  Lambohovsleden -> Vallastaden past Isovalen -> Campus Valla -> Mjärdevi, 2.5 km, 6 checkpoints; the 5.4 km
+  Vidingsjö version was dropped 2026-11-11, raw data in `geodata/road_to_science_lang/`) on the corridor map `road_to_science` (see below), made with
+  `--path=geodata/road_to_science/korridor.json` (a ready route of any roads/paths). `corson_thunder` (corridor map
+  `corson`, 1.25 × 2.7 km): a short course, a straight line north -> south through Campus Valla (1.5 km, 4
+  checkpoints; `geodata/corson/korridor.json` written by hand, not from OSM), checkpoints moved along the route
+  off the houses by `tools/thunder_checkpoints_avoid_houses.py`. `linghem_thunder` (whole map, not a corridor):
+  south -> north, forest paths, then along Himnavägen, diagonally through the houses to the station (3.2 km,
+  7 checkpoints; the last ~260 m before the end so defender spawns stay on the map). Route from a Google Maps
+  screenshot by `rutt_ur_bild.py` run in a scratch folder (it writes a korridor.json, which in
+  `geodata/linghem/` would trim the next rebuild), simplified (25 m), then `--path=`.
 - Sound: `SoundSetData` (`data/sounds/*.tres`, random variant, optional `distant` set
   far away) on `TankData.sounds` (`TankSoundData`: engine, tracks, gun, hatch),
   `ShellData` (hit armour/ground, ricochet; explosive shells add `sound_explosion` on every impact) and `MachineGunData.sound_shot` (one per bullet, `GunfireSound`, polyphonic).
@@ -672,9 +751,7 @@ shows on the minimap. This is what we test first.
 - Terrain: Terrain3D v1.1.0 in `addons/terrain_3d` (desktop binaries only). Maps
   must use collision mode Full / Game (shells and nests act far from the camera).
   In game modes ray hits report the Terrain3D node as collider.
-- `tools/generate_hills.gd` and `tools/build_hills_scene.gd` made the starter
-  `scenes/maps/hills.tscn` once; the map is now edited in the editor. Don't rerun
-  them (they overwrite the user's edits).
+- The starter `hills` map and Vikbolandet were removed 2026-11-11 (in git history).
 - New real maps: `geodata/.venv/bin/python geodata/scripts/nytt_omrade.py <name> <lat,lon> <lat,lon>`
   (fetches OSM, LM/Copernicus, NMD; builds; imports; makes `scenes/maps/<name>.tscn`).
 - Corridor maps for ThunderRoad (`geodata/scripts/hamta_korridor.py <name> <start lat,lon> <end lat,lon>`
@@ -682,7 +759,8 @@ shows on the minimap. This is what we test first.
   `geodata/<name>/korridor.json` (route in SWEREF, `bredd_m`, `kant_m`) the build puts houses,
   trees, bushes and stones only near the route (`geodata/scripts/korridor.py`, ragged edge);
   terrain and roads cover the whole box. `road_to_science`: route from OSM along a Google Maps
-  measurement (`rutt_bild.json`, `rutt_google.png`), 500 m + 120 m edge. Steps for a new one:
+  measurement (`rutt_bild.json`, `rutt_google.png`, git-ignored), 500 m + 120 m edge (box 3.0 × 1.9 km, so
+  nearly all of it has houses). Steps for a new one:
   `hamta_korridor.py` (`--via` for bends wider than the ends; the user runs it, LM login) ->
   points read off the screenshot into `<name>/rutt_bild.json` -> `geodata/scripts/rutt_ur_bild.py
   <name>` (route + korridor.json) -> `nytt_omrade.py` with the stored corners (build, import,
@@ -698,7 +776,7 @@ shows on the minimap. This is what we test first.
   touching heights (nor the object glb: run the plain import first). Then rerun `render_map_image`. Done: vidingsjo (others still auto shader).
 - House style (types, colours, facades with windows, semi-realistic areas) comes from
   `geodata/stilar.json`; rebuild the map to apply changes.
-- Real maps `scenes/maps/vikbolandet.tscn` (6.6 × 7 km) and `scenes/maps/vidingsjo.tscn`
+- Real maps such as `scenes/maps/vidingsjo.tscn`
   (3.4 × 3.1 km, Linköping) come from the Python pipeline in `geodata/` (see its
   CLAUDE.md; folder has `.gdignore`). Origin at the map's NW corner, 2 m vertex spacing.
   After rebuilding geodata, rerun `tools/import_geodata_map.gd -- <name> <out dir>`
@@ -721,13 +799,14 @@ shows on the minimap. This is what we test first.
   with `FallingTree`. Sizes per species in `data/world/field_tree_*.tres`
   (`FieldTreeData`). Bushes are a second TreeField (`Bushes`, data `field_bush_*.tres`,
   `has_trunk = false`): crowns block sight (and count as cover), tanks and shells pass.
-  hills.tscn still uses `tree.tscn`/`BreakableTree`.
+  `tree.tscn`/`BreakableTree` are no longer used by any map.
 - Bridges and underpasses come from the geodata pipeline (`geodata/scripts/broar.py`): glb group
   `Broar` (decks, parapets, pillars, trench floors, retaining walls). `mesh_collision.gd` gives
   `Byggnader`, `Broar`, `Stenar` and `Banhinder` trimesh collision. Underpasses are tank-sized (≥ 5 m wide, 3.8 m clear).
 - Roads come from OSM with Trafikverket's NVDB attributes (`geodata/scripts/nvdb.py`: real width, surface,
   speed; `vagmarkering.py`: centre/warning/no-overtaking/edge lines and zebra crossings as thin meshes in
-  the glb group `Vagar`). So far rebuilt: vidingsjo, linghem.
+  the glb group `Vagar`). So far rebuilt: vidingsjo, linghem, campus (2026-11-11; with all roadside,
+  traffic lights, playgrounds, ground cover).
 - Railways come from the geodata pipeline (`geodata/scripts/jarnvag.py`, OSM): banvall shaped in the
   heightmap, glb group `Jarnvag` (ballast, sleepers, rails, catenary wires; no collision, tanks drive
   over) and `Banhinder` (catenary masts, rail bridge decks, platforms; collision). So far only Linghem.
@@ -741,14 +820,31 @@ shows on the minimap. This is what we test first.
   after map changes. Spot marks live in `SpotMarks` (player rig), drawn by `MapView`. The own tank shows
   as a hull arrow plus a cone for where the player looks (`PlayerViews.get_view_camera`).
 - Main menu and garage (`MainMenu`, `Garage`, built in code, look from `MenuTheme`: dark see-through
-  fields, orange primary button, `add_backdrop`/`add_title`; the garage dims the picture and
-  shows the tank painted as a friend on a dark disc) over `assets/ui/menu_background.jpg`, rendered in the game by
+  fields, orange primary button, `add_backdrop`/`add_title`; the garage dims the picture; it only shows
+  the five presets (no building any more): `TankPreview` (the tank painted as a friend turning on a
+  dark disc), `TankSummary` and the stat bars) over `assets/ui/menu_background.jpg`, rendered in the game by
   `godot --path . --disable-vsync --fixed-fps 60 --script res://tools/render_menu_background.gd --
   [map] [weather] [friend|enemy]` (tank, running squad, an HE burst with an extra dirt fountain;
   frames after the burst in `renders/menu/`; the picture is dusk_enemy_0300, kept ungraded in
   `assets/ui/raw/` (.gdignore) and graded HDR-like by `geodata/.venv/bin/python
   tools/grade_menu_background.py [strength]` (default 0.6: local shadow lift, detail, vibrance)). Note the canvas
   stretch: UI sizes are in 1152x648 units.
+- Deploy (choosing team and tank in the match): nobody has a tank on arrival. `MatchLobby`
+  (`scripts/control/`, added by NetGame on every machine, offline by `NetSession.play_offline` from
+  the main menu's Single player; F5/F6 on a scenario has none) shows `DeployScreen` over a camera
+  circling the team's tanks (`DeployData`, `data/ui/deploy.tres`): page BRIEFING = the mode's
+  `display_name`/`briefing` (`KothData`/`ThunderRoadData`, `{score}` = score_to_win; no mode:
+  "Free fight") and both teams' rosters with Join buttons, then page TANKS = the presets list,
+  `TankPreview` and `TankSummary` (speed, gun, armour, special: from TankData/ChassisData against the
+  middle preset, `DeployData.margin_share`). Online: `NetGame.pick_team` (`rpc_pick_team`; roster
+  shows "choosing a tank") and `request_deploy` (`rpc_deploy`, preset keys only:
+  `TankConfigs.preset_of_key`) -> the host makes room (director `make_room`), spawns, refills;
+  `NetGame.roster` ([team, name, `DeployScreen.Kind`, type, peer]) goes out by `rpc_roster` at
+  `ROSTER_HZ` when changed. Directors' `_target_size()` = max(team_size, players on either team), so a
+  crowded team's opponents get bots. Offline the lobby takes the map's PlayerRig out after two frames
+  (a bot refills) and brings a new rig at the chosen team's spawn (only team 0, "Team 1", outside KotH/ThunderRoad).
+  The Esc menu's Change tank uses DeployScreen's tank page. Only presets exist (`TankConfigs.all()` =
+  presets; old `user://configs/` builds are ignored).
 - Graphics before/after: `godot --path . --disable-vsync --script res://tools/render_views.gd --
   <map> <label> [weather,...]` renders the fixed views in `tools/render_views.json` (1920x1080,
   bots removed, HUD hidden) to `renders/views/<label>/` with frame/GPU ms, draw calls and
@@ -804,6 +900,10 @@ shows on the minimap. This is what we test first.
   takes a bot's place on the other team (the director refills), else the player picks one
   of the other team to ask (`rpc_team_choices`/`rpc_swap_offer`, notice in `MatchNotice`),
   who accepts or declines in the Esc menu; both respawn on the other side at once.
+- Main menu Controls button: `ControlsPanel` (`scripts/ui/controls_panel.gd`) lists sections of keys and a short
+  explanation from `data/ui/controls.txt` ("## Heading", "action,action | text", `{action}` in the text = its
+  key); key names come from the Input Map (`ControlsPanel.key_of`), so rebinding updates it. Add a line there
+  when a new control comes.
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 
 ## Checking for errors (run these yourself)
@@ -847,8 +947,8 @@ Host-authoritative, Godot ENet, all in `scripts/net/`:
   commands (client -> host, 30 Hz, unreliable, `NetCommandCodec`); everything else is
   reliable RPCs on `/root/Net`. Maps load on a thread and ENet timeouts are 30–60 s, so a
   slow map load doesn't drop the connection. F3 = statistics (FPS and net).
-- `NetGame` (added to the loaded map): spawns from the map (team 0 at its PlayerRig,
-  team 1 at its first enemy tank), removes the map's rig/enemies (enemies stay as team-2
+- `NetGame` (added to the loaded map): spawns players once they deploy (`MatchLobby`; team 0
+  at the map's PlayerRig, team 1 at its first enemy tank, or the mode's spawns), removes the map's rig/enemies (enemies stay as team-2
   bots on the host if bots are on), respawns players after 10 s, forwards events
   (shells + ricochets, hit results to the shooter, spots to the team, felled trees).
 - One packed snapshot per recipient (`NetReplicator`, `TankNetState` ~38 B per tank, plus
@@ -859,14 +959,15 @@ Host-authoritative, Godot ENet, all in `scripts/net/`:
   and roof MG from the local command (`net_predict`); hull follows the host.
   Shells on clients are cosmetic (`Shell` cosmetic flag); MG fire is a snapshot flag.
 - Host drives remote tanks with `RemoteController`. Start menu `scenes/menu/main_menu.tscn`
-  (Host: map + bots, Join: IP e.g. Tailscale, Single player). Command line after `--`:
+  (Host: map + bots, Join: IP e.g. Tailscale, Single player; team and tank are chosen in the
+  match, `MatchLobby`). Command line after `--`:
   `--host [--map vidingsjo] [--bots]`, `--join <ip>`, `--name N`, `--port N` (default 24680; lets
   a test host run beside a game already hosting).
 - Player guide (Swedish): `SPELA_ONLINE.md` (hosting, joining, Tailscale, F3).
 - Measured: ~0.8 kB/s per tank per recipient. Test with two (or three) headless
   instances running scratch scripts (`--script`, the autoload is there), or two windows.
 - Not yet: hull prediction, lag compensation, lobby/team choice, game modes, dedicated
-  server menu, BreakableTree/MG nests (hills.tscn) over the network.
+  server menu, BreakableTree/MG nests over the network.
 
 Later: Terrain3D for real maps (check it supports Godot 4.7 first), damage model,
 spotting/minimap, bots, game modes, multiplayer.

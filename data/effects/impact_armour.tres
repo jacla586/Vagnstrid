@@ -1,11 +1,11 @@
-[gd_resource type="Resource" script_class="EffectData" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="EffectData" format=3 uid="uid://bpct7f268u8oa"]
 
-[ext_resource type="Script" path="res://scripts/data/effect_data.gd" id="1_effect"]
-[ext_resource type="Script" path="res://scripts/data/burst_data.gd" id="2_burst"]
+[ext_resource type="Script" uid="uid://ccdx8vqvyg658" path="res://scripts/data/effect_data.gd" id="1_effect"]
+[ext_resource type="Script" uid="uid://d2my37k26eucx" path="res://scripts/data/burst_data.gd" id="2_burst"]
 
 [sub_resource type="Resource" id="Burst_sparks"]
-script = ExtResource("2_burst")
 resource_name = "sparks"
+script = ExtResource("2_burst")
 amount = 30
 lifetime_s = 0.5
 spread_deg = 70
@@ -20,8 +20,8 @@ align_to_velocity = true
 stretch = 8
 
 [sub_resource type="Resource" id="Burst_flash"]
-script = ExtResource("2_burst")
 resource_name = "flash"
+script = ExtResource("2_burst")
 amount = 5
 lifetime_s = 0.1
 spread_deg = 60
@@ -34,10 +34,11 @@ color_end = Color(1, 0.5, 0.2, 0)
 additive = true
 
 [sub_resource type="Resource" id="Burst_smoke"]
-script = ExtResource("2_burst")
 resource_name = "smoke"
+script = ExtResource("2_burst")
 amount = 8
 lifetime_s = 1.8
+lifetime_randomness = 0.4
 spread_deg = 50
 speed_min_mps = 3
 gravity = Vector3(0, 0.3, 0)
@@ -49,12 +50,10 @@ size_end_m = 1.4
 size_randomness = 0.5
 color_start = Color(0.35, 0.35, 0.35, 0.45)
 color_end = Color(0.4, 0.4, 0.4, 0)
-lifetime_randomness = 0.4
 
 [resource]
 script = ExtResource("1_effect")
 bursts = Array[ExtResource("2_burst")]([SubResource("Burst_sparks"), SubResource("Burst_flash"), SubResource("Burst_smoke")])
 light_color = Color(1, 0.75, 0.45, 1)
 light_energy = 4
-light_range_m = 6
 light_time_s = 0.12

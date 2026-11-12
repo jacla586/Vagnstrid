@@ -88,7 +88,14 @@ const AXIS_MEMORY_S: float = 60.0
 ## A bot already this share of the assembly distance from the zone edge skips assembling.
 const ASSEMBLY_SKIP_SHARE: float = 0.7
 ## Teams smaller than this have no support bot.
-const SUPPORT_MIN_TEAM: int = 3
+const SUPPORT_MIN_TEAM: int = 3   # (unused since roles: kept for old rule sets)
+## Roles that keep moving (holds under HOLD_MIN_S) pick their next spot this far round
+## their flank (deg).
+const SCOUT_SWING_DEG: float = 25.0
+## A follower's spot is looked for within this of the point behind its lead (m)...
+const FOLLOW_SPOT_RADIUS_M: float = 50.0
+## ...and a new one comes once the lead has moved this share of follow_m.
+const FOLLOW_REORDER_SHARE: float = 0.6
 
 @export var mode: KothMode
 
@@ -120,6 +127,13 @@ var _no_wait: Dictionary = {}  # BotController -> true: don't wait for the partn
 var _mate: Dictionary = {}  # BotController -> its assembly partner (same axis), or absent
 var _axes_assigned_once: bool = false  # the first zone: everyone assembles
 ## Bots waiting for a new order into the zone (they keep their old one until then).
+# Roles (BotRoleData) and the team's reading of the fight (TeamSituation).
+var _angle: Dictionary = {}  # BotController -> its way in, deg off its team's spawn direction
+var _entering: Dictionary = {}  # BotController -> clock when an outside role last had the moment
+var _lead_at: Dictionary = {}  # BotController (follower) -> where its lead was when ordered
+var _situation: Dictionary = {}  # team -> TeamSituation
+var _situation_wait: float = 0.0
+var _kos := TeamSituation.KnockoutLog.new()
 var _order_queue: Array[BotController] = []
 var _order_wait: float = 0.0  # seconds until the next queued order or new pair
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -222,8 +236,7 @@ func _team_tanks(team: int) -> Array[Tank]:
 ## first frame, so KothMode puts the new tanks at the spawns with the rest; later
 ## (a player left) new bots go straight to their spawn.
 func _fill_teams() -> void:
-	MatchSettings.load_settings()
-	var size: int = MatchSettings.team_size
+	var size: int = _target_size()
 	if size <= 0 or _template == null:
 		return
 	for team: int in [0, 1]:
@@ -239,11 +252,22 @@ func _fill_teams() -> void:
 			_add_bot(team, tanks.size() + i)
 
 
+## Tanks per team: MatchSettings.team_size, or more if players crowd one team (the other
+## team then gets bots to match).
+func _target_size() -> int:
+	MatchSettings.load_settings()
+	var size: int = MatchSettings.team_size
+	var game: NetGame = NetSession.instance.game if NetRole.is_host() else null
+	if size > 0 and game != null:
+		size = maxi(size, maxi(game.player_count(0), game.player_count(1)))
+	return size
+
+
 ## Host: a player joins `team`. If the team is already full, a bot leaves to make room
 ## (one that is knocked out, if any). Returns the bot's tank, already out of the bot
 ## lists and without its controller; the caller removes it from the game.
 func make_room(team: int) -> Tank:
-	var size: int = MatchSettings.team_size
+	var size: int = _target_size()
 	if size <= 0 or _team_tanks(team).size() < size:
 		return null
 	var bot: BotController = _bot_to_remove(team)
@@ -349,6 +373,7 @@ func _physics_process(delta: float) -> void:
 		if not is_instance_valid(_order_queue[i]):
 			_order_queue.remove_at(i)
 	_order_wait -= delta
+	_update_situation(delta)
 	_update_order_queue()
 	_update_bounding(delta)
 	for bot: BotController in _bots:
@@ -375,6 +400,8 @@ func _physics_process(delta: float) -> void:
 			_update_support(bot, delta)
 			continue
 		if _update_hunt(bot, delta):
+			continue
+		if _update_follow(bot, delta):
 			continue
 		if _axes_on() and not _assembled.has(bot):
 			_update_assembly(bot, delta)
@@ -443,7 +470,7 @@ func _update_bounding(delta: float) -> void:
 	for bot: BotController in _bots:
 		if _wants_bounding(bot):
 			# With attack axes, pairs are formed per axis (key: team and axis).
-			var key: int = bot.tank.team * 10 + (_axis_of(bot) + 1 if _axes_on() else 0)
+			var key: int = bot.tank.team * 10 + (_axis_of(bot) + 1 if _axes_on() else 0)   # per side
 			if not teams.has(key):
 				teams[key] = []
 			(teams[key] as Array).append(bot)
@@ -465,7 +492,8 @@ func _wants_bounding(bot: BotController) -> bool:
 	if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.is_knocked_out():
 		return false
 	if _respawn.has(bot) or _depart.has(bot) or _respawned.has(bot) or _hurry() \
-			or _hunt.has(bot) or bot.is_relocating() or _support.has(bot):
+			or _hunt.has(bot) or bot.is_relocating() or _support.has(bot) \
+			or (_axes_on() and _lead_of(bot) != null):
 		return false
 	if _axes_on() and not _assembled.has(bot):
 		return false   # on its way to (or waiting at) its assembly point
@@ -596,16 +624,17 @@ func _order_into_zone(bot: BotController) -> void:
 	var radius: float = mode.get_radius()
 	var urgent: bool = _respawned.has(bot) or _hurry()
 	_respawned.erase(bot)
+	var role: BotRoleData = bot.get_role()
 	if _axes_on():
 		_order_on_axis(bot, urgent)
 		_ordered_radius[bot] = radius
-		_hold[bot] = _rng.randf_range(HOLD_MIN_S, HOLD_MAX_S)
+		_hold[bot] = _rng.randf_range(role.hold_min_s, role.hold_max_s)
 		return
 	var goal: Vector3 = _choose_spot(bot, radius * INNER_SHARE)
 	_goals[bot] = goal
 	bot.order_path(goal, _tactics_of(bot).travel_throttle, urgent, _flank_point(bot, goal))
 	_ordered_radius[bot] = radius
-	_hold[bot] = _rng.randf_range(HOLD_MIN_S, HOLD_MAX_S)
+	_hold[bot] = _rng.randf_range(role.hold_min_s, role.hold_max_s)
 
 
 # --- Attack axes, assembly and support ------------------------------------------------
@@ -614,19 +643,22 @@ func _axes_on() -> bool:
 	return mode.data.bot_attack_axes
 
 
-## A new zone: per team three axes round its side, the best (fewest known enemies near
-## the way in) first; support bots picked at random, the rest in pairs onto the axes.
-## Every bot assembles again unless it is already near the zone.
+## A new zone: every bot gets its own way in, its role's axis_spread_deg off its team's
+## side, left and right in turn (the widest roles first, so scouts and flankers end up on
+## both flanks); roles that hold outside (BotRoleData.enters ON_ADVANTAGE / NEVER) watch
+## from there until the moment comes (_update_situation); the rest pair up per side and
+## assemble, unless they are already near the zone.
 func _assign_axes() -> void:
 	_assembled.clear()
 	_assembly_wait.clear()
 	_no_wait.clear()
 	_axis.clear()
+	_angle.clear()
 	_support.clear()
+	_entering.clear()
 	_mate.clear()
 	_axis_dirs.clear()
 	var c: Vector3 = mode.get_center()
-	var reach: float = mode.get_radius() + mode.data.assembly_distance_m
 	var teams: Dictionary = {}  # team -> bots
 	for bot: BotController in _bots:
 		if is_instance_valid(bot) and is_instance_valid(bot.tank):
@@ -635,43 +667,26 @@ func _assign_axes() -> void:
 			(teams[bot.tank.team] as Array).append(bot)
 	var first: bool = not _axes_assigned_once
 	for team: int in teams:
-		var base: Vector3 = mode.get_spawn_direction(team)
-		var dirs: Dictionary = {}
-		var scored: Array = []  # [penalty, axis]
-		var known: Array[Vector3] = _team_known(team)
-		for axis: int in [-1, 0, 1]:
-			var dir: Vector3 = base.rotated(Vector3.UP, deg_to_rad(mode.data.axis_spread_deg * axis))
-			dirs[axis] = dir
-			var a: Vector3 = c + dir * reach
-			var e: Vector3 = c + dir * mode.get_radius() * ENTRY_SHARE
-			var penalty: float = _rng.randf() * 0.5   # ties broken at random
-			for k: Vector3 in known:
-				if _distance_to_segment(k, a, e) < AXIS_THREAT_M:
-					penalty += 1.0
-			var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
-			if map != null and map.is_blocked(a):
-				penalty += 0.5
-			scored.append([penalty, axis])
-		scored.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) < float(y[0]))
-		_axis_dirs[team] = dirs
 		var group: Array = teams[team]
 		group.shuffle()
-		var alive: Array = group.filter(func(b: BotController) -> bool:
-				return not b.tank.is_knocked_out() and not _respawn.has(b))
-		if group.size() >= SUPPORT_MIN_TEAM:
-			for i: int in mini(mode.data.support_per_team, alive.size() - 1):
-				_support[alive[i]] = true
-		var n: int = 0
-		var last: BotController = null
+		group.sort_custom(func(x: BotController, y: BotController) -> bool:
+			return x.get_role().axis_spread_deg > y.get_role().axis_spread_deg)
+		var side: int = 1 if _rng.randf() < 0.5 else -1
+		var last_on_side: Dictionary = {}  # side -> last unpaired bot going in
 		for bot: BotController in group:
-			if _support.has(bot):
+			_set_angle(bot, side)
+			side = -side
+			if _holds_outside(bot):
+				_support[bot] = true
 				continue
-			_axis[bot] = int(scored[(n / 2) % scored.size()][1])
-			if n % 2 == 1:
-				_mate[bot] = last
-				_mate[last] = bot
-			last = bot
-			n += 1
+			var my_side: int = int(_axis[bot])
+			var other: BotController = last_on_side.get(my_side)
+			if other != null:
+				_mate[bot] = other
+				_mate[other] = bot
+				last_on_side.erase(my_side)
+			else:
+				last_on_side[my_side] = bot
 			var flat := Vector2(bot.tank.global_position.x - c.x, bot.tank.global_position.z - c.z)
 			if not first and flat.length() - mode.get_radius() \
 					< mode.data.assembly_distance_m * ASSEMBLY_SKIP_SHARE:
@@ -679,50 +694,40 @@ func _assign_axes() -> void:
 	_axes_assigned_once = true
 
 
-## Last known positions of enemies any bot of `team` knows of (shared by radio).
-func _team_known(team: int) -> Array[Vector3]:
-	var out: Array[Vector3] = []
-	for bot: BotController in _bots:
-		if is_instance_valid(bot) and is_instance_valid(bot.tank) and bot.tank.team == team:
-			for at: Vector3 in bot.get_known_enemies(AXIS_MEMORY_S).values():
-				out.append(at)
-	return out
+## Its way in on `side` (-1 left, 1 right): its role's spread, a little varied.
+func _set_angle(bot: BotController, side: int) -> void:
+	_axis[bot] = side
+	_angle[bot] = float(side) * bot.get_role().axis_spread_deg * _rng.randf_range(0.8, 1.2)
 
 
-static func _distance_to_segment(p: Vector3, a: Vector3, b: Vector3) -> float:
-	var p2 := Vector2(p.x, p.z)
-	var a2 := Vector2(a.x, a.z)
-	var b2 := Vector2(b.x, b.z)
-	var ab: Vector2 = b2 - a2
-	var t: float = clampf((p2 - a2).dot(ab) / maxf(ab.length_squared(), 0.01), 0.0, 1.0)
-	return p2.distance_to(a2 + ab * t)
+## A role that watches from outside the zone and isn't going in now (TeamSituation).
+func _holds_outside(bot: BotController) -> bool:
+	return TeamSituation.holds_outside(bot, _situation.get(bot.tank.team), _kos, _entering,
+			_tactics_of(bot))
 
 
-## This bot's axis; a bot that came later joins the team's axis with fewest bots.
+## This bot's side (-1 left, 1 right); a bot that came later takes the side of its
+## team with fewer bots.
 func _axis_of(bot: BotController) -> int:
 	if _axis.has(bot):
 		return int(_axis[bot])
-	var count: Dictionary = {-1: 0, 0: 0, 1: 0}
+	var count: Dictionary = {-1: 0, 1: 0}
 	for other: BotController in _axis:
 		if is_instance_valid(other) and is_instance_valid(other.tank) \
 				and other.tank.team == bot.tank.team:
 			count[int(_axis[other])] = int(count[int(_axis[other])]) + 1
-	var best: int = 0
-	for axis: int in [0, -1, 1]:
-		if int(count[axis]) < int(count[best]):
-			best = axis
-	_axis[bot] = best
-	return best
+	var side: int = -1 if int(count[-1]) < int(count[1]) else 1
+	_set_angle(bot, side)
+	if _holds_outside(bot):
+		_support[bot] = true
+	return side
 
 
-## Flat unit vector from the zone centre out along this bot's axis.
+## Flat unit vector from the zone centre out along this bot's way in.
 func _axis_dir(bot: BotController) -> Vector3:
-	var team: int = bot.tank.team
-	var axis: int = 0 if _support.has(bot) else _axis_of(bot)
-	if _axis_dirs.has(team) and (_axis_dirs[team] as Dictionary).has(axis):
-		return (_axis_dirs[team] as Dictionary)[axis]
-	return mode.get_spawn_direction(team).rotated(Vector3.UP,
-			deg_to_rad(mode.data.axis_spread_deg * axis))
+	_axis_of(bot)
+	return mode.get_spawn_direction(bot.tank.team).rotated(Vector3.UP,
+			deg_to_rad(float(_angle.get(bot, 0.0))))
 
 
 func _entry_point(bot: BotController) -> Vector3:
@@ -735,10 +740,22 @@ func _order_on_axis(bot: BotController, urgent: bool) -> void:
 	var c: Vector3 = mode.get_center()
 	var dir: Vector3 = _axis_dir(bot)
 	var goal: Vector3
-	if _support.has(bot):
-		var out: float = mode.get_radius() + _rng.randf_range(mode.data.support_distance_min_m,
-				mode.data.support_distance_max_m)
-		goal = _outside_spot(bot, c + dir * out, SUPPORT_SPOT_RADIUS_M)
+	var role: BotRoleData = bot.get_role()
+	var lead: BotController = _lead_of(bot)
+	var sit: TeamSituation = _situation.get(bot.tank.team)
+	if _support.has(bot) and role.hit_and_run and sit != null and sit.enemy_centre != Vector3.INF:
+		goal = _harass_spot(bot, sit.enemy_centre)
+	elif _support.has(bot):
+		var lo: float = role.standoff_min_m if role.standoff_max_m > 0.0 else mode.data.support_distance_min_m
+		var hi: float = role.standoff_max_m if role.standoff_max_m > 0.0 else mode.data.support_distance_max_m
+		var out: float = mode.get_radius() + _rng.randf_range(lo, hi)
+		# Roles that keep moving (short holds) take a new spot along their flank each time.
+		var swing: float = SCOUT_SWING_DEG if role.hold_max_s < HOLD_MIN_S else 0.0
+		var around: Vector3 = dir.rotated(Vector3.UP, deg_to_rad(_rng.randf_range(-swing, swing)))
+		goal = _outside_spot(bot, c + around * out, SUPPORT_SPOT_RADIUS_M)
+	elif lead != null:
+		goal = _choose_spot(bot, FOLLOW_SPOT_RADIUS_M, _behind_lead(bot, lead))
+		_lead_at[bot] = lead.tank.global_position
 	elif not _assembled.has(bot):
 		_assembly_wait.erase(bot)
 		goal = _outside_spot(bot, c + dir * (mode.get_radius() + mode.data.assembly_distance_m),
@@ -747,6 +764,135 @@ func _order_on_axis(bot: BotController, urgent: bool) -> void:
 		goal = _choose_spot(bot, mode.get_radius() * ENTRY_HOLD_SHARE, _entry_point(bot))
 	_goals[bot] = goal
 	bot.order_path(goal, _tactics_of(bot).travel_throttle, urgent)
+
+
+## A harasser comes up off the flank of the known enemies (on its own side), at its
+## role's harass range from them, facing them: a new place each time.
+func _harass_spot(bot: BotController, enemies: Vector3) -> Vector3:
+	var role: BotRoleData = bot.get_role()
+	var c: Vector3 = mode.get_center()
+	var their_way := Vector3(enemies.x - c.x, 0.0, enemies.z - c.z)
+	if their_way.length() < 1.0:
+		their_way = -mode.get_spawn_direction(bot.tank.team)
+	var side: float = float(_axis_of(bot))
+	var lateral: Vector3 = their_way.normalized().cross(Vector3.UP) * side
+	var swing: float = deg_to_rad(_rng.randf_range(-SCOUT_SWING_DEG, SCOUT_SWING_DEG))
+	var ideal: Vector3 = enemies + lateral.rotated(Vector3.UP, swing) \
+			* role.pick_harass_range(_rng)
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+	if map == null:
+		return ideal
+	var threat := Vector3(enemies.x - ideal.x, 0.0, enemies.z - ideal.z).normalized()
+	var friends := PackedVector3Array()
+	var exclude: Array[RID] = []
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		exclude.append((node as Tank).get_rid())
+	return map.find_position(mode.get_world_3d(), ideal, SUPPORT_SPOT_RADIUS_M, threat, enemies,
+			role.harass_range_max_m, bot.tank.global_position, friends, _tactics_of(bot), _rng, exclude)
+
+
+## The brawler a follower (BotRoleData.Enter.WITH_LEAD) keeps behind: the nearest
+## living one of its team; null if none (it goes in as a brawler then) or not a follower.
+func _lead_of(bot: BotController) -> BotController:
+	if bot.get_role().enters != BotRoleData.Enter.WITH_LEAD:
+		return null
+	var best: BotController = null
+	var best_d: float = INF
+	for other: BotController in _bots:
+		if other == bot or not is_instance_valid(other) or not is_instance_valid(other.tank) \
+				or other.tank.team != bot.tank.team or other.tank.is_knocked_out() \
+				or _respawn.has(other) or other.get_role().enters != BotRoleData.Enter.ALWAYS:
+			continue
+		var d: float = other.tank.global_position.distance_to(bot.tank.global_position)
+		if d < best_d:
+			best = other
+			best_d = d
+	return best
+
+
+## follow_m behind `lead`, seen from the enemy.
+func _behind_lead(bot: BotController, lead: BotController) -> Vector3:
+	var threat: Vector3 = lead.get_threat_direction()
+	if threat == Vector3.ZERO:
+		threat = -mode.get_spawn_direction(bot.tank.team)
+	return lead.tank.global_position - Vector3(threat.x, 0.0, threat.z).normalized() \
+			* bot.get_role().follow_m
+
+
+## A follower: a new spot behind its lead when the lead has moved on or after a while.
+## True while it follows (the zone orders wait).
+func _update_follow(bot: BotController, delta: float) -> bool:
+	if not _axes_on():
+		return false
+	var lead: BotController = _lead_of(bot)
+	if lead == null:
+		_lead_at.erase(bot)
+		return false
+	if not _lead_at.has(bot):
+		_queue_order(bot)
+		return true
+	if bot.has_orders_left():
+		return true
+	_hold[bot] = float(_hold.get(bot, HOLD_MAX_S)) - delta
+	var moved: float = (_lead_at[bot] as Vector3).distance_to(lead.tank.global_position)
+	if moved > bot.get_role().follow_m * FOLLOW_REORDER_SHARE or float(_hold[bot]) <= 0.0:
+		_queue_order(bot)
+	return true
+
+
+# --- Situation -----------------------------------------------------------------------
+
+## Knock-outs go in the log (the kill feed: public); every situation_interval_s each
+## team reads the fight (TeamSituation), and outside roles whose moment came or went
+## get new orders.
+func _update_situation(delta: float) -> void:
+	var t: TacticsData = TacticalMap.DEFAULT_TACTICS
+	for bot: BotController in _bots:
+		if is_instance_valid(bot):
+			t = _tactics_of(bot)
+			break
+	_kos.update(get_tree(), delta, t.momentum_window_s)
+	_situation_wait -= delta
+	if _situation_wait > 0.0:
+		return
+	_situation_wait = t.situation_interval_s
+	var budget_share: float = mode.get_budget_left() / maxf(mode.data.zone_point_budget, 1.0)
+	# Short of time: the zone shrinks towards its close, or its points run out.
+	var time_short: bool = mode.is_zone_open() and ((mode.get_shrink_progress() > 0.0
+			and mode.get_time_to_next_event() < t.pressure_time_s) or budget_share < t.pressure_budget_share)
+	for team: int in [0, 1]:
+		var mine: float = mode.get_score(team)
+		var theirs: float = mode.get_best_other_score(team)
+		_situation[team] = TeamSituation.assess(team, _bots, get_tree(),
+				func(p: Vector3) -> bool: return _is_in_open_zone(p), mode.get_center(),
+				mode.get_radius(), _kos.entries, _kos.clock, mine < theirs, mine > theirs, time_short, t)
+	TeamSituation.ensure_spearhead(_bots, _kos, _entering, t)
+	# Scouts turn harassers once the fight is on (and back): new orders for them.
+	for bot: BotController in TeamSituation.apply_contact_roles(_bots, _situation):
+		if not _respawn.has(bot) and not _depart.has(bot) and not bot.tank.is_knocked_out():
+			_hunt.erase(bot)
+			_queue_order(bot)
+	if not _axes_on():
+		return
+	for bot: BotController in _bots:
+		if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.is_knocked_out() \
+				or _respawn.has(bot) or _depart.has(bot):
+			continue
+		var outside: bool = _holds_outside(bot)
+		if outside == _support.has(bot):
+			continue
+		if outside:
+			_support[bot] = true
+			_hunt.erase(bot)
+		else:
+			_support.erase(bot)
+			_assembled[bot] = true   # going in from where it watched: no assembling
+		_queue_order(bot)
+
+
+## The team's reading of the fight (null before the first).
+func get_situation(team: int) -> TeamSituation:
+	return _situation.get(team)
 
 
 ## A spot outside the zone near `ideal`, watching the zone (cover, hull down, sight).
@@ -850,7 +996,7 @@ func _update_hunt(bot: BotController, delta: float) -> bool:
 	# Outside the zone, close enough and in sight: no new drive (the bot halts to fire
 	# on its own). An enemy in the zone is pressed until it is out.
 	if not _is_in_open_zone(prey_at) and bot.has_target_in_sight() \
-			and best - HUNT_OUTSIDE_PENALTY_M <= t.hunt_engage_m * 1.2:
+			and best - HUNT_OUTSIDE_PENALTY_M <= _engage_m(bot) * 1.2:
 		return _hunt.has(bot)
 	if _hunt.has(bot):
 		var h: Dictionary = _hunt[bot]
@@ -872,6 +1018,12 @@ func _update_hunt(bot: BotController, delta: float) -> bool:
 	return true
 
 
+## How far this bot likes to fight from (its role's hunt_engage_m, else the tactics').
+func _engage_m(bot: BotController) -> float:
+	var role: BotRoleData = bot.get_role()
+	return role.hunt_engage_m if role.hunt_engage_m > 0.0 else _tactics_of(bot).hunt_engage_m
+
+
 func _end_hunt(bot: BotController) -> void:
 	_hunt.erase(bot)
 	if is_instance_valid(bot.tank) and not bot.tank.is_knocked_out():
@@ -889,7 +1041,7 @@ func _hunt_spot(bot: BotController, enemy_at: Vector3) -> Vector3:
 		return enemy_at
 	back /= dist
 	var ideal: Vector3 = enemy_at + back * minf(dist, maxf(HUNT_MIN_RANGE_M,
-			minf(t.hunt_engage_m, dist * 0.8)))
+			minf(_engage_m(bot), dist * 0.8)))
 	# An enemy in the zone is fought from inside it (kills only pay from there, and
 	# the hunter scores meanwhile).
 	var inner: float = mode.get_radius() * INNER_SHARE

@@ -92,6 +92,8 @@ static func build(config: TankConfig) -> TankData:
 	if not chassis.gunner_sight_fov_deg.is_empty():
 		d.gunner_sight_fov_deg = chassis.gunner_sight_fov_deg.duplicate()
 	d.gun_stabiliser = chassis.gun_stabiliser
+	d.gun_stabiliser_max_rate_deg = chassis.gun_stabiliser_max_rate_deg
+	d.bot_role = chassis.bot_role
 	if chassis.max_climb_deg > 0.0:
 		d.max_climb_deg = chassis.max_climb_deg
 	if chassis.ford_slow_share >= 0.0:

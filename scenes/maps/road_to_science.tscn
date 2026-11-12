@@ -26,9 +26,9 @@ fog_density = 0.0004
 fog_aerial_perspective = 0.4
 fog_sky_affect = 0.25
 
-[node name="RoadToScience" type="Node3D" unique_id=1356577048]
+[node name="RoadToScience" type="Node3D" unique_id=417665417]
 
-[node name="Terrain3D" type="Terrain3D" parent="." unique_id=831187503]
+[node name="Terrain3D" type="Terrain3D" parent="." unique_id=1518255001]
 data_directory = "res://terrain/road_to_science"
 material = ExtResource("1_3asct")
 assets = ExtResource("2_i26ge")
@@ -38,46 +38,46 @@ displacement_sharpness = 0.5
 top_level = true
 metadata/_edit_lock_ = true
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1474468540]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=142573776]
 environment = SubResource("Environment_6ewxh")
 
-[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1330203525]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=185580894]
 transform = Transform3D(0.8660254, -0.38302222, 0.32139382, 0, 0.64278764, 0.76604444, -0.5, -0.66341394, 0.5566704, 0, 0, 0)
 shadow_enabled = true
 directional_shadow_max_distance = 300.0
 
-[node name="Objects" type="Node3D" parent="." unique_id=2055962180 instance=ExtResource("3_2vfqj")]
+[node name="Objects" type="Node3D" parent="." unique_id=2096607422 instance=ExtResource("3_2vfqj")]
 script = ExtResource("4_x1o55")
 collision_prefixes = PackedStringArray("Byggnader", "Broar", "Stenar", "Banhinder")
 
-[node name="Trees" type="Node3D" parent="." unique_id=377617088]
+[node name="Trees" type="Node3D" parent="." unique_id=984728211]
 script = ExtResource("5_jv7vi")
 info_path = "res://assets/maps/road_to_science/trees_info.json"
 data_path = "res://assets/maps/road_to_science/trees.bin"
 
-[node name="Bushes" type="Node3D" parent="." unique_id=1055573269]
+[node name="Bushes" type="Node3D" parent="." unique_id=947642491]
 script = ExtResource("5_jv7vi")
 info_path = "res://assets/maps/road_to_science/buskar_info.json"
 data_path = "res://assets/maps/road_to_science/buskar.bin"
 data_prefix = "field_bush_"
 visibility_end_m = 800.0
 
-[node name="PlayerRig" type="Node3D" parent="." unique_id=916201150 instance=ExtResource("6_q7nom")]
-transform = Transform3D(-0.130569, 0, -0.991439, 0, 1, 0, 0.991439, 0, -0.130569, 4583.10, 69.77, 2123.50)
+[node name="PlayerRig" type="Node3D" parent="." unique_id=635785410 instance=ExtResource("6_q7nom")]
+transform = Transform3D(0.966154, 0, 0.257966, 0, 1, 0, -0.257966, 0, 0.966154, 2414.90, 77.18, 1289.90)
 
-[node name="Enemies" type="Node3D" parent="." unique_id=1402551901]
+[node name="Enemies" type="Node3D" parent="." unique_id=1402552001]
 
-[node name="EnemyVallastaden" parent="Enemies" unique_id=1402551902 instance=ExtResource("7_tank")]
-transform = Transform3D(0.914938, 0, 0.403595, 0, 1, 0, -0.403595, 0, 0.914938, 589.40, 72.70, 604.80)
+[node name="EnemyMjardevi" parent="Enemies" unique_id=1402552002 instance=ExtResource("7_tank")]
+transform = Transform3D(0.048581, 0, 0.998819, 0, 1, 0, -0.998819, 0, 0.048581, 610.30, 73.85, 600.80)
 team = 1
 
-[node name="EnemyVallastadenController" type="Node" parent="Enemies" unique_id=1402551903 node_paths=PackedStringArray("tank")]
+[node name="EnemyMjardeviController" type="Node" parent="Enemies" unique_id=1402552003 node_paths=PackedStringArray("tank")]
 script = ExtResource("8_botctrl")
 bot_data = ExtResource("9_botdata")
-tank = NodePath("../EnemyVallastaden")
+tank = NodePath("../EnemyMjardevi")
 pivot_turn_deg = 100.0
 unstick_after_s = 3.0
 
-[node name="PlayerRespawn" type="Node" parent="." unique_id=1402551904 node_paths=PackedStringArray("tank")]
+[node name="PlayerRespawn" type="Node" parent="." unique_id=1402552004 node_paths=PackedStringArray("tank")]
 script = ExtResource("10_respawn")
 tank = NodePath("../PlayerRig/Tank")

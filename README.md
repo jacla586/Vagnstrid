@@ -1,8 +1,8 @@
 # Vagnstrid
 
 Ett stridsvagnsspel där du är vagnchef i kupolen, i miljöer byggda från öppna data om riktiga
-svenska platser: Vidingsjö och Linghem utanför Linköping, Vikbolandet och vägen från Vidingsjö
-till Campus Valla. Varje träd står där det står i verkligheten, vägarna har sina riktiga bredder
+svenska platser: Vidingsjö och Linghem utanför Linköping och vägen genom
+Vallastaden till Campus Valla. Varje träd står där det står i verkligheten, vägarna har sina riktiga bredder
 och skyltar, och åkrarna har den gröda som odlades där.
 
 Ett hobbyprojekt, byggt i Godot 4 med all kod skriven av Claude Code.
@@ -51,7 +51,8 @@ Spela ensam mot bottar, eller med vänner över nätet (se [SPELA_ONLINE.md](SPE
 Fem förinställda vagnar med var sin tydlig styrka och svaghet: **BT-7** (snabbast, klarar inte
 fronter), **T-34** (sluttande pansar, bäst i terräng), **Pz IV** (prickskytt med bästa
 siktet), **Sherman** (stabiliserad kanon, skjuter i rörelse) och **KV-2** (152 mm som slår
-sönder allt, men långsam). I garaget kan du bygga egna av chassi, kanon och pansar.
+sönder allt, men långsam). Vagnen väljer du inne i matchen,
+efter lagvalet; i garaget kan du titta på dem i förväg.
 
 ## Köra spelet
 

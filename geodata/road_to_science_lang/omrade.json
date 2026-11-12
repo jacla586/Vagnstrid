@@ -1,0 +1,48 @@
+{
+ "rutt": {
+  "start": [
+   58.379302,
+   15.639765
+  ],
+  "slut": [
+   58.393184,
+   15.572067
+  ],
+  "start_sweref": [
+   537414.9,
+   6471118.2
+  ],
+  "slut_sweref": [
+   533442.7,
+   6472628.1
+  ],
+  "marginal_m": 600.0
+ },
+ "namn": "road_to_science",
+ "punkter": [
+  [
+   58.3742966,
+   15.5614565
+  ],
+  [
+   58.398217,
+   15.6502883
+  ]
+ ],
+ "ruta": [
+  532830,
+  6470520,
+  538010,
+  6473240
+ ],
+ "wgs84": [
+  15.561286,
+  58.373879,
+  15.65029,
+  58.398726
+ ],
+ "uppdaterad": "2026-11-11T16:11:49",
+ "dem": "data/markhojd_road_to_science.tif",
+ "dem_typ": "lm",
+ "objekt": "data/objekthojd_road_to_science.tif"
+}

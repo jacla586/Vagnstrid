@@ -12,6 +12,8 @@
 [ext_resource type="Resource" path="res://data/builder/armour_standard.tres" id="p1"]
 [ext_resource type="Resource" path="res://data/builder/armour_heavy.tres" id="p2"]
 
+[ext_resource type="Resource" path="res://data/bots/roles/brawler.tres" id="role_brawler"]
+
 [sub_resource type="Resource" id="Armour_medium"]
 script = ExtResource("2_armour")
 hull_front_mm = 45.0
@@ -43,3 +45,4 @@ cost = 160
 gunner_sight_fov_deg = PackedFloat32Array(22, 15)
 max_climb_deg = 36.0
 ford_slow_share = 0.3
+bot_role = ExtResource("role_brawler")

@@ -1,0 +1,20 @@
+{
+ "_anm": "Landmärken (scripts/landmarken.py): OSM-byggnader (väg-id) som byggs efter sina building:part-delar i stället för som vanliga hus. torn = delens väg-id som blir glastorn; hojd_faktor skalar tornets OSM-höjd; v_botten = tornets storlek vid marken i förhållande till taket (1 = raka väggar, < 1 = vidgas uppåt som ett V); vaning_m = våningshöjd (mörka bröstningsband mellan glasbanden); glas = sRGB. profil = sRGB för våningsband och lodräta profiler (var profil_m meter).",
+ "43007628": {
+  "namn": "Mjärdevi Center",
+  "torn": "420617744",
+  "hojd_faktor": 1.2,
+  "v_botten": 0.6,
+  "vaning_m": 3.6,
+  "glas": [
+   74,
+   104,
+   132
+  ],
+  "profil": [
+   150,
+   156,
+   162
+  ]
+ }
+}

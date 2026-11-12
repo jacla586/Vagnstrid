@@ -10,9 +10,11 @@
 
 [resource]
 script = ExtResource("1_data")
-defender_half_width_m = 250.0
+display_name = "ThunderRoad"
+briefing = "Attackers push along the road: more tanks than the defenders in a checkpoint takes it.\nEach checkpoint brings more time, more lives and a new wave.\nDefenders hold a corridor along the road and fall back as the front moves.\nOutside your corridor your guns are silent.\nTwo rounds, sides swap. Most checkpoints wins."
+defender_half_width_m = 350.0
 defender_behind_front_m = 150.0
-attacker_half_width_m = 300.0
+attacker_half_width_m = 400.0
 outside_mark_s = 4.0
 outside_grace_s = 20.0
 start_front_m = 150.0
@@ -21,15 +23,17 @@ capture_half_length_m = 60.0
 capture_time_s = 20.0
 capture_speed_max = 2.0
 capture_decay_factor = 0.5
-start_time_s = 240.0
+start_time_s = 390.0
 time_per_capture_s = 120.0
 start_lives_per_tank = 2
+start_lives_extra = 5
 lives_per_capture = 2
 wave_interval_s = 40.0
 attacker_spawn_back_m = 250.0
 defender_respawn_s = 15.0
 defender_spawn_checkpoints = 1
-defender_spawn_beyond_m = 60.0
+defender_spawn_beyond_m = 210.0
+defender_spawn_min_ahead_m = 470.0
 defender_start_in_zone = true
 round_break_s = 10.0
 bot_configs = Array[ExtResource("2_cfg")]([ExtResource("c0"), ExtResource("c1"), ExtResource("c2"), ExtResource("c3"), ExtResource("c4")])

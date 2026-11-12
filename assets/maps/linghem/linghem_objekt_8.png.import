@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cgujgy8oqqw0d"
+uid="uid://fgwi42e8hi6p"
 path.s3tc="res://.godot/imported/linghem_objekt_8.png-507543a3a1eef93d5d799929f5114e4f.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "f9619476a79a45564ef0d509c800a469"
+"md5": "c1dc4bb2ad37b8cbbe5deb5f20a25cf0"
 }
 
 [deps]
