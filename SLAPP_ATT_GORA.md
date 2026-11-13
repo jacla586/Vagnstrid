@@ -2,7 +2,7 @@
 
 Läget 11 november 2026. Inlämning senast **30 november**, bidraget går att ändra till 1 december.
 Röstningen 1–13 december. Om bidraget hamnar topp tre ska underlaget in senast **15 december 23.59**.
-Regler: `Tävlingsvillkor.txt`, `Tävling1–3.png` (inte i git). Bidragstexten: `sweclockers_bidrag.md`.
+Regler: `Tävlingsvillkor.txt`, `Tävling1–3.png`. Bidragstexten: `sweclockers_bidrag.md`. (Ingen av dem ligger i git.)
 
 ## Klart
 
