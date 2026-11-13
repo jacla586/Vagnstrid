@@ -130,7 +130,8 @@ anim_transitions = {
 "kneel_idle>prone": &"kneel_to_prone",
 "prone>kneel_idle": &"prone_to_kneel",
 "prone>crouch_aim": &"prone_to_kneel",
-"prone>aim": &"prone_to_kneel",
+"prone>aim": &"prone_to_kneel+kneel_to_stand",
+"prone_fire>aim": &"prone_to_kneel+kneel_to_stand",
 "prone_fire>kneel_idle": &"prone_to_kneel"
 }
 anim_move_speed_mps = 3.2

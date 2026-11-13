@@ -82,6 +82,8 @@ const MINE_AT_M: float = 1.2
 const WAYPOINT_RADIUS_M: float = 3.0
 ## An AT round not landed this long after its expected flight time counts as a miss (s).
 const AT_RESULT_MARGIN_S: float = 1.5
+## The AT gunner aims at least this long after getting up into the aim pose.
+const AT_AIM_AFTER_RISE_S: float = 0.8
 ## Soldiers turn towards where they go this fast (radians/s).
 const TURN_RATE: float = 4.0
 ## Re-plan the way back to a moving tank this often (s).
@@ -256,6 +258,8 @@ var _at_shell_left: float = 0.0
 ## it after the shot, his launcher and his rifle meshes (hidden while he has the tube).
 var _aim_point: Array[Vector3] = []
 var _launcher_hold: Array[float] = []
+## Seconds until soldier i's launcher shows: he is still getting up into the aim pose.
+var _launcher_wait: Array[float] = []
 var _launchers: Array[Node3D] = []
 var _rifles: Array = []
 ## Per soldier: how long he still shows his firing pose, and which way he shot (flat).
@@ -1464,7 +1468,9 @@ func _try_at_round(targets: Array[Node3D]) -> void:
 			return
 		_at_gunner = gunner
 		_at_target = other
-		_at_aim_left = data.at_aim_time_s
+		# Lying or kneeling he gets up first (the launcher shows once he stands).
+		_at_aim_left = maxf(data.at_aim_time_s, _transition_time(gunner, data.anim_at_aim)
+				+ AT_AIM_AFTER_RISE_S)
 		_at_aim_point = _at_aim(other, _soldiers[gunner].global_position)
 		_set_aim(gunner, other.global_position)
 		radio.emit(RADIO_AT_FIRE, other.global_position)
@@ -1538,11 +1544,38 @@ func _set_aim(i: int, point: Vector3) -> void:
 	var was: bool = _aim_point[i] != Vector3.INF
 	_aim_point[i] = point
 	var on: bool = point != Vector3.INF
+	if on and not was:
+		_launcher_wait[i] = _transition_time(i, data.anim_at_aim)
+	elif not on:
+		_launcher_wait[i] = 0.0
+	_show_launcher(i, on and _launcher_wait[i] <= 0.0)
+	if on != was and not net_puppet:
+		at_aiming.emit(i if on else -1, point if on else Vector3.ZERO)
+
+
+func _show_launcher(i: int, on: bool) -> void:
 	_launchers[i].visible = on
 	for rifle: Node3D in _rifles[i]:
 		rifle.visible = not on
-	if on != was and not net_puppet:
-		at_aiming.emit(i if on else -1, point if on else Vector3.ZERO)
+
+
+## Seconds of transition clips soldier `i` plays from what he plays now to `anim`.
+func _transition_time(i: int, anim: StringName) -> float:
+	var player: AnimationPlayer = _players[i]
+	if player == null or _playing[i] == anim:
+		return 0.0
+	var total: float = 0.0
+	for clip: String in _transition_clips(_playing[i], anim):
+		var full := StringName("%s/%s" % [ANIM_LIBRARY, clip])
+		if player.has_animation(full):
+			total += player.get_animation(full).length
+	return total   # transitions play at speed 1 (_animate's speed is for walking)
+
+
+## The clips between two animations (data.anim_transitions, "a+b" for a chain).
+func _transition_clips(from: StringName, to: StringName) -> PackedStringArray:
+	var between: String = String(data.anim_transitions.get("%s>%s" % [from, to], ""))
+	return between.split("+", false) if between != "" else PackedStringArray()
 
 
 ## Back blast and muzzle flash at both ends of soldier `i`'s launcher.
@@ -1956,6 +1989,10 @@ func _wipe() -> void:
 ## then vanish after body_time_s.
 func _update_bodies(delta: float) -> void:
 	for i: int in _soldiers.size():
+		if _launcher_wait[i] > 0.0:
+			_launcher_wait[i] -= delta
+			if _launcher_wait[i] <= 0.0 and _aim_point[i] != Vector3.INF:
+				_show_launcher(i, true)
 		if not _alive[i] and _soldiers[i].visible:
 			_down_time[i] += delta
 			_soldiers[i].global_position = _last_pos[i]
@@ -2141,6 +2178,7 @@ func _add_soldier(i: int) -> void:
 		if not found.is_empty():
 			player = found[0]
 			player.add_animation_library(ANIM_LIBRARY, data.model_animations)
+			player.playback_default_blend_time = data.anim_blend_s   # chained transitions
 	_players.append(player)
 	_last_pos.append(Vector3.ZERO)
 	_playing.append(&"")
@@ -2170,6 +2208,7 @@ func _add_soldier(i: int) -> void:
 	_burst_left.append(0)
 	_aim_point.append(Vector3.INF)
 	_launcher_hold.append(0.0)
+	_launcher_wait.append(0.0)
 	_launchers.append(_make_launcher(root))
 	_fire_left.append(0.0)
 	_fire_dir.append(Vector3.FORWARD)
@@ -2277,12 +2316,17 @@ func _animate(i: int, anim: StringName, speed: float) -> void:
 	var player: AnimationPlayer = _players[i]
 	var full := StringName("%s/%s" % [ANIM_LIBRARY, anim])
 	if _playing[i] != anim:
-		var between: StringName = StringName(data.anim_transitions.get("%s>%s" % [_playing[i], anim], ""))
-		var via := StringName("%s/%s" % [ANIM_LIBRARY, between])
+		var chain: Array[StringName] = []
+		for clip: String in _transition_clips(_playing[i], anim):
+			var via := StringName("%s/%s" % [ANIM_LIBRARY, clip])
+			if player.has_animation(via):
+				chain.append(via)
 		_playing[i] = anim
 		player.clear_queue()
-		if between != &"" and player.has_animation(via) and player.has_animation(full):
-			player.play(via, data.anim_blend_s)
+		if not chain.is_empty() and player.has_animation(full):
+			player.play(chain[0], data.anim_blend_s)
+			for k: int in range(1, chain.size()):
+				player.queue(chain[k])
 			player.queue(full)
 		elif player.has_animation(full):
 			player.play(full, data.anim_blend_s)

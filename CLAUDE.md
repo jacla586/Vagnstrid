@@ -884,6 +884,16 @@ there and the break is over) and on the match's win/loss. Points
   (a bot refills) and brings a new rig at the chosen team's spawn (only team 0, "Team 1", outside KotH/ThunderRoad).
   The Esc menu's Change tank uses DeployScreen's tank page. Only presets exist (`TankConfigs.all()` =
   presets; old `user://configs/` builds are ignored).
+- Trailer takes (`tools/trailer/`): `tools/trailer/record.sh <shot> [key=value]` films a scripted shot
+  (`shots/<shot>.gd`, extends `trailer_shot.gd`: actors made in `setup()`, tanks driven only by
+  `TankCommand`s, cameras in `frame()`) with Godot's Movie Maker to `renders/trailer/<shot>.mp4`
+  (1080p60 + sound, ffmpeg) and a cue list; `snap=all` instead writes JPGs to check a shot quickly.
+  Shots: opening, turret_toss, playground, column, ambush (infantry; its thrown man is a cheat RigidBody),
+  smoke (Sherman, four kills, smoke and a cut-away move; reload, sight and wind are cheats),
+  kv2_plow (two T-34s, a field of wrecks, a KV-2 that shoves them aside and shrugs off AP; end=flank|kv;
+  cheats: reload, AP that pings, light wrecks, a pushed turret, hits that always land), advance (filler: seven
+  T-34s and their squads cross the field towards Vallastaden, HE in the field);
+  `record_all.sh` films every take.
 - Graphics before/after: `godot --path . --disable-vsync --script res://tools/render_views.gd --
   <map> <label> [weather,...]` renders the fixed views in `tools/render_views.json` (1920x1080,
   bots removed, HUD hidden) to `renders/views/<label>/` with frame/GPU ms, draw calls and
