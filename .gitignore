@@ -10,6 +10,8 @@
 
 # Mixamo source animations (may not be redistributed; baked into soldier_anims.res)
 /mixamo/
+# ...and what is baked from them: made locally by tools/bake_soldier_animations.gd
+/assets/models/soldier/soldier_anims.res
 
 # Google Maps screenshot used to trace the road_to_science route (not ours to share)
 /geodata/road_to_science_lang/rutt_google.png

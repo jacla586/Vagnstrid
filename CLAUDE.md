@@ -154,7 +154,8 @@ shows on the minimap. This is what we test first.
   Soldiers use `assets/models/soldier/soldier.glb` (CC-BY, KolosStudios, see its
   CREDITS.md; uniform materials repainted green) with Mixamo rifle animations (FBX on
   Y Bot in `mixamo/`, git-ignored: Mixamo files may not be passed on) baked by
-  `tools/bake_soldier_animations.gd` into `assets/models/soldier/soldier_anims.res` (rerun
+  `tools/bake_soldier_animations.gd` into `assets/models/soldier/soldier_anims.res` (git-ignored like
+  `mixamo/`: Mixamo animations may not be redistributed, so a fresh clone must bake it; rerun
   if a model or clip changes): per-bone corrections from two directions at rest (twist
   kept), the right hand matched by the rifle (skinned to it), the left hand IK'd onto the
   fore grip, loops/transitions kept on the spot, deaths keep their travel. Look at them
