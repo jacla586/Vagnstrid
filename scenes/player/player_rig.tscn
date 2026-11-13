@@ -233,15 +233,16 @@ views = NodePath("../../PlayerViews")
 script = ExtResource("25_score_panel")
 views = NodePath("../../PlayerViews")
 
-[node name="ThunderPanel" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
+[node name="ThunderPanel" type="Control" parent="HUD" node_paths=PackedStringArray("views", "radio")]
 script = ExtResource("90_thunder_panel")
 views = NodePath("../../PlayerViews")
+radio = NodePath("../SquadRadio")
 
 [node name="FreeFightPanel" type="Control" parent="HUD" node_paths=PackedStringArray("views")]
 script = ExtResource("91_free_panel")
 views = NodePath("../../PlayerViews")
 
-[node name="SquadRadio" type="Label" parent="HUD" node_paths=PackedStringArray("views")]
+[node name="SquadRadio" type="Node" parent="HUD" node_paths=PackedStringArray("views")]
 script = ExtResource("30_squad_radio")
 views = NodePath("../../PlayerViews")
 

@@ -1,7 +1,7 @@
 class_name Scoreboard
 extends Control
 ## Scoreboard for King of the Hill (knock-outs, losses, points) and ThunderRoad (the
-## rounds so far with who won them, knock-outs, losses). Shown while the scoreboard
+## rounds so far with who won them, points, knock-outs, assists, losses). Shown while the scoreboard
 ## key (Tab) is held, during ThunderRoad's break between rounds, and for good when the
 ## match ends: then with the result, the
 ## mouse freed and buttons to play again (offline) or go back to the menu. Hidden when
@@ -125,8 +125,8 @@ func _rebuild_thunder(mode: ThunderRoadMode, tank: Tank) -> void:
 	for child: Node in _tables.get_children():
 		child.queue_free()
 	var stats: Array = mode.get_stats()
-	var headers: Array[String] = ["KO", "Assists", "Lost"]
-	var cols: Array[int] = [2, 4, 3]
+	var headers: Array[String] = ["Points", "KO", "Assists", "Lost"]
+	var cols: Array[int] = [5, 2, 4, 3]
 	_tables.add_child(_table("Your team", stats, func(t: int) -> bool: return t == tank.team,
 			own_color, headers, cols))
 	_tables.add_child(_table("Enemy", stats, func(t: int) -> bool: return t != tank.team,

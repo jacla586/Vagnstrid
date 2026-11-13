@@ -131,7 +131,7 @@ func _on_hit(hit: Dictionary) -> void:
 	if _data.is_explosive():
 		_rng.randomize()
 		for fragment_result: HitResult in Explosion.detonate(get_world_3d(), get_tree(), point,
-				normal, _data, _rng, Tank.team_of(_shooter)):
+				normal, _data, _rng, Tank.team_of(_shooter), _shooter):
 			_report(fragment_result)
 		_report_near_misses()
 		_finish()

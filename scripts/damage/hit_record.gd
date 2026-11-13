@@ -31,16 +31,20 @@ var distance_m: float = 0.0
 var killed: bool = false
 ## This hit set the fuel burning (a later fire knock-out goes on its account).
 var set_fire: bool = false
+## Host only (not sent): structure hp the hit took.
+var hp_taken: float = 0.0
 
 
 func is_penetration() -> bool:
 	return outcome == HitResult.Outcome.PENETRATION
 
 
-## The round did damage (an assist when the tank goes): not a bounce or a stopped round.
+## The round did damage (an assist when the tank goes): a penetration, or any hit that
+## harmed a module or took hp (an HE burst on the plate breaking a track counts: its
+## outcome is NO_PENETRATION). Not a bounce or a round the plate shrugged off.
 func dealt_damage() -> bool:
-	return outcome == HitResult.Outcome.PENETRATION \
-			or outcome == HitResult.Outcome.HIT and not modules.is_empty()
+	return outcome == HitResult.Outcome.PENETRATION or not modules.is_empty() \
+			or hp_taken >= 0.5
 
 
 func to_array() -> Array:

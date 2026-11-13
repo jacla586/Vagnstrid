@@ -54,7 +54,9 @@ shows on the minimap. This is what we test first.
   wear settings, `ShellData.wear_mm`). Tracks are external: a gun round landing on one breaks
   it if `ShellData.breaks_tracks` (HE, AT rounds), else damages it; HE fragments
   (`ModuleFragmentTarget`) damage them. Effects (`TankDamage.speed_factor/turn_factor/
-  traverse_factor`, shares in TankData): engine damaged 50 % speed, destroyed stopped; fire
+  traverse_factor`, shares in TankData): engine damaged 50 % speed, destroyed stopped (either way a tall
+  black smoke column, `Tank.is_engine_smoking`, `EffectsSetData.engine_smoke`, snapshot flag
+  `FLAG_ENGINE_SMOKE`: everyone sees it, though enemy hp is never sent); fire
   stands the tank still, a haze for the player (`FireHaze`), bots see
   `fire_view_range_factor`; ring 50 % / 10 % traverse; damaged track 80 % speed and 55 % turn
   rate, destroyed = immobilised (a braked track stops its own side's travel,
@@ -103,7 +105,8 @@ shows on the minimap. This is what we test first.
   "Wilhelm" (10 % scream, 100 m, on Master so the hatch doesn't muffle it:
   `SoundSetData.bus`). Holding still they fire rifles (`rifle_bullet.tres`,
   low accuracy) at exposed commanders and soldiers, and AT rounds (`squad_at.tres`, an HE charge: 30 mm,
-  breaks the track it lands on, blast, dirt on the optics, small fragments;
+  breaks the track it lands on, blast (14 hp, 20 module damage within 1.5 m: an engine hit turns it
+  yellow), dirt on the optics, small fragments;
   `ShellData.finishes_only`: knocks out only by taking the last points of a tank already under
   `finish_below_share` (15 %) of its hp before the hit, never the ammo, never sets fire (`sets_fire`):
   rare but possible; credit goes to the squad's tank, `Tank._shooter_tank`, kill feed "Bazooka",
@@ -142,7 +145,7 @@ shows on the minimap. This is what we test first.
   wiped out, a full squad is back after `wipe_cooldown_s`. HUD: `SquadPanel`.
   Radio (`Squad.radio` signal, kinds `RADIO_*`: under attack (withdraw), returning, in
   position, armour/infantry contact, AT round coming, mines): `SquadRadio` in the player rig plays the own
-  squad's calls one at a time on Master (not muffled) with a subtitle; contacts get a
+  squad's calls one at a time on Master (not muffled), no subtitles (game text is English; the Swedish voices are a bonus); contacts get a
   clock hour from the tank's hull. Lines and recordings in `RadioData`
   (`data/squads/radio_sv.tres`, Swedish, `assets/audio/radio/`: ElevenLabs recordings in
   `geodata/sound/` filtered by `tools/audio/make_elevenlabs.sh` (it also cuts the clock hours);
@@ -326,10 +329,13 @@ shows on the minimap. This is what we test first.
   a throw-away `wreck_only` tank of the same spec makes the copy, `make_wreck_here`).
 - Kill credit: on the host every knock-out emits `Tank.eliminated(killer, assists)`: killer =
   `HitRecord.kill_of`'s shooter (`HitRecord.shooter_id`, host only), assists = other enemies whose
-  rounds `dealt_damage()` (penetration, or a hit that damaged modules) this life; abandoning has no
+  rounds `dealt_damage()` (penetration, or any hit that harmed a module or took hp: an HE burst
+  breaking a track is NO_PENETRATION and counts; `HitRecord.hp_taken`, host only) this life, plus
+  tanks whose HE fragments harmed a module from a near miss (`Tank._fragment_damagers`, via
+  `ModuleFragmentTarget.note_fragment_shooter`, passed by `Explosion.detonate`); abandoning has no
   killer. Modes count KO and assists from it (KotH rows [name, team, KO, lost, points, assists]:
   an assist also gives `KothData.assist_points` (15) personal points, not team score; ThunderRoad
-  rows [name, team, KO, lost, assists]); `Scoreboard._table` takes column indices. Kill feed
+  rows [name, team, KO, lost, assists, points]); `Scoreboard._table` takes column indices. Kill feed
   (`KillFeed`, player rig HUD, above the minimap): "<name> <type> → <name> <type>", killer first,
   own team blue, enemy red (`TeamLook.viewer_team`), `Tank.get_player_name()` ("You"/"Bot"/player
   name) and `get_type_name()` (config name, e.g. "T-34"; the killing round's `kill_feed_name` instead,
@@ -354,7 +360,7 @@ shows on the minimap. This is what we test first.
   (`Squad.restore_on_tank`).
 - Crew shouts: `TankData.crew_voice` (`CrewVoiceData`) "Vi är träffade!" on `Tank.struck` (a mine: "Mina! Bandet utslaget!"),
   "Närträff!" on `Tank.near_missed` (clients by `rpc_near_miss`), "Föraren/Skytten träffad!" on a
-  crew wound, "Vagnchef träffad!" on `Tank.commander_wounded`, played by `SquadRadio`.
+  crew wound, rarely (`he_dirt_chance` 2 %) "Vilken jädra smäll!" when a burst dirties the optics, "Vagnchef träffad!" on `Tank.commander_wounded`, played by `SquadRadio`.
   MG/rifle results are `HitResult.bullet`: no hit text for the shooter.
 - The open hatch lid stands up behind the commander and shields him from the rear:
   `Tank.hatch_lid_shields(from, to)` (segment through the lid's disc in its real pose) stops bullets
@@ -636,24 +642,43 @@ shows on the minimap. This is what we test first.
   movable), rules in `data/modes/thunder_road.tres` (`ThunderRoadData`), bots by
   `ThunderRoadBots`). Attackers take the next checkpoint by outnumbering the defender tanks
   inside its zone (`ThunderRoadMode.is_in_checkpoint`: a rectangle square to the road,
-  `capture_half_width_m` across, `capture_half_length_m` along); each capture moves the front, tops up the time bank and the
-  attackers' shared lives and brings a wave. Knocked-out attackers wait for the wave (on a
+  `capture_half_width_m` across, `capture_half_length_m` along); each capture moves the front, adds to the
+  attackers' shared lives and brings a wave. Every checkpoint has the same clock, `checkpoint_time_s` (360; fresh at
+  the round start and when a ceasefire ends, nothing carries over). Ceasefire (`ThunderRoadData` "Ceasefire",
+  `is_paused`, signals `pause_started`/`pause_ended`, net key "pz"): after every capture but the last, `pause_s`
+  (40 s) when nobody fires and the clock and waves stand; attackers may go only `pause_attacker_ahead_m` (50) past the
+  checkpoint taken, defenders must fall back `pause_defender_back_m` (200) past it (at most to the next zone's
+  near edge); ThunderRoadBots: attackers stand (`_regroup`), defenders repost, everyone gets fresh orders when it
+  ends (`_on_ceasefire_over`). HUD: "CHECKPOINT n TAKEN – REGROUP" / "FALL BACK TO CHECKPOINT n"; a capture flashes a big
+ZONE CAPTURED / ZONE LOST (`ThunderPanel._flash`, `flash_s`; smaller ones for round start, ceasefire over / enemy
+advancing, enemy regrouping, 2/1 minutes left). No Swedish subtitles anywhere (the English flash says what happens). Command radio (`ThunderRoadData.calls`,
+`ThunderCallsData`, `data/modes/thunder_calls_sv.tres`, recordings `assets/audio/radio/cmd_*.ogg` from
+`make_elevenlabs.sh <src> <out> thunder`): ThunderPanel queues them in `SquadRadio.command_call` (after crew
+shouts, before squad calls): taken / last one secured, lost + "Fall tillbaka till ÅSA n" (n = the next checkpoint: the recording, which ends on "ÅSA", plus a number cut from the clock hours, cut points in the script), the enemy regrouping mid-ceasefire
+(attackers), "Fienden kommer" when it ends (defenders), 2 and 1 min left per side, leaving the corridor, the line
+held at the round's end; rare stand-ins (`lost_rare`, `return_rare`, a few %); crew banter on the intercom
+(`crew_start/win/loss_*`): a random line when a round gets going (`_start_pending`, once the own tank is
+there and the break is over) and on the match's win/loss. Points
+  (`ThunderRoadData` "Points", stats column 5, Scoreboard sorted by them, signal `points_scored`): kill 20,
+  assist 10, each attacker in the zone when it falls 100, attackers taking it 2/s, defenders in it with
+  attackers there 2/s, every living defender when the attackers run out of time or lives 100. Knocked-out attackers wait for the wave (on a
   capture or every `wave_interval_s`, a life each, behind the front); defenders come back
   after `defender_respawn_s` `defender_spawn_checkpoints` past the next checkpoint, never nearer than
   `defender_spawn_min_ahead_m` (470, `defender_spawn_beyond_m` 210; 150 m further back since 2026-11-12) past it (past the road's end, the last checkpoint, the spawn goes
   on straight: `slot_point`, and `project` extrapolates the last segment) (`defender_spawn_checkpoints` 1; at the round start in the first checkpoint's zone,
   `defender_start_in_zone`, to dig in; the route has no checkpoint in its first spacing, a free drive to the fight).
-  Waves every `wave_interval_s` (40).
+  Waves every `wave_interval_s` (30).
   Time up with a living attacker in the checkpoint's zone: overtime (`is_overtime`, HUD
   "OVERTIME"); the round ends `overtime_grace_s` (3 s) after the last one left or fell.
   Corridors: defenders within `defender_half_width_m` of the road and ahead of the front less
   `defender_behind_front_m` (150; `get_defender_line_s`, so forward defenders fight on when a checkpoint falls),
-  attackers within `attacker_half_width_m`. Outside: `Tank.fire_blocked` (no gun or MG),
-  a spot mark for the other team every `outside_mark_s`, `Tank.wound_commander()` after
-  `outside_grace_s`. Bots never aim to go outside: `BotController.keep_goal` (set by ThunderRoadBots,
+  attackers within `attacker_half_width_m` and short of `get_attack_limit_s` (`attacker_ahead_of_checkpoint_m`
+  100 past the next checkpoint; no rally on to the one after). Outside: `Tank.fire_blocked` (no gun or MG),
+  a spot mark for the other team every `outside_mark_s`, knocked out after `outside_knockout_s` (30;
+  `Tank.knock_out_by_rule`, a loss nobody scores). Bots never aim to go outside: `BotController.keep_goal` (set by ThunderRoadBots,
   `_keep_inside`) moves every goal they drive to, ordered or their own (dash, relocation, hiding), `INSIDE_MARGIN_M`
   (40) inside the corridor. Corridors 400 m (attackers) / 350 m (defenders) half width since 2026-11-12; attackers
-  start with `start_lives_per_tank` × tanks + `start_lives_extra` (5) lives and `start_time_s` 390. Round 1 team 0 attacks, round 2 sides swap; more checkpoints wins,
+  start with `start_lives_per_tank` × tanks + `start_lives_extra` (5) lives. Round 1 team 0 attacks, round 2 sides swap; more checkpoints wins,
   then more time left. Taking every checkpoint should be rare: the match is meant to be
   won on the count. The `round_break_s` (10 s) pause blocks all fire; after round 1 the
   tanks go to round 2's starts at once (`_setup_round`, repaired, map reset) and stand locked

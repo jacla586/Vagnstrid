@@ -1,0 +1,56 @@
+[gd_resource type="Resource" script_class="ThunderCallsData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/thunder_calls_data.gd" id="1_calls"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_taken.ogg" id="taken"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_secured.ogg" id="secured"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_regrouping.ogg" id="regrouping"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_attack_2min.ogg" id="a2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_attack_1min.ogg" id="a1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_lost.ogg" id="lost"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_fall_back_1.ogg" id="fb1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_fall_back_2.ogg" id="fb2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_fall_back_3.ogg" id="fb3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_fall_back_4.ogg" id="fb4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_fall_back_5.ogg" id="fb5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_fall_back_6.ogg" id="fb6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_fall_back_7.ogg" id="fb7"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_enemy_coming.ogg" id="enemy_coming"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_defend_2min.ogg" id="d2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_defend_1min.ogg" id="d1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_return.ogg" id="ret"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_lost_rare.ogg" id="cmd_lost_rare"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_return_rare.ogg" id="cmd_return_rare"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_1.ogg" id="crew_start_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_2.ogg" id="crew_start_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_3.ogg" id="crew_start_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_4.ogg" id="crew_start_4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_5.ogg" id="crew_start_5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_6.ogg" id="crew_start_6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_1.ogg" id="crew_win_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_2.ogg" id="crew_win_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_3.ogg" id="crew_win_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_4.ogg" id="crew_win_4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_1.ogg" id="crew_loss_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_2.ogg" id="crew_loss_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_3.ogg" id="crew_loss_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_4.ogg" id="crew_loss_4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_5.ogg" id="crew_loss_5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_6.ogg" id="crew_loss_6"]
+
+[resource]
+script = ExtResource("1_calls")
+taken = ExtResource("taken")
+secured = ExtResource("secured")
+regrouping = ExtResource("regrouping")
+attack_clock = Array[AudioStream]([ExtResource("a2"), ExtResource("a1")])
+lost = ExtResource("lost")
+fall_back = Array[AudioStream]([ExtResource("fb1"), ExtResource("fb2"), ExtResource("fb3"), ExtResource("fb4"), ExtResource("fb5"), ExtResource("fb6"), ExtResource("fb7")])
+enemy_coming = ExtResource("enemy_coming")
+held = ExtResource("secured")
+defend_clock = Array[AudioStream]([ExtResource("d2"), ExtResource("d1")])
+return_to_lines = ExtResource("ret")
+lost_rare = ExtResource("cmd_lost_rare")
+return_rare = ExtResource("cmd_return_rare")
+round_start = Array[AudioStream]([ExtResource("crew_start_1"), ExtResource("crew_start_2"), ExtResource("crew_start_3"), ExtResource("crew_start_4"), ExtResource("crew_start_5"), ExtResource("crew_start_6")])
+victory = Array[AudioStream]([ExtResource("crew_win_1"), ExtResource("crew_win_2"), ExtResource("crew_win_3"), ExtResource("crew_win_4")])
+defeat = Array[AudioStream]([ExtResource("crew_loss_1"), ExtResource("crew_loss_2"), ExtResource("crew_loss_3"), ExtResource("crew_loss_4"), ExtResource("crew_loss_5"), ExtResource("crew_loss_6")])

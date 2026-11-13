@@ -206,10 +206,11 @@ func _draw_route(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 		var p: Vector3 = mode.point_at(length * i / steps)
 		road.append(_to_screen(Vector2(p.x, p.z), rect, centre, scale_px))
 	draw_polyline(road, route_color, 2.0, true)
-	# The corridor's outline (world polygons, rebuilt only when the role or the defender
-	# line changes), so tight bends and the start's roundabout don't cross the edges.
+	# The corridor's outline (world polygons, rebuilt only when the role, the defender
+	# line or the attack limit changes), so tight bends and the start's roundabout don't cross the edges.
 	var key := Vector3(role, mode.half_width(role),
-			mode.get_defender_line_s() if role == ThunderRoadMode.Role.DEFEND else 0.0)
+			mode.get_defender_line_s() if role == ThunderRoadMode.Role.DEFEND \
+			else mode.get_attack_limit_s())
 	if key != _corridor_key:
 		_corridor_key = key
 		_corridor = mode.corridor_outline(role)

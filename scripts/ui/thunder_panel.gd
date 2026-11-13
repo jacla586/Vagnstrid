@@ -1,11 +1,14 @@
 class_name ThunderPanel
 extends Control
 ## Top-centre ThunderRoad panel: round and role, checkpoint, the attackers' time bank,
-## lives and next wave, capture progress, the own respawn, a warning outside the own
-## corridor, and between the rounds (the Scoreboard shows in the middle then) the
+## lives and next wave, capture progress, the ceasefire after a capture (regroup /
+## fall back), the own respawn, a warning outside the own corridor (knocked out in n s), and between the rounds (the Scoreboard shows in the middle then) the
 ## result at the top and a big countdown to the next round at the bottom; after round 2
 ## a VICTORY / DEFEAT banner for the match. The final result is on the Scoreboard. Hidden when the
-## scene has no ThunderRoadMode.
+## scene has no ThunderRoadMode. A checkpoint taken or lost flashes a big ZONE CAPTURED / ZONE LOST
+## in the middle; the command radio (`ThunderRoadData.calls`, `ThunderCallsData`) goes out
+## through `radio` (SquadRadio): taken/lost, fall back, the enemy regrouping, the ceasefire's
+## end, the clock at 2 and 1 min, outside the corridor, the line held.
 
 @export var views: PlayerViews
 @export var font_size: int = 20
@@ -20,10 +23,30 @@ extends Control
 @export var banner_top_px: float = 110.0
 @export var countdown_font_size: int = 54
 @export var countdown_height: float = 0.88
+## ZONE CAPTURED / ZONE LOST: size, seconds shown (the last one fades), baseline (share of height).
+@export var flash_font_size: int = 72
+@export var flash_s: float = 4.0
+@export var flash_height: float = 0.3
+## Plays the command calls (subtitle and queue shared with the squad's radio).
+@export var radio: SquadRadio
 
 
 const REDRAW_HZ: float = 10.0
 var _redraw_clock := PackedFloat32Array([0.0])
+var _mode: ThunderRoadMode
+var _flash_title: String = ""
+var _flash_line: String = ""
+var _flash_color: Color = Color.WHITE
+var _flash_left: float = 0.0
+var _last_time: float = -1.0
+var _last_pause: float = -1.0
+var _was_outside: bool = false
+var _return_clock: float = INF
+# True from the start: the player's rig (and this panel) is made when they deploy, after
+# round 1's round_started, so a fresh panel greets the round it lands in.
+var _start_pending: bool = true
+var _start_flash: bool = true
+var _flash_scale: float = 1.0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # full size: text centres on the screen
@@ -33,9 +56,175 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var mode: ThunderRoadMode = ThunderRoadMode.instance
 	visible = mode != null and views != null and not views.is_debug_view()
+	if mode != _mode:
+		_connect(mode)
+	if mode != null:
+		_watch_calls(mode, delta)
+	if _flash_left > 0.0:
+		_flash_left -= delta
+		if visible:
+			queue_redraw()   # the fade wants every frame
 	# Clocks and counts: REDRAW_HZ times a second is plenty.
-	if visible and Ticks.due(_redraw_clock, delta, REDRAW_HZ):
+	elif visible and Ticks.due(_redraw_clock, delta, REDRAW_HZ):
 		queue_redraw()
+
+
+func _connect(mode: ThunderRoadMode) -> void:
+	if _mode != null and is_instance_valid(_mode):
+		_mode.checkpoint_taken.disconnect(_on_checkpoint_taken)
+		_mode.pause_ended.disconnect(_on_pause_ended)
+		_mode.round_over.disconnect(_on_round_over)
+		_mode.round_started.disconnect(_on_round_started)
+		_mode.match_over.disconnect(_on_match_over)
+	_mode = mode
+	if _mode != null:
+		_mode.checkpoint_taken.connect(_on_checkpoint_taken)
+		_mode.pause_ended.connect(_on_pause_ended)
+		_mode.round_over.connect(_on_round_over)
+		_mode.round_started.connect(_on_round_started)
+		_mode.match_over.connect(_on_match_over)
+
+
+func _own_attacking(mode: ThunderRoadMode) -> int:
+	var tank: Tank = views.get_tank() if views != null else null
+	if tank == null:
+		return -1
+	return 1 if mode.role_of(tank.team) == ThunderRoadMode.Role.ATTACK else 0
+
+
+## A command call: sound only (what happens shows in English: `_flash`).
+func _call(stream: AudioStream) -> void:
+	var c: ThunderCallsData = _mode.data.calls if _mode != null else null
+	if radio != null and c != null and stream != null:
+		radio.command_call(stream, c.volume_db)
+
+
+## The plain call, or now and then its rare (funny) stand-in.
+func _call_or_rare(stream: AudioStream, rare: AudioStream, chance: float) -> void:
+	_call(rare if rare != null and randf() < chance else stream)
+
+
+## One of the crew's lines at random, sound only.
+func _banter(streams: Array[AudioStream]) -> void:
+	var c: ThunderCallsData = _mode.data.calls if _mode != null else null
+	if radio == null or c == null or streams.is_empty():
+		return
+	radio.command_call(streams[randi() % streams.size()], c.banter_volume_db)
+
+
+## A big line of English in the middle for a few seconds: what just happened and what to do.
+## `scale` < 1 for lesser news than a checkpoint.
+func _flash(title: String, line: String, color: Color, scale: float = 1.0) -> void:
+	_flash_title = title
+	_flash_line = line
+	_flash_color = color
+	_flash_scale = scale
+	_flash_left = flash_s
+
+
+## Said once the round is under way and the own tank is there (round 1 may start
+## before the player has deployed).
+func _on_round_started(_round_number: int, _attack_team: int) -> void:
+	_start_pending = true
+	_start_flash = true
+
+
+func _on_match_over(winner_team: int) -> void:
+	var c: ThunderCallsData = _mode.data.calls
+	var tank: Tank = views.get_tank() if views != null else null
+	if c == null or tank == null or winner_team < 0:
+		return
+	if winner_team == tank.team:
+		_banter(c.victory)
+	else:
+		_banter(c.defeat)
+
+
+func _on_checkpoint_taken(index: int) -> void:
+	var attacking: int = _own_attacking(_mode)
+	if attacking < 0:
+		return
+	var count: int = _mode.get_checkpoint_count()
+	var last: bool = index >= count - 1
+	var line: String = "FINAL CHECKPOINT" if last else "CHECKPOINT %d OF %d" % [index + 1, count]
+	if not last:
+		line += "   ·   REGROUP" if attacking == 1 else "   ·   FALL BACK TO CHECKPOINT %d" % (index + 2)
+	_flash("ZONE CAPTURED" if attacking == 1 else "ZONE LOST", line,
+			good_color if attacking == 1 else warn_color)
+	var c: ThunderCallsData = _mode.data.calls
+	if c == null:
+		return
+	if attacking == 1:
+		if last:
+			_call(c.secured)
+		else:
+			_call(c.taken)
+	else:
+		_call_or_rare(c.lost, c.lost_rare, c.lost_rare_chance)
+		if not last:
+			var number: int = index + 2   # the next checkpoint, 1-based
+			_call(c.fall_back[number - 1] if number <= c.fall_back.size() else null)
+
+
+func _on_pause_ended(index: int) -> void:
+	var attacking: int = _own_attacking(_mode)
+	if attacking == 1:
+		_flash("CEASEFIRE OVER", "CHECKPOINT %d OPEN   ·   ATTACK" % (index + 1), attack_color, 0.75)
+	elif attacking == 0:
+		_flash("ENEMY ADVANCING", "TAKE YOUR POSITIONS   ·   HOLD CHECKPOINT %d" % (index + 1),
+				defend_color, 0.75)
+		var c: ThunderCallsData = _mode.data.calls
+		if c != null:
+			_call(c.enemy_coming)
+
+
+func _on_round_over(_round_number: int, result: Dictionary) -> void:
+	var c: ThunderCallsData = _mode.data.calls
+	if c != null and _own_attacking(_mode) == 0 and not bool(result.get("all", false)):
+		_call(c.held)
+
+
+## Calls from the clocks: the enemy regrouping mid-ceasefire, time running short, and
+## the own tank leaving its corridor.
+func _watch_calls(mode: ThunderRoadMode, delta: float) -> void:
+	var c: ThunderCallsData = mode.data.calls
+	var tank: Tank = views.get_tank() if views != null else null
+	if c == null or tank == null or mode.get_round() == 0 or mode.is_over() or mode.is_in_break():
+		_last_time = -1.0
+		_last_pause = -1.0
+		return
+	if _start_pending:
+		_start_pending = false
+		_banter(c.round_start)
+	var attacking: bool = mode.role_of(tank.team) == ThunderRoadMode.Role.ATTACK
+	if _start_flash:
+		_start_flash = false
+		_flash("ROUND %d   ·   %s" % [mode.get_round(), "ATTACK" if attacking else "DEFEND"],
+				"TAKE THE CHECKPOINTS ALONG THE ROAD" if attacking else "HOLD THE ROAD",
+				attack_color if attacking else defend_color, 0.75)
+	var pause: float = mode.get_pause_left() if mode.is_paused() else -1.0
+	var mark: float = mode.data.pause_s * c.regroup_call_share
+	if attacking and _last_pause > mark and pause >= 0.0 and pause <= mark:
+		_call(c.regrouping)
+		_flash("ENEMY REGROUPING", "PREPARE TO ATTACK", attack_color, 0.75)
+	_last_pause = pause
+	var time: float = -1.0 if mode.is_paused() else mode.get_time_left()
+	if _last_time >= 0.0 and time >= 0.0:
+		var streams: Array[AudioStream] = c.attack_clock if attacking else c.defend_clock
+		for i: int in c.clock_call_s.size():
+			var at: float = c.clock_call_s[i]
+			if _last_time > at and time <= at:
+				_call(streams[i] if i < streams.size() else null)
+				var minutes: int = roundi(at / 60.0)
+				_flash("%d MINUTE%s LEFT" % [minutes, "" if minutes == 1 else "S"],
+						"PRESS THE ATTACK" if attacking else "HOLD THE LINE", warn_color, 0.75)
+	_last_time = time
+	_return_clock += delta
+	var outside: bool = not tank.is_knocked_out() and mode.outside_time(tank) > 0.0
+	if outside and not _was_outside and _return_clock >= c.return_cooldown_s:
+		_return_clock = 0.0
+		_call_or_rare(c.return_to_lines, c.return_rare, c.return_rare_chance)
+	_was_outside = outside
 
 
 func _draw() -> void:
@@ -51,6 +240,14 @@ func _draw() -> void:
 	if mode.is_in_break():
 		_draw_banner(mode, tank, font, cx)
 		return
+	if _flash_left > 0.0:
+		var fade: Color = _flash_color
+		fade.a = clampf(_flash_left, 0.0, 1.0)
+		var fy: float = size.y * flash_height
+		_text(font, Vector2(cx, fy), _flash_title, roundi(flash_font_size * _flash_scale), fade, 12, fade.a)
+		var sub: Color = Color.WHITE
+		sub.a = fade.a
+		_text(font, Vector2(cx, fy + font_size * 2.0), _flash_line, font_size + 8, sub, 8, fade.a)
 	var attacking: bool = mode.role_of(tank.team) == ThunderRoadMode.Role.ATTACK
 	_text(font, Vector2(cx, y), "ROUND %d/2   ·   %s" % [mode.get_round(),
 			"ATTACK" if attacking else "DEFEND"], font_size + 4,
@@ -58,13 +255,26 @@ func _draw() -> void:
 	y += font_size + 8.0
 	var count: int = mode.get_checkpoint_count()
 	var next: int = mode.get_next_checkpoint()
-	var line: String = "CHECKPOINT %d/%d   ·   TIME %s   ·   LIVES %d   ·   WAVE %s" % [
-			mini(next + 1, count), count, ScorePanel._clock(mode.get_time_left()),
-			mode.get_lives(), ScorePanel._clock(mode.get_wave_left())]
+	var paused: bool = mode.is_paused()
+	var clock: String = "CEASEFIRE %s" % ScorePanel._clock(mode.get_pause_left()) if paused \
+			else "TIME %s" % ScorePanel._clock(mode.get_time_left())
+	var line: String = "CHECKPOINT %d/%d   ·   %s   ·   LIVES %d   ·   WAVE %s" % [
+			mini(next + 1, count), count, clock, mode.get_lives(),
+			ScorePanel._clock(mode.get_wave_left())]
 	if mode.get_target() > 0:
 		line += "   ·   TO WIN %d" % mini(mode.get_target(), count)
 	_text(font, Vector2(cx, y), line, font_size - 6, text_color)
 	y += font_size + 2.0
+	if paused:
+		var pause: String
+		if attacking:
+			pause = "CHECKPOINT %d TAKEN – REGROUP   ·   NEXT OPENS IN %d s" % [next,
+					ceili(mode.get_pause_left())]
+		else:
+			pause = "FALL BACK TO CHECKPOINT %d   ·   CEASEFIRE %d s" % [next + 1,
+					ceili(mode.get_pause_left())]
+		_text(font, Vector2(cx, y), pause, font_size + 2, attack_color if attacking else defend_color)
+		y += font_size + 6.0
 	var progress: float = mode.get_capture_progress()
 	if mode.is_overtime():
 		_text(font, Vector2(cx, y), "OVERTIME", font_size + 2, warn_color)
@@ -88,9 +298,9 @@ func _draw() -> void:
 		return
 	var out: float = mode.outside_time(tank)
 	if out > 0.0:
-		var left: float = mode.data.outside_grace_s - out
+		var left: float = mode.data.outside_knockout_s - out
 		var warn: String = "OUTSIDE YOUR CORRIDOR – CAN'T FIRE"
-		warn += "   ·   COMMANDER HIT IN %d s" % ceili(left) if left > 0.0 else "   ·   GET BACK IN"
+		warn += "   ·   KNOCKED OUT IN %d s" % ceili(maxf(left, 0.0))
 		_text(font, Vector2(cx, y + 30.0), warn, font_size + 4, warn_color)
 
 
@@ -168,9 +378,9 @@ static func round_line(number: int, result: Dictionary, own_team: int, mode: Thu
 
 ## One line of outlined text, centred on `at` (baseline).
 func _text(font: Font, at: Vector2, text: String, font_px: int, color: Color,
-		outline: int = 6) -> void:
+		outline: int = 6, alpha: float = 1.0) -> void:
 	var width: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_px).x
 	var x: float = at.x - width * 0.5
 	draw_string_outline(font, Vector2(x, at.y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_px, outline,
-			Color(0.0, 0.0, 0.0, 0.8))
+			Color(0.0, 0.0, 0.0, 0.8 * alpha))
 	draw_string(font, Vector2(x, at.y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_px, color)

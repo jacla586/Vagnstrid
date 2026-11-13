@@ -2,10 +2,14 @@ class_name ThunderRoadMode
 extends Node3D
 ## ThunderRoad (a gauntlet, ThunderRoadData): attackers clear a road checkpoint by
 ## checkpoint; defenders hold a corridor along it, ahead of the last checkpoint taken.
-## Attackers have a time bank and a shared pool of lives and come back in waves;
-## defenders come back a few checkpoints on. Outside its corridor a tank can't fire,
-## shows on the other team's maps and its commander is wounded after a while. Two
-## rounds, sides swap; more checkpoints wins (then more time left).
+## Attackers get the same time for every checkpoint and a shared pool of lives and come
+## back in waves; defenders come back a few checkpoints on. A checkpoint taken brings a
+## ceasefire (pause_s): nobody fires, the attackers keep within pause_attacker_ahead_m
+## of it, the defenders fall back pause_defender_back_m past it; then the next one opens.
+## Outside its corridor a tank can't fire, shows on the other team's maps and is knocked
+## out after outside_knockout_s. Points (stats column 5) for kills, assists, and more
+## for taking and holding checkpoints. Two rounds, sides swap; more checkpoints wins
+## (then more time left).
 ## Children: "Route" (Path3D along the road) and "Checkpoints" (Marker3Ds, projected
 ## onto the route). Runs offline and on the host; clients get its state
 ## (get_net_state / apply_net_state via NetGame) and run the clocks on in between.
@@ -22,6 +26,14 @@ signal round_over(round_number: int, result: Dictionary)
 signal match_over(winner_team: int)
 ## A tank came back (start of a round, a wave or a defender's respawn).
 signal tank_placed(tank: Tank)
+## A checkpoint fell and the ceasefire began (index of the checkpoint taken): the
+## attackers regroup, the defenders fall back to the next one.
+signal pause_started(index: int)
+## The ceasefire is over: checkpoint `index` (the next) is open.
+signal pause_ended(index: int)
+## Points went to `tank` (ThunderRoadData "Points"; host): kind is "kill", "assist",
+## "capture", "hold".
+signal points_scored(tank: Tank, points: float, kind: String)
 
 enum Role { NONE, ATTACK, DEFEND }
 
@@ -73,6 +85,8 @@ var _def_respawn: Dictionary = {}        # Tank -> seconds to its respawn
 var _outside: Dictionary = {}            # Tank -> seconds outside its corridor
 var _mark_left: Dictionary = {}          # Tank -> seconds to its next map mark
 var _check_left: float = 0.0
+## Seconds of ceasefire left after a capture (< 0: none).
+var _pause_left: float = -1.0
 var _connected: Dictionary = {}          # tank instance id -> true
 var _results: Array[Dictionary] = []
 var _break_left: float = -1.0
@@ -84,7 +98,7 @@ var _over: bool = false
 var _winner: int = -1
 ## The match result is known (end of round 2), shown in the last break before _over.
 var _decided: bool = false
-## Tank instance id -> [name, team, knock-outs, losses], over the whole match.
+## Tank instance id -> [name, team, knock-outs, losses, assists, points], over the whole match.
 var _stats: Dictionary = {}
 ## Client: the host's stats rows and per-tank state (net_id -> [waiting, respawn, outside]).
 var _net_stats: Array = []
@@ -182,25 +196,25 @@ func point_at(s: float, across: float = 0.0) -> Vector3:
 
 
 ## Outline(s) of `role`'s corridor in world (x, z), the area is_inside allows: all within
-## half_width of the road, round behind its start (attackers) or cut square at the
-## defender line, going on straight past the road's end like `project`. Clipper may
-## return several polygons (holes where the road loops).
+## half_width of the road, cut square at the defender line (defenders) or at the
+## attack limit (attackers), going on straight past the road's end like `project`.
+## Clipper may return several polygons (holes where the road loops).
 func corridor_outline(role: Role) -> Array[PackedVector2Array]:
 	var line := PackedVector2Array()
 	var from: float = maxf(get_defender_line_s(), 0.0) if role == Role.DEFEND else 0.0
-	if _route.size() < 2 or from >= get_length():
+	var to: float = get_length() + CORRIDOR_RUN_OUT_M if role == Role.DEFEND \
+			else get_attack_limit_s()
+	if _route.size() < 2 or from >= get_length() or to <= from:
 		return []
 	var p0: Vector3 = point_at(from)
 	line.append(Vector2(p0.x, p0.z))
 	for i: int in _route.size():
-		if _along[i] > from:
+		if _along[i] > from and _along[i] < to:
 			line.append(Vector2(_route[i].x, _route[i].z))
-	var t: Vector3 = _segment_tangent(_route.size() - 2)
-	var end: Vector3 = _route[_route.size() - 1] + t * CORRIDOR_RUN_OUT_M
+	var end: Vector3 = slot_point(to, 0.0)
 	line.append(Vector2(end.x, end.z))
-	var end_type: Geometry2D.PolyEndType = Geometry2D.END_BUTT if role == Role.DEFEND \
-			else Geometry2D.END_ROUND
-	return Geometry2D.offset_polyline(line, half_width(role), Geometry2D.JOIN_ROUND, end_type)
+	return Geometry2D.offset_polyline(line, half_width(role), Geometry2D.JOIN_ROUND,
+			Geometry2D.END_BUTT)
 
 
 ## The road's direction at `s` (flat unit vector, towards the end).
@@ -260,9 +274,35 @@ func get_front_s() -> float:
 	return _front_s
 
 
-## Where the defenders' corridor begins (s): the front less defender_behind_front_m.
+## Where the defenders' corridor begins (s): the front less defender_behind_front_m;
+## in a ceasefire pause_defender_back_m past the checkpoint just taken (never past the
+## near edge of the next one's zone).
 func get_defender_line_s() -> float:
+	if is_paused():
+		var line: float = _front_s + data.pause_defender_back_m
+		if _next_cp < _cp_s.size():
+			line = minf(line, _cp_s[_next_cp] - data.capture_half_length_m)
+		return line
 	return _front_s - data.defender_behind_front_m
+
+
+## How far along the road attackers may go (s): attacker_ahead_of_checkpoint_m past the
+## next checkpoint, in a ceasefire pause_attacker_ahead_m past the one just taken.
+func get_attack_limit_s() -> float:
+	if is_paused():
+		return _front_s + data.pause_attacker_ahead_m
+	if _next_cp >= _cp_s.size():
+		return get_length() + CORRIDOR_RUN_OUT_M
+	return _cp_s[_next_cp] + data.attacker_ahead_of_checkpoint_m
+
+
+## A checkpoint just fell: nobody fires, the sides part, the next one isn't open yet.
+func is_paused() -> bool:
+	return _pause_left >= 0.0
+
+
+func get_pause_left() -> float:
+	return _pause_left
 
 
 func get_capture_progress() -> float:
@@ -350,7 +390,7 @@ func is_decided() -> bool:
 	return _decided
 
 
-## Every tank's [name, team, knock-outs, losses, assists], most knock-outs first.
+## Every tank's [name, team, knock-outs, losses, assists, points], most points first.
 func get_stats() -> Array:
 	if NetRole.is_client():
 		return _net_stats
@@ -364,7 +404,7 @@ func get_stats() -> Array:
 		row[1] = tank.team
 		out.append(row)
 	out.sort_custom(func(a: Array, b: Array) -> bool:
-		return int(a[2]) > int(b[2]) or (int(a[2]) == int(b[2]) and int(a[3]) < int(b[3])))
+		return float(a[5]) > float(b[5]) or (float(a[5]) == float(b[5]) and int(a[2]) > int(b[2])))
 	return out
 
 
@@ -388,13 +428,15 @@ func get_checkpoint_corners(index: int) -> PackedVector3Array:
 			c - along + across])
 
 
-## Inside `role`'s corridor: near the road, and for defenders ahead of
-## get_defender_line_s (a little behind the front).
+## Inside `role`'s corridor: near the road, for defenders ahead of get_defender_line_s
+## (a little behind the front), for attackers short of get_attack_limit_s.
 func is_inside(p: Vector3, role: Role) -> bool:
 	var at: Vector2 = project(p)
 	if at.y > half_width(role):
 		return false
-	return role != Role.DEFEND or at.x >= get_defender_line_s()
+	if role == Role.DEFEND:
+		return at.x >= get_defender_line_s()
+	return at.x <= get_attack_limit_s()
 
 
 # --- Network -------------------------------------------------------------------------
@@ -413,6 +455,7 @@ func get_net_state() -> Dictionary:
 		"go": _started, "r": _round, "at": _attack_team, "cp": _next_cp, "f": _front_s,
 		"p": _progress, "c": _contested, "ot": _overtime, "t": _time_left, "l": _lives, "w": _wave_left,
 		"b": _break_left, "res": _results, "over": _over, "win": _winner, "dec": _decided,
+		"pz": _pause_left,
 		"st": get_stats(), "tk": per_tank,
 	}
 
@@ -432,6 +475,7 @@ func apply_net_state(state: Dictionary) -> void:
 	_time_left = state.get("t", _time_left)
 	_lives = state.get("l", _lives)
 	_wave_left = state.get("w", _wave_left)
+	var pause_left: float = state.get("pz", _pause_left)
 	_decided = state.get("dec", _decided)
 	_winner = state.get("win", _winner)
 	_net_stats = (state.get("st", []) as Array).duplicate(true)
@@ -449,6 +493,12 @@ func apply_net_state(state: Dictionary) -> void:
 		checkpoint_taken.emit(_next_cp)
 		_next_cp += 1
 	_next_cp = next_cp
+	var was_paused: bool = _pause_left >= 0.0
+	_pause_left = pause_left
+	if pause_left >= 0.0 and not was_paused:
+		pause_started.emit(_next_cp - 1)
+	elif pause_left < 0.0 and was_paused:
+		pause_ended.emit(_next_cp)
 	var finished: bool = results.size() > _results.size()
 	_results.clear()
 	for r: Variant in results:
@@ -475,8 +525,11 @@ func _process(delta: float) -> void:
 	if _break_left >= 0.0:
 		_break_left = maxf(_break_left - delta, 0.0)
 		return
-	_time_left = maxf(_time_left - delta, 0.0)
-	_wave_left = maxf(_wave_left - delta, 0.0)
+	if _pause_left >= 0.0:
+		_pause_left = maxf(_pause_left - delta, 0.0)
+	else:
+		_time_left = maxf(_time_left - delta, 0.0)
+		_wave_left = maxf(_wave_left - delta, 0.0)
 	for id: Variant in _net_tanks:
 		var row: Array = _net_tanks[id]
 		row[1] = maxf(float(row[1]) - delta, 0.0)
@@ -528,9 +581,11 @@ func _physics_process(delta: float) -> void:
 		return
 	if _over:
 		return
-	_time_left = maxf(_time_left - delta, 0.0)
-	_update_capture(delta)
-	_update_waves(delta)
+	var paused: bool = _update_pause(delta)
+	if not paused:
+		_time_left = maxf(_time_left - delta, 0.0)
+		_update_capture(delta)
+		_update_waves(delta)
 	_update_defender_respawns(delta)
 	_check_left -= delta
 	if _check_left <= 0.0:
@@ -538,10 +593,30 @@ func _physics_process(delta: float) -> void:
 		_check_corridors(CHECK_INTERVAL_S)
 	if _next_cp >= _cp_s.size():
 		_end_round()
-	elif _time_left <= 0.0 and _overtime_over(delta):
+	elif not paused and _time_left <= 0.0 and _overtime_over(delta):
+		_award_hold()
 		_end_round()
 	elif _lives <= 0 and _alive_count(_attack_team) == 0:
+		_award_hold()
 		_end_round()
+
+
+## The ceasefire after a capture: counts down, then the next checkpoint opens with a
+## full clock. True while it lasts.
+func _update_pause(delta: float) -> bool:
+	if _pause_left < 0.0:
+		return false
+	_pause_left -= delta
+	if _pause_left >= 0.0:
+		return true
+	_pause_left = -1.0
+	_time_left = data.checkpoint_time_s
+	_wave_left = data.wave_interval_s
+	for tank: Tank in _team_tanks(0) + _team_tanks(1):
+		if not tank.is_knocked_out() and is_inside(tank.global_position, role_of(tank.team)):
+			tank.fire_blocked = false
+	pause_ended.emit(_next_cp)
+	return false
 
 
 ## Starts round `number`: sets it up (unless the break before it already did) and lets
@@ -571,7 +646,8 @@ func _setup_round(number: int) -> void:
 	_contested = false
 	_attackers_in = 0
 	_overtime = false
-	_time_left = data.start_time_s
+	_pause_left = -1.0
+	_time_left = data.checkpoint_time_s
 	_lives = data.start_lives_per_tank * _team_tanks(_attack_team).size() + data.start_lives_extra
 	_wave_left = data.wave_interval_s
 	_waiting.clear()
@@ -607,6 +683,7 @@ func _reset_map() -> void:
 
 func _end_round() -> void:
 	_overtime = false
+	_pause_left = -1.0
 	var result := {
 		"attack_team": _attack_team,
 		"checkpoints": _next_cp,
@@ -653,8 +730,8 @@ func _decide_winner() -> void:
 func _update_capture(delta: float) -> void:
 	if _next_cp >= _cp_s.size():
 		return
-	var attackers: int = 0
-	var defenders: int = 0
+	var in_attack: Array[Tank] = []
+	var in_defence: Array[Tank] = []
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var tank := node as Tank
 		if tank == null or tank.is_knocked_out() or (tank.team != 0 and tank.team != 1):
@@ -662,9 +739,18 @@ func _update_capture(delta: float) -> void:
 		if not is_in_checkpoint(tank.global_position, _next_cp):
 			continue
 		if tank.team == _attack_team:
-			attackers += 1
+			in_attack.append(tank)
 		else:
-			defenders += 1
+			in_defence.append(tank)
+	var attackers: int = in_attack.size()
+	var defenders: int = in_defence.size()
+	# Teamwork pays: attackers pushing the capture, defenders standing in the way.
+	if attackers > defenders:
+		for tank: Tank in in_attack:
+			_points_add(tank, data.capture_points_per_s * delta, "")
+	if attackers > 0:
+		for tank: Tank in in_defence:
+			_points_add(tank, data.defend_points_per_s * delta, "")
 	# More attackers than defenders there take it, the faster the bigger the edge.
 	_attackers_in = attackers
 	_contested = defenders > 0 and attackers > 0 and attackers <= defenders
@@ -674,6 +760,8 @@ func _update_capture(delta: float) -> void:
 	elif attackers == 0:
 		_progress = maxf(_progress - rate * data.capture_decay_factor * delta, 0.0)
 	if _progress >= 1.0:
+		for tank: Tank in in_attack:
+			_points_add(tank, data.capture_points, "capture")
 		_take_checkpoint()
 
 
@@ -684,11 +772,26 @@ func _take_checkpoint() -> void:
 	_progress = 0.0
 	_contested = false
 	_overtime = false
-	_time_left += data.time_per_capture_s
 	_lives += data.lives_per_capture
 	checkpoint_taken.emit(index)
 	if _next_cp < _cp_s.size():
 		_wave()
+		if data.pause_s > 0.0:
+			_pause_left = data.pause_s
+			_check_corridors(0.0)   # guns fall silent at once
+			pause_started.emit(index)
+		else:
+			_time_left = data.checkpoint_time_s
+
+
+## The attackers ran out of time or lives short of the checkpoint: every living
+## defender gets hold_points.
+func _award_hold() -> void:
+	if _next_cp >= _cp_s.size():
+		return
+	for tank: Tank in _team_tanks(1 - _attack_team):
+		if not tank.is_knocked_out():
+			_points_add(tank, data.hold_points, "hold")
 
 
 ## The time is up: true when the round may end. While a living attacker is in the
@@ -756,9 +859,11 @@ func _on_eliminated(killer: Tank, assists: Array[Tank]) -> void:
 		return
 	if killer != null and is_instance_valid(killer):
 		_stat_add(killer, 2)
+		_points_add(killer, data.kill_points, "kill")
 	for t: Tank in assists:
 		if is_instance_valid(t):
 			_stat_add(t, 4)
+			_points_add(t, data.assist_points, "assist")
 
 
 func _stat_add(tank: Tank, field: int) -> void:
@@ -767,9 +872,22 @@ func _stat_add(tank: Tank, field: int) -> void:
 		row[field] = int(row[field]) + 1
 
 
+## Points for `tank` (stats column 5); `kind` "" = a trickle (capture or defence time),
+## not announced.
+func _points_add(tank: Tank, points: float, kind: String) -> void:
+	var row: Array = _stats.get(tank.get_instance_id(), [])
+	if row.is_empty() or points <= 0.0:
+		return
+	row[5] = float(row[5]) + points
+	if kind != "":
+		points_scored.emit(tank, points, kind)
+
+
 ## Outside the corridor: no fire at once, a mark on the other team's maps every
-## outside_mark_s, the commander wounded after outside_grace_s (again when it heals).
+## outside_mark_s, knocked out (nobody's kill) after outside_knockout_s. In a ceasefire
+## nobody fires.
 func _check_corridors(dt: float) -> void:
+	var paused: bool = is_paused()
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var tank := node as Tank
 		if tank == null or (tank.team != 0 and tank.team != 1):
@@ -781,7 +899,7 @@ func _check_corridors(dt: float) -> void:
 		if is_inside(tank.global_position, role):
 			_outside.erase(tank)
 			_mark_left.erase(tank)
-			tank.fire_blocked = false
+			tank.fire_blocked = paused
 			continue
 		tank.fire_blocked = true
 		var out: float = float(_outside.get(tank, 0.0)) + dt
@@ -791,8 +909,9 @@ func _check_corridors(dt: float) -> void:
 			mark = data.outside_mark_s
 			_mark_for_enemies(tank)
 		_mark_left[tank] = mark
-		if out >= data.outside_grace_s and not tank.is_commander_wounded():
-			tank.wound_commander()
+		if out >= data.outside_knockout_s:
+			_outside.erase(tank)
+			tank.knock_out_by_rule()
 
 
 ## Shows `tank` on the other team's maps: a spot mark from one of its living tanks.
@@ -905,7 +1024,7 @@ func _slot_ok(hit: Dictionary, tank: Tank) -> bool:
 func _place(tank: Tank, xform: Transform3D) -> void:
 	KothMode.place_tank(tank, xform)
 	tank.repair()
-	tank.fire_blocked = false
+	tank.fire_blocked = is_paused()
 	tank_placed.emit(tank)
 
 
@@ -918,7 +1037,7 @@ func _connect_new_tanks() -> void:
 			continue
 		_connected[tank.get_instance_id()] = true
 		_stats[tank.get_instance_id()] = _carried.get(tank.get_instance_id(),
-				[tank.get_display_label(), tank.team, 0, 0, 0])
+				[tank.get_display_label(), tank.team, 0, 0, 0, 0.0])
 		_carried.erase(tank.get_instance_id())
 		tank.knocked_out.connect(_on_knocked_out.bind(tank))
 		tank.eliminated.connect(_on_eliminated)
@@ -943,7 +1062,10 @@ func count_loss(tank: Tank) -> void:
 func carry_stats(from: Tank, to: Tank) -> void:
 	var id: int = from.get_instance_id()
 	if _stats.has(id):
-		_carried[to.get_instance_id()] = _stats[id]
+		var row: Array = _stats[id]
+		while row.size() < 6:
+			row.append(0.0)
+		_carried[to.get_instance_id()] = row
 		_stats.erase(id)
 
 

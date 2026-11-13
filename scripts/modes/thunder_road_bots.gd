@@ -147,6 +147,7 @@ var _mine_think: Dictionary = {}     # seconds to the next look at mines
 var _mine_front: Dictionary = {}     # front (s) when the last mine was sent
 var _depart: Dictionary = {}         # seconds before it may leave
 var _urgent: Dictionary = {}         # next order is urgent (respawned)
+var _regrouped: Dictionary = {}      # attacker -> true: told to stand in this ceasefire
 var _back_in: Dictionary = {}        # seconds since it was ordered back into the corridor
 # Roles (BotRoleData) and each team's reading of the fight (TeamSituation).
 var _situation: Dictionary = {}      # team -> TeamSituation
@@ -190,6 +191,8 @@ func _ready() -> void:
 	mode.hold_start()
 	mode.tank_placed.connect(_on_tank_placed)
 	mode.round_started.connect(func(_n: int, _team: int) -> void: _reset_all())
+	mode.pause_started.connect(func(_i: int) -> void: _regrouped.clear())
+	mode.pause_ended.connect(func(_i: int) -> void: _on_ceasefire_over())
 	_find_bots.call_deferred()
 
 
@@ -373,6 +376,29 @@ func _reset_all() -> void:
 		_urgent[bot] = true
 
 
+## The next checkpoint opened: every bot gets fresh orders (attackers set off from
+## their regroup spots, defenders may post forward again), a little apart so the paths
+## aren't all planned in one frame.
+func _on_ceasefire_over() -> void:
+	_regrouped.clear()
+	for bot: BotController in _bots:
+		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
+			continue
+		_forget(bot)
+		_urgent[bot] = true
+		_depart[bot] = _rng.randf_range(0.0, DEPART_INTERVAL_S * 2.0)
+
+
+## Ceasefire: an attacker stands where it is, or pulls back inside the shrunk corridor
+## (just short of the line past the checkpoint taken), once per ceasefire.
+func _regroup(bot: BotController) -> void:
+	if _regrouped.has(bot):
+		return
+	_regrouped[bot] = true
+	_forget_post(bot)
+	bot.order_path(_keep_inside(bot.tank.global_position, bot), _travel_throttle(bot), true)
+
+
 func _forget(bot: BotController) -> void:
 	for d: Dictionary in [_ordered_cp, _ordered_front, _post_s, _repost, _standing, _mine_think, _mine_front,
 			_depart, _urgent, _back_in, _ordered_out, _hold, _countering, _ordered_pushed, _entering,
@@ -413,6 +439,9 @@ func _physics_process(delta: float) -> void:
 		var role: ThunderRoadMode.Role = mode.role_of(bot.tank.team)
 		if _update_outside(bot, role, delta):
 			continue
+		if role == ThunderRoadMode.Role.ATTACK and mode.is_paused():
+			_regroup(bot)
+			continue
 		if role == ThunderRoadMode.Role.ATTACK:
 			_update_attacker(bot, next, delta)
 		else:
@@ -428,7 +457,10 @@ func _update_outside(bot: BotController, role: ThunderRoadMode.Role, delta: floa
 	var at: Vector2 = mode.project(bot.tank.global_position)
 	var s: float = at.x
 	if role == ThunderRoadMode.Role.DEFEND:
-		s = maxf(s, mode.get_front_s() + 50.0)   # back in well ahead of the line
+		# back in well ahead of the line (in a ceasefire it lies past the front)
+		s = maxf(s, maxf(mode.get_front_s(), mode.get_defender_line_s()) + 50.0)
+	else:
+		s = minf(s, mode.get_attack_limit_s() - 50.0)   # back short of the limit
 	var goal: Vector3 = mode.point_at(s, _side_of(bot.tank.global_position, at.x)
 			* minf(at.y, mode.half_width(role) * 0.5))
 	bot.order_path(goal, _travel_throttle(bot), true)
@@ -1098,9 +1130,10 @@ func _travel_throttle(bot: BotController) -> float:
 	return tactics.travel_throttle
 
 
-## `goal` moved into `bot`'s corridor, INSIDE_MARGIN_M from its edges (across, and for
-## defenders from the line behind the front), so a bot never stands where its guns
-## are silent. BotController.keep_goal: every goal it drives to.
+## `goal` moved into `bot`'s corridor, INSIDE_MARGIN_M from its edges (across, for
+## defenders from the line behind the front, for attackers from the attack limit), so a
+## bot never stands where its guns are silent. BotController.keep_goal: every goal it
+## drives to.
 func _keep_inside(goal: Vector3, bot: BotController) -> Vector3:
 	if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or goal == Vector3.INF:
 		return goal
@@ -1109,6 +1142,8 @@ func _keep_inside(goal: Vector3, bot: BotController) -> Vector3:
 	var s: float = at.x
 	if role == ThunderRoadMode.Role.DEFEND:
 		s = maxf(s, mode.get_defender_line_s() + INSIDE_MARGIN_M)
+	elif role == ThunderRoadMode.Role.ATTACK:
+		s = minf(s, mode.get_attack_limit_s() - INSIDE_MARGIN_M)
 	var w: float = maxf(mode.half_width(role) - INSIDE_MARGIN_M, 0.0)
 	if s == at.x and at.y <= w:
 		return goal

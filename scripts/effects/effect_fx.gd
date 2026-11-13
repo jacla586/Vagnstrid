@@ -55,7 +55,8 @@ static func prewarm(parent: Node) -> void:
 			SET.impact_wood, SET.explosion, SET.bullet_ground, SET.bullet_armour,
 			SET.bullet_building, SET.muzzle_flash, SET.muzzle_blast_dust]:
 		play(effect, parent, hidden, Vector3.UP, 1.0)
-	for burst: BurstData in [SET.track_dust, SET.fire_flames, SET.fire_smoke, SET.gun_smoke]:
+	for burst: BurstData in [SET.track_dust, SET.fire_flames, SET.fire_smoke, SET.gun_smoke,
+			SET.engine_smoke]:
 		if burst == null:
 			continue
 		var p: GPUParticles3D = emitter(burst, 1.0)

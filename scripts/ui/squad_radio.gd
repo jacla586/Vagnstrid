@@ -1,42 +1,31 @@
 class_name SquadRadio
-extends Label
+extends Node
 ## The own squad's radio: plays its calls (RadioData on the squad's data) one at a time
-## over the headset (not muffled by the hatch, not positional) and shows them as a
-## subtitle. Contacts get a clock direction from the own tank's hull. A call of the same
+## over the headset (not muffled by the hatch, not positional). No subtitles: the game's
+## text is English and the Swedish voices are a bonus for those who understand them. Contacts get a clock direction from the own tank's hull. A call of the same
 ## kind (and clock hour) isn't repeated within RadioData.repeat_cooldown_s.
 ## The own crew's shouts (TankData.crew_voice: "Vi är träffade!" when a gun round hits,
-## "Närträff!" when one lands close) go first in the same queue.
+## "Närträff!" when one lands close) go first in the same queue, then ThunderRoad's
+## command calls (`command_call`).
 
 @export var views: PlayerViews
-@export var color: Color = Color(0.75, 1.0, 0.7, 1.0)
-@export var font_size: int = 20
 
-## Queue kinds that are never dropped for an ordinary call (-1 = crew shout).
-const _URGENT: Array[int] = [Squad.RADIO_AT_FIRE, Squad.RADIO_AT_HIT, Squad.RADIO_AT_MISS, -1]
+## Queue kinds that are never dropped for an ordinary call (-1 = crew shout, -2 = command).
+const _URGENT: Array[int] = [Squad.RADIO_AT_FIRE, Squad.RADIO_AT_HIT, Squad.RADIO_AT_MISS, -1, -2]
+const COMMAND: int = -2
 
 var _player: AudioStreamPlayer
 var _squad: Squad
 var _tank: Tank
-var _queue: Array = []          # [stream, text, volume_db, kind (-1: crew)]
+var _queue: Array = []          # [stream, volume_db, kind (-1: crew, -2: command)]
 var _last: Dictionary = {}      # call key -> time it was last played
 var _time: float = 0.0
-var _subtitle_left: float = 0.0
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	grow_horizontal = Control.GROW_DIRECTION_BOTH
-	position.y -= 170.0
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_theme_font_size_override("font_size", font_size)
-	add_theme_color_override("font_color", color)
-	add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	add_theme_constant_override("outline_size", 6)
 	_player = AudioStreamPlayer.new()
 	_player.bus = &"Master"
 	add_child(_player)
-	text = ""
 
 
 func _process(delta: float) -> void:
@@ -54,6 +43,8 @@ func _process(delta: float) -> void:
 				_tank.commander_wounded.disconnect(_on_commander_wounded)
 			if _tank.mine_hit.is_connected(_on_mine_hit):
 				_tank.mine_hit.disconnect(_on_mine_hit)
+			if _tank.optics_dirtied.is_connected(_on_optics_dirtied):
+				_tank.optics_dirtied.disconnect(_on_optics_dirtied)
 		_tank = tank
 		if _tank != null:
 			_tank.struck.connect(_on_struck)
@@ -61,6 +52,7 @@ func _process(delta: float) -> void:
 			_tank.module_changed.connect(_on_module_changed)
 			_tank.commander_wounded.connect(_on_commander_wounded)
 			_tank.mine_hit.connect(_on_mine_hit)
+			_tank.optics_dirtied.connect(_on_optics_dirtied)
 	var squad: Squad = tank.squad if tank != null and is_instance_valid(tank.squad) else null
 	if squad != _squad:
 		if _squad != null and is_instance_valid(_squad) and _squad.radio.is_connected(_on_radio):
@@ -71,15 +63,8 @@ func _process(delta: float) -> void:
 	if not _player.playing and not _queue.is_empty():
 		var next: Array = _queue.pop_front()
 		_player.stream = next[0]
-		_player.volume_db = float(next[2])
-		if _player.stream != null:
-			_player.play()
-		text = String(next[1])
-		var length: float = (next[0] as AudioStream).get_length() if next[0] != null else 2.0
-		_subtitle_left = length + (_squad.data.radio.subtitle_extra_s if _squad != null and _squad.data.radio != null else 1.5)
-	_subtitle_left -= delta
-	if _subtitle_left <= 0.0 and not _player.playing:
-		text = ""
+		_player.volume_db = float(next[1])
+		_player.play()
 
 
 func _on_radio(kind: int, at: Vector3) -> void:
@@ -88,52 +73,40 @@ func _on_radio(kind: int, at: Vector3) -> void:
 		return
 	var r: RadioData = _squad.data.radio
 	var stream: AudioStream = null
-	var line: String = ""
 	var key: String = str(kind)
 	match kind:
 		Squad.RADIO_UNDER_ATTACK:
 			stream = r.under_attack
-			line = r.under_attack_text
 		Squad.RADIO_DISMOUNT:
 			stream = r.dismount
-			line = r.dismount_text
 		Squad.RADIO_RETURNING:
 			stream = r.returning
-			line = r.returning_text
 		Squad.RADIO_IN_POSITION:
 			stream = r.in_position
-			line = r.in_position_text
 		Squad.RADIO_AT_FIRE:
 			stream = r.at_fire
-			line = r.at_fire_text
 		Squad.RADIO_AT_HIT:
 			stream = r.at_hit
-			line = r.at_hit_text
 		Squad.RADIO_AT_MISS:
 			stream = r.at_miss
-			line = r.at_miss_text
 		Squad.RADIO_MINE_LAYING:
 			stream = r.mine_laying
-			line = r.mine_laying_text
 		Squad.RADIO_MINE_ARMED:
 			stream = r.mine_armed
-			line = r.mine_armed_text
 		Squad.RADIO_MINE_TRIGGERED:
 			stream = r.mine_triggered
-			line = r.mine_triggered_text
 		Squad.RADIO_ESCORT:
 			stream = r.escort
-			line = r.escort_text
 		Squad.RADIO_ARMOUR, Squad.RADIO_INFANTRY:
 			var hour: int = clock_hour(tank.global_transform, at)
 			var list: Array[AudioStream] = r.armour if kind == Squad.RADIO_ARMOUR else r.infantry
 			stream = list[hour - 1] if list.size() >= hour else null
-			var word: String = r.clock_words[hour - 1] if r.clock_words.size() >= hour else str(hour)
-			line = (r.armour_text if kind == Squad.RADIO_ARMOUR else r.infantry_text) % word
 			key += "/%d" % hour
 		_:
 			return
-	var entry: Array = [stream, "Grupp: " + line, r.volume_db, kind]
+	if stream == null:
+		return
+	var entry: Array = [stream, r.volume_db, kind]
 	if kind == Squad.RADIO_AT_FIRE:
 		# Urgent and always said: first in the queue, no repeat limit.
 		_queue.push_front(entry)
@@ -143,7 +116,7 @@ func _on_radio(kind: int, at: Vector3) -> void:
 	if kind == Squad.RADIO_AT_HIT or kind == Squad.RADIO_AT_MISS:
 		# Always said, straight after its "Skott kommer!" if that is still waiting.
 		var slot: int = 0
-		while slot < _queue.size() and int(_queue[slot][3]) == Squad.RADIO_AT_FIRE:
+		while slot < _queue.size() and int(_queue[slot][2]) == Squad.RADIO_AT_FIRE:
 			slot += 1
 		_queue.insert(slot, entry)
 		while _queue.size() > r.max_queue + 1:
@@ -157,7 +130,7 @@ func _on_radio(kind: int, at: Vector3) -> void:
 	while _queue.size() > r.max_queue:
 		var drop: int = -1
 		for j: int in _queue.size():
-			if not _URGENT.has(int(_queue[j][3])):
+			if not _URGENT.has(int(_queue[j][2])):
 				drop = j
 				break
 		_queue.remove_at(drop)
@@ -166,7 +139,7 @@ func _on_radio(kind: int, at: Vector3) -> void:
 func _on_struck(_outcome: int, _direction: Vector3) -> void:
 	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
 	if v != null:
-		_crew_call("hit", v.hit, v.hit_text, v)
+		_crew_call("hit", v.hit, v)
 
 
 ## A mine: its own call, and the "hit" call the struck right after would give is held back.
@@ -174,14 +147,21 @@ func _on_mine_hit() -> void:
 	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
 	if v == null or v.mine == null:
 		return
-	_crew_call("mine", v.mine, v.mine_text, v)
+	_crew_call("mine", v.mine, v)
 	_last["crew/hit"] = _time
+
+
+## Dirt on the optics from a burst: now and then the crew swears about it, after "Vi är träffade!".
+func _on_optics_dirtied(_amount: float) -> void:
+	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
+	if v != null and v.he_dirt != null and randf() < v.he_dirt_chance:
+		_crew_call("he", v.he_dirt, v, true)
 
 
 func _on_near_miss(_direction: Vector3) -> void:
 	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
 	if v != null:
-		_crew_call("near", v.near_miss, v.near_miss_text, v)
+		_crew_call("near", v.near_miss, v)
 
 
 func _on_module_changed(id: StringName, state: int) -> void:
@@ -189,30 +169,43 @@ func _on_module_changed(id: StringName, state: int) -> void:
 	if v == null or state == TankDamage.State.OK:
 		return
 	match id:
-		&"driver": _crew_call("driver", v.driver_hit, v.driver_hit_text, v, true)
-		&"gunner": _crew_call("gunner", v.gunner_hit, v.gunner_hit_text, v, true)
+		&"driver": _crew_call("driver", v.driver_hit, v, true)
+		&"gunner": _crew_call("gunner", v.gunner_hit, v, true)
 
 
 func _on_commander_wounded() -> void:
 	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
 	if v != null:
-		_crew_call("commander", v.commander_hit, v.commander_hit_text, v, true)
+		_crew_call("commander", v.commander_hit, v, true)
 
 
 ## A crew shout: urgent, so it goes first; the same one not again within its cooldown.
 ## after_crew: behind the crew shouts already waiting ("Vi är träffade!" first, then who).
-func _crew_call(key: String, stream: AudioStream, line: String, v: CrewVoiceData,
+func _crew_call(key: String, stream: AudioStream, v: CrewVoiceData,
 		after_crew: bool = false) -> void:
+	if stream == null:
+		return
 	if _time - float(_last.get("crew/" + key, -INF)) < v.repeat_cooldown_s:
 		return
 	_last["crew/" + key] = _time
 	var at: int = 0
 	if after_crew:
-		while at < _queue.size() and int(_queue[at][3]) == -1:
+		while at < _queue.size() and int(_queue[at][2]) == -1:
 			at += 1
-	_queue.insert(at, [stream, "Besättning: " + line, v.volume_db, -1])
+	_queue.insert(at, [stream, v.volume_db, -1])
 	while _queue.size() > 3:
 		_queue.pop_back()
+
+
+## A command call (ThunderRoad, `ThunderPanel`): after the crew shouts and the other
+## command calls waiting, ahead of the squad's calls. Never dropped for them.
+func command_call(stream: AudioStream, volume_db: float) -> void:
+	if stream == null:
+		return
+	var at: int = 0
+	while at < _queue.size() and (int(_queue[at][2]) == -1 or int(_queue[at][2]) == COMMAND):
+		at += 1
+	_queue.insert(at, [stream, volume_db, COMMAND])
 
 
 ## Clock hour (1..12, 12 = straight ahead) of `point` seen from the tank's hull.

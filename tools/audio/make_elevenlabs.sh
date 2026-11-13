@@ -46,6 +46,8 @@ intercom() {
     -ac 1 -c:a libvorbis -q:a 5 "$O/$1.ogg"
 }
 
+# "thunder" as third argument: only the ThunderRoad command calls (below).
+if [[ "$3" != thunder ]]; then
 # Cut the clock hours at the pauses (silence >= 0.25 s): 12 parts expected.
 K="$S/ElevenLabs_klockan.mp3"
 LEN=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$K")
@@ -96,4 +98,52 @@ intercom crew_driver_hit "$T/föraren-träffad.wav" -14
 intercom crew_gunner_hit "$T/skytten-träffad.wav" -14
 intercom crew_commander_hit "$T/vagnchef-träffad.wav" -14
 intercom crew_mine "$T/mina-band-utslaget.wav" -13
+fi
+
+# ThunderRoad command calls (ThunderCallsData, data/modes/thunder_calls_sv.tres).
+for pair in "cmd_taken tagit-kontroll-förbered-anfall" "cmd_lost tappat-kontroll-omgruppera" \
+    "cmd_regrouping De-omgrupperar-förbered-anfall-anmäl-klar" \
+    "cmd_enemy_coming fienden-kommer-till-stridsställningar" "cmd_secured zon-säkrad" \
+    "cmd_attack_2min anfallare-2-minuter-kvar" "cmd_attack_1min anfallare-1-minut-kvar" \
+    "cmd_defend_2min 2-min-kvar-håll-linjen" "cmd_defend_1min en-minut-kvar-håll-ut" \
+    "cmd_return återvänd-till-stridsställningar"; do
+  set -- $pair
+  trim "$S/ElevenLabs_$2.mp3" "$T/$1.wav"
+  radio "$1" "$T/$1.wav" -16
+done
+
+# "Fall tillbaka till ÅSA <n>!" for checkpoints 1-7: the whole recording (it ends on "ÅSA")
+# plus the number cut out of the clock hours ("Klockan tre!" from NUMBER_CUT_S[n], read off
+# spectrograms) after a short gap. Move a cut if a number sounds clipped or keeps an "n".
+NUMBER_CUT_S=(0 0.41 0.40 0.37 0.39 0.40 0.37 0.36)
+trim "$S/ElevenLabs_fall-tillbaka-till-åsa-n.mp3" "$T/fall.wav"
+ffmpeg -loglevel error -y -f lavfi -t 0.07 -i "anullsrc=r=22050:cl=mono" "$T/gap7.wav"
+for n in $(seq 1 7); do
+  ffmpeg -loglevel error -y -i "$S/klockan/klockan_$n.wav" -ss "${NUMBER_CUT_S[n]}" \
+    -af "aresample=22050,afade=t=in:d=0.015" -ac 1 "$T/num.wav"
+  ffmpeg -loglevel error -y -i "$T/fall.wav" -i "$T/gap7.wav" -i "$T/num.wav" \
+    -filter_complex "[0][1][2]concat=n=3:v=0:a=1" "$T/fall_n.wav"
+  radio "cmd_fall_back_$n" "$T/fall_n.wav" -16
+done
+
+# Banter (ThunderCallsData): the crew at a round's start and the match's end (intercom), rare
+# extras from command (radio), the crew's rare HE line (CrewVoiceData.he_dirt).
+for pair in "cmd_lost_rare lost-zone-blå-skåpet" "cmd_return_rare lämnar-zon-Larsson-kan-inte-reglementet"; do
+  set -- $pair
+  trim "$S/ElevenLabs_$2.mp3" "$T/$1.wav"
+  radio "$1" "$T/$1.wav" -16
+done
+for pair in "crew_he he-vilken-jädra-smäll" \
+    "crew_start_1 start-då-var-vi-här-då" "crew_start_2 start-Framåt-kamrater" \
+    "crew_start_3 start-ge-dom-vad-de-tål" "crew_start_4 start-Jag-har-en-plan" \
+    "crew_start_5 start-nu-gäller-det" "crew_start_6 start-uppoffring" \
+    "crew_win_1 vinst-bra-jobbat-fika" "crew_win_2 vinst-dans-på-rosor" \
+    "crew_win_3 vinst-lätt-som-en-plätt" "crew_win_4 vinst-slipsten" \
+    "crew_loss_1 förlust-inte-lätt" "crew_loss_2 förlust-lite-tråkigt" \
+    "crew_loss_3 förlust-pipsvängen" "crew_loss_4 förlust-tack-å-gonatt" \
+    "crew_loss_5 förlust-tur-med-vädret" "crew_loss_6 förlust-vänder-blad"; do
+  set -- $pair
+  trim "$S/ElevenLabs_$2.mp3" "$T/$1.wav"
+  intercom "$1" "$T/$1.wav" -15
+done
 rm -rf "$T"

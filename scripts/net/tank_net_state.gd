@@ -9,6 +9,8 @@ const FLAG_BURNING: int = 2
 const FLAG_MG_FIRING: int = 4
 const FLAG_MG_ROOF: int = 8
 const FLAG_WOUNDED: int = 16
+## The engine is damaged or destroyed: its black smoke shows to everyone.
+const FLAG_ENGINE_SMOKE: int = 32
 const FLAG_OWNER_DATA: int = 128
 ## Module order in the owner data (2 bits each).
 ## 2 bits each in a u16: at most 8.

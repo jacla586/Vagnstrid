@@ -14,7 +14,9 @@ extends RefCounted
 ## part of their collider (a tank's tracks): the fragment must strike near the target,
 ## fragment_shielded(origin: Vector3) -> bool, for cover that isn't a collider (the
 ## commander's open hatch lid), and fragment_radius_factor() -> float, for targets the
-## fragments reach farther (soldiers: both radii scaled).
+## fragments reach farther (soldiers: both radii scaled), and
+## note_fragment_shooter(shooter: Node), called before on_fragment_hit, for targets that
+## credit the shooter (a tank's tracks: an assist).
 ## Every tank of another team within ShellData.optics_dirt_radius_m gets dirt on its
 ## optics (Tank.add_optics_dirt; no sight line needed: the dust cloud spreads).
 
@@ -38,7 +40,8 @@ static func fragment_hit_chance(shell: ShellData, distance: float, radius_factor
 ## Applies fragments around `point`. Returns the results of every target hit.
 ## Targets of `shooter_team` are spared (no friendly fire; -1 = spare nobody).
 static func detonate(world: World3D, tree: SceneTree, point: Vector3, normal: Vector3,
-		shell: ShellData, rng: RandomNumberGenerator, shooter_team: int = -1) -> Array[HitResult]:
+		shell: ShellData, rng: RandomNumberGenerator, shooter_team: int = -1,
+		shooter: Node = null) -> Array[HitResult]:
 	var results: Array[HitResult] = []
 	if not shell.is_explosive():
 		return results
@@ -57,6 +60,8 @@ static func detonate(world: World3D, tree: SceneTree, point: Vector3, normal: Ve
 			continue
 		if rng.randf() >= chance:
 			continue
+		if target.has_method("note_fragment_shooter"):
+			target.note_fragment_shooter(shooter)
 		var result: HitResult = target.on_fragment_hit(shell, distance)
 		if result != null:
 			results.append(result)

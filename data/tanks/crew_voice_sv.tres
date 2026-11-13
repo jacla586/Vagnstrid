@@ -8,6 +8,7 @@
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_gunner_hit.ogg" id="5_gunner"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_commander_hit.ogg" id="6_commander"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_mine.ogg" id="7_mine"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_he.ogg" id="8_he"]
 
 [resource]
 script = ExtResource("1_crew")
@@ -17,3 +18,4 @@ driver_hit = ExtResource("4_driver")
 gunner_hit = ExtResource("5_gunner")
 commander_hit = ExtResource("6_commander")
 mine = ExtResource("7_mine")
+he_dirt = ExtResource("8_he")

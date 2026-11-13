@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="EffectsSetData" load_steps=17 format=3]
+[gd_resource type="Resource" script_class="EffectsSetData" load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/effects_set_data.gd" id="1_set"]
 [ext_resource type="Resource" path="res://data/effects/impact_ground.tres" id="2_impact_ground"]
@@ -15,6 +15,7 @@
 [ext_resource type="Resource" path="res://data/effects/fire_flames.tres" id="13_fire_flames"]
 [ext_resource type="Resource" path="res://data/effects/fire_smoke.tres" id="14_fire_smoke"]
 [ext_resource type="Resource" path="res://data/effects/gun_smoke.tres" id="15_gun_smoke"]
+[ext_resource type="Resource" path="res://data/effects/engine_smoke.tres" id="16_engine_smoke"]
 
 [resource]
 script = ExtResource("1_set")
@@ -32,3 +33,4 @@ track_dust = ExtResource("12_track_dust")
 fire_flames = ExtResource("13_fire_flames")
 fire_smoke = ExtResource("14_fire_smoke")
 gun_smoke = ExtResource("15_gun_smoke")
+engine_smoke = ExtResource("16_engine_smoke")

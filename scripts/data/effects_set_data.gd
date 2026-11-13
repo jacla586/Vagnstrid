@@ -40,3 +40,6 @@ extends Resource
 @export var fire_flames: BurstData
 ## Its smoke column (continuous; Burning leans it with the weather's fire smoke drift).
 @export var fire_smoke: BurstData
+## Black smoke from a damaged or destroyed engine (continuous, over the engine deck; a
+## tall column everyone sees: Tank, snapshot flag ENGINE_SMOKE).
+@export var engine_smoke: BurstData

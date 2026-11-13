@@ -6,6 +6,7 @@ extends Node3D
 
 var tank: Tank
 var module_id: StringName
+var _shooter: Node
 
 
 func _ready() -> void:
@@ -30,5 +31,12 @@ func fragment_hit_ok(point: Vector3) -> bool:
 	return tank.is_point_in_module(module_id, point, 0.3)
 
 
+## Explosion: who fired the round whose fragments come next (credit for the damage).
+func note_fragment_shooter(shooter: Node) -> void:
+	_shooter = shooter
+
+
 func on_fragment_hit(shell_data: ShellData, _distance: float) -> HitResult:
-	return tank.on_module_fragment(module_id, shell_data)
+	var shooter: Node = _shooter if is_instance_valid(_shooter) else null
+	_shooter = null
+	return tank.on_module_fragment(module_id, shell_data, shooter)

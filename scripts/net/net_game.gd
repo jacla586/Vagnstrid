@@ -776,6 +776,7 @@ func _update_thunder(delta: float) -> void:
 	if mode != _thunder_hooked:
 		_thunder_hooked = mode
 		mode.checkpoint_taken.connect(func(_i: int) -> void: _thunder_timer = 0.0)
+		mode.pause_ended.connect(func(_i: int) -> void: _thunder_timer = 0.0)
 		mode.round_over.connect(func(_n: int, _r: Dictionary) -> void: _thunder_timer = 0.0)
 		mode.match_over.connect(func(_w: int) -> void: _send_thunder_state(mode))
 		mode.round_started.connect(func(_n: int, _t: int) -> void: _thunder_timer = 0.0)

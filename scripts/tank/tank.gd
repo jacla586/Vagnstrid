@@ -226,6 +226,9 @@ var _since_mg_fired: float = 999.0
 ## Slow enough for repairs, as of the last check before a shot's shove.
 var _at_rest: bool = false
 var _fire_effect: Node3D
+## Black smoke over a damaged engine (null: none); puppets go by the snapshot flag.
+var _engine_smoke: GPUParticles3D
+var _net_engine_smoke: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 ## Engine, track, gun and hatch sounds (null when the data has none).
 var _audio: TankAudio
@@ -233,6 +236,9 @@ var _exhaust: TankExhaust
 var _gun_render_layer: int = 1
 ## Gun rounds that struck this tank since it last (re)spawned (killcam, hit picture).
 var _hits_this_life: Array[HitRecord] = []
+## Host: tanks (instance ids) whose HE fragments harmed a module this life without a
+## round striking the tank (a near miss throwing a track): assists like a damaging hit.
+var _fragment_damagers: Dictionary = {}
 var _incoming_origin: Vector3 = Vector3.ZERO
 var _incoming_shooter: Node = null
 var _life_clock: float = 0.0
@@ -989,19 +995,21 @@ func on_shell_hit(shell_data: ShellData, point: Vector3, normal: Vector3,
 	var turret_basis: Basis = _turret.global_basis.orthonormalized().inverse()
 	var was_burning: bool = _damage.is_burning()
 	var was_out: bool = _knocked_out
+	var hp_before: float = _damage.hp
 	var killed: bool = _damage.apply_hit(shell_data, result, part, face, local_point,
 			to_local(point), hull_basis * dir, _turret.to_local(point), turret_basis * dir)
 	if shell_data.caliber_mm >= THREAT_MIN_CALIBER_MM and not was_out:
 		_record_hit(shell_data, result, point, hull_basis * dir, killed,
-				_damage.is_burning() and not was_burning)
+				_damage.is_burning() and not was_burning, maxf(hp_before - _damage.hp, 0.0))
 	if killed:
 		_knock_out()
 	return result
 
 
 func _record_hit(shell_data: ShellData, result: HitResult, point: Vector3, hull_dir: Vector3,
-		killed: bool, set_fire: bool) -> void:
+		killed: bool, set_fire: bool, hp_taken: float) -> void:
 	var r := HitRecord.new()
+	r.hp_taken = hp_taken
 	r.time_s = _life_clock
 	r.outcome = result.outcome
 	r.part = result.part
@@ -1043,13 +1051,16 @@ func on_mine(track: StringName, point: Vector3, mine_data: MineData) -> void:
 
 
 ## Called by a ModuleFragmentTarget when HE fragments reach an external module.
-func on_module_fragment(id: StringName, shell_data: ShellData) -> HitResult:
+func on_module_fragment(id: StringName, shell_data: ShellData, shooter_node: Node = null) -> HitResult:
 	if _knocked_out or shell_data.fragment_module_damage <= 0.0:
 		return null
 	var before: int = _damage.state(id)
 	_damage.apply_fragment(id, shell_data)
 	if _damage.state(id) == before:
 		return null
+	var shooter: Tank = _shooter_tank(shooter_node)
+	if shooter != null:
+		_fragment_damagers[shooter.get_instance_id()] = true
 	var result := HitResult.new()
 	result.outcome = HitResult.Outcome.HIT
 	result.part = "fragments"
@@ -1076,6 +1087,7 @@ func repair() -> void:
 	BattleMarks.clear(self)
 	_damage.reset()
 	_hits_this_life.clear()
+	_fragment_damagers.clear()
 	_life_clock = 0.0
 	# As at the first spawn: the commander unhurt and inside, gun loaded with the first
 	# ammo, full smoke, no cooldowns; the squad full and on the tank.
@@ -1132,6 +1144,13 @@ func _knock_out(abandoned: bool = false) -> void:
 		_emit_eliminated(abandoned)
 
 
+## Host: a game mode's rule knocks the tank out (ThunderRoad: too long outside the
+## corridor). Like abandoning: a loss, nobody's kill.
+func knock_out_by_rule() -> void:
+	if not _knocked_out and not net_puppet:
+		_knock_out(true)
+
+
 ## Host: eliminated(killer, assists) from this life's hit records.
 func _emit_eliminated(abandoned: bool) -> void:
 	var killer: Tank = null
@@ -1141,11 +1160,16 @@ func _emit_eliminated(abandoned: bool) -> void:
 			killer = instance_from_id(kill.shooter_id) as Tank if kill.shooter_id != 0 else null
 	if killer != null and (not is_instance_valid(killer) or not killer.is_enemy_of(self)):
 		killer = null
-	var assists: Array[Tank] = []
+	var damagers: Array[int] = []
 	for r: HitRecord in _hits_this_life:
-		if r.shooter_id == 0 or not r.dealt_damage():
-			continue
-		var t := instance_from_id(r.shooter_id) as Tank
+		if r.shooter_id != 0 and r.dealt_damage() and not damagers.has(r.shooter_id):
+			damagers.append(r.shooter_id)
+	for id: int in _fragment_damagers:
+		if not damagers.has(id):
+			damagers.append(id)
+	var assists: Array[Tank] = []
+	for id: int in damagers:
+		var t := instance_from_id(id) as Tank
 		if t == null or not is_instance_valid(t) or t == killer or assists.has(t) \
 				or not t.is_enemy_of(self):
 			continue
@@ -1294,6 +1318,44 @@ func _make_wreck(at: Transform3D, no_turret: bool = false) -> void:
 		wrecks[0].queue_free()
 
 
+## The engine is damaged or destroyed and the tank still fights (a fire or the wreck's
+## own smoke covers it otherwise): black smoke shows it to everyone.
+func is_engine_smoking() -> bool:
+	if _knocked_out or _damage.is_burning():
+		return false
+	if net_puppet:
+		return _net_engine_smoke
+	return _damage.state(&"engine") != TankDamage.State.OK
+
+
+## A tall black column over the engine deck (EffectsSetData.engine_smoke); turned off
+## it stops and the last puffs drift away before it goes.
+func _set_engine_smoke(on: bool) -> void:
+	if on and _engine_smoke == null:
+		var burst: BurstData = EffectFx.SET.engine_smoke
+		if burst == null:
+			return
+		_engine_smoke = EffectFx.emitter(burst)
+		_engine_smoke.name = "EngineSmoke"
+		_engine_smoke.preprocess = 2.0
+		_engine_smoke.position = _engine_deck()
+		add_child(_engine_smoke)
+		_engine_smoke.emitting = true
+	elif not on and _engine_smoke != null:
+		var smoke: GPUParticles3D = _engine_smoke
+		_engine_smoke = null
+		smoke.emitting = false
+		get_tree().create_timer(smoke.lifetime + 0.5).timeout.connect(smoke.queue_free)
+
+
+## Top of the engine module's box (hull space), else the rear deck.
+func _engine_deck() -> Vector3:
+	for m: ModuleData in _damage.get_modules():
+		if m.id == &"engine":
+			return m.center + Vector3(0.0, m.size.y * 0.5 + 0.1, 0.0)
+	return Vector3(0.0, data.hull_size.y * 0.5, data.hull_size.z * 0.35)
+
+
 ## Smoke and flames while the fuel tank burns (the knock-out has its own).
 func _set_fire_effect(on: bool) -> void:
 	if on and _fire_effect == null:
@@ -1319,6 +1381,7 @@ func _update_damage(delta: float) -> void:
 	var still: bool = _at_rest and (not driving or _damage.is_immobilised())
 	_damage.tick(delta, still)
 	_set_fire_effect(_damage.is_burning() and not _knocked_out)
+	_set_engine_smoke(is_engine_smoking())
 	if _damage.knocked_out and not _knocked_out:
 		_knock_out()
 
@@ -1905,6 +1968,7 @@ func get_net_state(for_owner: bool) -> TankNetState:
 	s.roof_mg_pitch = _roof_mg_pitch.rotation.x
 	if _knocked_out: s.flags |= TankNetState.FLAG_KNOCKED_OUT
 	if _damage.is_burning(): s.flags |= TankNetState.FLAG_BURNING
+	if is_engine_smoking(): s.flags |= TankNetState.FLAG_ENGINE_SMOKE
 	var roof: bool = _command.mg_use_roof and can_use_roof_mg()
 	if _command.fire_mg and not fire_blocked and not _knocked_out and get_active_mg(roof) != null \
 			and _mg_reload[1 if roof else 0] <= 0.0:
@@ -1994,7 +2058,9 @@ func net_set_status(s: TankNetState) -> void:
 				s.repair_left_s, s.repair_total_s)
 	else:
 		_damage.set_net_burning(s.has(TankNetState.FLAG_BURNING))
+	_net_engine_smoke = s.has(TankNetState.FLAG_ENGINE_SMOKE)
 	_set_fire_effect(_damage.is_burning() and not _knocked_out)
+	_set_engine_smoke(is_engine_smoking())
 
 
 ## Puppet: a main-gun shell the host fired (or a ricochet), shown here without effect.

@@ -9,6 +9,9 @@ extends Resource
 @export var display_name: String = "ThunderRoad"
 @export_multiline var briefing: String = ""
 
+## Command radio calls to the own team (checkpoint taken/lost, ceasefire, clock).
+@export var calls: ThunderCallsData
+
 @export_group("Corridors")
 ## Defenders keep within this of the road (m, each side) and ahead of the front less
 ## defender_behind_front_m...
@@ -16,13 +19,14 @@ extends Resource
 ## ...which lets defenders posted forward (or in the zone) fight on a while when a
 ## checkpoint falls instead of finding themselves outside at once (m).
 @export var defender_behind_front_m: float = 150.0
-## ...attackers within this (m, each side), anywhere along it.
+## ...attackers within this (m, each side), from the start up to this far past the next
+## checkpoint (m; a dash on for the one after is outside).
 @export var attacker_half_width_m: float = 300.0
+@export var attacker_ahead_of_checkpoint_m: float = 100.0
 ## Outside its corridor a tank can't fire, shows on the other team's maps this often (s)...
 @export var outside_mark_s: float = 4.0
-## ...and after this long (s) its commander is wounded (hatch shut), again each time the
-## wound heals while still outside.
-@export var outside_grace_s: float = 20.0
+## ...and after this long (s) it is knocked out (a loss, nobody's kill).
+@export var outside_knockout_s: float = 30.0
 ## The defenders' corridor starts this far ahead of the attackers' start before the
 ## first checkpoint falls (m).
 @export var start_front_m: float = 150.0
@@ -40,10 +44,21 @@ extends Resource
 ## ...and left without attackers the progress falls back this many times slower.
 @export var capture_decay_factor: float = 0.5
 
+@export_group("Ceasefire")
+## A checkpoint taken brings a ceasefire this long (s, 0 = none; not after the last):
+## nobody fires, the clock and the waves stand, then the next checkpoint opens. Both
+## sides get to regroup instead of rolling on from one checkpoint into the next.
+@export var pause_s: float = 40.0
+## Meanwhile attackers keep within this far past the checkpoint taken (m)...
+@export var pause_attacker_ahead_m: float = 50.0
+## ...and defenders fall back to this far past it (m; at most to the next zone's near
+## edge). Outside, the outside rules apply (outside_knockout_s).
+@export var pause_defender_back_m: float = 200.0
+
 @export_group("Time and lives")
-## The attackers' time bank (s), topped up per checkpoint taken.
-@export var start_time_s: float = 390.0
-@export var time_per_capture_s: float = 120.0
+## The attackers' time for each checkpoint (s), the same for every one: a fresh clock
+## at the round's start and when a ceasefire ends (nothing carries over).
+@export var checkpoint_time_s: float = 240.0
 ## Time up with attackers in the zone: overtime, the round runs on while one is alive
 ## there and ends this long after the last one left or fell (s).
 @export var overtime_grace_s: float = 3.0
@@ -68,6 +83,19 @@ extends Resource
 ## At the round's start defenders begin in the first checkpoint's zone (ready to dig
 ## in: posts, mines) rather than at a respawn spawn.
 @export var defender_start_in_zone: bool = true
+
+@export_group("Points")
+## Personal points (Scoreboard, most first): teamwork counts more than the kill.
+## A knock-out, an assist...
+@export var kill_points: float = 20.0
+@export var assist_points: float = 10.0
+## ...every attacker in the zone when it falls, and per second while it is being taken...
+@export var capture_points: float = 100.0
+@export var capture_points_per_s: float = 2.0
+## ...every defender in the zone per second while attackers are in it...
+@export var defend_points_per_s: float = 2.0
+## ...and every living defender when the attackers run out of time or lives.
+@export var hold_points: float = 100.0
 
 @export_group("Rounds")
 ## Pause between the rounds and after the match (s), showing the result.

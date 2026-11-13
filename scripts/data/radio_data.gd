@@ -1,47 +1,30 @@
 class_name RadioData
 extends Resource
-## The squad's radio calls to its own tank (data/squads/radio_sv.tres): what is said
-## (subtitle) and the recordings. Contacts give a clock direction from the tank's hull
+## The squad's radio calls to its own tank (data/squads/radio_sv.tres): the recordings
+## (no subtitles: the game's text is English, the Swedish voices are a bonus). Contacts give a clock direction from the tank's hull
 ## (12 = straight ahead): `armour[h - 1]`, `infantry[h - 1]`.
 
 @export var under_attack: AudioStream
-@export var under_attack_text: String = "Vi är under anfall!"
 ## The squad gets off the tank.
 @export var dismount: AudioStream
-@export var dismount_text: String = "Avsittning!"
 ## Close protection (F): the squad escorts the tank.
 @export var escort: AudioStream
-@export var escort_text: String = "Närskydd!"
 @export var returning: AudioStream
-@export var returning_text: String = "Uppsittning!"
 @export var in_position: AudioStream
-@export var in_position_text: String = "På plats!"
 ## An AT round is about to be fired (comes before the queue).
 @export var at_fire: AudioStream
-@export var at_fire_text: String = "Skott kommer! Klart bakåt!"
 ## How the AT round landed (right after at_fire, never skipped).
 @export var at_hit: AudioStream
-@export var at_hit_text: String = "Träff!"
 @export var at_miss: AudioStream
-@export var at_miss_text: String = "Miss!"
 ## Mines: the squad sets off to lay one, it is laid, an enemy tank drove over it.
 @export var mine_laying: AudioStream
-@export var mine_laying_text: String = "Upprättar minering!"
 @export var mine_armed: AudioStream
-@export var mine_armed_text: String = "Mina armerad!"
 @export var mine_triggered: AudioStream
-@export var mine_triggered_text: String = "Mina utlöst!"
 ## Twelve recordings each, one per clock hour (1..12).
 @export var armour: Array[AudioStream] = []
-@export var armour_text: String = "Pansar, klockan %s!"
 @export var infantry: Array[AudioStream] = []
-@export var infantry_text: String = "Skyttar, klockan %s!"
-@export var clock_words: PackedStringArray = ["ett", "två", "tre", "fyra", "fem", "sex",
-		"sju", "åtta", "nio", "tio", "elva", "tolv"]
 @export var volume_db: float = 0.0
 ## The same kind of call isn't repeated within this long (s); contacts count per clock hour.
 @export var repeat_cooldown_s: float = 10.0
 ## Calls waiting while one plays; older ones are dropped beyond this.
 @export var max_queue: int = 2
-## How long the subtitle stays after the call (s).
-@export var subtitle_extra_s: float = 1.5
