@@ -352,7 +352,9 @@ shows on the minimap. This is what we test first.
   fire, else the last penetration) with a chase camera (`PlayerViews.set_killcam` hides
   the optics), any key skips; then `KillcamPanel` shows the hit picture (English text;
   the tank's own model rendered top and side in two small SubViewports, turret and gun as
-  they were, all hits this life drawn on it) until the respawn. Abandon: none.
+  they were, all hits this life drawn on it) until the respawn; behind it (and after any knock-out without a
+  replay) `Killcam._spectate` follows the nearest living teammate from behind its turret (`KillcamData` "Spectate";
+  `fire` goes to the next), or holds still over the own wreck when none is left. Abandon: none.
 - Smoke: `TankCommand.smoke` (key X; bots when too exposed, see below) fires a salvo,
   `TankData.smoke_salvos` (3) per life, `smoke_cooldown_s` (20) apart for players and bots: `smoke_clouds_per_salvo` `SmokeCloud`s
   ahead of the turret. Clients send it (and abandon) by `rpc_tank_action`; the host sends the

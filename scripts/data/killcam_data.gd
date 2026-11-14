@@ -17,3 +17,12 @@ extends Resource
 @export var chase_back_m: float = 6.0
 @export var chase_up_m: float = 1.2
 @export var hold_distance_m: float = 7.0
+
+@export_group("Spectate")
+## After the replay, until the respawn: a chase camera behind a living teammate (nearest
+## first; a click goes to the next), looking the way its turret points; none left: a
+## still view over the own wreck.
+@export var spectate_back_m: float = 14.0
+@export var spectate_up_m: float = 5.0
+## How quickly the camera catches up (1/s).
+@export var spectate_follow: float = 4.0

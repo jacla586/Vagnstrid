@@ -3,7 +3,8 @@ extends Node
 ## Player rig: when the own tank is knocked out by a gun round, replays that round
 ## (HitRecord from Tank.get_kill_record): a chase camera follows a ghost round from
 ## where it was fired to where it struck, then holds on the entry (red marker). Any
-## key or click skips. The hit picture (KillcamPanel) stays up until the respawn.
+## key or click skips. The hit picture (KillcamPanel) stays up until the respawn; behind
+## it a chase camera follows a living teammate (KillcamData "Spectate"; click: the next).
 
 const GHOST_COLOR: Color = Color(1.0, 0.6, 0.2)
 const MARK_COLOR: Color = Color(1.0, 0.15, 0.1)
@@ -24,6 +25,8 @@ var _running: bool = false
 ## The replay for this knock-out is over, was skipped or had nothing to show.
 var _played: bool = false
 var _tank: Tank
+var _spectating: bool = false
+var _watched: Tank
 
 
 func _ready() -> void:
@@ -56,6 +59,7 @@ func _process(delta: float) -> void:
 		_wait = -1.0
 		if _running:
 			_stop()   # respawned
+		_end_spectate()
 		return
 	if _wait >= 0.0:
 		_wait -= delta
@@ -65,9 +69,16 @@ func _process(delta: float) -> void:
 	if _running:
 		_time += delta
 		_update_replay()
+	elif _played:
+		_spectate(delta)
 
 
 func _input(event: InputEvent) -> void:
+	if _spectating:
+		if event.is_action_pressed("fire"):
+			_watched = _next_teammate(_watched)
+			get_viewport().set_input_as_handled()
+		return
 	if not _running:
 		return
 	var key := event as InputEventKey
@@ -121,6 +132,63 @@ func _stop() -> void:
 	_mark.visible = false
 	_camera.current = false
 	views.set_killcam(false)
+
+
+# --- Spectating a teammate ------------------------------------------------------------
+
+func _spectate(delta: float) -> void:
+	var first: bool = not _spectating
+	if first:
+		_spectating = true
+		views.set_killcam(true)
+		_camera.current = true
+	if _watched == null or not is_instance_valid(_watched) or _watched.is_knocked_out():
+		var had: bool = _watched != null
+		_watched = _next_teammate(null)
+		first = first or (had and _watched != null)
+	if _watched == null:
+		if first or _camera.global_position == Vector3.ZERO:
+			var at: Vector3 = _tank.global_position
+			_camera.global_position = at - _tank.global_basis.z * -data.spectate_back_m \
+					+ Vector3.UP * data.spectate_up_m * 2.0
+			_camera.look_at(at, Vector3.UP)
+		return
+	var target: Vector3 = _watched.get_global_transform_interpolated().origin
+	var yaw: float = _watched.get_turret_global_yaw()
+	var ahead := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var want: Vector3 = target - ahead * data.spectate_back_m + Vector3.UP * data.spectate_up_m
+	if first:
+		_camera.global_position = want
+	else:
+		_camera.global_position = _camera.global_position.lerp(want,
+				1.0 - exp(-data.spectate_follow * delta))
+	_camera.look_at(target + ahead * 20.0 + Vector3.UP * 2.0, Vector3.UP)
+
+
+func _end_spectate() -> void:
+	if not _spectating:
+		return
+	_spectating = false
+	_watched = null
+	_camera.current = false
+	views.set_killcam(false)
+
+
+## The living teammate after `after` by distance from the own tank (nearest first, round).
+func _next_teammate(after: Tank) -> Tank:
+	var mates: Array[Tank] = []
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var t := node as Tank
+		if t != null and t != _tank and t.team == _tank.team and not t.is_knocked_out() \
+				and t.is_inside_tree():
+			mates.append(t)
+	if mates.is_empty():
+		return null
+	var from: Vector3 = _tank.global_position
+	mates.sort_custom(func(a: Tank, b: Tank) -> bool:
+		return a.global_position.distance_squared_to(from) < b.global_position.distance_squared_to(from))
+	var i: int = mates.find(after) if after != null else -1
+	return mates[(i + 1) % mates.size()]
 
 
 ## Point on the drawn path at share u (0 muzzle .. 1 impact).
