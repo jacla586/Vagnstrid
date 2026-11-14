@@ -77,6 +77,9 @@ func _parse_command_line() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
 	var map: String = DEFAULT_MAP
 	var join_ip: String = ""
+	MatchSettings.load_settings()
+	if not MatchSettings.player_name.is_empty():
+		player_name = MatchSettings.player_name   # --name below still wins
 	var do_host: bool = false
 	var i: int = 0
 	while i < args.size():

@@ -13,6 +13,8 @@ static var weather: String = "random"
 ## Bot tanks on the players' side in free fight (bot hunt).
 static var free_allies: int = 0
 const MAX_FREE_ALLIES: int = 8
+## The player's name as last typed in the main menu ("" = none yet).
+static var player_name: String = ""
 static var _loaded: bool = false
 
 
@@ -25,6 +27,7 @@ static func load_settings() -> void:
 		team_size = clampi(int(cfg.get_value("match", "team_size", 0)), 0, MAX_TEAM_SIZE)
 		weather = str(cfg.get_value("match", "weather", "random"))
 		free_allies = clampi(int(cfg.get_value("match", "free_allies", 0)), 0, MAX_FREE_ALLIES)
+		player_name = str(cfg.get_value("player", "name", ""))
 
 
 static func set_team_size(n: int) -> void:
@@ -51,4 +54,13 @@ static func set_free_allies(n: int) -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SETTINGS_PATH)
 	cfg.set_value("match", "free_allies", free_allies)
+	cfg.save(SETTINGS_PATH)
+
+
+static func set_player_name(n: String) -> void:
+	load_settings()
+	player_name = n.strip_edges()
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	cfg.set_value("player", "name", player_name)
 	cfg.save(SETTINGS_PATH)

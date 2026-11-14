@@ -62,6 +62,10 @@ func _ready() -> void:
 	_name = LineEdit.new()
 	_name.text = NetSession.instance.player_name
 	_name.placeholder_text = "Name"
+	_name.text_changed.connect(func(t: String) -> void:
+		MatchSettings.set_player_name(t)
+		if not t.strip_edges().is_empty():
+			NetSession.instance.player_name = t.strip_edges())
 	box.add_child(_field("Name", _name))
 
 	var garage: Button = _button("Garage", func() -> void:
