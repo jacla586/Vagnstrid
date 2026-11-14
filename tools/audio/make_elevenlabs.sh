@@ -180,7 +180,7 @@ done
 # (CrewVoiceData "Crash"); named from their text by tools/audio/transcribe.py.
 for pair in "tut_0_welcome tut-0-välkommen" "tut_1_drive tut-1-kör" "tut_1_done tut-1-klar" \
     "tut_2_open tut-2-öppna" "tut_2_danger tut-2-fara" "tut_2_close tut-2-stäng" \
-    "tut_3_binoculars tut-3-kikare" "tut_3_done tut-3-klar" "tut_4_spot tut-4-markera" \
+    "tut_3_binoculars tut-3-kikare" "tut_3_done tut-3-klar" "tut_4_spot tut-4-markera" "tut_4_done tut-4-klar" \
     "tut_5_sight tut-5-sikte" "tut_5_short tut-5-kort" "tut_5_hit tut-5-träff" \
     "tut_6_he tut-6-he" "tut_6_done tut-6-klar" "tut_7_map tut-7-karta" "tut_7_mine tut-7-mina" \
     "tut_7_recall tut-7-hem" "tut_7_done tut-7-klar" "tut_8_under_fire tut-8-beskjuten" \
