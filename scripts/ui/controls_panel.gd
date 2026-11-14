@@ -72,7 +72,7 @@ func _fill(list: VBoxContainer) -> void:
 		if parts.size() < 2:
 			continue
 		var actions: PackedStringArray = parts[0].strip_edges().split(",", false)
-		list.add_child(_row(actions, _expand(parts[1].strip_edges())))
+		list.add_child(_row(actions, expand(parts[1].strip_edges())))
 
 
 func _row(actions: PackedStringArray, text: String) -> Control:
@@ -101,7 +101,8 @@ func _row(actions: PackedStringArray, text: String) -> Control:
 
 
 ## {action} -> its key.
-func _expand(text: String) -> String:
+## `{action}` in `text` -> that action's key (mouse buttons in lower case mid-sentence).
+static func expand(text: String) -> String:
 	var re := RegEx.create_from_string("\\{([a-z_0-9]+)\\}")
 	var out: String = text
 	for m: RegExMatch in re.search_all(text):

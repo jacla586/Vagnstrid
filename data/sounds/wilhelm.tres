@@ -12,5 +12,5 @@ streams = Array[AudioStream]([ExtResource("2_s"), ExtResource("3_s"), ExtResourc
 volume_db = 6.0
 unit_size_m = 16.0
 max_distance_m = 100.0
-bus = &"Master"
+bus = &"Effects"
 pitch_variance = 0.04

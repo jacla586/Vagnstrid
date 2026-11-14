@@ -32,6 +32,7 @@ var _allies: SpinBox
 var _weather: OptionButton
 var _credits: Control
 var _controls: ControlsPanel
+var _settings: SettingsPanel
 
 
 func _ready() -> void:
@@ -66,7 +67,12 @@ func _ready() -> void:
 	var garage: Button = _button("Garage", func() -> void:
 		get_tree().change_scene_to_file(GARAGE_SCENE))
 	box.add_child(garage)
-	box.add_child(_button("Controls", _show_controls))
+	var help_row := HBoxContainer.new()
+	help_row.add_theme_constant_override("separation", 12)
+	for b: Button in [_button("Controls", _show_controls), _button("Settings", _show_settings)]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		help_row.add_child(b)
+	box.add_child(help_row)
 
 	_map = OptionButton.new()
 	_maps = _find_maps()
@@ -199,6 +205,14 @@ func _show_controls() -> void:
 		_controls = ControlsPanel.new()
 		add_child(_controls)
 	_controls.show()
+
+
+## Mouse, sound, graphics and display (SettingsPanel, GameSettings).
+func _show_settings() -> void:
+	if _settings == null:
+		_settings = SettingsPanel.new()
+		add_child(_settings)
+	_settings.show()
 
 
 ## Who made what (data/ui/credits.txt) over a dimmed menu; Close or Esc hides it.

@@ -3,7 +3,8 @@ extends Node
 ## Player rig: dresses the map in the match's weather (Weather.current()): our own sky
 ## shader, the sun's angle, colour and energy, AgX tone mapping, SSAO, glow, fog
 ## (density from WeatherData.visibility_m, so it matches what bots can see) and colour
-## grading; shadows, SSAO and glow settings from GraphicsData. The map's
+## grading; shadows, SSAO and glow settings from GraphicsData, each switched off or
+## shortened by the player's GameSettings (applied again when they change). The map's
 ## WorldEnvironment and Sun get copies of their resources; the map files never change.
 ## Rain: the rain loops (outside on World, muffled by the shut hatch; drumming on the
 ## roof on Own, loudest shut) and wet terrain (Terrain3D texture assets, put back on exit).
@@ -22,6 +23,9 @@ var _outside: AudioStreamPlayer
 var _roof: AudioStreamPlayer
 ## Terrain texture assets made wet: [asset, roughness, albedo colour] to put back.
 var _wet: Array = []
+var _env: Environment
+var _sun: DirectionalLight3D
+var _settings_version: int = -1
 
 
 func _ready() -> void:
@@ -42,8 +46,11 @@ func apply() -> void:
 		_set_environment(env, weather, graphics)
 		world_env.environment = env
 		world_env.set_meta(APPLIED_META, weather)
+	_env = world_env.environment if world_env != null else null
 	if sun != null:
 		_set_sun(sun, weather, graphics)
+	_sun = sun
+	_apply_user_settings()
 	if weather.rain_intensity > 0.0:
 		_start_rain(weather)
 		_wet_terrain(scene, weather)
@@ -51,10 +58,26 @@ func apply() -> void:
 
 
 func _process(_delta: float) -> void:
+	if _settings_version != GameSettings.version:
+		_apply_user_settings()
 	if _roof == null or tank == null or not is_instance_valid(tank):
 		return
 	var open: float = smoothstep(0.0, 1.0, tank.get_hatch_progress())
 	_roof.volume_db = Weather.current().rain_roof_db + ROOF_OPEN_DB * open
+
+
+## The player's choices on top of the weather's: shadows (off / how far), SSAO, glow.
+func _apply_user_settings() -> void:
+	_settings_version = GameSettings.version
+	var weather: WeatherData = Weather.current()
+	if _env != null:
+		_env.ssao_enabled = weather.ssao and GameSettings.ssao
+		_env.glow_enabled = weather.glow and GameSettings.glow
+	if _sun != null and is_instance_valid(_sun):
+		var far: float = GameSettings.shadow_distance_m()
+		_sun.shadow_enabled = weather.sun_shadows and far > 0.0
+		if far > 0.0:
+			_sun.directional_shadow_max_distance = far
 
 
 func _exit_tree() -> void:

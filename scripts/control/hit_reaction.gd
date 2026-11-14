@@ -69,7 +69,7 @@ func _on_struck(outcome: int, _direction: Vector3) -> void:
 			_ping_player.stream = stream
 			_ping_player.volume_db = ping_sound.volume_db
 			_ping_player.pitch_scale = ping_sound.random_pitch(_rng)
-			_ping_player.bus = ping_sound.bus if ping_sound.bus != &"" else &"Master"
+			_ping_player.bus = ping_sound.bus if ping_sound.bus != &"" else GameSettings.EFFECTS_BUS
 			_ping_player.play()
 
 

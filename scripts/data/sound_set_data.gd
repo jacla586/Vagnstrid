@@ -19,7 +19,7 @@ extends Resource
 @export var distant: SoundSetData
 @export var distant_from_m: float = 600.0
 ## Audio bus for one-shots of this set ("" = the caller's, usually the muffled World).
-## "Master" is heard clearly even with the own hatch shut.
+## "Effects" (past the muffled World bus) is heard clearly even with the own hatch shut.
 @export var bus: StringName = &""
 ## A blast loud enough to carry through a closed hull (cannon shots): heard from the
 ## World bus it plays on bus "Blast", only lightly muffled (AudioData.blast_*).

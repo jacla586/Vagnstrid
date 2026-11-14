@@ -32,7 +32,9 @@ static func of(node: Node) -> GroundCover:
 	if d != null:
 		gc = GroundCover.new()
 		gc.data = d
-		gc.rules = load(SET_PATH) as GroundCoverSetData
+		# A copy, with the player's grass range (GameSettings; drawing only, at map load).
+		gc.rules = (load(SET_PATH) as GroundCoverSetData).duplicate() as GroundCoverSetData
+		gc.rules.blade_range_m *= GameSettings.grass_factor()
 		var terrains: Array[Node] = root.find_children("*", "Terrain3D", true, false)
 		gc.terrain = terrains[0] if not terrains.is_empty() else null
 	_cache.clear()   # one scene at a time

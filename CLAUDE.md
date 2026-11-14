@@ -954,6 +954,18 @@ there and the break is over) and on the match's win/loss. Points
   explanation from `data/ui/controls.txt` ("## Heading", "action,action | text", `{action}` in the text = its
   key); key names come from the Input Map (`ControlsPanel.key_of`), so rebinding updates it. Add a line there
   when a new control comes.
+- Settings (`SettingsPanel`, from the main menu's Settings and the Esc menu's Settings…; values in `GameSettings`,
+  `user://settings.cfg` sections input/audio/video, defaults and presets in `SettingsData`, `data/ui/settings.tres`):
+  mouse factor and invert (every camera takes motion through `GameSettings.look`), volumes on buses Master,
+  `Effects` (World, Own and Blast send to it; ping and Wilhelm play on it) and `Voice` (SquadRadio), graphics
+  presets Low/Medium/High or Custom (render scale with FSR, shadows off/near/normal/far, SSAO, glow,
+  anti-aliasing, grass range (`GroundCover` copies its rules at map load), mesh LOD threshold), window mode,
+  v-sync, frame cap. `NetSession` applies them at start; `WeatherView` re-applies shadows/SSAO/glow when
+  `GameSettings.version` changes. Nothing in it may let a player see more than bots (fog, trees and the far
+  vegetation are never offered).
+- Help: F1 (`show_help`) shows `ControlsPanel` in the match (`HelpOverlay`, player rig HUD); the first match
+  shows a card of tips once (`data/ui/intro.txt`, `user://settings.cfg` help/intro_seen). The free debug camera
+  is F2 (`toggle_debug_view`).
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 
 ## Checking for errors (run these yourself)

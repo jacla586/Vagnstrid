@@ -24,8 +24,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	# Slower mouse when zoomed in, so aim feels the same on screen.
 	var zoom_scale: float = fov / tank.squad.data.view_fov_deg if can_view() else 1.0
-	_yaw = wrapf(_yaw - motion.relative.x * mouse_sensitivity * zoom_scale, -PI, PI)
-	_pitch = clampf(_pitch - motion.relative.y * mouse_sensitivity * zoom_scale,
+	_yaw = wrapf(_yaw - GameSettings.look(motion.relative).x * mouse_sensitivity * zoom_scale, -PI, PI)
+	_pitch = clampf(_pitch - GameSettings.look(motion.relative).y * mouse_sensitivity * zoom_scale,
 			deg_to_rad(-60.0), deg_to_rad(70.0))
 
 

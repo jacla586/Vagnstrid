@@ -62,6 +62,7 @@ func _ready() -> void:
 	instance = self
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_make_stats_overlay()
+	GameSettings.apply_all.call_deferred(get_tree())   # once the window is up
 	var smp := multiplayer as SceneMultiplayer
 	smp.peer_packet.connect(_on_packet)
 	multiplayer.peer_connected.connect(_on_peer_connected)

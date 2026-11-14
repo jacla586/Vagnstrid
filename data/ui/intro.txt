@@ -1,0 +1,8 @@
+# First-match tips (HelpOverlay), shown once. First line: the title. Other lines: action | text
+# ({action} = that action's key). Lines starting with "# " are comments.
+YOU ARE THE TANK COMMANDER
+toggle_hatch | Hatch open: you see all round, far and clearly, but shrapnel and rifles can hit you. Shut: safe, but only the periscope.
+toggle_gunner_sight | The gunner's sight: aim and {fire} to fire. Shells drop with range.
+spot | Spot the enemy you look at: it shows on your team's maps. Nothing marks enemies in the world.
+toggle_squad_map | Your squad of four: send them out or lay mines. {squad_recall} calls them back.
+show_help | All the controls.

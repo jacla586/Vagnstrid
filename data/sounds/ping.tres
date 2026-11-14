@@ -8,4 +8,4 @@ script = ExtResource("1_script")
 streams = Array[AudioStream]([ExtResource("2_s")])
 volume_db = 0.0
 pitch_variance = 0.06
-bus = &"Master"
+bus = &"Effects"

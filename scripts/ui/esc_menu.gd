@@ -4,7 +4,7 @@ extends Control
 ## change tank (TankSwitch: a respawn at the spawn; a loss unless fresh from a spawn),
 ## switch team (online: takes a bot's place, else pick a player of the other team to
 ## ask; NetGame), answer a team swap request, abandon the tank (stuck on a rock: it
-## counts as a loss and respawns) or the main menu. The game goes on behind it.
+## counts as a loss and respawns), the settings or the main menu. The game goes on behind it.
 ## PlayerController turns "abandon" into the command.
 
 signal abandon_requested
@@ -26,6 +26,7 @@ var _game: NetGame
 var _shown_offers: int = -1
 ## The tank picker while the TANKS page is open.
 var _picker: DeployScreen
+var _settings: SettingsPanel
 
 
 func _ready() -> void:
@@ -101,6 +102,7 @@ func _build_main() -> void:
 		_button("Switch team", func() -> void:
 			_game.swap_choices = []
 			_game.request_team_switch(0))
+	_button("Settings…", _show_settings)
 	_abandon = _button("Abandon tank (respawn)", func() -> void:
 		abandon_requested.emit()
 		_close())
@@ -139,6 +141,16 @@ func _build_swap() -> void:
 		if _game != null:
 			_game.swap_choices = []
 		_go(Page.MAIN))
+
+
+## Over the game (SettingsPanel); this menu hides meanwhile and comes back after.
+func _show_settings() -> void:
+	if _settings == null:
+		_settings = SettingsPanel.new()
+		add_child(_settings)
+		_settings.hidden.connect(func() -> void: _panel.visible = true)
+	_panel.visible = false
+	_settings.show()
 
 
 func _go(page: Page) -> void:

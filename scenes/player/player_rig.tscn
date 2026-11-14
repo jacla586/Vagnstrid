@@ -47,6 +47,7 @@
 [ext_resource type="Script" path="res://scripts/ui/optics_dirt.gd" id="98_optics_dirt"]
 [ext_resource type="Script" path="res://scripts/world/prop_break.gd" id="93_prop_break"]
 [ext_resource type="Resource" path="res://data/world/prop_break.tres" id="94_prop_break_data"]
+[ext_resource type="Script" path="res://scripts/ui/help_overlay.gd" id="95_help_overlay"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -283,6 +284,16 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("33_esc_menu")
 views = NodePath("../../PlayerViews")
+
+[node name="HelpOverlay" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("95_help_overlay")
 
 [node name="GroundCoverField" type="Node3D" parent="."]
 script = ExtResource("90_ground_cover")

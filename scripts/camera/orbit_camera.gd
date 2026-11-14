@@ -32,8 +32,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	var motion := event as InputEventMouseMotion
 	if motion == null:
 		return
-	_yaw = wrapf(_yaw - motion.relative.x * mouse_sensitivity, -PI, PI)
-	_pitch = clampf(_pitch - motion.relative.y * mouse_sensitivity,
+	_yaw = wrapf(_yaw - GameSettings.look(motion.relative).x * mouse_sensitivity, -PI, PI)
+	_pitch = clampf(_pitch - GameSettings.look(motion.relative).y * mouse_sensitivity,
 			deg_to_rad(min_pitch_deg), deg_to_rad(max_pitch_deg))
 
 

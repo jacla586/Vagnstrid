@@ -49,8 +49,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	# Slower mouse when zoomed in, so aim feels the same on screen.
 	var zoom_scale: float = fov / tank.data.commander_fov_deg
-	_target_yaw = wrapf(_target_yaw - motion.relative.x * mouse_sensitivity * zoom_scale, -PI, PI)
-	_target_pitch -= motion.relative.y * mouse_sensitivity * zoom_scale
+	_target_yaw = wrapf(_target_yaw - GameSettings.look(motion.relative).x * mouse_sensitivity * zoom_scale, -PI, PI)
+	_target_pitch -= GameSettings.look(motion.relative).y * mouse_sensitivity * zoom_scale
 
 
 ## True when looking from the open hatch (past the halfway point of opening).

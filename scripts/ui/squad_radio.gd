@@ -24,7 +24,7 @@ var _time: float = 0.0
 
 func _ready() -> void:
 	_player = AudioStreamPlayer.new()
-	_player.bus = &"Master"
+	_player.bus = GameSettings.VOICE_BUS
 	add_child(_player)
 
 
