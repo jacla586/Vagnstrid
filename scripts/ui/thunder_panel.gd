@@ -225,9 +225,10 @@ func _watch_calls(mode: ThunderRoadMode, delta: float) -> void:
 		_last_time = -1.0
 		_last_pause = -1.0
 		return
-	if _start_pending:
+	if _start_pending and MatchLobby.instance == null:
 		_start_pending = false
-		_banter(c.round_start)
+		if ModeRadio.claim_start(mode.get_round()):
+			_banter(c.round_start)
 	var attacking: bool = mode.role_of(tank.team) == ThunderRoadMode.Role.ATTACK
 	if _start_flash:
 		_start_flash = false

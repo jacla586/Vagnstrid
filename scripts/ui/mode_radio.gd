@@ -19,6 +19,9 @@ var _feed: KillFeed
 var _koth: KothMode
 var _free: FreeFight
 var _started: bool = false
+## Start lines already said, by match and round (`claim_start`): a new rig (deploy,
+## change tank, respawn online) mustn't greet the match again.
+static var _starts_said: Dictionary = {}
 var _down: Dictionary = {}            # tank -> [time knocked out, position] (enemies), or true (alive)
 var _banter_at: float = -INF
 # King of the Hill
@@ -55,13 +58,26 @@ func _process(delta: float) -> void:
 	var calls: ModeCallsData = _calls()
 	if calls == null:
 		return
-	if not _started:
+	if not _started and MatchLobby.instance == null:
 		_started = true
-		_banter(calls.round_start)
+		if claim_start(0):
+			_banter(calls.round_start)
 	if _koth != null:
 		_watch_koth(tank, calls, delta)
 	elif _free != null:
 		_watch_free(tank, calls)
+
+
+## True the first time it is asked for this match (the loaded scene) and round: only
+## the first rig with a chosen tank says the start line.
+static func claim_start(round_number: int) -> bool:
+	var tree := Engine.get_main_loop() as SceneTree
+	var scene: Node = tree.current_scene if tree != null else null
+	var key: String = "%d:%d" % [scene.get_instance_id() if scene != null else 0, round_number]
+	if _starts_said.has(key):
+		return false
+	_starts_said[key] = true
+	return true
 
 
 func _calls() -> ModeCallsData:
