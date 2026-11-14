@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant, lekplatser, valtbart, idrott, landmarken, overfarter
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant, lekplatser, valtbart, idrott, landmarken, overfarter, mapillary_objekt
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -339,6 +339,7 @@ scene.graph.update(frame_to='Vagkant', frame_from=scene.graph.base_frame)
 VALT = valtbart.Samling()   # vältbart (lyktstolpar, kontaktledning): glb-gruppen Valtbart
 vagkant.Vagkant(roads, MARK.korsningar, feat.get('vagpunkter', []), h, np.load(str(WORK / 'h_raw.npy')).astype(np.float64),
                 sample, to_world, add_merged, mat, valt=VALT, overgangar=MARK.overgangar,
+                mly=mapillary_objekt.MlyObjekt(WORK.parent / 'data'),   # verkliga lyktor och skyltar
                 platser=json.loads((WORK / 'platser.json').read_text()) if (WORK / 'platser.json').exists() else None
                 ).bygg()   # platser.json: platser.py (ortnamnsskyltarna)
 # Lekplatser (lekplatser.py): redskap i OSM:s lekplatsytor, unika per park

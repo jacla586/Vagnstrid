@@ -6,7 +6,7 @@ kartobjekt (skyltar, lyktor, trafikljus ...) som Mapillary har känt igen i bild
     .venv/bin/python -I scripts/hamta_mapillary.py tacka <projekt>
     .venv/bin/python -I scripts/hamta_mapillary.py bilder <projekt> [--radie 40] [--per-plats 6]
     .venv/bin/python -I scripts/hamta_mapillary.py bilder <projekt> --punkt E,N [--namn braskens_bro]
-    .venv/bin/python -I scripts/hamta_mapillary.py objekt <projekt>
+    .venv/bin/python -I scripts/hamta_mapillary.py objekt <projekt>   (+ bildlägen, för vagkant.py)
 
 Platserna för `bilder` är NVDB:s underfarter (Bro_och_tunnel "underfart") och planskilda GCM-passager
 inom kartans ruta, eller en egen punkt i SWEREF 99 TM. Bilderna hamnar i
@@ -239,8 +239,17 @@ def objekt(projekt):
                                                             'first_seen_at', 'last_seen_at')}})
         print(f'\r  ruta {i + 1}/{len(alla)}', end='', file=sys.stderr)
     print(file=sys.stderr)
+    # bildernas lägen: var Mapillary har sett (vagkant.py ersätter bara reglerna där)
+    pos = []
+    for c in alla:
+        for b in hamta('images', fields='id,computed_geometry,geometry', bbox=bbox_wgs(*c), limit=LIMIT).get('data', []):
+            g = b.get('computed_geometry') or b.get('geometry')
+            if g:
+                pos.append([round(v, 1) for v in sweref(g)])
     fil = GEO / projekt / 'data' / 'mapillary_objekt.geojson'
     fil.parent.mkdir(parents=True, exist_ok=True)
+    (fil.parent / 'mapillary_bildlagen.json').write_text(json.dumps(pos))
+    print(f'{len(pos)} bildlägen -> {fil.parent / "mapillary_bildlagen.json"}')
     json.dump({'type': 'FeatureCollection', 'crs': {'type': 'name', 'properties': {'name': 'EPSG:3006'}},
                'features': ut}, open(fil, 'w'), ensure_ascii=False)
     print(f'{len(ut)} kartobjekt -> {fil}')

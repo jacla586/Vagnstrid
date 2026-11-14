@@ -47,7 +47,12 @@ RACKE_BANK_M = 2.0
 KORSNING_FRI_M = 14.0
 HASTIGHETER = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
 ATLAS_RUTA = 128
-ATLAS = HASTIGHETER + ['vajning', 'stopp', 'buss', 'overgang']   # celler i ordning, 8 per rad
+ATLAS = HASTIGHETER + ['vajning', 'stopp', 'buss', 'overgang',
+         'huvudled', 'hall_hoger', 'gcm', 'parkering', 'p_forbud']   # celler i ordning, 8 per rad
+MLY_LYKTA_M = 12.0      # Mapillary-lykta: närmaste väg inom så här långt
+MLY_SKYLT_M = 15.0
+MLY_DUBBEL_M = 5.0      # lyktor närmare än så är samma lykta
+MLY_SKYLT_DUBBEL_M = 10.0
 SKYLT_AVST_M = 0.06    # skyltytan framför (och baksidan bakom) stolpens mitt; stolpen är 0,06 m
 NAMN_H_M = 0.16        # hållplatsnamnets skylt: höjd, bredd efter texten (minst H-skyltens)
 NAMN_HOJD_M = 2.2 - 0.25 - NAMN_H_M / 2 - 0.03   # namnskyltens mitt över marken, under H-skylten
@@ -72,7 +77,8 @@ def dike_flagga(r):
 
 
 def _atlas():
-    cols, rows = 8, 2
+    cols = 8
+    rows = (len(ATLAS) + cols - 1) // cols
     im = Image.new('RGBA', (cols * ATLAS_RUTA, rows * ATLAS_RUTA), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
     try:
@@ -128,6 +134,40 @@ def _atlas():
             d.line([(hx - 5, hy + 30), (hx - 16, hy + 46)], fill=svart, width=6)  # ben bak
             d.line([(hx - 2, hy + 12), (hx + 11, hy + 24)], fill=svart, width=5)  # arm fram
             d.line([(hx - 2, hy + 12), (hx - 14, hy + 22)], fill=svart, width=5)  # arm bak
+        elif namn == 'huvudled':
+            # B4 huvudled: gul ruta på spetsen med vit kant och tunn svart ytterkant
+            for rr, f in ((R, (20, 20, 20, 255)), (R - 3, (245, 245, 245, 255)), (R * 0.68, (245, 200, 30, 255))):
+                d.polygon([(c[0], c[1] - rr), (c[0] + rr, c[1]), (c[0], c[1] + rr), (c[0] - rr, c[1])], fill=f)
+        elif namn in ('hall_hoger', 'gcm', 'p_forbud'):
+            blå, vit = (20, 80, 170, 255), (245, 245, 245, 255)
+            if namn == 'p_forbud':   # C35 parkeringsförbud: blå cirkel, röd ring och snedstreck
+                d.ellipse([c[0] - R, c[1] - R, c[0] + R, c[1] + R], fill=(200, 30, 35, 255))
+                d.ellipse([c[0] - R * 0.78, c[1] - R * 0.78, c[0] + R * 0.78, c[1] + R * 0.78], fill=blå)
+                k = R * 0.78 * 0.7
+                d.line([(c[0] - k, c[1] - k), (c[0] + k, c[1] + k)], fill=(200, 30, 35, 255), width=11)
+                continue
+            d.ellipse([c[0] - R, c[1] - R, c[0] + R, c[1] + R], fill=vit)
+            d.ellipse([c[0] - R + 3, c[1] - R + 3, c[0] + R - 3, c[1] + R - 3], fill=blå)
+            if namn == 'hall_hoger':   # D1 påbjuden passage: pil snett ned åt höger
+                a0, a1 = (c[0] - 26, c[1] - 26), (c[0] + 18, c[1] + 18)
+                d.line([a0, a1], fill=vit, width=14)
+                d.polygon([(c[0] + 32, c[1] + 32), (c[0] + 32, c[1] + 2), (c[0] + 2, c[1] + 32)], fill=vit)
+            else:   # D4 gång- och cykelbana: gående överst, cykel under
+                hx, hy = c[0], c[1] - 30
+                d.ellipse([hx - 5, hy - 5, hx + 5, hy + 5], fill=vit)
+                d.line([(hx, hy + 5), (hx, hy + 22)], fill=vit, width=6)
+                d.line([(hx, hy + 22), (hx - 8, hy + 34)], fill=vit, width=5)
+                d.line([(hx, hy + 22), (hx + 8, hy + 34)], fill=vit, width=5)
+                d.line([(hx - 9, hy + 13), (hx + 9, hy + 13)], fill=vit, width=4)
+                cy = c[1] + 22
+                for cx in (c[0] - 18, c[0] + 18):
+                    d.ellipse([cx - 11, cy - 11, cx + 11, cy + 11], outline=vit, width=4)
+                d.line([(c[0] - 18, cy), (c[0] - 2, cy - 14), (c[0] + 12, cy - 14), (c[0] + 18, cy), (c[0], cy),
+                        (c[0] - 2, cy - 14)], fill=vit, width=4)
+        elif namn == 'parkering':   # E19 parkering: blå ruta med vitt P
+            d.rounded_rectangle([x0 + 8, y0 + 8, x0 + ATLAS_RUTA - 8, y0 + ATLAS_RUTA - 8], radius=10,
+                                fill=(20, 80, 170, 255), outline=(245, 245, 245, 255), width=4)
+            d.text(c, 'P', fill=(250, 250, 250, 255), font=font, anchor='mm')
     return im, cols, rows
 
 
@@ -199,7 +239,7 @@ def _skivor(lista, radie, n=12):
 
 class Vagkant:
     def __init__(self, roads, korsningar, vagpunkter, h, h_raw, sample, to_world, add_merged, mat, valt=None,
-                 platser=None, overgangar=None):
+                 platser=None, overgangar=None, mly=None):
         self.roads = roads
         self.kors = korsningar
         self.punkter = vagpunkter
@@ -217,8 +257,11 @@ class Vagkant:
         self._skydd = []
         self.overgangar = overgangar or []   # vagmarkering.Markering.overgangar (skyltar E1)
         self.ljus = []   # trafikljus före sammanslagningen: dict(p, rikt (färdriktning), hw, gang, prio, grupp)
+        # mapillary_objekt.MlyObjekt: verkliga lyktor och vägmärken; där Mapillary har bilder ersätter de
+        # reglerna (lyktor var 32:a m, NVDB:s hastighetsbyten, OSM:s väjningsplikt)
+        self.mly = mly if mly else None
         self.antal = dict(kantstolpar=0, lyktor=0, racken_m=0, hastighet=0, vajning=0, hallplatser=0, skydd=0,
-                          ortnamn=0, trafikljus=0, overgang=0)
+                          ortnamn=0, trafikljus=0, overgang=0, lyktor_mly=0, skyltar_mly=0)
 
     # ---------- hjälp ----------
     def _box(self, mat, C):
@@ -259,6 +302,9 @@ class Vagkant:
                 self._ortnamn(r)
         self._punkter()
         self._overgang_skyltar()
+        if self.mly is not None and self.valt is not None:
+            self._mly_lyktor()
+            self._mly_skyltar()
         self._skriv()
         print('vägkant:', ', '.join(f'{k} {v}' for k, v in self.antal.items()),
               '(allt utom räckenas bankar vältbart)' if self.valt is not None else '')
@@ -303,18 +349,13 @@ class Vagkant:
     def _lyktor(self, r):
         if self._pa_bro(r):
             return
-        stal = self.mat('Lyktstolpe', (120, 124, 126), 0.5)
-        lampa = self.mat('Lykta', (235, 232, 215), 0.4)
-        if self.valt is not None and not self.valt.har_mall('Lyktstolpe'):
-            # mallen: foten i origo, armen längs +x
-            self.valt.mall('Lyktstolpe', [
-                (lador_mesh(np.vstack([ladar([[0, 0]], [[1, 0]], 0.065, 0.065, -0.3, 6.0),
-                                       ladar([[0.75, 0]], [[1, 0]], 0.8, 0.04, 5.9, 6.0)])), stal),
-                (lador_mesh(ladar([[1.5, 0]], [[1, 0]], 0.28, 0.13, 5.75, 5.95)), lampa)])
+        stal, lampa = self._lykt_mall()
         for p, d, nn, hw, _ in self._langs(r, LYKTA_M, fas=7.0):
             if self._nara_korsning(p, 8.0):
                 continue
             q = p - nn * (hw + 1.0)   # högersidan
+            if self.mly is not None and self.mly.tacker([q])[0]:
+                continue   # Mapillary har sett gatan: de verkliga lyktorna (_mly_lyktor)
             if self.valt is not None:
                 z = self._mark(*q)
                 w = np.array(self.to_world(q[0], q[1]))
@@ -332,6 +373,86 @@ class Vagkant:
             w2 = np.array(self.to_world(hq[0], hq[1]))
             self._box(lampa, ladar(w2[None], wd[None], 0.28, 0.13, z + 5.75, z + 5.95))
             self.antal['lyktor'] += 1
+
+    def _lykt_mall(self):
+        stal = self.mat('Lyktstolpe', (120, 124, 126), 0.5)
+        lampa = self.mat('Lykta', (235, 232, 215), 0.4)
+        if self.valt is not None and not self.valt.har_mall('Lyktstolpe'):
+            # mallen: foten i origo, armen längs +x
+            self.valt.mall('Lyktstolpe', [
+                (lador_mesh(np.vstack([ladar([[0, 0]], [[1, 0]], 0.065, 0.065, -0.3, 6.0),
+                                       ladar([[0.75, 0]], [[1, 0]], 0.8, 0.04, 5.9, 6.0)])), stal),
+                (lador_mesh(ladar([[1.5, 0]], [[1, 0]], 0.28, 0.13, 5.75, 5.95)), lampa)])
+        return stal, lampa
+
+    # ---------- Mapillary (mapillary_objekt.py) ----------
+    def _mly_vag(self, E, N, bara_bil, max_m):
+        """Närmaste väg till punkten: (väg, punkt på mittlinjen, riktning, vänsternormal, sida ±1,
+        halvbredd) eller None."""
+        from shapely import STRtree
+        if not hasattr(self, '_mly_tradet'):
+            gc = ('path', 'footway', 'cycleway', 'steps', 'bridleway', 'pedestrian')
+            alla = [r for r in self.roads if 'line' in r and r['tags']['highway'] != 'steps']
+            bil = [r for r in alla if r['tags']['highway'] not in gc]
+            self._mly_tradet = {True: (bil, STRtree([r['line'] for r in bil]) if bil else None),
+                                False: (alla, STRtree([r['line'] for r in alla]) if alla else None)}
+        lista, tree = self._mly_tradet[bara_bil]
+        if tree is None:
+            return None
+        pt = Point(E, N)
+        r = lista[tree.nearest(pt)]
+        L = r['line']
+        if L.distance(pt) > max_m:
+            return None
+        sp = L.project(pt)
+        pv = np.array(L.interpolate(sp).coords[0])
+        d = np.array(L.interpolate(min(sp + 1, L.length)).coords[0]) - np.array(L.interpolate(max(sp - 1, 0)).coords[0])
+        d /= max(np.linalg.norm(d), 1e-9)
+        nn = np.array([-d[1], d[0]])
+        sida = 1.0 if np.dot(np.array([E, N]) - pv, nn) >= 0 else -1.0
+        hw = float(np.interp(sp, r['s'], r['hw'])) if 's' in r and np.ndim(r.get('hw')) else r['width'] / 2
+        return r, pv, d, nn, sida, hw
+
+    def _mly_lyktor(self):
+        """Mapillarys gatlyktor: vid vägkanten på den sida där de står, armen mot vägen."""
+        self._lykt_mall()
+        lagda = []
+        for E, N in self.mly.lyktor:
+            v = self._mly_vag(E, N, False, MLY_LYKTA_M)
+            if v is None:
+                continue
+            r, pv, d, nn, sida, hw = v
+            if self._pa_bro(r):
+                continue
+            q = pv + nn * sida * (hw + 1.0)
+            if any(np.hypot(*(q - o)) < MLY_DUBBEL_M for o in lagda):
+                continue
+            lagda.append(q)
+            w = np.array(self.to_world(q[0], q[1]))
+            wd = np.array(self.to_world(q[0] - nn[0] * sida, q[1] - nn[1] * sida)) - w
+            self.valt.placera('Lyktstolpe', [w[0], self._mark(*q), w[1]], wd)
+            self.antal['lyktor_mly'] += 1
+
+    def _mly_skyltar(self):
+        """Mapillarys vägmärken: vid vägkanten på sin sida, vända mot trafiken där (högertrafik)."""
+        lagda = []
+        for E, N, namn, st, bara_bil in self.mly.skyltar:
+            if namn not in ATLAS and not (namn.isdigit() and int(namn) in HASTIGHETER):
+                continue
+            v = self._mly_vag(E, N, bara_bil, MLY_SKYLT_M)
+            if v is None:
+                continue
+            r, pv, d, nn, sida, hw = v
+            if self._pa_bro(r):
+                continue
+            if namn == 'overgang' and any(np.hypot(*(pv - o['p'])) < 20.0 for o in self.overgangar):
+                continue   # målat övergångsställe: skyltarna står redan där
+            q = pv + nn * sida * (hw + 1.0)
+            if any(n_ == namn and np.hypot(*(q - o)) < MLY_SKYLT_DUBBEL_M for o, n_ in lagda):
+                continue
+            lagda.append((q, namn))
+            self._skylt(q, d * sida, namn, 2.0, st)
+            self.antal['skyltar_mly'] += 1
 
     def _racken(self, r):
         if self._pa_bro(r):
@@ -402,6 +523,8 @@ class Vagkant:
                     continue
                 hoger = np.array([riktning[1], -riktning[0]])
                 q = p + hoger * (hw[i] + 1.0)
+                if self.mly is not None and self.mly.tacker([q])[0]:
+                    continue   # Mapillarys verkliga hastighetsskyltar (_mly_skyltar)
                 self._skylt(q, -riktning, f'{int(varde)}', 2.0, 0.64)
                 self.antal['hastighet'] += 1
 
@@ -470,6 +593,8 @@ class Vagkant:
                 riktning = d if mot_slut else -d
                 hoger = np.array([riktning[1], -riktning[0]])
                 q = p_vag + hoger * (hw + 1.0)
+                if self.mly is not None and self.mly.tacker([q])[0]:
+                    continue   # Mapillarys verkliga väjnings- och stoppskyltar
                 self._skylt(q, -riktning, 'vajning' if typ == 'give_way' else 'stopp', 2.0, 0.7)
                 self.antal['vajning'] += 1
             elif typ == 'bus_stop':
