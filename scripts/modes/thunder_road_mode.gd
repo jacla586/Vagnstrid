@@ -4,8 +4,9 @@ extends Node3D
 ## checkpoint; defenders hold a corridor along it, ahead of the last checkpoint taken.
 ## Attackers get the same time for every checkpoint and a shared pool of lives and come
 ## back in waves; defenders come back a few checkpoints on. A checkpoint taken brings a
-## ceasefire (pause_s): nobody fires, the attackers keep within pause_attacker_ahead_m
-## of it, the defenders fall back pause_defender_back_m past it; then the next one opens.
+## fighting retreat (retreat_s, ThunderRoadData "Retreat"): the defenders' line jumps past
+## the lost zone and those left behind make a marked last stand; the clock stands until
+## the next one opens. (The old ceasefire, pause_*, is still in the data.)
 ## Outside its corridor a tank can't fire, shows on the other team's maps and is knocked
 ## out after outside_knockout_s. Points (stats column 5) for kills, assists, and more
 ## for taking and holding checkpoints. Two rounds, sides swap; more checkpoints wins
@@ -278,6 +279,13 @@ func get_front_s() -> float:
 ## in a ceasefire pause_defender_back_m past the checkpoint just taken (never past the
 ## near edge of the next one's zone).
 func get_defender_line_s() -> float:
+	if data.retreat_instead_of_pause:
+		if _next_cp == 0:
+			return _front_s - data.defender_behind_front_m
+		var past: float = _front_s + data.retreat_line_past_m
+		if _next_cp < _cp_s.size():
+			past = minf(past, _cp_s[_next_cp] - data.capture_half_length_m)
+		return past
 	if is_paused():
 		var line: float = _front_s + data.pause_defender_back_m
 		if _next_cp < _cp_s.size():
@@ -289,7 +297,7 @@ func get_defender_line_s() -> float:
 ## How far along the road attackers may go (s): attacker_ahead_of_checkpoint_m past the
 ## next checkpoint, in a ceasefire pause_attacker_ahead_m past the one just taken.
 func get_attack_limit_s() -> float:
-	if is_paused():
+	if is_paused() and not data.retreat_instead_of_pause:
 		return _front_s + data.pause_attacker_ahead_m
 	if _next_cp >= _cp_s.size():
 		return get_length() + CORRIDOR_RUN_OUT_M
@@ -303,6 +311,22 @@ func is_paused() -> bool:
 
 func get_pause_left() -> float:
 	return _pause_left
+
+
+## The hand-over after a capture lasts this long (s): retreat_s or pause_s.
+func transition_s() -> float:
+	return data.retreat_s if data.retreat_instead_of_pause else data.pause_s
+
+
+## A defender behind the line after a capture but within the corridor's width: its
+## last stand (may fire, marked, out after retreat_s).
+func is_left_behind(tank: Tank) -> bool:
+	if not data.retreat_instead_of_pause or _next_cp == 0 or tank == null:
+		return false
+	if role_of(tank.team) != Role.DEFEND:
+		return false
+	var at: Vector2 = project(tank.global_position)
+	return at.y <= half_width(Role.DEFEND) and at.x < get_defender_line_s()
 
 
 func get_capture_progress() -> float:
@@ -776,8 +800,8 @@ func _take_checkpoint() -> void:
 	checkpoint_taken.emit(index)
 	if _next_cp < _cp_s.size():
 		_wave()
-		if data.pause_s > 0.0:
-			_pause_left = data.pause_s
+		if transition_s() > 0.0:
+			_pause_left = transition_s()
 			_check_corridors(0.0)   # the shrunk corridors apply at once
 			pause_started.emit(index)
 		else:
@@ -884,7 +908,9 @@ func _points_add(tank: Tank, points: float, kind: String) -> void:
 
 
 ## Outside the corridor: no fire at once, a mark on the other team's maps every
-## outside_mark_s, knocked out (nobody's kill) after outside_knockout_s. In a pause
+## outside_mark_s, knocked out (nobody's kill) after outside_knockout_s; a defender left
+## behind after a capture (is_left_behind) may fire, is marked every retreat_mark_s and
+## goes after retreat_s. In a pause
 ## nobody fires if `pause_blocks_fire`.
 func _check_corridors(dt: float) -> void:
 	var paused: bool = _pause_blocks_fire()
@@ -901,15 +927,16 @@ func _check_corridors(dt: float) -> void:
 			_mark_left.erase(tank)
 			tank.fire_blocked = paused
 			continue
-		tank.fire_blocked = true
+		var last_stand: bool = is_left_behind(tank)
+		tank.fire_blocked = paused if last_stand else true
 		var out: float = float(_outside.get(tank, 0.0)) + dt
 		_outside[tank] = out
 		var mark: float = float(_mark_left.get(tank, 0.0)) - dt
 		if mark <= 0.0:
-			mark = data.outside_mark_s
+			mark = data.retreat_mark_s if last_stand else data.outside_mark_s
 			_mark_for_enemies(tank)
 		_mark_left[tank] = mark
-		if out >= data.outside_knockout_s:
+		if out >= (data.retreat_s if last_stand else data.outside_knockout_s):
 			_outside.erase(tank)
 			tank.knock_out_by_rule()
 
@@ -1036,7 +1063,7 @@ func _place(tank: Tank, xform: Transform3D) -> void:
 
 
 func _pause_blocks_fire() -> bool:
-	return is_paused() and data.pause_blocks_fire
+	return is_paused() and data.pause_blocks_fire and not data.retreat_instead_of_pause
 
 
 # --- Helpers -------------------------------------------------------------------------

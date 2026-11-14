@@ -44,7 +44,23 @@ extends Resource
 ## ...and left without attackers the progress falls back this many times slower.
 @export var capture_decay_factor: float = 0.5
 
+@export_group("Retreat")
+## How a capture hands over to the next checkpoint. True: a fighting retreat (as in
+## Battlefield's Breakthrough): nobody stops firing; the defenders' line moves at once to
+## the far edge of the zone lost (retreat_line_past_m), and a defender left behind it
+## (inside the corridor's width) makes a last stand: may fire, shows on the attackers'
+## maps every retreat_mark_s, and is knocked out (nobody's kill) retreat_s after the
+## capture. The clock and the waves stand for retreat_s, then the next checkpoint opens.
+## False: the old ceasefire below (pause_*).
+@export var retreat_instead_of_pause: bool = true
+@export var retreat_s: float = 40.0
+## The defenders' line after a capture: this far past the checkpoint taken (m; at most
+## the next zone's near edge). 60 = the lost zone's far edge (capture_half_length_m).
+@export var retreat_line_past_m: float = 60.0
+@export var retreat_mark_s: float = 1.0
+
 @export_group("Ceasefire")
+## Only with retreat_instead_of_pause off.
 ## A checkpoint taken brings a pause this long (s, 0 = none; not after the last): the
 ## clock and the waves stand, then the next checkpoint opens. Both sides get to regroup
 ## instead of rolling on from one checkpoint into the next.

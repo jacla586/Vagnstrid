@@ -446,7 +446,8 @@ func _physics_process(delta: float) -> void:
 		var role: ThunderRoadMode.Role = mode.role_of(bot.tank.team)
 		if _update_outside(bot, role, delta):
 			continue
-		if role == ThunderRoadMode.Role.ATTACK and mode.is_paused():
+		if role == ThunderRoadMode.Role.ATTACK and mode.is_paused() \
+				and not mode.data.retreat_instead_of_pause:
 			_regroup(bot)
 			continue
 		if role == ThunderRoadMode.Role.ATTACK:

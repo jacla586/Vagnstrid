@@ -158,7 +158,8 @@ func _on_checkpoint_taken(index: int) -> void:
 	var last: bool = index >= count - 1
 	var line: String = "FINAL CHECKPOINT" if last else "CHECKPOINT %d OF %d" % [index + 1, count]
 	if not last:
-		line += "   ·   REGROUP" if attacking == 1 else "   ·   FALL BACK TO CHECKPOINT %d" % (index + 2)
+		var push: String = "ADVANCE" if _mode.data.retreat_instead_of_pause else "REGROUP"
+		line += "   ·   " + push if attacking == 1 else "   ·   FALL BACK TO CHECKPOINT %d" % (index + 2)
 	_flash("ZONE CAPTURED" if attacking == 1 else "ZONE LOST", line,
 			good_color if attacking == 1 else warn_color)
 	var c: ThunderCallsData = _mode.data.calls
@@ -217,8 +218,8 @@ func _watch_calls(mode: ThunderRoadMode, delta: float) -> void:
 				"TAKE THE CHECKPOINTS ALONG THE ROAD" if attacking else "HOLD THE ROAD",
 				attack_color if attacking else defend_color, 0.75)
 	var pause: float = mode.get_pause_left() if mode.is_paused() else -1.0
-	var mark: float = mode.data.pause_s * c.regroup_call_share
-	if attacking and _last_pause > mark and pause >= 0.0 and pause <= mark:
+	var mark: float = mode.transition_s() * c.regroup_call_share
+	if attacking and not mode.data.retreat_instead_of_pause and _last_pause > mark and pause >= 0.0 and pause <= mark:
 		_call(c.regrouping)
 		_flash("ENEMY REGROUPING", "PREPARE TO ATTACK", attack_color, 0.75)
 	_last_pause = pause
@@ -234,7 +235,8 @@ func _watch_calls(mode: ThunderRoadMode, delta: float) -> void:
 						"PRESS THE ATTACK" if attacking else "HOLD THE LINE", warn_color, 0.75)
 	_last_time = time
 	_return_clock += delta
-	var outside: bool = not tank.is_knocked_out() and mode.outside_time(tank) > 0.0
+	var outside: bool = not tank.is_knocked_out() and mode.outside_time(tank) > 0.0 \
+			and not mode.is_left_behind(tank)   # left behind: the fall-back call said it
 	if outside and not _was_outside and _return_clock >= c.return_cooldown_s:
 		_return_clock = 0.0
 		_call_or_rare(c.return_to_lines, c.return_rare, c.return_rare_chance)
@@ -270,7 +272,9 @@ func _draw() -> void:
 	var count: int = mode.get_checkpoint_count()
 	var next: int = mode.get_next_checkpoint()
 	var paused: bool = mode.is_paused()
-	var clock: String = "REGROUP %s" % ScorePanel._clock(mode.get_pause_left()) if paused \
+	var retreat: bool = mode.data.retreat_instead_of_pause
+	var pause_word: String = ("ADVANCE" if attacking else "FALL BACK") if retreat else "REGROUP"
+	var clock: String = "%s %s" % [pause_word, ScorePanel._clock(mode.get_pause_left())] if paused \
 			else "TIME %s" % ScorePanel._clock(mode.get_time_left())
 	var line: String = "CHECKPOINT %d/%d   ·   %s   ·   LIVES %d   ·   WAVE %s" % [
 			mini(next + 1, count), count, clock, mode.get_lives(),
@@ -286,8 +290,8 @@ func _draw() -> void:
 	if paused:
 		var pause: String
 		if attacking:
-			pause = "CHECKPOINT %d TAKEN – REGROUP   ·   NEXT OPENS IN %d s" % [next,
-					ceili(mode.get_pause_left())]
+			pause = "CHECKPOINT %d TAKEN – %s   ·   NEXT OPENS IN %d s" % [next,
+					"ADVANCE, HUNT THE STRAGGLERS" if retreat else "REGROUP", ceili(mode.get_pause_left())]
 		else:
 			pause = "FALL BACK TO CHECKPOINT %d   ·   ENEMY ATTACKS IN %d s" % [next + 1,
 					ceili(mode.get_pause_left())]
@@ -315,7 +319,11 @@ func _draw() -> void:
 		_text(font, Vector2(cx, y), wait, font_size, text_color)
 		return
 	var out: float = mode.outside_time(tank)
-	if out > 0.0:
+	if out > 0.0 and mode.is_left_behind(tank):
+		var stand: String = "LEFT BEHIND – FALL BACK PAST THE LINE   ·   THE ENEMY SEES YOU"
+		stand += "   ·   KNOCKED OUT IN %d s" % ceili(maxf(mode.data.retreat_s - out, 0.0))
+		_text(font, Vector2(cx, y + 30.0), stand, font_size + 4, warn_color)
+	elif out > 0.0:
 		var left: float = mode.data.outside_knockout_s - out
 		var warn: String = "OUTSIDE YOUR CORRIDOR – CAN'T FIRE"
 		warn += "   ·   KNOCKED OUT IN %d s" % ceili(maxf(left, 0.0))

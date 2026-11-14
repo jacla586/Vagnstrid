@@ -647,12 +647,16 @@ shows on the minimap. This is what we test first.
   inside its zone (`ThunderRoadMode.is_in_checkpoint`: a rectangle square to the road,
   `capture_half_width_m` across, `capture_half_length_m` along); each capture moves the front, adds to the
   attackers' shared lives and brings a wave. Every checkpoint has the same clock, `checkpoint_time_s` (360; fresh at
-  the round start and when a ceasefire ends, nothing carries over). Ceasefire (`ThunderRoadData` "Ceasefire",
-  `is_paused`, signals `pause_started`/`pause_ended`, net key "pz"): after every capture but the last, `pause_s`
-  (40 s) when the clock and waves stand (firing allowed since 2026-11-13; `pause_blocks_fire` brings the old ceasefire back); attackers may go only `pause_attacker_ahead_m` (50) past the
-  checkpoint taken, defenders must fall back `pause_defender_back_m` (200) past it (at most to the next zone's
-  near edge); ThunderRoadBots: attackers stand (`_regroup`), defenders repost, everyone gets fresh orders when it
-  ends (`_on_ceasefire_over`). HUD: "CHECKPOINT n TAKEN – REGROUP" / "FALL BACK TO CHECKPOINT n"; a capture flashes a big
+  the round start and when the hand-over after a capture ends, nothing carries over). Fighting retreat
+  (`ThunderRoadData` "Retreat", `retreat_instead_of_pause` on since 2026-11-14, like Battlefield's Breakthrough):
+  after every capture but the last, `retreat_s` (40 s; `is_paused`, signals `pause_started`/`pause_ended`, net key
+  "pz") the clock and waves stand but nobody stops fighting; the defenders' line jumps at once to
+  `retreat_line_past_m` (60, the lost zone's far edge) past the checkpoint taken and stays there; a defender left
+  behind within the corridor's width (`is_left_behind`) makes a last stand: may fire, a spot mark for the attackers
+  every `retreat_mark_s` (1 s), knocked out by rule at `retreat_s` (HUD "LEFT BEHIND"); attackers advance, no regroup.
+  Off, the old ceasefire: `pause_s` (40 s, `pause_blocks_fire`), attackers within `pause_attacker_ahead_m` (50) past
+  the checkpoint, defenders back `pause_defender_back_m` (200) past it (at most to the next zone's near edge),
+  ThunderRoadBots `_regroup`s attackers. Either way everyone gets fresh orders when it ends (`_on_ceasefire_over`). HUD: "CHECKPOINT n TAKEN – REGROUP" / "FALL BACK TO CHECKPOINT n"; a capture flashes a big
 ZONE CAPTURED / ZONE LOST (`ThunderPanel._flash`, `flash_s`; smaller ones for round start, ceasefire over / enemy
 advancing, enemy regrouping, 2/1 minutes left). No Swedish subtitles anywhere (the English flash says what happens). Command radio (`ThunderRoadData.calls`,
 `ThunderCallsData`, `data/modes/thunder_calls_sv.tres`, recordings `assets/audio/radio/cmd_*.ogg` from

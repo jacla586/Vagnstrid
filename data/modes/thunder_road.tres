@@ -13,7 +13,7 @@
 script = ExtResource("1_data")
 display_name = "ThunderRoad"
 calls = ExtResource("calls")
-briefing = "Attackers push along the road: more tanks than the defenders in a checkpoint takes it.\nEvery checkpoint has the same time; taking one brings lives, a wave and a 40 s pause: attackers hold, defenders fall back to the next (both may still fire).\nDefenders hold a corridor along the road and fall back as the front moves.\nOutside your corridor your guns are silent, and after 30 s you are out.\nPoints: taking and holding checkpoints pays far more than kills.\nTwo rounds, sides swap. Most checkpoints wins."
+briefing = "Attackers push along the road: more tanks than the defenders in a checkpoint takes it.\nEvery checkpoint has the same time; taking one brings lives and a wave, and the defenders must fall back past the lost zone within 40 s: anyone left behind is marked for the enemy, can still fire, and is then out. The next checkpoint's clock starts when the 40 s are up.\nDefenders hold a corridor along the road and fall back as the front moves.\nOutside your corridor your guns are silent, and after 30 s you are out.\nPoints: taking and holding checkpoints pays far more than kills.\nTwo rounds, sides swap. Most checkpoints wins."
 defender_half_width_m = 350.0
 defender_behind_front_m = 150.0
 attacker_half_width_m = 400.0
