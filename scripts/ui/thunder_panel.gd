@@ -47,6 +47,7 @@ var _return_clock: float = INF
 var _start_pending: bool = true
 var _start_flash: bool = true
 var _flash_scale: float = 1.0
+var _result_said: bool = false
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # full size: text centres on the screen
@@ -129,11 +130,20 @@ func _on_round_started(_round_number: int, _attack_team: int) -> void:
 	_start_flash = true
 
 
+## Said when VICTORY / DEFEAT shows (round 2's end decides it), not at match_over
+## round_break_s later, when the player may already have left.
 func _on_match_over(winner_team: int) -> void:
+	_say_result(winner_team)
+
+
+func _say_result(winner_team: int) -> void:
+	if _result_said:
+		return
 	var c: ThunderCallsData = _mode.data.calls
 	var tank: Tank = views.get_tank() if views != null else null
 	if c == null or tank == null or winner_team < 0:
 		return
+	_result_said = true
 	if winner_team == tank.team:
 		_banter(c.victory)
 	else:
@@ -152,7 +162,8 @@ func _on_checkpoint_taken(index: int) -> void:
 	_flash("ZONE CAPTURED" if attacking == 1 else "ZONE LOST", line,
 			good_color if attacking == 1 else warn_color)
 	var c: ThunderCallsData = _mode.data.calls
-	if c == null:
+	# The last checkpoint of round 2 ends the match: only the win/loss line is said then.
+	if c == null or (last and _mode.get_round() >= 2):
 		return
 	if attacking == 1:
 		if last:
@@ -169,7 +180,7 @@ func _on_checkpoint_taken(index: int) -> void:
 func _on_pause_ended(index: int) -> void:
 	var attacking: int = _own_attacking(_mode)
 	if attacking == 1:
-		_flash("CEASEFIRE OVER", "CHECKPOINT %d OPEN   ·   ATTACK" % (index + 1), attack_color, 0.75)
+		_flash("CHECKPOINT %d OPEN" % (index + 1), "ATTACK", attack_color, 0.75)
 	elif attacking == 0:
 		_flash("ENEMY ADVANCING", "TAKE YOUR POSITIONS   ·   HOLD CHECKPOINT %d" % (index + 1),
 				defend_color, 0.75)
@@ -180,8 +191,11 @@ func _on_pause_ended(index: int) -> void:
 
 func _on_round_over(_round_number: int, result: Dictionary) -> void:
 	var c: ThunderCallsData = _mode.data.calls
-	if c != null and _own_attacking(_mode) == 0 and not bool(result.get("all", false)):
+	if c != null and _own_attacking(_mode) == 0 and not bool(result.get("all", false)) \
+			and not _mode.is_decided():   # the match's end: only the win/loss line
 		_call(c.held)
+	if _mode.is_decided():
+		_say_result(_mode.get_winner())
 
 
 ## Calls from the clocks: the enemy regrouping mid-ceasefire, time running short, and
@@ -256,22 +270,26 @@ func _draw() -> void:
 	var count: int = mode.get_checkpoint_count()
 	var next: int = mode.get_next_checkpoint()
 	var paused: bool = mode.is_paused()
-	var clock: String = "CEASEFIRE %s" % ScorePanel._clock(mode.get_pause_left()) if paused \
+	var clock: String = "REGROUP %s" % ScorePanel._clock(mode.get_pause_left()) if paused \
 			else "TIME %s" % ScorePanel._clock(mode.get_time_left())
 	var line: String = "CHECKPOINT %d/%d   ·   %s   ·   LIVES %d   ·   WAVE %s" % [
 			mini(next + 1, count), count, clock, mode.get_lives(),
 			ScorePanel._clock(mode.get_wave_left())]
-	if mode.get_target() > 0:
-		line += "   ·   TO WIN %d" % mini(mode.get_target(), count)
 	_text(font, Vector2(cx, y), line, font_size - 6, text_color)
 	y += font_size + 2.0
+	var goal: Array = target_state(mode, attacking)
+	if not String(goal[0]).is_empty():
+		var reached: bool = bool(goal[1])
+		_text(font, Vector2(cx, y), String(goal[0]), font_size - 2,
+				(good_color if attacking else warn_color) if reached else text_color)
+		y += font_size + 2.0
 	if paused:
 		var pause: String
 		if attacking:
 			pause = "CHECKPOINT %d TAKEN – REGROUP   ·   NEXT OPENS IN %d s" % [next,
 					ceili(mode.get_pause_left())]
 		else:
-			pause = "FALL BACK TO CHECKPOINT %d   ·   CEASEFIRE %d s" % [next + 1,
+			pause = "FALL BACK TO CHECKPOINT %d   ·   ENEMY ATTACKS IN %d s" % [next + 1,
 					ceili(mode.get_pause_left())]
 		_text(font, Vector2(cx, y), pause, font_size + 2, attack_color if attacking else defend_color)
 		y += font_size + 6.0
@@ -364,6 +382,28 @@ func result_title(winner: int, own_team: int) -> String:
 
 func result_color(winner: int, own_team: int) -> Color:
 	return text_color if winner < 0 else (good_color if winner == own_team else warn_color)
+
+
+## Round 2's goal from this side, counting down: [text, reached]. Attackers: "2 MORE
+## CHECKPOINTS TO WIN" until they have enough, then "WIN SECURED"; defenders: "STOP
+## THEM: 2 MORE AND THEY WIN", then "THEY HAVE ENOUGH – MATCH LOST". When round 1 took
+## them all, round 2 must take all with more time left. ["", false] outside round 2.
+static func target_state(mode: ThunderRoadMode, attacking: bool) -> Array:
+	var target: int = mode.get_target()
+	if target <= 0:
+		return ["", false]
+	var count: int = mode.get_checkpoint_count()
+	var taken: int = mode.get_next_checkpoint()
+	var all: bool = target > count   # round 1 took them all: only faster wins
+	var left: int = (count if all else target) - taken
+	if left <= 0 and not all:
+		return ["WIN SECURED" if attacking else "THEY HAVE ENOUGH – MATCH LOST", true]
+	var what: String = "%d MORE CHECKPOINT%s" % [left, "" if left == 1 else "S"]
+	if all:
+		var beat: String = ScorePanel._clock(float(mode.get_results()[0]["time_left"]))
+		return [("TAKE ALL: %s, FINISH WITH OVER %s LEFT" % [what, beat]) if attacking
+				else ("STOP THEM: %s AND OVER %s LEFT WINS IT FOR THEM" % [what, beat]), false]
+	return [("%s TO WIN" % what) if attacking else ("STOP THEM: %s AND THEY WIN" % what), false]
 
 
 ## "ROUND 1: you took 4/6 checkpoints" – also used by the Scoreboard.

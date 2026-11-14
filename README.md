@@ -2,7 +2,7 @@
 
 Ett stridsvagnsspel där du är vagnchef i kupolen, i miljöer byggda från öppna data om riktiga
 svenska platser: Vidingsjö och Linghem utanför Linköping och vägen genom
-Vallastaden till Campus Valla. Varje träd står där det står i verkligheten, vägarna har sina riktiga bredder
+Vallastaden till Campus Valla. Träden placeras ut efter laserdata, så skogar och dungar ligger ungefär där de gör i verkligheten, vägarna har sina riktiga bredder
 och skyltar, och åkrarna har den gröda som odlades där.
 
 Ett hobbyprojekt, byggt i Godot 4 med all kod skriven av Claude Code.
@@ -68,8 +68,8 @@ spelkort från de senaste åren rekommenderas.
 
 Pipelinen i [`geodata/`](geodata/) hämtar och bearbetar öppna data (Python):
 
-- **Lantmäteriet:** höjdmodell, laserdata och ortofoto. Ur laserpunkterna plockas varje enskilt träd ut,
-  med höjd och krona, och placeras där det står. Flygfotot ger markens färgvariation.
+- **Lantmäteriet:** höjdmodell, laserdata och ortofoto. Ur laserpunkterna uppskattas var träden står
+  och hur höga de är. Flygfotot ger markens färgvariation.
 - **OpenStreetMap:** hus, vägar, järnväg, vatten, lekplatser, busshållplatser, trafikljus, ortnamn.
 - **Trafikverket (NVDB):** vägbredd, beläggning, hastighet och övergångsställen, och vägtrummor.
 - **Jordbruksverket:** vad som odlas på varje åker, så att man kan ligga gömd i vetet men inte i vallen.

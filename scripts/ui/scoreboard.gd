@@ -118,8 +118,9 @@ func _rebuild_thunder(mode: ThunderRoadMode, tank: Tank) -> void:
 		var now: String = "ROUND %d (now): you %s – %d/%d taken" % [mode.get_round(),
 				"attack" if attacking else "defend", mode.get_next_checkpoint(),
 				mode.get_checkpoint_count()]
-		if mode.get_target() > 0:
-			now += ", %d to win" % mini(mode.get_target(), mode.get_checkpoint_count())
+		var goal: Array = ThunderPanel.target_state(mode, attacking)
+		if not String(goal[0]).is_empty():
+			now += " – " + String(goal[0]).to_lower()
 		lines.append(now)
 	_subtitle.text = "\n".join(lines)
 	for child: Node in _tables.get_children():

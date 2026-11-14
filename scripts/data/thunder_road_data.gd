@@ -45,10 +45,13 @@ extends Resource
 @export var capture_decay_factor: float = 0.5
 
 @export_group("Ceasefire")
-## A checkpoint taken brings a ceasefire this long (s, 0 = none; not after the last):
-## nobody fires, the clock and the waves stand, then the next checkpoint opens. Both
-## sides get to regroup instead of rolling on from one checkpoint into the next.
+## A checkpoint taken brings a pause this long (s, 0 = none; not after the last): the
+## clock and the waves stand, then the next checkpoint opens. Both sides get to regroup
+## instead of rolling on from one checkpoint into the next.
 @export var pause_s: float = 40.0
+## True: nobody fires during the pause (a real ceasefire). False: the corridors shrink
+## but both sides may fight on.
+@export var pause_blocks_fire: bool = false
 ## Meanwhile attackers keep within this far past the checkpoint taken (m)...
 @export var pause_attacker_ahead_m: float = 50.0
 ## ...and defenders fall back to this far past it (m; at most to the next zone's near

@@ -90,6 +90,13 @@ const DEVELOP_SPREAD_M: float = 40.0
 const DEVELOP_LANES_SHARE: float = 0.75
 ## A developing bot this near its line spot holds there (m).
 const DEVELOP_ARRIVED_M: float = 30.0
+## A line spot may pull in towards the road at most this much from its lane (m).
+const LANE_KEEP_M: float = 60.0
+## Farther than this from its lane across (m), a developing attacker spreads out first.
+const LANE_SPREAD_FIRST_M: float = 120.0
+## Assault goals: this share range of the zone's half width out on the own side.
+const ASSAULT_ACROSS_MIN: float = 0.35
+const ASSAULT_ACROSS_MAX: float = 0.9
 ## The reserve: this share of the team (at least one, from three tanks), this far short
 ## of the zone's near edge (m).
 const RESERVE_SHARE: float = 0.2
@@ -700,7 +707,12 @@ func _develop_step(bot: BotController, next: int, delta: float, fresh: bool) -> 
 		var center: Vector3 = mode.point_at(maxf(s, 0.0), float(_lane.get(bot, 0.0)) * half_w)
 		if here_s > s + DEVELOP_SPREAD_M:
 			center = bot.tank.global_position   # already past the line: hold near here
-		_line_goal[bot] = _spot(bot, center, POST_RADIUS_M * 0.6, mode.tangent_at(s), cp, Vector3.ZERO)
+		var spot: Vector3 = _spot(bot, center, POST_RADIUS_M * 0.6, mode.tangent_at(s), cp, Vector3.ZERO)
+		# A good spot that pulls the lane in towards the road loses to the lane itself: the
+		# attack must use the corridor's width, not bunch on the road.
+		if absf(_signed_across(spot)) < absf(_signed_across(center)) - LANE_KEEP_M:
+			spot = center
+		_line_goal[bot] = spot
 		var partner: Variant = _lane_partner.get(bot)
 		# Of a pair the one with the lower id leads off; the other watches first.
 		var leads: bool = partner == null or not is_instance_valid(partner) \
@@ -728,10 +740,16 @@ func _develop_step(bot: BotController, next: int, delta: float, fresh: bool) -> 
 
 
 ## One bound: a leg of bound_length_m towards the line spot (to a covered spot that
-## gets closer), or the spot itself when that is nearer.
+## gets closer), or the spot itself when that is nearer. Far inside its lane (fresh from
+## a wave on the road) the leg goes out sideways first: spread, then advance.
 func _start_leg(bot: BotController, cp: Vector3, t: TacticsData) -> void:
 	var goal: Vector3 = _line_goal[bot]
 	var p: Vector3 = bot.tank.global_position
+	var lane_across: float = _signed_across(goal)
+	var here: Vector2 = mode.project(p)
+	if absf(_signed_across(p) - lane_across) > LANE_SPREAD_FIRST_M and here.x < mode.project(goal).x:
+		var ahead: float = minf(here.x + t.bound_length_m * 0.4, mode.project(goal).x)
+		goal = mode.point_at(ahead, lane_across)
 	var to := Vector3(goal.x - p.x, 0.0, goal.z - p.z)
 	if to.length() > t.bound_length_m:
 		var leg: Vector3 = p + to.normalized() * t.bound_length_m * 0.8
@@ -868,7 +886,11 @@ func _order_assault(bot: BotController, next: int, lead: BotController) -> void:
 		goal = _spot(bot, lead.tank.global_position - forward * role.follow_m, POST_RADIUS_M * 0.6,
 				forward, cp, cp)
 	else:
-		var across: float = randf_range(-1.0, 1.0) * mode.data.capture_half_width_m * AT_CHECKPOINT_SHARE * 0.6
+		# Into the zone on the own side of the road, so the assault comes in across its width.
+		var side: float = _side_of(bot.tank.global_position, minf(mode.project(bot.tank.global_position).x,
+				mode.get_length()))
+		var across: float = side * _rng.randf_range(ASSAULT_ACROSS_MIN, ASSAULT_ACROSS_MAX) \
+				* mode.data.capture_half_width_m * AT_CHECKPOINT_SHARE
 		goal = _spot(bot, cp + forward.cross(Vector3.UP) * across, mode.data.capture_half_length_m * 0.6,
 				forward, mode.point_at(s + LOOK_BACK_M), cp)
 	bot.order_path(goal, _travel_throttle(bot), true)

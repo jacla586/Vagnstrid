@@ -29,8 +29,8 @@ size = Vector3(0.5, 0.8, 6.5)
 hp = 30.0
 damaged_below = 0.6
 external = true
-repair_time_min_s = 30.0
-repair_time_max_s = 45.0
+repair_time_min_s = 20.0
+repair_time_max_s = 30.0
 
 [sub_resource type="Resource" id="Module_track_right"]
 script = ExtResource("2_module")
@@ -40,8 +40,8 @@ size = Vector3(0.5, 0.8, 6.5)
 hp = 30.0
 damaged_below = 0.6
 external = true
-repair_time_min_s = 30.0
-repair_time_max_s = 45.0
+repair_time_min_s = 20.0
+repair_time_max_s = 30.0
 
 [sub_resource type="Resource" id="Module_turret_ring"]
 script = ExtResource("2_module")

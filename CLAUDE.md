@@ -119,7 +119,7 @@ shows on the minimap. This is what we test first.
   or the target's knock-out stops it), then "Träff!"/"Miss!" (`RADIO_AT_HIT/MISS`, from
   `Shell.finished`, straight after the call in the queue); clients see it via `rpc_squad_aim`. A destroyed track immobilises the tank
   (`TankData.broken_track_immobilises`) until repaired; tracks take
-  `ModuleData.repair_time_min_s..max_s` (30-45 s) standing still, other modules
+  `ModuleData.repair_time_min_s..max_s` (20-30 s) standing still, other modules
   `TankData.repair_time_s`. Soldiers see through vegetation crowns
   (`Vision.has_line_of_sight_through`, `SquadData.see_through_ranges_m`: one layer to
   500 m, two to 300 m). On the way to a
@@ -631,7 +631,7 @@ shows on the minimap. This is what we test first.
   `attack_range_m` from the nearest known player, `attack_step_m` closer each arrival, down to `attack_min_m`).
   Beaten: knocked-out players come back beside a living teammate (`spawn_for_new`), next wave after
   `wave_gap_s` (the old bots go then, wrecks stay). All players out: `is_over()` (Scoreboard "DEFEATED", waves
-  beaten, KO/assists/lost). HUD `FreeFightPanel`. NetGame starts no respawn timers with it; clients get
+  beaten, KO/assists/lost). HUD `FreeFightPanel`. Bot allies (main menu "Bot allies" in place of Tanks per team for Free fight maps, `MatchSettings.free_allies`, `FreeFightData` "Allies"): bots on the players' team, made beside the first player (`_make_allies`), keeping a place beside the nearest living player (`_ally_place`) until they or a player (`Tank.spotted`) know an enemy within `ally_engage_m`, then firing spots as the wave's attackers (`_ally_fight`); they count for the end (the match goes on while one lives), come back with the players and grow the waves by `ally_wave_weight`. NetGame starts no respawn timers with it; clients get
   `get_net_state()` by `rpc_free_state` (2 Hz and on its signals). The map's placed enemies are removed.
 - Map edge (`MapEdge`, `scripts/world/map_edge.gd`, `data/world/map_edge.tres`): the playable area is the map
   picture's `world_rect` less `margin_m` (50). No physics body (every ray with the default mask would hit
@@ -647,7 +647,7 @@ shows on the minimap. This is what we test first.
   attackers' shared lives and brings a wave. Every checkpoint has the same clock, `checkpoint_time_s` (360; fresh at
   the round start and when a ceasefire ends, nothing carries over). Ceasefire (`ThunderRoadData` "Ceasefire",
   `is_paused`, signals `pause_started`/`pause_ended`, net key "pz"): after every capture but the last, `pause_s`
-  (40 s) when nobody fires and the clock and waves stand; attackers may go only `pause_attacker_ahead_m` (50) past the
+  (40 s) when the clock and waves stand (firing allowed since 2026-11-13; `pause_blocks_fire` brings the old ceasefire back); attackers may go only `pause_attacker_ahead_m` (50) past the
   checkpoint taken, defenders must fall back `pause_defender_back_m` (200) past it (at most to the next zone's
   near edge); ThunderRoadBots: attackers stand (`_regroup`), defenders repost, everyone gets fresh orders when it
   ends (`_on_ceasefire_over`). HUD: "CHECKPOINT n TAKEN – REGROUP" / "FALL BACK TO CHECKPOINT n"; a capture flashes a big
@@ -685,8 +685,8 @@ there and the break is over) and on the match's win/loss. Points
   tanks go to round 2's starts at once (`_setup_round`, repaired, map reset) and stand locked
   (`Tank.move_blocked`: no driving, turret/optics free; bots wait) for the countdown.
   `ThunderPanel` shows ROUND 1 OVER and how it went at the top, the `Scoreboard` in the
-  middle (shown through every break) and "ROUND 2 STARTS IN n" at the bottom (the count
-  to beat, `get_target`, is also in the HUD in round 2); after round 2 a big
+  middle (shown through every break) and "ROUND 2 STARTS IN n" at the bottom (round 2's goal counts down in the HUD, `ThunderPanel.target_state`: "2 MORE CHECKPOINTS TO WIN" ->
+  "WIN SECURED"; defenders "STOP THEM: 2 MORE AND THEY WIN"); after round 2 a big
   VICTORY/DEFEAT, then the final `Scoreboard` (also on Tab: the rounds, KO/losses from
   `ThunderRoadMode.get_stats`). The fresh map (`_reset_map`: wrecks, mines, smoke go,
   `TreeField.restore_all`, signal `map_reset`) comes with the break; clients reset 1.5 s

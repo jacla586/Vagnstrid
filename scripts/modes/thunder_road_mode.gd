@@ -778,7 +778,7 @@ func _take_checkpoint() -> void:
 		_wave()
 		if data.pause_s > 0.0:
 			_pause_left = data.pause_s
-			_check_corridors(0.0)   # guns fall silent at once
+			_check_corridors(0.0)   # the shrunk corridors apply at once
 			pause_started.emit(index)
 		else:
 			_time_left = data.checkpoint_time_s
@@ -884,10 +884,10 @@ func _points_add(tank: Tank, points: float, kind: String) -> void:
 
 
 ## Outside the corridor: no fire at once, a mark on the other team's maps every
-## outside_mark_s, knocked out (nobody's kill) after outside_knockout_s. In a ceasefire
-## nobody fires.
+## outside_mark_s, knocked out (nobody's kill) after outside_knockout_s. In a pause
+## nobody fires if `pause_blocks_fire`.
 func _check_corridors(dt: float) -> void:
-	var paused: bool = is_paused()
+	var paused: bool = _pause_blocks_fire()
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var tank := node as Tank
 		if tank == null or (tank.team != 0 and tank.team != 1):
@@ -950,6 +950,9 @@ func _defender_start(tank: Tank) -> Transform3D:
 
 
 ## A free, flat slot near the road at `s` (rows going back along `facing`), facing it.
+## Fallback spawn: rows tried further back along the road when no row had open ground.
+const FALLBACK_STEPS: int = 20
+
 func _free_slot(s: float, facing: Vector3, tank: Tank) -> Transform3D:
 	var back: float = -signf(facing.dot(tangent_at(s)))
 	var first := Transform3D()
@@ -958,8 +961,8 @@ func _free_slot(s: float, facing: Vector3, tank: Tank) -> Transform3D:
 		for across: float in SLOT_ACROSS_M:
 			var p: Vector3 = slot_point(s + back * row * SLOT_ROW_M, across)
 			var hit: Dictionary = KothMode.ground_hit(get_world_3d(), p)
-			if hit.is_empty():
-				continue
+			if hit.is_empty() or not (hit["collider"] is Terrain3D):
+				continue   # nothing there, or a roof, a bridge, a stone: never spawn on top of it
 			var at: Vector3 = (hit["position"] as Vector3) + Vector3.UP * SPAWN_LIFT_M
 			var xform := Transform3D(Basis.looking_at(facing, Vector3.UP), at)
 			if not found_first and not _wreck_near(at):
@@ -968,11 +971,15 @@ func _free_slot(s: float, facing: Vector3, tank: Tank) -> Transform3D:
 			if _slot_ok(hit, tank):
 				return xform
 	if not found_first:
-		var hit: Dictionary = KothMode.ground_hit(get_world_3d(), slot_point(s, 0.0))
-		if hit.is_empty():
-			s = minf(s, get_length() - 10.0)   # off the map past the road's end
-			hit = KothMode.ground_hit(get_world_3d(), point_at(s, 0.0))
-		var at: Vector3 = point_at(s, 0.0) if hit.is_empty() else hit["position"]
+		# No open ground in the rows: walk back towards the fight along the road until
+		# there is terrain (off the map past the road's end, or houses all round).
+		var at: Vector3 = point_at(minf(s, get_length()), 0.0)
+		for step: int in FALLBACK_STEPS:
+			var hit: Dictionary = KothMode.ground_hit(get_world_3d(),
+					slot_point(s - back * (step + 1) * SLOT_ROW_M, 0.0))
+			if not hit.is_empty() and hit["collider"] is Terrain3D:
+				at = hit["position"]
+				break
 		first = Transform3D(Basis.looking_at(facing, Vector3.UP), at + Vector3.UP * SPAWN_LIFT_M)
 	return first
 
@@ -1024,8 +1031,12 @@ func _slot_ok(hit: Dictionary, tank: Tank) -> bool:
 func _place(tank: Tank, xform: Transform3D) -> void:
 	KothMode.place_tank(tank, xform)
 	tank.repair()
-	tank.fire_blocked = is_paused()
+	tank.fire_blocked = _pause_blocks_fire()
 	tank_placed.emit(tank)
+
+
+func _pause_blocks_fire() -> bool:
+	return is_paused() and data.pause_blocks_fire
 
 
 # --- Helpers -------------------------------------------------------------------------
