@@ -437,56 +437,99 @@
 		},
 		{
 			"name": "32_hedges_street",
-			"at": [1745, 1575],
+			"at": [
+				1745,
+				1575
+			],
 			"height_m": 3.0,
-			"look_at": [1748, 1660],
+			"look_at": [
+				1748,
+				1660
+			],
 			"look_height_m": 1.0,
 			"fov": 60
 		},
 		{
 			"name": "33_hedges_above",
-			"at": [1700, 1560],
+			"at": [
+				1700,
+				1560
+			],
 			"height_m": 25.0,
-			"look_at": [1800, 1650],
+			"look_at": [
+				1800,
+				1650
+			],
 			"look_height_m": 0.0,
-			"fov": 60		},
+			"fov": 60
+		},
 		{
 			"name": "34_spanngatan_above",
-			"at": [1465, 1349],
+			"at": [
+				1465,
+				1349
+			],
 			"height_m": 90.0,
-			"look_at": [1465.5, 1349.5],
+			"look_at": [
+				1465.5,
+				1349.5
+			],
 			"look_height_m": 0.0,
 			"fov": 60
 		},
 		{
 			"name": "35_spanngatan_low",
-			"at": [1400, 1320],
+			"at": [
+				1400,
+				1320
+			],
 			"height_m": 12.0,
-			"look_at": [1470, 1350],
+			"look_at": [
+				1470,
+				1350
+			],
 			"look_height_m": 0.0,
 			"fov": 60
 		},
 		{
 			"name": "36_attinggatan20_above",
-			"at": [1334, 1470],
+			"at": [
+				1334,
+				1470
+			],
 			"height_m": 30.0,
-			"look_at": [1334, 1505],
+			"look_at": [
+				1334,
+				1505
+			],
 			"look_height_m": 0.0,
 			"fov": 60
 		},
 		{
 			"name": "37_attinggatan20_street",
-			"at": [1306, 1540],
+			"at": [
+				1306,
+				1540
+			],
 			"height_m": 2.5,
-			"look_at": [1310, 1480],
+			"look_at": [
+				1310,
+				1480
+			],
 			"look_height_m": 1.0,
 			"fov": 60
 		},
 		{
 			"name": "38_ortgatan29_above",
-			"at": [1276, 1495],
+			"at": [
+				1276,
+				1495
+			],
 			"height_m": 30.0,
-			"look_at": [1276, 1530],
+			"look_at": [
+				1276,
+				1530
+			],
 			"look_height_m": 0.0,
 			"fov": 60
 		}
@@ -661,6 +704,104 @@
 			],
 			"look_height_m": 3,
 			"fov": 60
+		},
+		{
+			"name": "m1_arkitekturgrand",
+			"at": [
+				1610,
+				1409
+			],
+			"height_m": 1.8,
+			"look_at": [
+				1660,
+				1428
+			],
+			"look_height_m": 3.0,
+			"fov": 65
+		},
+		{
+			"name": "m2_vallastaden_ovan",
+			"at": [
+				1450,
+				1230
+			],
+			"height_m": 70,
+			"look_at": [
+				1630,
+				1420
+			],
+			"look_height_m": 0,
+			"fov": 55
+		},
+		{
+			"name": "m3_campus_ovan",
+			"at": [
+				1000,
+				700
+			],
+			"height_m": 90,
+			"look_at": [
+				1180,
+				480
+			],
+			"look_height_m": 0,
+			"fov": 55
+		},
+		{
+			"name": "m4_hans_meijers_vag",
+			"at": [
+				1035,
+				479
+			],
+			"height_m": 1.8,
+			"look_at": [
+				1110,
+				483
+			],
+			"look_height_m": 3.0,
+			"fov": 65
+		},
+		{
+			"name": "m5_lambohov_ovan",
+			"at": [
+				560,
+				1500
+			],
+			"height_m": 70,
+			"look_at": [
+				660,
+				1680
+			],
+			"look_height_m": 0,
+			"fov": 55
+		},
+		{
+			"name": "m6_oversikt",
+			"at": [
+				1100,
+				1900
+			],
+			"height_m": 420,
+			"look_at": [
+				1050,
+				900
+			],
+			"look_height_m": 0,
+			"fov": 55
+		},
+		{
+			"name": "m7_hasselqvists_gata",
+			"at": [
+				1585,
+				1440
+			],
+			"height_m": 1.8,
+			"look_at": [
+				1581,
+				1390
+			],
+			"look_height_m": 3.0,
+			"fov": 65
 		}
 	],
 	"road_to_science": [

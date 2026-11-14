@@ -407,7 +407,7 @@ json.dump(dict(coordinate_note='Godot-koordinater [x, y(höjd), z] i meter; x=ö
 # ---------- Byggnader ----------
 # Husen samlas först (add_building) och byggs i bygg_alla_hus(): takform ur laserdatan (takform.py),
 # hustyp och stil ur stilar.json (husstil.py), fasader med fönster ur en atlas (husgeometri.py).
-import husstil
+import husstil, husfarger
 husstil.satt_mat(mat)
 MAT_ROOF_TIN = mat('Tak_plat', (90, 92, 94), 0.5)
 LUTANDE = ('sadel', 'valmat', 'talt')
@@ -504,7 +504,17 @@ def bygg_alla_hus():
     grannar = cKDTree(mitter).query_ball_point(mitter, 100.0, return_length=True)
     semi_ytor = semi_omrade()
     planer = []
+    # Verkliga färger (husfarger.py): taken ur ortofotot, fasaderna ur Mapillary (husfarger.json)
+    data_mapp = WORK.parent / 'data'
+    tak_rgb = husfarger.tak_fran_ortofoto(data_mapp / f'ortofoto_{WORK.parent.name}.tif', [p_[0] for p_ in HUS])
+    fasader = husfarger.fasadfarger(data_mapp)
+    n_tak = sum(1 for c in tak_rgb if c is not None)
+    n_fasad = 0
     for k, (poly, taggar, group, heights) in enumerate(HUS):
+        tak_fam = husfarger.familj(tak_rgb[k])
+        if fasader.get(str(taggar.get('_osm_id'))) and not taggar.get('building:colour'):
+            taggar = dict(taggar, **{'building:colour': fasader[str(taggar['_osm_id'])]})
+            n_fasad += 1
         poly = poly.buffer(0)
         if poly.geom_type == 'MultiPolygon':
             poly = max(poly.geoms, key=lambda q: q.area)
@@ -530,14 +540,15 @@ def bygg_alla_hus():
             tak = schablontak(delar, hustyp, heights)
         stil = husstil.valj_stil(hustyp, taggar, (round(poly.centroid.x), round(poly.centroid.y)))
         semi = semi_ytor is not None and semi_ytor.contains(poly.centroid)
-        planer.append((poly, group, gz, tak, stil, semi))
+        planer.append((poly, group, gz, tak, stil, semi, tak_fam))
         HUSSTAT[hustyp] = HUSSTAT.get(hustyp, 0) + 1
         for t in tak:
             TAKSTAT[t.modell] = TAKSTAT.get(t.modell, 0) + 1
+    print(f'husfärger: tak ur ortofotot {n_tak}/{len(HUS)}, fasader ur Mapillary {n_fasad}')
     atlas = husstil.Atlas(bara={p[4]['id'] for p in planer if not p[5]})
     semi_ids = {p[4]['id'] for p in planer if p[5]}
     atlas_semi = husstil.Atlas(semi=True, bara=semi_ids) if semi_ids else None
-    for poly, group, gz, tak, stil, semi in planer:
+    for poly, group, gz, tak, stil, semi, tak_fam in planer:
         at = atlas_semi if semi else atlas
         ref = gz.mean(); bas = gz.min() - 0.6
         storsta = max(range(len(tak)), key=lambda i: tak[i].halv_l * tak[i].halv_b)
@@ -549,7 +560,8 @@ def bygg_alla_hus():
             ctr = to_world(*t.mitt)
             for namn, (faces, gctr, roof) in grupper.items():
                 if namn == 'tak':
-                    add_part(group, V, UV, faces, True, ctr, husstil.tak(takfarg(t, stil), semi), plan=True)
+                    tnamn = husfarger.tak_namn(tak_fam, t.modell, stil['tak_namn']) if tak_fam else takfarg(t, stil)
+                    add_part(group, V, UV, faces, True, ctr, husstil.tak(tnamn, semi), plan=True)
                     if t.modell in ('sadel', 'valmat', 'talt'):   # de har takutsprång
                         add_takunder(group, V, faces, ctr)
                 else:

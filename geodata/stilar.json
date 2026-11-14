@@ -61,7 +61,14 @@
   "betong_svart": {"farg": [56, 56, 60], "semi": "RoofingTiles013A", "semi_m": 2.0},
   "plat_svart": {"farg": [44, 46, 48], "semi": "CorrugatedSteel005", "semi_m": 2.0, "semi_ton": [70, 72, 76]},
   "plat_gra": {"farg": [116, 120, 124], "semi": "CorrugatedSteel005", "semi_m": 2.0},
-  "papp": {"farg": [74, 74, 76], "semi": "Plaster003", "semi_m": 3.0, "semi_ton": [92, 92, 94]}
+  "papp": {"farg": [74, 74, 76], "semi": "Plaster003", "semi_m": 3.0, "semi_ton": [92, 92, 94]},
+  "tegel_brun": {"farg": [100, 72, 62], "semi": "RoofingTiles006", "semi_m": 2.0, "semi_ton": [100, 72, 62]},
+  "betong_gra": {"farg": [96, 96, 98], "semi": "RoofingTiles013A", "semi_m": 2.0, "semi_ton": [120, 120, 122]},
+  "plat_rod": {"farg": [128, 42, 34], "semi": "CorrugatedSteel005", "semi_m": 2.0, "semi_ton": [128, 42, 34]},
+  "plat_gron": {"farg": [76, 104, 88], "semi": "CorrugatedSteel005", "semi_m": 2.0, "semi_ton": [76, 104, 88]},
+  "papp_gra": {"farg": [124, 124, 122], "semi": "Plaster003", "semi_m": 3.0, "semi_ton": [130, 130, 128]},
+  "papp_vit": {"farg": [196, 196, 192], "semi": "Plaster003", "semi_m": 3.0, "semi_ton": [200, 200, 196]},
+  "sedum": {"farg": [92, 112, 64], "semi": "Plaster003", "semi_m": 3.0, "semi_ton": [92, 112, 64]}
  },
  "material_semi": {
   "panel_staende": {"textur": "WoodSiding009", "meter": 2.0, "rotera": true, "ton": true},
