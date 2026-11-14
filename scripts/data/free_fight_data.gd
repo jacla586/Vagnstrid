@@ -59,3 +59,20 @@ extends Resource
 @export var attack_spot_radius_m: float = 60.0
 ## A known player's position this old still counts (s).
 @export var attack_memory_s: float = 60.0
+
+@export_group("Allies")
+## Bot tanks on the players' side (main menu "Bot allies", MatchSettings.free_allies):
+## their crew and tanks (empty = hard_configs).
+@export var ally_bot: BotData
+@export var ally_configs: Array[TankConfig] = []
+## Each ally makes the waves grow by this share of what a player adds.
+@export var ally_wave_weight: float = 0.75
+## Allies think this often (s)...
+@export var ally_think_s: float = 2.0
+## ...go after a known enemy within this (m; firing spots as the waves' attackers)...
+@export var ally_engage_m: float = 450.0
+## ...else keep beside the nearest living player: this far apart across his heading and
+## this far behind (m), moving again when the place drifts more than ally_slack_m.
+@export var ally_spacing_m: float = 35.0
+@export var ally_behind_m: float = 20.0
+@export var ally_slack_m: float = 30.0

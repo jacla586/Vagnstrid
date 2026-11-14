@@ -12,8 +12,10 @@
 
 [resource]
 script = ExtResource("1_ff")
-briefing = "Survive the waves.\nEach wave waits in its circle on the map and attacks once it spots you.\nBeat it and a bigger, better one comes. Knocked out, you are back when your team beats the wave."
+briefing = "Survive the waves.\nEach wave waits in its circle on the map and attacks once it spots you.\nBeat it and a bigger, better one comes. Knocked out, you are back when your team beats the wave.
+Bot allies (main menu) fight beside you."
 easy_bot = ExtResource("2_easy")
 hard_bot = ExtResource("3_hard")
 easy_configs = Array[ExtResource("9_cfg")]([ExtResource("4_bt7"), ExtResource("5_t34")])
+ally_bot = ExtResource("3_hard")
 hard_configs = Array[ExtResource("9_cfg")]([ExtResource("4_bt7"), ExtResource("5_t34"), ExtResource("6_pz4"), ExtResource("7_kv2"), ExtResource("8_sherman")])

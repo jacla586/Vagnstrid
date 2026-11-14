@@ -28,6 +28,7 @@ var _ip: LineEdit
 var _status: Label
 var _maps: PackedStringArray = []
 var _team_size: SpinBox
+var _allies: SpinBox
 var _weather: OptionButton
 var _credits: Control
 var _controls: ControlsPanel
@@ -87,10 +88,6 @@ func _ready() -> void:
 			_map.set_item_tooltip(i, GROUPS[g])
 			if path == NetSession.DEFAULT_MAP or _map.selected < 0:
 				_map.select(i)
-	var show_group: Callable = func(i: int) -> void:
-		map_caption.text = "Map – " + _map.get_item_tooltip(i) if i >= 0 else "Map"
-	_map.item_selected.connect(show_group)
-	show_group.call(_map.selected)
 	box.add_child(map_field)
 
 	# 0 = the map's own number; bots fill empty places.
@@ -118,12 +115,33 @@ func _ready() -> void:
 	var match_row := HBoxContainer.new()
 	match_row.add_theme_constant_override("separation", 12)
 	var size_field: Control = _field("Tanks per team", _team_size)
+	# Free fight has no team size: bot tanks on the players' side instead.
+	_allies = SpinBox.new()
+	_allies.min_value = 0
+	_allies.max_value = MatchSettings.MAX_FREE_ALLIES
+	_allies.step = 1
+	_allies.rounded = true
+	_allies.update_on_text_changed = true
+	_allies.value = MatchSettings.free_allies
+	_allies.value_changed.connect(func(v: float) -> void: MatchSettings.set_free_allies(roundi(v)))
+	_allies.tooltip_text = "Bot tanks fighting on your side"
+	var allies_field: Control = _field("Bot allies", _allies)
 	var weather_field: Control = _field("Weather", _weather)
 	size_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	allies_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	weather_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	match_row.add_child(size_field)
+	match_row.add_child(allies_field)
 	match_row.add_child(weather_field)
 	box.add_child(match_row)
+	var free_group: int = GROUP_TAGS.find("_free")
+	var show_group: Callable = func(i: int) -> void:
+		map_caption.text = "Map – " + _map.get_item_tooltip(i) if i >= 0 else "Map"
+		var free: bool = i >= 0 and _group_of(str(_map.get_item_metadata(i))) == free_group
+		size_field.visible = not free
+		allies_field.visible = free
+	_map.item_selected.connect(show_group)
+	show_group.call(_map.selected)
 
 	var gap := Control.new()
 	gap.custom_minimum_size.y = 6

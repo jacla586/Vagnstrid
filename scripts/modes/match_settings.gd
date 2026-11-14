@@ -10,6 +10,9 @@ const MAX_TEAM_SIZE: int = 32
 static var team_size: int = 0
 ## Weather preset (file name in data/weather/, e.g. "fog") or "random" (Weather).
 static var weather: String = "random"
+## Bot tanks on the players' side in free fight (bot hunt).
+static var free_allies: int = 0
+const MAX_FREE_ALLIES: int = 8
 static var _loaded: bool = false
 
 
@@ -21,6 +24,7 @@ static func load_settings() -> void:
 	if cfg.load(SETTINGS_PATH) == OK:
 		team_size = clampi(int(cfg.get_value("match", "team_size", 0)), 0, MAX_TEAM_SIZE)
 		weather = str(cfg.get_value("match", "weather", "random"))
+		free_allies = clampi(int(cfg.get_value("match", "free_allies", 0)), 0, MAX_FREE_ALLIES)
 
 
 static func set_team_size(n: int) -> void:
@@ -38,4 +42,13 @@ static func set_weather(id: String) -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SETTINGS_PATH)
 	cfg.set_value("match", "weather", weather)
+	cfg.save(SETTINGS_PATH)
+
+
+static func set_free_allies(n: int) -> void:
+	load_settings()
+	free_allies = clampi(n, 0, MAX_FREE_ALLIES)
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	cfg.set_value("match", "free_allies", free_allies)
 	cfg.save(SETTINGS_PATH)

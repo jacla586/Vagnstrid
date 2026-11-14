@@ -10,6 +10,9 @@ extends Node
 ## every second round, easy and hard crews in turn, all a bit better each round, more
 ## bots with more players. Knocked-out players come back when the wave is beaten,
 ## beside a living teammate; with every player out at once the match is over.
+## Bot allies (MatchSettings.free_allies) fight on the players' side: beside the nearest
+## living player, going for enemies they or the players spot; they count as players for
+## the end (the match goes on while one lives) and come back with the players.
 ## Also the bot director for MatchLobby and NetGame (make_room / refill / spawn_for_new).
 ## Host/offline runs it; clients take its state (get_net_state / apply_net_state).
 
@@ -59,11 +62,18 @@ var _range: Dictionary = {}   # BotController -> current attack range (m)
 var _think: Dictionary = {}   # BotController -> seconds until the next look
 var _planned: Dictionary = {}   # BotController -> the player position its order was for
 var _last_seen: Dictionary = {}   # player Tank -> last position any wave crew knew of
+var _allies: Array[BotController] = []
+var _allies_made: bool = false
+var _follow: Dictionary = {}   # ally BotController -> the place beside a player it drives to
+var _ally_think: Dictionary = {}   # ally BotController -> seconds until the next look
+var _ally_range: Dictionary = {}   # ally BotController -> current firing range (m)
+var _ally_prey: Dictionary = {}   # ally BotController -> the enemy position its order was for
 var _stats: Dictionary = {}   # tank instance id -> [name, team, KO, lost, assists]
 var _carried: Dictionary = {}
 var _connected: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _serial: int = 0
+var _respawned: int = 0   # spreads tanks coming back beside the same one
 # Client copies of the host's state.
 var _net_alive: int = 0
 var _net_stats: Array = []
@@ -207,9 +217,12 @@ func refill() -> void:
 ## Where a new or returning player tank starts: beside a living teammate, else the
 ## match's random start.
 func spawn_for_new(team: int, tank: Tank) -> Transform3D:
-	for other: Tank in _players():
+	var others: Array[Tank] = _living_humans()
+	others.append_array(_living_players().filter(func(t: Tank) -> bool: return not others.has(t)))
+	for other: Tank in others:
 		if other != tank and other.team == team and not other.is_knocked_out():
-			return _beside(other)
+			_respawned += 1
+			return _beside(other, _respawned)
 	if not _has_start:
 		_start = _find_start()
 		_has_start = true
@@ -235,6 +248,10 @@ func count_loss(tank: Tank) -> void:
 func _physics_process(delta: float) -> void:
 	_connect_new_tanks()
 	_drop_freed()
+	if not _allies_made and not _living_humans().is_empty():
+		_make_allies()
+	if _phase != Phase.OVER:
+		_update_allies(delta)
 	match _phase:
 		Phase.WAITING:
 			if _living_players().is_empty():
@@ -265,8 +282,8 @@ func _start_wave() -> void:
 		_remove_bot(bot)
 	_old.clear()
 	_hard = _round % 2 == 1
-	var players: int = maxi(_players().size(), 1)
-	var count: int = ceili((data.start_count + _round / 2) * (1.0 + data.extra_player_share * (players - 1)))
+	var players: float = maxf(_humans().size() + _allies.size() * data.ally_wave_weight, 1.0)
+	var count: int = ceili((data.start_count + _round / 2) * (1.0 + data.extra_player_share * (players - 1.0)))
 	var crew: BotData = _crew_for(_round, _hard)
 	var pool: Array[TankConfig] = data.hard_configs if _hard else data.easy_configs
 	_centre = _find_wave_centre()
@@ -304,7 +321,7 @@ func _on_wave_beaten() -> void:
 func _end_match() -> void:
 	_phase = Phase.OVER
 	_gap_left = -1.0
-	for bot: BotController in _wave:
+	for bot: BotController in _wave + _allies:
 		if is_instance_valid(bot):
 			var none: Array[Vector3] = []
 			bot.order_move(none, 0.0)
@@ -374,6 +391,161 @@ func _drop_freed() -> void:
 	for i: int in range(_wave.size() - 1, -1, -1):
 		if not is_instance_valid(_wave[i]) or not is_instance_valid(_wave[i].tank):
 			_wave.remove_at(i)
+	for i: int in range(_allies.size() - 1, -1, -1):
+		if not is_instance_valid(_allies[i]) or not is_instance_valid(_allies[i].tank):
+			_allies.remove_at(i)
+
+
+# --- Allies ------------------------------------------------------------------------
+
+## The allies, once the first player is in: beside him, each in its own place.
+func _make_allies() -> void:
+	_allies_made = true
+	MatchSettings.load_settings()
+	var n: int = MatchSettings.free_allies
+	if n <= 0 or data.ally_bot == null:
+		return
+	var leader: Tank = _living_humans()[0]
+	var pool: Array[TankConfig] = data.ally_configs if not data.ally_configs.is_empty() else data.hard_configs
+	var parent: Node = get_parent()
+	for i: int in n:
+		var tank: Tank = (load(TANK_SCENE_PATH) as PackedScene).instantiate()
+		_serial += 1
+		tank.name = "AllyBot%d" % _serial
+		tank.team = leader.team
+		tank.data = load(BOT_TANK_DATA)
+		if not pool.is_empty():
+			tank.config = pool[_rng.randi() % pool.size()]
+		parent.add_child(tank)
+		KothMode.place_tank(tank, _beside(leader, i + 1))
+		var bot := BotController.new()
+		bot.name = tank.name + "Controller"
+		bot.bot_data = data.ally_bot
+		bot.tank = tank
+		bot.respawn_delay_s = 0.0   # back with the players when the wave is beaten
+		parent.add_child(bot)
+		bot.contact.connect(_on_ally_contact.bind(bot))
+		_allies.append(bot)
+		_ally_think[bot] = _rng.randf_range(0.0, data.ally_think_s)
+		var game: NetGame = NetSession.instance.game if NetRole.is_host() else null
+		if game != null:
+			game.add_bot_tank(tank)
+
+
+## An ally spotted an enemy (or was hit): the other allies hear of it.
+func _on_ally_contact(enemy: Tank, at: Vector3, from: BotController) -> void:
+	for bot: BotController in _allies:
+		if bot != from and is_instance_valid(bot):
+			bot.share_contact(enemy, at)
+
+
+## A player marked an enemy: the allies hear of it too.
+func _on_player_spot(target: Node3D, point: Vector3) -> void:
+	var enemy := target as Tank
+	if enemy == null:
+		return
+	for bot: BotController in _allies:
+		if is_instance_valid(bot):
+			bot.share_contact(enemy, point)
+
+
+## Each ally now and then: a known enemy within ally_engage_m -> firing spots closer and
+## closer to it (as the waves' attackers do), else its place beside the nearest player.
+func _update_allies(delta: float) -> void:
+	if _allies.is_empty():
+		return
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+	var leaders: Array[Tank] = _living_humans()
+	for i: int in _allies.size():
+		var bot: BotController = _allies[i]
+		if bot.tank.is_knocked_out() or bot.is_relocating():
+			continue
+		_ally_think[bot] = float(_ally_think.get(bot, 0.0)) - delta
+		if float(_ally_think[bot]) > 0.0:
+			continue
+		_ally_think[bot] = data.ally_think_s
+		var here: Vector3 = bot.tank.global_position
+		var prey_at := Vector3.INF
+		var best: float = data.ally_engage_m
+		var known: Dictionary = bot.get_known_enemies(data.attack_memory_s)
+		for other: Variant in known:
+			if not is_instance_valid(other) or (other as Tank).is_knocked_out():
+				continue
+			var d: float = here.distance_to(known[other])
+			if d < best:
+				best = d
+				prey_at = known[other]
+		if prey_at != Vector3.INF:
+			_follow.erase(bot)
+			_ally_fight(bot, prey_at, best, map)
+			continue
+		_ally_prey.erase(bot)
+		_ally_range.erase(bot)
+		if leaders.is_empty():
+			continue
+		var leader: Tank = leaders[0]
+		for t: Tank in leaders:
+			if t.global_position.distance_to(here) < leader.global_position.distance_to(here):
+				leader = t
+		var place: Vector3 = _ally_place(leader, i)
+		var going: Variant = _follow.get(bot)
+		if going != null and (going as Vector3).distance_to(place) < data.ally_slack_m \
+				and (bot.has_orders_left() or here.distance_to(going) < data.ally_slack_m):
+			continue
+		if going == null and here.distance_to(place) < data.ally_slack_m:
+			continue
+		var spot: Vector3 = place
+		if map != null:
+			var ahead: Vector3 = -leader.global_basis.z
+			spot = map.find_position(get_viewport().world_3d, place, data.ally_slack_m * 0.6, ahead,
+					place + ahead * 200.0, 100.0, here, _ally_positions(bot), bot.bot_data.tactics,
+					_rng, _tank_rids())
+		_follow[bot] = place
+		bot.order_path(spot, bot.bot_data.tactics.travel_throttle, here.distance_to(place) > 150.0)
+
+
+## To a firing spot the current range from `prey_at`, closer each time it gets there.
+func _ally_fight(bot: BotController, prey_at: Vector3, dist: float, map: TacticalMap) -> void:
+	var r: float = float(_ally_range.get(bot, data.attack_range_m))
+	if bot.has_target_in_sight() and dist <= r * 1.2:
+		return   # in reach and in sight: it halts and fires on its own
+	var planned: Variant = _ally_prey.get(bot)
+	var arrived: bool = not bot.has_orders_left()
+	if planned != null and (planned as Vector3).distance_to(prey_at) < ATTACK_REPLAN_M and not arrived:
+		return
+	if arrived and planned != null:
+		r = maxf(r - data.attack_step_m, data.attack_min_m)
+	_ally_range[bot] = r
+	var here: Vector3 = bot.tank.global_position
+	var away: Vector3 = here - prey_at
+	away.y = 0.0
+	away = away.normalized() if away.length() > 1.0 else Vector3.FORWARD
+	var spot: Vector3 = prey_at + away * minf(r, dist)
+	if map != null:
+		spot = map.find_position(get_viewport().world_3d, spot, data.attack_spot_radius_m,
+				-away, prey_at, 50.0, here, _ally_positions(bot), bot.bot_data.tactics, _rng,
+				_tank_rids())
+	_ally_prey[bot] = prey_at
+	bot.order_path(spot, bot.bot_data.tactics.travel_throttle, true)
+
+
+## Ally i's place by `leader`: right, left, right further out ... and a bit behind.
+func _ally_place(leader: Tank, i: int) -> Vector3:
+	var side: float = 1.0 if i % 2 == 0 else -1.0
+	var across: float = side * data.ally_spacing_m * float(i / 2 + 1)
+	var p: Vector3 = leader.global_position + leader.global_basis.x * across \
+			+ leader.global_basis.z * data.ally_behind_m
+	return MapEdge.clamp_point(get_tree(), p, 20.0)
+
+
+func _ally_positions(except: BotController) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for bot: BotController in _allies:
+		if bot != except and not bot.tank.is_knocked_out():
+			out.append(bot.tank.global_position)
+	for tank: Tank in _living_humans():
+		out.append(tank.global_position)
+	return out
 
 
 ## A crew of the wave spotted a player (or was hit): the whole wave hears of it and,
@@ -480,11 +652,17 @@ func _find_start() -> Transform3D:
 	return _facing(fallback, fallback + Vector3.FORWARD)
 
 
-## Beside `other` (to its right, else left, else behind), on open ground.
-func _beside(other: Tank) -> Transform3D:
+## Beside `other` (to its right, else left, else behind), on open ground; `k` > 0
+## starts further out (k-th tank placed by the same one), so several don't pile up.
+func _beside(other: Tank, k: int = 0) -> Transform3D:
 	var at: Vector3 = other.global_position
-	for d: Vector3 in [other.global_basis.x, -other.global_basis.x, other.global_basis.z]:
-		for step: float in [1.0, 2.0]:
+	var first: float = 1.0 + float((k % 6) / 2)
+	var sides: Array = [other.global_basis.x, -other.global_basis.x]
+	if k % 2 == 1:
+		sides.reverse()
+	sides.append(other.global_basis.z)
+	for d: Vector3 in sides:
+		for step: float in [first, first + 1.0, first + 2.0]:
 			var ground: Vector3 = _open_ground(at + d * BESIDE_M * step)
 			if ground != Vector3.INF:
 				return _facing(ground, ground - other.global_basis.z * 10.0)
@@ -625,6 +803,19 @@ func _living_players() -> Array[Tank]:
 	return _players().filter(func(t: Tank) -> bool: return not t.is_knocked_out())
 
 
+## The players' tanks without the bot allies.
+func _humans() -> Array[Tank]:
+	var allies: Array[Tank] = []
+	for bot: BotController in _allies:
+		if is_instance_valid(bot):
+			allies.append(bot.tank)
+	return _players().filter(func(t: Tank) -> bool: return not allies.has(t))
+
+
+func _living_humans() -> Array[Tank]:
+	return _humans().filter(func(t: Tank) -> bool: return not t.is_knocked_out())
+
+
 func _players_centre() -> Vector3:
 	var players: Array[Tank] = _living_players()
 	if players.is_empty():
@@ -651,6 +842,7 @@ func _connect_new_tanks() -> void:
 				[tank.get_display_label(), tank.team, 0, 0, 0])
 		_carried.erase(tank.get_instance_id())
 		tank.knocked_out.connect(func() -> void: _stat_add(tank, 3))
+		tank.spotted.connect(_on_player_spot)
 	# Kills are counted from the bots' side: a knock-out of a bot credits its killer.
 	for bot: BotController in _wave:
 		if is_instance_valid(bot) and not _connected.has(-bot.tank.get_instance_id()):
