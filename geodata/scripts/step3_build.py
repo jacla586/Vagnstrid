@@ -512,9 +512,10 @@ def bygg_alla_hus():
     n_tak = sum(1 for c in tak_rgb if c is not None)
     n_fasad = 0
     for k, (poly, taggar, group, heights) in enumerate(HUS):
-        tak_fam = husfarger.familj(tak_rgb[k])
-        if fasader.get(str(taggar.get('_osm_id'))) and not taggar.get('building:colour'):
-            taggar = dict(taggar, **{'building:colour': fasader[str(taggar['_osm_id'])]})
+        tak_fam = None if taggar.get('roof:colour') else husfarger.familj(tak_rgb[k])   # OSM:s färg går före
+        f_nyckel = husfarger.nyckel(poly, taggar) if fasader else None
+        if f_nyckel in fasader and not taggar.get('building:colour'):
+            taggar = dict(taggar, **{'building:colour': fasader[f_nyckel]})
             n_fasad += 1
         poly = poly.buffer(0)
         if poly.geom_type == 'MultiPolygon':

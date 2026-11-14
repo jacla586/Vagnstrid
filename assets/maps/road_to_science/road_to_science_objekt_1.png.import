@@ -2,24 +2,23 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://btcf832h0u2td"
-path.s3tc="res://.godot/imported/road_to_science_objekt_1.png-0174c2e4beec0ee0a64dc24cb85d80d7.s3tc.ctex"
+uid="uid://b45lga5a1uoqw"
+path="res://.godot/imported/road_to_science_objekt_1.png-0174c2e4beec0ee0a64dc24cb85d80d7.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 generator_parameters={
-"md5": "5a7c16c5065f0e38ec230f72b75dc4a3"
+"md5": "9218173ef811626130b2bdf675e8ad3a"
 }
 
 [deps]
 
 source_file="res://assets/maps/road_to_science/road_to_science_objekt_1.png"
-dest_files=["res://.godot/imported/road_to_science_objekt_1.png-0174c2e4beec0ee0a64dc24cb85d80d7.s3tc.ctex"]
+dest_files=["res://.godot/imported/road_to_science_objekt_1.png-0174c2e4beec0ee0a64dc24cb85d80d7.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -41,4 +40,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1

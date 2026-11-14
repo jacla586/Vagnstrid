@@ -38,20 +38,21 @@ from shapely.geometry.polygon import orient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hamta_mapillary as mly   # noqa: E402
+import husfarger   # noqa: E402
 
 GEO = Path(__file__).resolve().parent.parent
 MIN_YTA_M2 = 40.0
 MIN_VAGG_M = 3.0
-AVSTAND_M = (5.0, 22.0)
-MAX_VINKEL = 40.0           # grader från väggens normal
-PROV_U = (0.35, 0.5, 0.65)
-PROV_V = (0.25, 0.5, 0.75)
+AVSTAND_M = (4.0, 30.0)
+MAX_VINKEL = 70.0           # grader från väggens normal
+PROV_U = (0.25, 0.4, 0.55, 0.7)
+PROV_V = (0.3, 0.6)   # nedre delen av väggen: mindre himmel
 PROV_FALT_M = 0.8           # samplat fält runt varje punkt (m på väggen)
 KLUSTER_AVSTAND = 30.0      # RGB-avstånd inom vilket prov räknas som samma färg
-KLUSTER_ANDEL = 0.4
+KLUSTER_ANDEL = 0.35
 MAX_BILDER_PER_HUS = 8
 KAMERA_HOJD = (1.0, 3.0)    # computed_altitude begränsas hit (m över mark)
-MIN_BILDER = 3              # ett hus behöver träffar i så här många bilder
+MIN_BILDER = 2              # ett hus behöver träffar i så här många bilder
 FALT = ('id,computed_geometry,computed_rotation,camera_type,camera_parameters,width,height,'
         'captured_at,computed_altitude,thumb_1024_url,sequence')
 
@@ -117,10 +118,10 @@ def hus_lista(projekt, ruta):
     e0, n0, e1, n1 = ruta
     ut = []
     for gm, t in feat['buildings']:
-        oid = t.get('_osm_id')
-        if not oid or gm.geom_type != 'Polygon' or gm.area < MIN_YTA_M2:
+        if gm.geom_type != 'Polygon' or gm.area < MIN_YTA_M2:
             continue
         c = gm.centroid
+        oid = husfarger.nyckel(gm, t)
         if not (e0 <= c.x <= e1 and n0 <= c.y <= n1):
             continue
         hh = laser.heights_in(gm)
@@ -208,10 +209,42 @@ def sampla(a, px, py, ppm):
         return None
     mx, mn = b.max(1), b.min(1)
     s = (mx - mn) / np.maximum(mx, 1)
-    ok = (mx > 45) & ~((b[:, 1] > b[:, 0] * 1.05) & (b[:, 1] > b[:, 2] * 1.05) & (s > 0.15))
+    gron = (b[:, 1] > b[:, 0] * 1.03) & (b[:, 1] > b[:, 2] * 1.03) & (s > 0.10)
+    if gron.mean() > 0.2 or (mx < 60).mean() > 0.4:
+        return None   # träd, häck eller djup skugga framför väggen
+    ok = (mx > 45) & ~gron
+    if py < a.shape[0] * 0.5:   # övre halvan: himmel (ljus och blåaktig eller grå) bort
+        ok &= ~((mx > 150) & (b[:, 2] >= b[:, 0] - 4) & (s < 0.35))
     if ok.mean() < 0.5:
         return None
     return np.median(b[ok], 0)
+
+
+# Fasadfamiljer: kalibrerad färg (sRGB, nära stilar.json:s varianter). Bilderna är ofta underexponerade
+# och fasaden i skugga, så familjen tas ur nyans och mättnad, och ljusheten räknas mot bildens 95:e
+# percentil (himmel, vita ytor).
+FAMILJER = {'falu': (132, 40, 30), 'tegel': (150, 70, 52), 'gul': (226, 196, 120), 'gul_tegel': (206, 178, 120),
+            'beige': (232, 222, 196), 'brun': (102, 74, 54), 'vit': (236, 233, 222), 'gra': (176, 182, 184),
+            'mork': (90, 92, 94)}
+
+
+def kanonisk(farg, rel):
+    """(familj, kalibrerad färg) ur uppmätt färg och ljushet relativt bilden."""
+    h, s_, v = colorsys.rgb_to_hsv(*(np.clip(farg, 0, 255) / 255.0))
+    hg = h * 360
+    if s_ >= 0.18 and (hg < 18 or hg > 335):
+        fam = 'falu' if s_ > 0.5 else 'tegel'
+    elif s_ >= 0.18 and hg < 34:
+        fam = 'brun' if rel < 0.45 else ('tegel' if s_ > 0.45 else 'gul_tegel')
+    elif s_ >= 0.15 and hg < 65:
+        fam = 'gul' if s_ > 0.3 else ('gul_tegel' if rel < 0.55 else 'beige')
+    elif rel > 0.55:
+        fam = 'vit'
+    elif rel > 0.32:
+        fam = 'gra'
+    else:
+        fam = 'mork'
+    return fam, FAMILJER[fam]
 
 
 def kluster(prov):
@@ -305,7 +338,7 @@ def main():
 
     # 3. sampla ett rutnät på varje vägg i varje bild, 4. omröstning per hus
     resultat, urklipp = {}, []
-    bildcache = {}
+    bildcache, ljus_ref = {}, {}
     for hi, valda in plan.items():
         prov, klipp = [], []
         for _, ki, (M, n, L, z_mark, takfot), z_c in valda:
@@ -320,6 +353,10 @@ def main():
                 if len(bildcache) > 400:
                     bildcache.pop(next(iter(bildcache)))
             a = bildcache[ki]
+            if ki not in ljus_ref:
+                ljus_ref[ki] = float(np.percentile(a[::4, ::4].mean(2), 95))
+            if ljus_ref[ki] < 140:
+                continue   # natt eller mörk bild
             k = kameror[ki]
             bredd = a.shape[1]
             t = np.array([-n[1], n[0]])   # längs väggen
@@ -331,15 +368,17 @@ def main():
                     if p is None or p[1] >= a.shape[0]:
                         continue
                     c = sampla(a, *p)
-                    if c is not None:
-                        prov.append((c, k.id))
+                    if c is not None and float(c.mean()) / ljus_ref[ki] > 0.18:
+                        prov.append((c, k.id, float(c.mean()) / ljus_ref[ki]))
                         klipp.append((ki, p))
-        res = kluster(prov)
+        res = kluster([(c, b) for c, b, _ in prov])
         if res is None:
             continue
         farg, n_k, bilder_k = res
-        resultat[hus[hi]['id']] = dict(farg='#%02x%02x%02x' % tuple(int(round(v)) for v in farg),
-                                       n=n_k, prov=len(prov), bilder=bilder_k)
+        rel = float(np.median([r_ for c, _, r_ in prov if np.linalg.norm(c - farg) < KLUSTER_AVSTAND]))
+        fam, kanon = kanonisk(farg, rel)
+        resultat[hus[hi]['id']] = dict(farg='#%02x%02x%02x' % kanon, familj=fam, uppmatt='#%02x%02x%02x' % tuple(
+            int(round(v)) for v in farg), ljus=round(rel, 2), n=n_k, prov=len(prov), bilder=bilder_k)
         if len(urklipp) < 80:   # kontrollbild: väggens mitt i upp till sex bilder
             sedda = []
             for ki, p in klipp:

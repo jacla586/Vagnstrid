@@ -102,8 +102,17 @@ def tak_namn(fam, modell, stil_tak):
             'ljus': 'papp_vit', 'gron': 'sedum'}[fam]
 
 
+def nyckel(poly, taggar):
+    """Husets nyckel i husfarger.json: OSM-id, eller mittpunkten 'E,N' (äldre features.pkl utan id)."""
+    oid = (taggar or {}).get('_osm_id')
+    if oid:
+        return str(oid)
+    c = poly.centroid
+    return f'{round(c.x)},{round(c.y)}'
+
+
 def fasadfarger(data_mapp):
-    """{OSM-väg-id: '#rrggbb'} ur <data>/husfarger.json, eller {}."""
+    """{nyckel (OSM-id eller 'E,N'): '#rrggbb'} ur <data>/husfarger.json, eller {}."""
     fil = Path(data_mapp) / 'husfarger.json'
     if not fil.exists():
         return {}

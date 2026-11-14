@@ -1,4 +1,5 @@
-"""Mapillarys kartobjekt för vägkanten (vagkant.py): gatlyktor och vägmärken där de faktiskt står.
+"""Mapillarys kartobjekt för vägkanten (vagkant.py): gatlyktor, vägmärken och gatumöbler (gatumobler.py)
+där de faktiskt står.
 
 Läser <projekt>/data/mapillary_objekt.geojson och mapillary_bildlagen.json (hamta_mapillary.py objekt).
 Där Mapillary har bilder (`tacker`: en bild inom TACKNING_M) ersätter objekten vägkantens regler
@@ -26,12 +27,15 @@ SKYLTAR = [
     ('regulatory--no-parking', 'p_forbud', 0.5, True),
 ]
 HASTIGHET = 'regulatory--maximum-speed-limit-'
+MOBLER = ('object--trash-can', 'object--bench', 'object--junction-box', 'object--bike-rack',
+          'object--fire-hydrant', 'object--mailbox', 'object--support--utility-pole')
 
 
 class MlyObjekt:
     def __init__(self, data_mapp):
         d = Path(data_mapp)
         self.lyktor, self.skyltar = [], []   # [(E, N)], [(E, N, atlasnamn, storlek, bara_bil)]
+        self.mobler = []   # [(E, N, object_value)] för gatumobler.SORTER
         pos = []
         fil = d / 'mapillary_objekt.geojson'
         if fil.exists():
@@ -40,6 +44,8 @@ class MlyObjekt:
                 E, N = f['geometry']['coordinates']
                 if v == LYKTA:
                     self.lyktor.append((E, N))
+                elif v in MOBLER:
+                    self.mobler.append((E, N, v))
                 elif v.startswith(HASTIGHET):
                     try:
                         kmh = int(v[len(HASTIGHET):].split('--')[0])
@@ -57,7 +63,7 @@ class MlyObjekt:
         self._kd = cKDTree(np.array(pos, float)) if pos else None
 
     def __bool__(self):
-        return self._kd is not None and bool(self.lyktor or self.skyltar)
+        return self._kd is not None and bool(self.lyktor or self.skyltar or self.mobler)
 
     def tacker(self, P, r=TACKNING_M):
         """Bool per punkt (n, 2): finns en Mapillary-bild inom r m?"""

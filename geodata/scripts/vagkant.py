@@ -237,6 +237,11 @@ def _skivor(lista, radie, n=12):
     return trimesh.Trimesh(np.array(V), np.array(F), process=False)
 
 
+def zlib_crc(E, N):
+    import zlib
+    return zlib.crc32(f'{round(E)},{round(N)}'.encode())
+
+
 class Vagkant:
     def __init__(self, roads, korsningar, vagpunkter, h, h_raw, sample, to_world, add_merged, mat, valt=None,
                  platser=None, overgangar=None, mly=None):
@@ -261,7 +266,7 @@ class Vagkant:
         # reglerna (lyktor var 32:a m, NVDB:s hastighetsbyten, OSM:s väjningsplikt)
         self.mly = mly if mly else None
         self.antal = dict(kantstolpar=0, lyktor=0, racken_m=0, hastighet=0, vajning=0, hallplatser=0, skydd=0,
-                          ortnamn=0, trafikljus=0, overgang=0, lyktor_mly=0, skyltar_mly=0)
+                          ortnamn=0, trafikljus=0, overgang=0, lyktor_mly=0, skyltar_mly=0, mobler_mly=0)
 
     # ---------- hjälp ----------
     def _box(self, mat, C):
@@ -305,6 +310,7 @@ class Vagkant:
         if self.mly is not None and self.valt is not None:
             self._mly_lyktor()
             self._mly_skyltar()
+            self._mly_mobler()
         self._skriv()
         print('vägkant:', ', '.join(f'{k} {v}' for k, v in self.antal.items()),
               '(allt utom räckenas bankar vältbart)' if self.valt is not None else '')
@@ -432,6 +438,35 @@ class Vagkant:
             wd = np.array(self.to_world(q[0] - nn[0] * sida, q[1] - nn[1] * sida)) - w
             self.valt.placera('Lyktstolpe', [w[0], self._mark(*q), w[1]], wd)
             self.antal['lyktor_mly'] += 1
+
+    def _mly_mobler(self):
+        """Mapillarys gatumöbler (gatumobler.py): vid sitt läge, utflyttade från vägbanan, vända mot
+        närmaste väg; en variant per läge."""
+        import gatumobler
+        gatumobler.skapa_mallar(self.valt, self.mat)
+        lagda = {}
+        for E, N, v in self.mly.mobler:
+            sort, ut_m, dubbel = gatumobler.SORTER[v]
+            q = np.array([E, N], float)
+            x_dir = None
+            vag = self._mly_vag(E, N, False, 25.0)
+            if vag is not None:
+                r, pv, d, nn, sida, hw = vag
+                if self._pa_bro(r) and np.hypot(*(q - pv)) < hw + 3.0:
+                    continue
+                if np.hypot(*(q - pv)) < hw + ut_m:   # på vägbanan: ut till kanten på sin sida
+                    q = pv + nn * sida * (hw + ut_m)
+                x_dir = -nn * sida   # mot vägen
+            if any(np.hypot(*(q - o)) < dubbel for o in lagda.get(sort, [])):
+                continue
+            lagda.setdefault(sort, []).append(q)
+            if x_dir is None:
+                a = (zlib_crc(E, N) % 360) * np.pi / 180
+                x_dir = np.array([np.cos(a), np.sin(a)])
+            w = np.array(self.to_world(q[0], q[1]))
+            wd = np.array(self.to_world(q[0] + x_dir[0], q[1] + x_dir[1])) - w
+            self.valt.placera(gatumobler.variant(sort, E, N), [w[0], self._mark(*q), w[1]], wd)
+            self.antal['mobler_mly'] += 1
 
     def _mly_skyltar(self):
         """Mapillarys vägmärken: vid vägkanten på sin sida, vända mot trafiken där (högertrafik)."""

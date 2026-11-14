@@ -2,24 +2,23 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://3kudrcvnkkcx"
-path.s3tc="res://.godot/imported/linghem_objekt_10.png-be2eb17d77a61159da583533a32b750e.s3tc.ctex"
+uid="uid://bfbioxoclx6fk"
+path="res://.godot/imported/linghem_objekt_10.png-be2eb17d77a61159da583533a32b750e.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 generator_parameters={
-"md5": "f9619476a79a45564ef0d509c800a469"
+"md5": "278c5da3ed36ab745768b6d54b40f581"
 }
 
 [deps]
 
 source_file="res://assets/maps/linghem/linghem_objekt_10.png"
-dest_files=["res://.godot/imported/linghem_objekt_10.png-be2eb17d77a61159da583533a32b750e.s3tc.ctex"]
+dest_files=["res://.godot/imported/linghem_objekt_10.png-be2eb17d77a61159da583533a32b750e.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -41,4 +40,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1

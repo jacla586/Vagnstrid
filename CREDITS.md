@@ -10,10 +10,14 @@ The maps are built from open data by the pipeline in `geodata/`.
 - **OpenStreetMap** contributors, [ODbL](https://www.openstreetmap.org/copyright): roads, houses,
   railways, water, playgrounds, signs, traffic lights, place names.
 - **Lantmäteriet**, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): elevation model,
-  laser point clouds (terrain, single trees and their heights) and orthophoto (ground colour), processed.
+  laser point clouds (terrain, single trees and their heights) and orthophoto (ground and roof colours),
+  processed.
 - **Naturvårdsverket**, Nationella marktäckedata (NMD), CC0: land cover.
 - **Trafikverket**, NVDB (road widths, surfaces, speed limits, crossings) and culverts, open data.
 - **Jordbruksverket**, field blocks and crops (what grows in each field), open data.
+- **Mapillary** contributors, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/): positions of
+  street lights, road signs and street furniture detected in street-level photos, and some facade colours
+  (mapillary.com); the photos themselves are not part of the game.
 - **Copernicus DEM**: produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus
   Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA.
 

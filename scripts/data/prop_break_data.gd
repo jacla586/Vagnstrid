@@ -24,10 +24,10 @@ extends Resource
 ## Standing props are drawn up to this far (m, 0 = always), in cells this big (m).
 @export var draw_range_m: float = 1200.0
 @export var cell_m: float = 250.0
-## Small props (kinds starting with one of these: signs, reflector posts) are drawn only
+## Small props (kinds starting with one of these: signs, reflector posts, street furniture) are drawn only
 ## this far (m): a sign is a pixel or two beyond it, and the many sign kinds are many draws.
 @export var small_kinds: PackedStringArray = PackedStringArray(["Skylt", "Hallplats", "Kantstolpe",
-		"Ortnamn", "Racke"])
+		"Ortnamn", "Racke", "Papperskorg", "Bank", "Elskap", "Cykelstall", "Brandpost", "Brevlada"])
 @export var small_draw_range_m: float = 450.0
 ## Playground pieces up to this far (m) are drawn.
 @export var playground_draw_range_m: float = 450.0

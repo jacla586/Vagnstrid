@@ -241,7 +241,7 @@ shows on the minimap. This is what we test first.
   roads): pipe ends in hollows at the road banks (geodata `trummor.py`, glb group `Trummor`).
 - Sports grounds (geodata `idrott.py`): OSM running tracks get a flat tartan oval with lane lines and a lawn infield (glb group `Idrott`, no collision); a long building beside one (or `building=grandstand`) becomes a roofed grandstand (`Byggnader_laktare`, collision). So far Isovalen on campus.
 - Landmarks (geodata `landmarken.py`, `geodata/landmarken.json` by OSM way id): built from their OSM building parts; one part can be a glass tower (taller, V-shaped, floor bands and mullions). Group `Byggnader_landmarken` (collision). So far Mjärdevi Center (campus, road_to_science).
-- Roadside (geodata `vagkant.py`, glb group `Vagkant`, no collision): reflector posts on rural roads
+- Roadside (geodata `vagkant.py`, glb group `Vagkant`, no collision; where Mapillary has street photos its detected street lights and road signs replace the rules, `mapillary_objekt.py`): reflector posts on rural roads
   from 70 km/h, street lamps every 32 m in built-up areas, guard rails on high banks, speed signs where
   NVDB's limit changes, give-way/stop signs and bus stop signs from OSM nodes, pedestrian-crossing
   signs (E1, both sides, not at traffic lights) at every zebra (`vagmarkering.py`: NVDB crossings plus
@@ -873,7 +873,8 @@ there and the break is over) and on the match's win/loss. Points
   `has_trunk = false`): crowns block sight (and count as cover), tanks and shells pass.
   `tree.tscn`/`BreakableTree` are no longer used by any map.
 - Bridges and underpasses come from the geodata pipeline (`geodata/scripts/broar.py`): glb group
-  `Broar` (decks, parapets, pillars, trench floors, retaining walls). `mesh_collision.gd` gives
+  `Broar` (decks, parapets, pillars, trench floors, retaining walls; underpasses as beam bridges with sett-paved
+  slopes or concrete boxes with lamps). Roof colours come from the orthophoto (`husfarger.py`). `mesh_collision.gd` gives
   `Byggnader`, `Broar`, `Stenar` and `Banhinder` trimesh collision. Underpasses are tank-sized (≥ 5 m wide, 3.8 m clear).
 - Roads come from OSM with Trafikverket's NVDB attributes (`geodata/scripts/nvdb.py`: real width, surface,
   speed; `vagmarkering.py`: centre/warning/no-overtaking/edge lines and zebra crossings as thin meshes in

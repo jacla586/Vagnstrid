@@ -7,6 +7,8 @@ Lantmäteriet: elevation model, laser data and orthophoto (CC BY 4.0), processed
 Naturvårdsverket: Nationella marktäckedata (CC0)
 Trafikverket: NVDB road data and culverts (open data)
 Jordbruksverket: field blocks and crops (open data)
+Mapillary contributors: street lights, signs, street furniture and facade colours
+from street photos (CC BY-SA 4.0)
 Copernicus DEM: produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and
 © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the
 European Union and ESA
