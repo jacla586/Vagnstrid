@@ -830,6 +830,90 @@
 			],
 			"look_height_m": 2.5,
 			"fov": 65
+		},
+		{
+			"name": "u1_lambohovsleden",
+			"at": [
+				568,
+				1597
+			],
+			"height_m": 1.7,
+			"look_at": [
+				536,
+				1593
+			],
+			"look_height_m": 1.5,
+			"fov": 65
+		},
+		{
+			"name": "u2_golfbanan",
+			"at": [
+				896,
+				90
+			],
+			"height_m": 1.7,
+			"look_at": [
+				915,
+				110
+			],
+			"look_height_m": 1.5,
+			"fov": 65
+		},
+		{
+			"name": "u3_ryd",
+			"at": [
+				636,
+				51
+			],
+			"height_m": 1.7,
+			"look_at": [
+				631,
+				27
+			],
+			"look_height_m": 1.5,
+			"fov": 65
+		},
+		{
+			"name": "u4_harvaregatan",
+			"at": [
+				1315,
+				1720
+			],
+			"height_m": 1.7,
+			"look_at": [
+				1312,
+				1752
+			],
+			"look_height_m": 1.5,
+			"fov": 65
+		},
+		{
+			"name": "u5_lambohovsleden_nara",
+			"at": [
+				556,
+				1596
+			],
+			"height_m": 1.7,
+			"look_at": [
+				536,
+				1593
+			],
+			"look_height_m": 1.8,
+			"fov": 65
+		},
+		{
+			"name": "u6_ryd_inne",
+			"at": [
+				634,
+				40
+			],
+			"height_m": 1.7,
+			"look_at": [
+				631,
+				24
+			],
+			"look_height_m": 1.8,
+			"fov": 65
 		}
 	],
 	"road_to_science": [

@@ -333,7 +333,7 @@ MARK = vagmarkering.Markering(roads, NV, feat.get('vagpunkter', []))
 MARK.bygg(add_merged, mat, to_world)
 scene.graph.update(frame_to='Broar', frame_from=scene.graph.base_frame)
 BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 0.95),
-                mat('Tra', (120, 88, 58), 0.9), mat('Racke', (72, 74, 76), 0.6))
+                mat('Tra', (120, 88, 58), 0.9), mat('Racke', (72, 74, 76), 0.6), mat=mat)
 # Vägkanten (vagkant.py): kantstolpar, lyktor, räcken, skyltar, hållplatser
 scene.graph.update(frame_to='Vagkant', frame_from=scene.graph.base_frame)
 VALT = valtbart.Samling()   # vältbart (lyktstolpar, kontaktledning): glb-gruppen Valtbart

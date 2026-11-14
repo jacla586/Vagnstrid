@@ -11,7 +11,11 @@ vägen dyker ner i den. Här:
    undre vägen schaktas ned (ramp 12 %) med släntade sidor (1:SLANT) tills den fria höjden räcker;
    schaktet är minst SCHAKT_MIN_BREDD brett i botten, körbart för stridsvagnar. Ett gemensamt
    tunneltak täcker alla vägar som går över (väg, mittremsa, cykelbana), med räcken längs mynningarna.
-3. Allt läggs i glb-gruppen Broar (Godot ger den kollision, mesh_collision.gd).
+3. Undergångarnas utseende (efter Mapillary-bilder från Linköping): korta (vägen ovanför täcker högst
+   LADA_FRAN_M av gångvägen) blir balkbroar: tjocka kantbalkar vid mynningarna, pelare vid slänternas fot
+   och slänterna under och vid bron klädda med gatsten (släntkoner). Längre blir betonglådor: väggar i
+   schaktets kanter, betonggolv och lampor i taket, gatsten bara utanför mynningarna.
+4. Allt läggs i glb-gruppen Broar (Godot ger den kollision, mesh_collision.gd).
 
 Koordinater: SWEREF 99 TM (x, y) för all geometri; to_world() ger Godot (x, z) vid meshbygget.
 """
@@ -51,6 +55,14 @@ PELARE_AVSTAND = 25.0
 PELARE_TJOCKLEK = 1.2
 PARALLELL_AVSTAND = 8.0  # parallella broar närmare än så här (kant till kant) slås ihop
 NOD_TOL = 0.5            # punkter närmare än så här räknas som samma nod
+LADA_FRAN_M = 18.0       # täckt längd av gångvägen: längre = betonglåda, kortare = balkbro
+KANTBALK_H = 1.1         # kantbalken vid mynningen: höjd från däckets ovansida
+KANTBALK_D = 0.5
+PELARE_U = 0.6           # pelare under kantbalken vid slänternas fot (m i fyrkant)
+KON_M = 4.0              # gatstenen fortsätter så här långt utanför mynningarna (släntkon)
+GATSTEN_LYFT = 0.05      # gatstenen över terrängen
+LADA_VAGG = 0.35
+LAMPA_AVSTAND = 6.0
 
 
 def ar_bro(t):
@@ -297,6 +309,7 @@ class Broar:
         """
         self.schakt_mask = np.zeros(shape, bool)
         self.tak = []
+        self.tak_info = []    # per tunneltak: undre vägens rutt, täckt sträcka, schaktbredd, riktningar
         self.pa_tak = set()   # korta broar över en undergång: de ingår i tunneltaket
         per_undre = {}
         for (j, k), p in self.korsningar.items():
@@ -382,6 +395,8 @@ class Broar:
                 sin = max(abs(float(np.dot(u, n_r))), 0.5)   # mot normalen: 1 = rät korsning
                 self.tak.append((np.array([rutt.interpolate(d).coords[0] for d in sp]), tp, hw / sin,
                                  self.roads[j]['tags'], u))
+                self.tak_info.append(dict(rutt=rutt, s_lo=float(s_lo), s_hi=float(s_hi), bredd=float(bredd),
+                                          u=u, n_r=n_r, sp=sp, tp=tp))
             for botten, s_p in bottnar:
                 if schakt:
                     golvet = float(np.interp(s_p, ss, z_r))
@@ -400,7 +415,7 @@ class Broar:
         np.save(path, ndi.binary_dilation(m, iterations=2))
 
     # ---------- meshar ----------
-    def bygg_meshar(self, h, sample, to_world, add_merged, betong, tra, metall):
+    def bygg_meshar(self, h, sample, to_world, add_merged, betong, tra, metall, mat=None):
         # brobanor (bara vägar med bridge-tagg; vägar över tunnlar ligger på tunneltaken)
         dack = []
         for k, spann in self.spann.items():
@@ -487,8 +502,164 @@ class Broar:
                 mr.racke(linje, np.full(n_, topp[i_]), RACKE_HOJD)
             add_merged('Broar', m.trimesh(), betong)
             add_merged('Broar', mr.trimesh(), metall)
+        if mat is not None:
+            self._undergangar(h, sample, to_world, add_merged, betong, mat)
         print(f'broar: {antal} brobanor, {len(self.tak)} tunneltak, '
               f'{sum(len(d["inre"]) for d in dack) // 2} sammanslagna par')
+
+
+    # ---------- undergångarnas utseende ----------
+    def _undergangar(self, h, sample, to_world, add_merged, betong, mat):
+        gatsten = _gatsten_material()
+        golv_mat = mat('Tunnelgolv', (96, 96, 98), 0.9)
+        lampa = trimesh.visual.material.PBRMaterial(name='Tunnellampa', baseColorFactor=[1.0, 0.96, 0.85, 1.0],
+                                                    emissiveFactor=[1.0, 0.92, 0.75], roughnessFactor=0.5)
+        n_balk = n_lada = 0
+        for info, (pts, topp, hw, _tj, u) in zip(self.tak_info, self.tak):
+            rutt, s_lo, s_hi, bredd = info['rutt'], info['s_lo'], info['s_hi'], info['bredd']
+            n_r = info['n_r']                      # gångvägens normal (SWEREF)
+            lada = s_hi - s_lo > LADA_FRAN_M
+            sinf = max(abs(float(np.dot(u, n_r))), 0.5)
+
+            def golv(q):
+                return float(sample(h, [q[0]], [q[1]])[0])
+            m = _Mesh(to_world)
+            # kantbalkar vid mynningarna (längs vägen ovanför, u)
+            for i_, inat in ((0, 1.0), (len(pts) - 1, -1.0)):
+                d_ = _riktning(rutt, info['sp'][i_])
+                c = pts[i_] + d_ * inat * KANTBALK_D / 2
+                m.mur(np.array([c - u * hw[i_], c + u * hw[i_]]), np.full(2, topp[i_] - 0.06),   # under vägbanan
+                      np.full(2, topp[i_] - KANTBALK_H), KANTBALK_D)
+                if not lada:
+                    # pelare under balken vid slänternas fot, på var sida om gångvägen
+                    for sida in (1.0, -1.0):
+                        off = sida * (bredd / 2 + PELARE_U / 2 + 0.2)
+                        q = c + u * (off / sinf)
+                        zg = golv(q)
+                        if topp[i_] - KANTBALK_H - zg > 0.8:
+                            m.mur(np.array([q - d_ * PELARE_U / 2, q + d_ * PELARE_U / 2]),
+                                  np.full(2, topp[i_] - KANTBALK_H + 0.05), np.full(2, zg - 0.3), PELARE_U)
+            if lada:
+                # väggar i schaktets kanter, golv och lampor i taket
+                ss = np.r_[s_lo, np.arange(np.ceil(s_lo), s_hi, 1.0), s_hi]
+                c_ = np.array([rutt.interpolate(d).coords[0] for d in ss])
+                tp_ = np.interp(ss, info['sp'], topp) - TAK_TJOCKLEK
+                zg_ = np.array([golv(q) for q in c_])
+                dv = np.gradient(c_, axis=0)
+                dv /= np.maximum(np.linalg.norm(dv, axis=1, keepdims=True), 1e-9)
+                nrm = np.c_[-dv[:, 1], dv[:, 0]]
+                for sida in (1.0, -1.0):
+                    m.mur(c_ + nrm * sida * (bredd / 2 + LADA_VAGG / 2), tp_ + 0.05, zg_ - 0.3, LADA_VAGG)
+                g = _Mesh(to_world)
+                g.platta(c_, zg_ + 0.12, bredd / 2 + 0.2, 0.3, ovan_under=0.0)
+                add_merged('Broar', g.trimesh(), golv_mat)
+                lm = _Mesh(to_world)
+                for sv in np.arange(s_lo + LAMPA_AVSTAND / 2, s_hi, LAMPA_AVSTAND):
+                    q = np.array(rutt.interpolate(sv).coords[0])
+                    zt = float(np.interp(sv, info['sp'], topp)) - TAK_TJOCKLEK
+                    d_ = _riktning(rutt, sv)
+                    lm.mur(np.array([q - d_ * 0.6, q + d_ * 0.6]), np.full(2, zt + 0.01), np.full(2, zt - 0.08), 0.25)
+                add_merged('Broar', lm.trimesh(), lampa)
+                n_lada += 1
+            else:
+                n_balk += 1
+            add_merged('Broar', m.trimesh(), betong)
+            # gatsten på slänterna: under bron (balkbro) och som koner utanför mynningarna
+            V, F, UV = _gatsten_yta(rutt, s_lo, s_hi, bredd, lada, h, sample, to_world, info, topp)
+            if F:
+                add_merged('Broar', trimesh.Trimesh(np.array(V), np.array(F), process=False), gatsten,
+                           uv=np.array(UV))
+        print(f'undergångar: {n_balk} balkbroar, {n_lada} betonglådor')
+
+
+def _gatsten_yta(rutt, s_lo, s_hi, bredd, lada, h, sample, to_world, info, topp):
+    """Rutnät (1 m) på slänterna från schaktets botten och utåt, GATSTEN_LYFT över terrängen.
+    Balkbro: under hela bron och KON_M utanför; låda: bara utanför mynningarna. Utanför mynningarna
+    smalnar den av (kon). Bara där marken ligger under däcket, och inte på schaktets botten."""
+    V, F, UV = [], [], []
+    s0, s1 = max(s_lo - KON_M, 0.0), min(s_hi + KON_M, rutt.length)
+    ss = np.arange(s0, s1 + 0.01, 1.0)
+    if len(ss) < 2:
+        return V, F, UV
+    c = np.array([rutt.interpolate(d).coords[0] for d in ss])
+    dv = np.gradient(c, axis=0)
+    dv /= np.maximum(np.linalg.norm(dv, axis=1, keepdims=True), 1e-9)
+    nrm = np.c_[-dv[:, 1], dv[:, 0]]
+    tmax = float(np.max(topp))
+    for sida in (1.0, -1.0):
+        offs = bredd / 2 + np.arange(0.0, 12.01, 1.0)
+        P = c[:, None, :] + nrm[:, None, :] * sida * offs[None, :, None]
+        Z = sample(h, P[..., 0].ravel(), P[..., 1].ravel()).reshape(P.shape[:2]) + GATSTEN_LYFT
+        golv = Z[:, :1]
+        utanfor = np.minimum(np.abs(ss - np.clip(ss, s_lo, s_hi)), KON_M)   # 0 under bron
+        # konens bredd: hela slänten vid mynningen, smalare ut mot KON_M
+        max_off = bredd / 2 + 12.0 * (1.0 - utanfor / KON_M)
+        ok = (offs[None, :] <= max_off[:, None] + 1e-6) & (Z < tmax - 0.4) & (Z - golv < 6.0)
+        if lada:
+            ok &= (utanfor > 0)[:, None]
+        base = len(V)
+        idx = -np.ones(P.shape[:2], int)
+        for i in range(len(ss)):
+            for j in range(len(offs)):
+                x, zz = to_world(P[i, j, 0], P[i, j, 1])
+                idx[i, j] = len(V)
+                V.append([x, Z[i, j], zz])
+                UV.append([ss[i] / 2.0, offs[j] / 2.0])
+        for i in range(len(ss) - 1):
+            for j in range(len(offs) - 1):
+                if not (ok[i, j] and ok[i + 1, j] and ok[i, j + 1] and ok[i + 1, j + 1]):
+                    continue
+                a, b, c_, d = idx[i, j], idx[i + 1, j], idx[i + 1, j + 1], idx[i, j + 1]
+                # uppåt: normalens y > 0
+                pa, pb, pc = np.array(V[a]), np.array(V[b]), np.array(V[c_])
+                if np.cross(pb - pa, pc - pa)[1] >= 0:
+                    F += [[a, b, c_], [a, c_, d]]
+                else:
+                    F += [[a, c_, b], [a, d, c_]]
+        if base == len(V):
+            continue
+    if not F:
+        return [], [], []
+    # ta bort hörn som ingen triangel använder
+    Fa = np.array(F)
+    anv = np.unique(Fa)
+    ny = -np.ones(len(V), int)
+    ny[anv] = np.arange(len(anv))
+    return [V[i] for i in anv], ny[Fa].tolist(), [UV[i] for i in anv]
+
+
+_GATSTEN = None
+
+
+def _gatsten_material():
+    """Gatsten (smågatsten i rader, grå med variation och mörka fogar), 2 × 2 m per textur."""
+    global _GATSTEN
+    if _GATSTEN is not None:
+        return _GATSTEN
+    from PIL import Image
+    import zlib
+    c = 256
+    rng = np.random.default_rng(zlib.crc32(b'gatsten'))
+    a = np.zeros((c, c, 3), float)
+    a[:] = (70, 68, 66)                         # fog
+    rad = c // 16                              # 12,5 cm rader
+    for y0 in range(0, c, rad):
+        x = -rng.integers(0, rad)
+        while x < c:
+            w = int(rng.integers(int(rad * 0.8), int(rad * 1.3)))
+            ton = rng.uniform(0.75, 1.15)
+            bas = np.array((138, 134, 128)) * ton + rng.normal(0, 4, 3)
+            xs, xe = max(x + 1, 0), min(x + w - 1, c)
+            if xe > xs:
+                for dy in range(1, rad - 1):
+                    f = 1.06 - 0.18 * abs(dy - rad / 2) / (rad / 2)
+                    a[y0 + dy, xs:xe] = bas * f
+            x += w
+    a += rng.normal(0, 5, a.shape)
+    im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
+    _GATSTEN = trimesh.visual.material.PBRMaterial(name='Gatsten', baseColorTexture=im, metallicFactor=0.0,
+                                                   roughnessFactor=0.9)
+    return _GATSTEN
 
 
 class _Mesh:
