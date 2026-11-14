@@ -52,9 +52,10 @@ var _mine_armed: bool = false
 var _smoke_used: bool = false
 var _aim_time: float = 0.0
 var _hidden_time: float = 0.0
-var _last_short: float = -INF
 var _clock: float = 0.0
 var _stage_origin: Vector3
+var _last_hint: Dictionary = {}   # hint key -> clock when last given
+var _final_left: int = -1
 
 
 func _enter_tree() -> void:
@@ -143,7 +144,10 @@ func _begin(index: int) -> void:
 		_setup_lesson(step.lesson)
 	if step.goal == TutorialStepData.Goal.DRIVE_TO:
 		_place_marker()
+	_say(step.voice_before)
 	_say(step.voice)
+	_say(step.voice_after)
+	_final_left = -1
 	_panel.show_step(step.lesson, _lesson_count(), step.title, ControlsPanel.expand(step.text))
 
 
@@ -278,6 +282,8 @@ func _goal_met(delta: float) -> bool:
 		TutorialStepData.Goal.HATCH_CLOSED:
 			return _tank.get_hatch_progress() <= 0.0
 		TutorialStepData.Goal.BINOCULARS_ON_TARGET:
+			if Input.is_action_just_pressed("binoculars") and _tank.get_hatch_progress() < 1.0:
+				_hint("hatch", data.hatch_first_hint, data.hatch_first_text)
 			_aim_time = _aim_time + delta if _binoculars_on(_target) else 0.0
 			return _aim_time >= data.binocular_hold_s
 		TutorialStepData.Goal.SPOT_TARGET:
@@ -306,10 +312,14 @@ func _goal_met(delta: float) -> bool:
 			_hidden_time = _hidden_time + delta if hidden else 0.0
 			return _hidden_time >= data.hide_hold_s
 		TutorialStepData.Goal.KNOCK_OUT_ALL:
+			var alive: int = 0
 			for t: Tank in _final:
 				if is_instance_valid(t) and not t.is_knocked_out():
-					return false
-			return true
+					alive += 1
+			if alive == 1 and _final_left > 1:
+				_hint("one_left", data.one_left, data.one_left_text)
+			_final_left = alive
+			return alive == 0
 	return false
 
 
@@ -382,7 +392,17 @@ func _on_squad_radio(kind: int, _at: Vector3) -> void:
 
 ## A round at the gunnery target that lands short: the instructor's hint.
 func _on_fired(shell: Shell) -> void:
-	if _stage < 0 or data.steps[_stage].goal != TutorialStepData.Goal.HIT_TARGET:
+	if _stage < 0:
+		return
+	var goal: int = data.steps[_stage].goal
+	if goal == TutorialStepData.Goal.STOP_TARGET:
+		var shell_data: ShellData = _tank.get_loaded_shell()
+		var ap: bool = shell_data != null and not shell_data.is_explosive()
+		shell.finished.connect(func(struck: Array[Tank]) -> void:
+			if ap and _heavy != null and is_instance_valid(_heavy) and struck.has(_heavy):
+				_hint("bounce", data.bounce_hint, data.bounce_text))
+		return
+	if goal != TutorialStepData.Goal.HIT_TARGET:
 		return
 	var from: Vector3 = _tank.global_position
 	shell.finished.connect(func(struck: Array[Tank]) -> void:
@@ -390,11 +410,21 @@ func _on_fired(shell: Shell) -> void:
 				or not is_instance_valid(shell):
 			return
 		var range_m: float = from.distance_to(_target.global_position)
-		if from.distance_to(shell.global_position) < range_m - 15.0 \
-				and _clock - _last_short >= data.short_hint_cooldown_s:
-			_last_short = _clock
-			_say(data.short_hint)
-			_panel.show_hint(data.short_hint_text))
+		var landed: float = from.distance_to(shell.global_position)
+		if landed < range_m - 15.0:
+			_hint("gunnery", data.short_hint, data.short_hint_text, data.short_hint_cooldown_s)
+		elif landed > range_m + 15.0:
+			_hint("gunnery", data.long_hint, data.long_hint_text, data.short_hint_cooldown_s))
+
+
+## A hint (voice and text), at most once per cooldown for its key.
+func _hint(key: String, stream: AudioStream, text: String, cooldown: float = -1.0) -> void:
+	var wait: float = cooldown if cooldown >= 0.0 else data.hint_cooldown_s
+	if _clock - float(_last_hint.get(key, -INF)) < wait:
+		return
+	_last_hint[key] = _clock
+	_say(stream)
+	_panel.show_hint(text)
 
 
 ## Knocked out or lying on its side: the line, then back upright where it last stood well.

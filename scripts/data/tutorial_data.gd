@@ -14,7 +14,21 @@ extends Resource
 ## "Kort! Höj siktet ett streck..." when a round at the gunnery target lands short.
 @export var short_hint: AudioStream
 @export var short_hint_text: String = "SHORT! RAISE THE SIGHT ONE MARK ON THE RANGE SCALE"
+## "Långt! Sänk siktet ett streck." when one lands beyond it.
+@export var long_hint: AudioStream
+@export var long_hint_text: String = "LONG! LOWER THE SIGHT ONE MARK"
+## (Gunnery hints share this cooldown.)
 @export var short_hint_cooldown_s: float = 8.0
+## "Öppna luckan först..." for binoculars asked for with the hatch shut.
+@export var hatch_first_hint: AudioStream
+@export var hatch_first_text: String = "OPEN THE HATCH FIRST: BINOCULARS NEED AN OPEN HATCH"
+## "Den studsar!..." for an AP round at the heavy target.
+@export var bounce_hint: AudioStream
+@export var bounce_text: String = "IT BOUNCES! LOAD HE AND AIM AT THE TRACK"
+## "En nere, en kvar!" when the final test is down to one.
+@export var one_left: AudioStream
+@export var one_left_text: String = "ONE DOWN, ONE TO GO"
+@export var hint_cooldown_s: float = 8.0
 @export var volume_db: float = -2.0
 
 @export_group("Flow")

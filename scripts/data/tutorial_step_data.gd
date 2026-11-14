@@ -27,6 +27,9 @@ enum Goal {
 @export_multiline var text: String = ""
 ## Said when the stage starts.
 @export var voice: AudioStream
+## Said before / after `voice` ("Tryck T..." before the sight line, "Målet finns inom ringen..." after).
+@export var voice_before: AudioStream
+@export var voice_after: AudioStream
 ## Said when the stage is done ("Bra, där stannar vi.").
 @export var done_voice: AudioStream
 @export var wait_s: float = 0.0

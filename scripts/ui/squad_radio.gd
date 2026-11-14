@@ -230,8 +230,12 @@ func _crew_call(key: String, stream: AudioStream, v: CrewVoiceData,
 		while at < _queue.size() and int(_queue[at][2]) == -1:
 			at += 1
 	_queue.insert(at, [stream, v.volume_db, -1])
-	while _queue.size() > 3:
-		_queue.pop_back()
+	# Keep the queue short, but never drop a command call (ThunderRoad, the tutorial's instructor).
+	var i: int = _queue.size() - 1
+	while _queue.size() > 3 and i >= 0:
+		if int(_queue[i][2]) != COMMAND:
+			_queue.remove_at(i)
+		i -= 1
 
 
 ## A command call (ThunderRoad, `ThunderPanel`): after the crew shouts and the other

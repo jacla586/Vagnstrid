@@ -33,6 +33,14 @@
 [ext_resource type="Resource" path="res://data/configs/1_bt7.tres" id="r31"]
 [ext_resource type="Resource" path="res://data/configs/2_t34.tres" id="r32"]
 [ext_resource type="Script" path="res://scripts/data/tank_config.gd" id="r_cfg"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_3_map.ogg" id="v_tut_3_map"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_3_hatch_first.ogg" id="v_tut_3_hatch_first"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_5_turret.ogg" id="v_tut_5_turret"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_5_long.ogg" id="v_tut_5_long"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_6_west.ogg" id="v_tut_6_west"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_6_bounce.ogg" id="v_tut_6_bounce"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_9_map.ogg" id="v_tut_9_map"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_9_one_left.ogg" id="v_tut_9_one_left"]
 
 [sub_resource type="Resource" id="step_0"]
 script = ExtResource("r1")
@@ -72,6 +80,7 @@ text = "Close the hatch with {toggle_hatch}. Now you are safe, but you only see 
 voice = ExtResource("r7")
 
 [sub_resource type="Resource" id="step_4"]
+voice_after = ExtResource("v_tut_3_map")
 script = ExtResource("r1")
 lesson = 3
 title = "Binoculars"
@@ -96,6 +105,7 @@ area_radius_m = 60.0
 area_label = "TARGET AREA"
 
 [sub_resource type="Resource" id="step_6"]
+voice_before = ExtResource("v_tut_5_turret")
 script = ExtResource("r1")
 lesson = 5
 title = "Gunner's sight"
@@ -108,6 +118,7 @@ area_radius_m = 60.0
 area_label = "TARGET AREA"
 
 [sub_resource type="Resource" id="step_7"]
+voice_after = ExtResource("v_tut_6_west")
 script = ExtResource("r1")
 lesson = 6
 title = "Ammunition"
@@ -160,6 +171,7 @@ voice = ExtResource("r20")
 done_voice = ExtResource("r21")
 
 [sub_resource type="Resource" id="step_12"]
+voice_after = ExtResource("v_tut_9_map")
 script = ExtResource("r1")
 lesson = 9
 title = "Final test"
@@ -178,6 +190,10 @@ welcome = ExtResource("r24")
 skip = ExtResource("r25")
 restart = ExtResource("r26")
 short_hint = ExtResource("r27")
+long_hint = ExtResource("v_tut_5_long")
+hatch_first_hint = ExtResource("v_tut_3_hatch_first")
+bounce_hint = ExtResource("v_tut_6_bounce")
+one_left = ExtResource("v_tut_9_one_left")
 start_position = Vector3(905, 68, 1625)
 start_yaw_deg = 180.0
 hunt_every_s = 0.0
