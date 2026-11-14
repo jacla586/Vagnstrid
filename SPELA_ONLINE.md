@@ -51,6 +51,22 @@ godot --path . -- --host --map vidingsjo [--bots] [--name Jacob]
 godot --path . -- --join 100.101.102.103 [--name Kompis]
 ```
 
+## Dedikerad server (står och går själv)
+
+Servern spelar ingen egen vagn. Bottar fyller lagen upp till 10 mot 10 (`data/server/server.tres`:
+lagstorlek, väder, röstningstid, längsta matchtid). Efter varje match visas resultatet en stund,
+sedan röstar alla som är inne om nästa match bland **alla** lägen och kartor (klicka på en rad, du
+kan ändra dig). Flest röster vinner, lika avgörs genom lottning, inga röster ger nästa i listan. Är
+ingen inne väntar servern tills någon ansluter. Spelarna ansluter med Join som vanligt.
+
+    godot --headless --path . -- --dedicated [--port 24680] [--map campus_koth] [--log-dir <mapp>]
+
+Som tjänst som startar om sig själv: se `tools/server/vagnstrid-server.service` (instruktioner i
+filen). Loggen (`server_log.jsonl`, i `~/.local/share/godot/app_userdata/Vagnstrid/` om inget
+annat anges) får en rad per match, röstning och anslutning. Sammanfattning av vad folk röstar på:
+
+    python3 tools/server/vote_stats.py [server_log.jsonl]
+
 ## Känt och begränsat (första versionen)
 
 - Hos den som ansluter reagerar torn, kanon och lucka direkt. Skrovet rör sig först när

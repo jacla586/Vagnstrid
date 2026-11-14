@@ -1,0 +1,19 @@
+# Dedicated Vagnstrid server under systemd (user service): restarts on a crash and at boot.
+#   cp tools/server/vagnstrid-server.service ~/.config/systemd/user/
+#   (edit WorkingDirectory and the godot path below if needed)
+#   systemctl --user daemon-reload && systemctl --user enable --now vagnstrid-server
+#   loginctl enable-linger $USER     # keeps it running when you're logged out
+#   journalctl --user -u vagnstrid-server -f     # follow its output
+[Unit]
+Description=Vagnstrid dedicated server
+After=network-online.target
+
+[Service]
+WorkingDirectory=/media/jacob/Dump/projekt/stridsvagn
+ExecStart=/usr/bin/env godot --headless --path . -- --dedicated --port 24680
+Restart=always
+RestartSec=10
+Nice=5
+
+[Install]
+WantedBy=default.target

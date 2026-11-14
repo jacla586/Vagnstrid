@@ -110,7 +110,14 @@ func _ready() -> void:
 		add_child(_replicator)
 		for field: TreeField in _tree_fields():
 			field.tree_index_felled.connect(_on_tree_felled.bind(_map.get_path_to(field)))
-		_names[1] = NetSession.instance.player_name
+		if NetSession.instance.server == null:
+			_names[1] = NetSession.instance.player_name
+		# Players already here (a map change on the dedicated server) and those ready
+		# while this map loaded.
+		for peer: Variant in NetSession.instance.known_peers:
+			var row: Array = NetSession.instance.known_peers[peer]
+			on_client_hello(int(peer), str(row[0]), str(row[1]))
+		_ready_pending.call_deferred()
 	else:
 		_puppets = NetPuppets.new()
 		add_child(_puppets)
@@ -118,9 +125,18 @@ func _ready() -> void:
 		_input.process_physics_priority = 100   # after PlayerController has set the command
 		add_child(_input)
 		NetSession.instance.rpc_id(1, "rpc_ready")
+	if NetRole.is_host() and NetSession.instance.server != null:
+		return   # the dedicated server plays nobody: no lobby, no rig
 	var lobby := MatchLobby.new()
 	lobby.name = "MatchLobby"
 	_map.add_child.call_deferred(lobby)
+
+
+func _ready_pending() -> void:
+	await get_tree().create_timer(0.5).timeout
+	for peer: int in NetSession.instance.take_pending_ready():
+		if peer in multiplayer.get_peers():
+			on_client_ready(peer)
 
 
 func _exit_tree() -> void:

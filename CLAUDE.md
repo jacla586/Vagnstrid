@@ -1041,6 +1041,16 @@ Host-authoritative, Godot ENet, all in `scripts/net/`:
   match, `MatchLobby`). Command line after `--`:
   `--host [--map vidingsjo] [--bots]`, `--join <ip>`, `--name N`, `--port N` (default 24680; lets
   a test host run beside a game already hosting).
+- Dedicated server (`--dedicated [--map m] [--log-dir d]`, `DedicatedServer`, child of NetSession; data
+  `ServerData`, `data/server/server.tres`; SERVER_PLAN.md): the host plays nobody (NetGame adds no lobby/rig),
+  bots fill to `team_size`; a match ends when its mode `is_over()` or after `max_match_s`, the result shows
+  `result_s`, then every client gets `VotePanel` (rpc_vote_open/state/close, `rpc_vote`) listing every scenario
+  (`MainMenu.find_maps`/`scenario_label`); most votes wins, a tie by lot, none = next in the list; nobody
+  connected = waits. `NetSession.change_map` sends `rpc_change_map` (clients reload, keep the connection, send
+  `rpc_ready` again; the host queues readies that come while it loads, `take_pending_ready`) and the host keeps
+  `known_peers` (names, tank keys) for the next NetGame. Log: one JSON line per match/vote/join/leave in
+  `server_log.jsonl`; `tools/server/vote_stats.py` sums it up; `tools/server/vagnstrid-server.service`
+  (systemd). Testing: `--max-match-s 40` shortens matches and the vote.
 - Player guide (Swedish): `SPELA_ONLINE.md` (hosting, joining, Tailscale, F3).
 - Measured: ~0.8 kB/s per tank per recipient. Test with two (or three) headless
   instances running scratch scripts (`--script`, the autoload is there), or two windows.

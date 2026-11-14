@@ -79,20 +79,20 @@ func _ready() -> void:
 	box.add_child(help_row)
 
 	_map = OptionButton.new()
-	_maps = _find_maps()
+	_maps = find_maps()
 	var map_field: Control = _field("Map", _map)
 	var map_caption: Label = map_field.get_child(0)
 	var by_group: Array[PackedStringArray] = []
 	for g: String in GROUPS:
 		by_group.append(PackedStringArray())
 	for path: String in _maps:
-		by_group[_group_of(path)].append(path)
+		by_group[group_of(path)].append(path)
 	for g: int in GROUPS.size():
 		if by_group[g].is_empty():
 			continue
 		_map.add_separator(GROUPS[g])
 		for path: String in by_group[g]:
-			_map.add_item(_map_title(path))
+			_map.add_item(map_title(path))
 			var i: int = _map.item_count - 1
 			_map.set_item_metadata(i, path)
 			_map.set_item_tooltip(i, GROUPS[g])
@@ -147,7 +147,7 @@ func _ready() -> void:
 	var free_group: int = GROUP_TAGS.find("_free")
 	var show_group: Callable = func(i: int) -> void:
 		map_caption.text = "Map – " + _map.get_item_tooltip(i) if i >= 0 else "Map"
-		var free: bool = i >= 0 and _group_of(str(_map.get_item_metadata(i))) == free_group
+		var free: bool = i >= 0 and group_of(str(_map.get_item_metadata(i))) == free_group
 		size_field.visible = not free
 		allies_field.visible = free
 	_map.item_selected.connect(show_group)
@@ -278,7 +278,7 @@ func _button(t: String, cb: Callable) -> Button:
 	return b
 
 
-func _find_maps() -> PackedStringArray:
+static func find_maps() -> PackedStringArray:
 	var out: PackedStringArray = []
 	for dir: String in MAP_DIRS:
 		var d := DirAccess.open(dir)
@@ -292,7 +292,7 @@ func _find_maps() -> PackedStringArray:
 
 
 ## Index into GROUPS by the scene's name tag (no tag: the last group).
-func _group_of(path: String) -> int:
+static func group_of(path: String) -> int:
 	var name_: String = path.get_file().get_basename()
 	for g: int in GROUP_TAGS.size():
 		if name_.find(GROUP_TAGS[g]) > 0:
@@ -301,7 +301,7 @@ func _group_of(path: String) -> int:
 
 
 ## "vidingsjo_thunder_red" -> "Vidingsjö – Red", "campus_koth" -> "Campus".
-func _map_title(path: String) -> String:
+static func map_title(path: String) -> String:
 	var name_: String = path.get_file().get_basename()
 	var variant: String = ""
 	for tag: String in GROUP_TAGS:
@@ -334,3 +334,8 @@ func _on_join() -> void:
 func _on_single() -> void:
 	Weather.resolve()
 	NetSession.instance.play_offline(_selected_map())
+
+
+## "King of the Hill: Campus" (the dedicated server's vote list).
+static func scenario_label(path: String) -> String:
+	return "%s: %s" % [GROUPS[group_of(path)], map_title(path)]

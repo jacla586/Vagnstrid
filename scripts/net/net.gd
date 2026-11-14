@@ -35,6 +35,14 @@ const PEER_TIMEOUT_MAX_MS: int = 60000
 static var instance: NetSession
 
 var player_name: String = "Player"
+## Host: every connected player's [name, tank config key] (from rpc_hello), kept across
+## map changes so the next NetGame knows them.
+var known_peers: Dictionary = {}
+## The dedicated server (`--dedicated`): no player of its own, votes between matches.
+var server: DedicatedServer
+## Host: players who said ready while the next map was still loading.
+var _pending_ready: Array[int] = []
+var _vote_panel: VotePanel
 var map_path: String = ""
 var bots: bool = false
 ## The running game in the loaded map (null in menus).
@@ -81,6 +89,8 @@ func _parse_command_line() -> void:
 	if not MatchSettings.player_name.is_empty():
 		player_name = MatchSettings.player_name   # --name below still wins
 	var do_host: bool = false
+	var dedicated: bool = false
+	var log_dir: String = ""
 	var i: int = 0
 	while i < args.size():
 		match args[i]:
@@ -98,8 +108,19 @@ func _parse_command_line() -> void:
 			"--port":
 				i += 1
 				port = int(args[i])
+			"--dedicated": dedicated = true
+			"--log-dir":
+				i += 1
+				log_dir = args[i]
 		i += 1
-	if do_host:
+	if dedicated:
+		server = DedicatedServer.new()
+		server.name = "DedicatedServer"
+		if log_dir != "":
+			server.log_dir = log_dir
+		add_child(server)
+		server.start(map if args.has("--map") else "")
+	elif do_host:
 		host(map, bots)
 	elif join_ip != "":
 		join(join_ip)
@@ -202,6 +223,10 @@ func _on_peer_connected(id: int) -> void:
 
 
 func _on_peer_disconnected(id: int) -> void:
+	if server != null:
+		server.on_peer_left(id)
+	known_peers.erase(id)
+	_pending_ready.erase(id)
 	if NetRole.is_host() and game != null:
 		game.on_client_left(id)
 
@@ -254,6 +279,7 @@ func _on_packet(id: int, packet: PackedByteArray) -> void:
 @rpc("any_peer", "call_remote", "reliable", 2)
 func rpc_hello(name_: String, config_key: String) -> void:
 	if NetRole.is_host():
+		known_peers[multiplayer.get_remote_sender_id()] = [name_.strip_edges().left(20), config_key]
 		rpc_id(multiplayer.get_remote_sender_id(), "rpc_welcome", map_path, bots,
 				Weather.current().resource_path)
 		if game != null:
@@ -270,8 +296,70 @@ func rpc_welcome(map: String, with_bots: bool, weather_path: String) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 2)
 func rpc_ready() -> void:
-	if NetRole.is_host() and game != null:
-		game.on_client_ready(multiplayer.get_remote_sender_id())
+	if not NetRole.is_host():
+		return
+	var peer: int = multiplayer.get_remote_sender_id()
+	if game != null and game.is_inside_tree() and game.get_parent().scene_file_path == map_path:
+		game.on_client_ready(peer)
+	elif not _pending_ready.has(peer):
+		_pending_ready.append(peer)   # the host is still loading the same map
+
+
+## Host (NetGame, once the map is up): the players who were ready before it.
+func take_pending_ready() -> Array[int]:
+	var out: Array[int] = _pending_ready.duplicate()
+	_pending_ready.clear()
+	return out
+
+
+## Host: every client loads `path` (with this weather) and the host does too; the
+## connections stay. Used by the dedicated server between matches.
+func change_map(path: String) -> void:
+	map_path = path
+	_close_vote_panel()
+	rpc("rpc_change_map", path, Weather.current().resource_path)
+	_load_map(path)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_change_map(path: String, weather_path: String) -> void:
+	map_path = path
+	Weather.set_by_path(weather_path)
+	_close_vote_panel()
+	game = null
+	_load_map(path)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_vote_open(labels: Array, seconds: float, counts: Array, current: int) -> void:
+	_close_vote_panel()
+	_vote_panel = VotePanel.new()
+	get_tree().root.add_child(_vote_panel)
+	_vote_panel.open(labels, seconds, counts, current)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_vote_state(counts: Array) -> void:
+	if is_instance_valid(_vote_panel):
+		_vote_panel.set_counts(counts)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_vote_close(winner: String) -> void:
+	if is_instance_valid(_vote_panel):
+		_vote_panel.close(winner)
+
+
+@rpc("any_peer", "call_remote", "reliable", 2)
+func rpc_vote(index: int) -> void:
+	if NetRole.is_host() and server != null:
+		server.on_vote(multiplayer.get_remote_sender_id(), index)
+
+
+func _close_vote_panel() -> void:
+	if is_instance_valid(_vote_panel):
+		_vote_panel.queue_free()
+	_vote_panel = null
 
 
 @rpc("authority", "call_remote", "reliable", 2)
