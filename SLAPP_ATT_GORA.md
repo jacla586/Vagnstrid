@@ -28,9 +28,9 @@ Regler: `Tävlingsvillkor.txt`, `Tävling1–3.png`. Bidragstexten: `sweclockers
       med läsbara namn i stället för filnamn.
 
 ### Nya spelare och juryn
-- [ ] **Hjälpskärm** med kontroller (F1) och en kort text första gången om luckan uppe/nere.
-- [ ] **Tutorial-karta** som lär ut kupolen, siktet och truppen (byggs senare).
-- [ ] **Inställningsmeny:** musens känslighet, volym, helskärm, grafiknivå (gräs, skuggor, siktavstånd).
+- [x] **Hjälpskärm** med kontroller (F1) och en kort text första gången om luckan uppe/nere.
+- [ ] **Tutorial-karta** som lär ut kupolen, siktet och truppen. Plan: `TUTORIAL_PLAN.md`.
+- [x] **Inställningsmeny:** mus, volym (allt/effekter/röster), fönsterläge, grafiknivå med förval.
 
 ### Test
 - [ ] Exportera Windows-bygget och spela med kompisen på hans dator (prestanda, nätverk, att allt laddar).
