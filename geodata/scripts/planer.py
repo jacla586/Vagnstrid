@@ -9,7 +9,7 @@ kortsidorna (vältbara, `Fotbollsmal`) och belysningsmaster i hörnen på konstg
 Tennis: grus (eller hård yta efter surface), linjer för dubbel och singel, nät (`Tennisnat`, vältbart)
 och ett 3 m högt nätstängsel runt ytan.
 Bad: bassängerna (OSM-ytorna) blir kaklade bassänger med djup efter storlek (stor 1,8 m, mellan 0,9 m,
-liten 0,35 m), vattenyta i glb-gruppen Vattendrag (spelets vattenshader), simbanor (linjer i botten
+liten 0,35 m), en klar, halvgenomskinlig vattenyta (eget material, inte sjöarnas shader), simbanor (linjer i botten
 och banlinor) i bassänger minst 40 m långa, ett betongdäck BAD_DACK_M runt dem och ett stängsel runt
 hela badet. Marken under bassängerna sänks under botten, däcket plattas.
 Allt i glb-gruppen `Idrott` (ingen kollision; vagnarna kör på marken), utom vältbara mål, nät och master.
@@ -17,6 +17,8 @@ Allt i glb-gruppen `Idrott` (ingen kollision; vagnarna kör på marken), utom v�
 import math
 
 import numpy as np
+import rasterio
+import rasterio.transform
 import trimesh
 from rasterio.features import rasterize
 from shapely.geometry import Polygon
@@ -25,14 +27,17 @@ from shapely.ops import unary_union
 FARG = {   # sRGB
     'gras_a': (78, 128, 56), 'gras_b': (66, 112, 48), 'konstgras': (52, 112, 60), 'linje': (240, 240, 236),
     'grus': (176, 92, 62), 'hardplan': (64, 112, 96), 'natstangsel': (60, 66, 62), 'stolpe': (70, 74, 72),
-    'dack': (196, 194, 186), 'kakel': (110, 186, 214), 'banlinje': (30, 60, 120), 'mal': (245, 245, 245),
-    'mast': (150, 154, 156), 'lampa': (240, 236, 220), 'lina_a': (220, 40, 40), 'lina_b': (240, 240, 240),
+    'dack': (196, 194, 186), 'kakel': (150, 206, 226), 'banlinje': (30, 60, 120), 'mal': (245, 245, 245),
+    'mast': (150, 154, 156), 'asfalt': (78, 78, 80), 'fotbollsgrus': (168, 148, 116), 'lampa': (240, 236, 220), 'lina_a': (220, 40, 40), 'lina_b': (240, 240, 240),
 }
 SIDLINJE_IN_M = 1.5
 LINJE_B = 0.12
 BAD_DACK_M = 3.5
+PRIVAT_MAX_M2 = 100.0         # bassänger mindre än så (tillsammans): trädgårdspool
 STANGSEL_UT_M = 10.0
 FOTBOLL_MIN_M2 = 400
+TRAD_MAX_ANDEL = 0.2          # mer träd än så (laser) inom en plans OSM-yta: fel läge i OSM, ingen plan
+FOTBOLL_MAX_M = (105.0, 68.0)   # fullt mått (FIFA); större OSM-ytor krymps runt mitten
 
 
 def _rect(poly):
@@ -49,16 +54,132 @@ def _ar_fotboll(t):
     return 'soccer' in s or ('football' in s and 'american' not in s)
 
 
+class Flygfoto:
+    """Ortofotot (RGB + IR) och laserns objekthöjd för kartan: gräsytor och träd inom en OSM-yta."""
+
+    def __init__(self, data):
+        import rasterio
+        self.o = rasterio.open(str(next(data.glob('ortofoto_*.tif'))))
+        self.l = rasterio.open(str(next(data.glob('objekthojd_*.tif'))))
+
+    def _las(self, poly, pad=2.0):
+        from rasterio.windows import from_bounds
+        e0, n0, e1, n1 = poly.buffer(pad).bounds
+        w = from_bounds(e0, n0, e1, n1, self.o.transform).round_offsets().round_lengths()
+        a = self.o.read([1, 4], window=w).astype(np.float32)
+        T = self.o.window_transform(w)
+        inne = rasterize([(poly, 1)], out_shape=a.shape[1:], transform=T).astype(bool)
+        # objekthöjd (m över mark) i ortofotots pixlar
+        rr, cc = np.mgrid[0:a.shape[1], 0:a.shape[2]]
+        xs, ys = T * (cc + 0.5, rr + 0.5)
+        lr, lc = rasterio.transform.rowcol(self.l.transform, xs.ravel(), ys.ravel())
+        lw = from_bounds(e0, n0, e1, n1, self.l.transform).round_offsets().round_lengths()
+        lh = self.l.read(1, window=lw).astype(np.float32) / 10.0
+        lr = np.clip(np.array(lr) - lw.row_off, 0, lh.shape[0] - 1)
+        lc = np.clip(np.array(lc) - lw.col_off, 0, lh.shape[1] - 1)
+        hojd = lh[lr, lc].reshape(inne.shape)
+        ndvi = (a[1] - a[0]) / (a[1] + a[0] + 1.0)
+        return ndvi, hojd, inne, T
+
+    def farg(self, poly):
+        """(median RGB, median NDVI) inom polygonen."""
+        from rasterio.windows import from_bounds
+        w = from_bounds(*poly.bounds, self.o.transform).round_offsets().round_lengths()
+        a = self.o.read([1, 2, 3, 4], window=w).astype(np.float32)
+        inne = rasterize([(poly.buffer(-1.0), 1)], out_shape=a.shape[1:], transform=self.o.window_transform(w)).astype(bool)
+        if not inne.any():
+            return None, None
+        px = a[:, inne]
+        return np.median(px[:3], 1), float(np.median((px[3] - px[0]) / (px[3] + px[0] + 1.0)))
+
+    def trad_andel(self, poly):
+        _, hojd, inne, _ = self._las(poly, 0.0)
+        return float((hojd[inne] > 2.5).mean()) if inne.any() else 0.0
+
+    def grasyta(self, poly):
+        """Den största rektangel som ryms i den största sammanhängande gräsytan (grönt i IR, även torrt gräs;
+        lågt enligt lasern) inom polygonen, riktad som gräsytan; None om för liten."""
+        from scipy import ndimage as ndi
+        from shapely.geometry import MultiPoint
+        ndvi, hojd, inne, T = self._las(poly)
+        gras = ndi.binary_opening(inne & (ndvi > 0.08) & (hojd < 1.0), iterations=4)
+        lab, n = ndi.label(gras)
+        if n == 0:
+            return None
+        k = np.argmax(ndi.sum(gras, lab, range(1, n + 1))) + 1
+        rr, cc = np.nonzero(lab == k)
+        if len(rr) < 400:
+            return None
+        xs, ys = T * (cc + 0.5, rr + 0.5)
+        P = np.c_[xs, ys]
+        c, ax, tv, _, _ = _rect(MultiPoint(P[::7]).minimum_rotated_rectangle)
+        # gräsytans pixlar i rektangelns ram (u längs, v tvärs), 1 m-rutnät
+        u = (P - c) @ ax
+        v = (P - c) @ tv
+        u0, v0 = u.min(), v.min()
+        G = np.zeros((int(v.max() - v0) + 2, int(u.max() - u0) + 2), bool)
+        G[(v - v0).astype(int), (u - u0).astype(int)] = True
+        G = ndi.binary_closing(G, iterations=1)
+        # största rektangeln av sanna celler (histogrammetoden)
+        hojd_ = np.zeros(G.shape[1], int)
+        bast = (0, 0, 0, 0, 0)   # yta, rad, kol0, kol1, höjd
+        for r in range(G.shape[0]):
+            hojd_ = np.where(G[r], hojd_ + 1, 0)
+            stack = []
+            for kol in range(len(hojd_) + 1):
+                hh = hojd_[kol] if kol < len(hojd_) else 0
+                start = kol
+                while stack and stack[-1][1] >= hh:
+                    s0, sh = stack.pop()
+                    yta = sh * (kol - s0)
+                    if yta > bast[0]:
+                        bast = (yta, r, s0, kol, sh)
+                    start = s0
+                stack.append((start, hh))
+        yta, r, k0, k1, hh = bast
+        if yta < 400:
+            return None
+        ua, ub = u0 + k0 + 0.5, u0 + k1 - 0.5
+        va, vb = v0 + (r - hh + 1) + 0.5, v0 + r + 0.5
+        rekt = Polygon([c + ax * uu + tv * vv for uu, vv in ((ua, va), (ub, va), (ub, vb), (ua, vb))])
+        return rekt if rekt.area > 0.35 * poly.area else None
+
+
 class Planer:
-    def __init__(self, feat, box):
+    def __init__(self, feat, box, data=None):
+        self.foto = None
+        if data is not None and any(data.glob('ortofoto_*.tif')) and any(data.glob('objekthojd_*.tif')):
+            self.foto = Flygfoto(data)
         self.fotboll, self.tennis = [], []
         for g, t, wid in feat.get('idrottsplaner', []):
             if not g.intersects(box) or g.geom_type != 'Polygon':
                 continue
             if _ar_fotboll(t) and g.area >= FOTBOLL_MIN_M2:
-                self.fotboll.append(dict(poly=g, t=t, id=wid, rekt=_rect(g)))
+                namn = t.get('name') or wid
+                if self.foto is not None and self.foto.trad_andel(g) > TRAD_MAX_ANDEL:
+                    print(f'planer: {namn}: träd på {self.foto.trad_andel(g):.0%} av OSM-ytan (fel läge i OSM), hoppar över')
+                    continue
+                stor = g.area / g.minimum_rotated_rectangle.area < 0.9 or max(_rect(g)[3:]) * 2 > FOTBOLL_MAX_M[0] + 7
+                if stor and self.foto is not None and t.get('surface') not in ('artificial_turf', 'asphalt', 'gravel'):
+                    ny = self.foto.grasyta(g)
+                    if ny is not None:
+                        print(f'planer: {namn}: anpassad efter flygfotot ({g.area:.0f} -> {ny.area:.0f} m²)')
+                        g = ny
+                rekt = _rect(g)
+                c, ax, tv, hl, hb = rekt
+                if 2 * hl > FOTBOLL_MAX_M[0] + 2 * SIDLINJE_IN_M + 4 or 2 * hb > FOTBOLL_MAX_M[1] + 2 * SIDLINJE_IN_M + 4:
+                    # OSM-ytan tar ofta med gräset runt planen: planen i mitten, högst fullt mått
+                    hl = min(hl, FOTBOLL_MAX_M[0] / 2 + SIDLINJE_IN_M)
+                    hb = min(hb, FOTBOLL_MAX_M[1] / 2 + SIDLINJE_IN_M)
+                    rekt = (c, ax, tv, hl, hb)
+                    g = Polygon([c + ax * su * hl + tv * sv * hb for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1))])
+                self.fotboll.append(dict(poly=g, t=t, id=wid, rekt=rekt, yta=self._fotbollsyta(g, t)))
             elif 'tennis' in t.get('sport', ''):
-                self.tennis.append(dict(poly=g, t=t, id=wid, rekt=_rect(g)))
+                hard = t.get('surface') in ('asphalt', 'concrete', 'acrylic', 'hard', 'paved', 'tartan')
+                if 'surface' not in t and self.foto is not None:   # flygfotot: rödgrus eller hård (grön/grå)
+                    rgb, _ = self.foto.farg(g)
+                    hard = rgb is not None and not (rgb[0] > rgb[1] + 15 and rgb[0] > rgb[2] + 20)
+                self.tennis.append(dict(poly=g, t=t, id=wid, rekt=_rect(g), hard=hard))
         self.bassanger = [dict(poly=g, t=t, id=wid) for g, t, wid in feat.get('bassanger', [])
                           if g.intersects(box) and g.geom_type == 'Polygon' and g.area >= 20]
         for b in self.bassanger:
@@ -76,8 +197,12 @@ class Planer:
                 self.bad.append(dict(bassanger=[b]))
         for bad in self.bad:
             u = unary_union([b['poly'] for b in bad['bassanger']])
-            bad['dack'] = u.buffer(BAD_DACK_M, join_style=2)
-            bad['stangsel'] = u.convex_hull.buffer(STANGSEL_UT_M, join_style=2)
+            bad['privat'] = u.area < PRIVAT_MAX_M2   # en trädgårdspool: smalt däck, inget stängsel
+            if bad['privat']:
+                for b in bad['bassanger']:
+                    b['djup'] = 1.4
+            bad['dack'] = u.buffer(0.8 if bad['privat'] else BAD_DACK_M, join_style=2)
+            bad['stangsel'] = u.convex_hull.buffer(1.0 if bad['privat'] else STANGSEL_UT_M, join_style=2)
         self.nivaer = {}
         for f in self.fotboll:
             L, B = f['rekt'][3] * 2, f['rekt'][4] * 2
@@ -86,6 +211,22 @@ class Planer:
             _, _, _, hl, hb = _rect(b['poly'])
             print(f"planer: bassäng {2 * hl:.1f} x {2 * hb:.1f} m{' (rund)' if b['rund'] else ''}, djup {b['djup']} m")
         print(f'planer: {len(self.fotboll)} fotbollsplaner, {len(self.tennis)} tennisbanor, {len(self.bad)} bad')
+
+    def _fotbollsyta(self, g, t):
+        """'konst', 'asfalt', 'grus' eller 'gras': OSM:s surface, annars flygfotot (inget växer = grus)."""
+        yta = t.get('surface', '')
+        if yta == 'artificial_turf':
+            return 'konst'
+        if yta in ('asphalt', 'concrete', 'paved'):
+            return 'asfalt'
+        if yta in ('gravel', 'fine_gravel', 'sand', 'dirt', 'ground', 'compacted', 'clay'):
+            return 'grus'
+        if self.foto is not None:
+            rgb, ndvi = self.foto.farg(g)
+            if ndvi is not None and ndvi < 0.0:   # torrt sommargräs ligger kring 0,03, grus -0,2
+                print(f"planer: {t.get('name') or ''}: inget växer i flygfotot (NDVI {ndvi:.2f}), grusplan")
+                return 'grus'
+        return 'gras'
 
     def __bool__(self):
         return bool(self.fotboll or self.tennis or self.bad)
@@ -136,7 +277,10 @@ class Planer:
         m['nat'] = trimesh.visual.material.PBRMaterial(
             name='Plan_nat', baseColorFactor=[0.92, 0.92, 0.92, 0.4], alphaMode='BLEND', doubleSided=True,
             roughnessFactor=0.9)
-        m['vatten'] = mat('Vatten_bassang', (70, 150, 190), 0.1)
+        # bassängvatten: klart och ljust över kaklet (sjöarnas vattenshader gör djupa bassänger mörka)
+        m['vatten'] = trimesh.visual.material.PBRMaterial(
+            name='Vatten_bassang', baseColorFactor=[0.32, 0.72, 0.86, 0.5], alphaMode='BLEND', metallicFactor=0.0,
+            roughnessFactor=0.05, doubleSided=False)
         if valt is not None:
             self._mallar(valt, m)
 
@@ -183,13 +327,15 @@ class Planer:
         rekt = f['rekt']
         L = self._lokal(rekt)
         hl, hb = rekt[3], rekt[4]
-        konst = f['t'].get('surface') == 'artificial_turf'
+        yta = f.get('yta', 'gras')
+        konst = yta == 'konst'
         y = niva + 0.04
         # yta: ränder tvärs över (klippmönster), konstgräs jämnt
         n = max(2, int(round(2 * hl / 6.0)))
         for k in range(n):
             u0, u1 = -hl + 2 * hl * k / n, -hl + 2 * hl * (k + 1) / n
-            mt = m['konstgras'] if konst else (m['gras_a'] if k % 2 == 0 else m['gras_b'])
+            mt = {'konst': m['konstgras'], 'asfalt': m['asfalt'], 'grus': m['fotbollsgrus']}.get(
+                yta, m['gras_a'] if k % 2 == 0 else m['gras_b'])
             self._quad([L(u0, -hb), L(u1, -hb), L(u1, hb), L(u0, hb)], y, to_world, add_merged, mt)
         yl = y + 0.015
         a, b = hl - SIDLINJE_IN_M, hb - SIDLINJE_IN_M
@@ -234,7 +380,7 @@ class Planer:
         rekt = t['rekt']
         L = self._lokal(rekt)
         hl, hb = rekt[3], rekt[4]
-        hard = t['t'].get('surface') in ('asphalt', 'concrete', 'acrylic', 'hard', 'paved')
+        hard = t.get('hard', False)
         y = niva + 0.05
         self._quad([L(-hl, -hb), L(hl, -hb), L(hl, hb), L(-hl, hb)], y, to_world, add_merged,
                    m['hardplan'] if hard else m['grus'])
@@ -289,7 +435,7 @@ class Planer:
                 F += tri
             add_merged('Idrott', trimesh.Trimesh(np.array(V), np.array(F), process=False), m['kakel'])
             # vattenyta (spelets vattenshader: gruppen Vattendrag)
-            self._polygon(p, yd - 0.15, to_world, add_merged, m['vatten'], grupp='Vattendrag')
+            self._polygon(p, yd - 0.15, to_world, add_merged, m['vatten'])
             # simbanor i långa bassänger
             c, ax, tv, hl, hb = _rect(p)
             if 2 * hl >= 40 and not b['rund']:
@@ -302,6 +448,8 @@ class Planer:
                     for j, u0 in enumerate(np.arange(-hl + 0.3, hl - 0.3, 1.0)):   # banlinor på ytan
                         self._linje(L, (u0, v), (u0 + 0.9, v), 0.12, yd - 0.12, to_world, add_merged,
                                     m['lina_a'] if (j // 5) % 2 == 0 else m['lina_b'])
+        if bad['privat']:
+            return
         # stängsel runt badet
         ring = np.array(bad['stangsel'].exterior.coords)
         V, F = [], []

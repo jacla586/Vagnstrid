@@ -100,7 +100,10 @@ class Idrott:
                 kvar.append((gm, t))
         feat['buildings'] = kvar   # läktarna byggs här, inte som hus
         self.nivaer = []
-        self.plan = planer_mod.Planer(feat, box)
+        import os
+        from pathlib import Path
+        work = os.environ.get('GEO_WORK')
+        self.plan = planer_mod.Planer(feat, box, Path(work).parent / 'data' if work else None)
         print(f'idrott: {len(self.banor)} löparbanor, {len(self.laktare)} läktare')
 
     def __bool__(self):
