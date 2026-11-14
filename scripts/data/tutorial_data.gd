@@ -57,7 +57,7 @@ extends Resource
 @export var final_count: int = 2
 @export var final_min_m: float = 600.0
 @export var final_max_m: float = 850.0
-## Final bots drive towards the player this often, to this far from it.
+## Final bots drive towards the player this often (0: never, they hold their area), to this far from it.
 @export var hunt_every_s: float = 15.0
 @export var hunt_close_m: float = 250.0
 @export var bot_crew: BotData

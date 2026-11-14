@@ -86,6 +86,7 @@ func draw_map(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 	_draw_edge(rect, centre, scale_px)
 	_draw_zone(rect, centre, scale_px)
 	_draw_wave(rect, centre, scale_px)
+	_draw_tutorial_area(rect, centre, scale_px)
 	_draw_route(rect, centre, scale_px)
 	_draw_squads(rect, centre, scale_px)
 	_draw_mines(rect, centre, scale_px)
@@ -141,6 +142,31 @@ func _draw_wave(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 	for i: int in dashes:
 		if i % 2 == 0:
 			draw_arc(p, r, TAU * i / dashes, TAU * (i + 1) / dashes, 4, wave_color, 2.0, true)
+
+
+## The tutorial's area for the current step (TutorialMode.get_map_area): a dashed orange
+## circle and its label.
+func _draw_tutorial_area(rect: Rect2, centre: Vector2, scale_px: float) -> void:
+	var mode: TutorialMode = TutorialMode.instance
+	if mode == null:
+		return
+	var area: Array = mode.get_map_area()
+	if area.is_empty():
+		return
+	var p: Vector2 = _to_screen(area[0], rect, centre, scale_px)
+	var r: float = maxf(float(area[1]) * scale_px, 6.0)
+	if not rect.grow(r).has_point(p):
+		return
+	var color := Color(MenuTheme.ACCENT, 0.95)
+	draw_circle(p, r, Color(MenuTheme.ACCENT, 0.15))
+	var dashes: int = 24
+	for i: int in dashes:
+		if i % 2 == 0:
+			draw_arc(p, r, TAU * i / dashes, TAU * (i + 1) / dashes, 4, color, 2.0, true)
+	var label: String = str(area[2])
+	if label != "":
+		draw_string(ThemeDB.fallback_font, p + Vector2(r + 4.0, 4.0), label,
+				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 11, color)
 
 
 ## The playable area's edge (MapEdge): outside it darkened (within `rect`), a thin line.

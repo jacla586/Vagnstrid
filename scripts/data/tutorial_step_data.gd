@@ -30,3 +30,9 @@ enum Goal {
 ## Said when the stage is done ("Bra, där stannar vi.").
 @export var done_voice: AudioStream
 @export var wait_s: float = 0.0
+## Where on the map this stage happens (x, z; zero = round the tank): the drive marker, the
+## area a target or the final test's bots stand in, the grove for the squad. Drawn as a
+## circle on the maps (`area_label` beside it) while the stage runs.
+@export var area: Vector2 = Vector2.ZERO
+@export var area_radius_m: float = 0.0
+@export var area_label: String = ""

@@ -652,6 +652,14 @@ func _align_gunner_sight() -> void:
 	_gunner_sight.basis = Basis.looking_at(bore_point - _gunner_sight.position)
 
 
+## A rule switch (the tutorial): hits still ring, jolt and shake, but harm nothing.
+var damage_immune: bool:
+	get:
+		return _damage.immune
+	set(value):
+		_damage.immune = value
+
+
 func set_command(command: TankCommand) -> void:
 	_input_command = command
 	_command = command

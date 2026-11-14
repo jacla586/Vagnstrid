@@ -648,11 +648,15 @@ shows on the minimap. This is what we test first.
   `TutorialStepData` stages, `data/modes/tutorial.tres`; TUTORIAL_PLAN.md): offline only, no lobby (`NetSession.play_offline`
   skips MatchLobby for `*_tutorial`; `MainMenu.find_maps` leaves it out of the map list and the server vote; the menu's
   Tutorial button is highlighted until `user://settings.cfg` tutorial/done). The map's PlayerRig plays, moved to
-  `start_position`/`start_yaw_deg` (picked by a sight survey: Vidingsjö's own start sees almost nothing at 300-450 m).
+  `start_position`/`start_yaw_deg`: the grove with a crest south of Vidingsjö's start (905, 1625), facing the open field
+  south, the road 100 m east. Stages carry a map `area` (`TutorialStepData.area/area_radius_m/area_label`, drawn as a
+  dashed orange circle by `MapView._draw_tutorial_area`): drive marker, target area at the south forest edge, the heavy
+  tank at the west edge, the grove for the squad, the road for the mine, the final test's enemy area. Until the final
+  test the player's tank is `Tank.damage_immune` (`TankDamage.immune`: hits jolt and ring but harm nothing); the smoke
+  lesson's attacker stands ahead of the turret, so the smoke lands between.
   Nine lessons (drive to a beam, hatch, binoculars on a target, spot it, hit it (a short round gets "Kort!"), HE on a KV-2's
-  track, squad out / mine / recall, smoke and back away 20 m out of a firing bot's sight, two easy bots); targets and bots
-  are placed per lesson round the tank (`_find_spot`: open ground in a cone ahead, in sight from the commander's eye, the
-  attacker also seeing the hull). Hold `skip_tutorial_step` (Backspace) 3 s to skip a lesson (`TutorialPanel` ring).
+  track, squad out / mine / recall, smoke and back away 20 m out of a firing bot's sight, two easy bots); tanks are placed
+  in their area (`_find_in_area`, in sight of the commander's eye when possible), else round the tank (`_find_spot`). Hold `skip_tutorial_step` (Backspace) 3 s to skip a lesson (`TutorialPanel` ring).
   Knocked out or overturned: back where it last stood upright. Voices `assets/audio/radio/tut_*.ogg` via SquadRadio.
 - Map edge (`MapEdge`, `scripts/world/map_edge.gd`, `data/world/map_edge.tres`): the playable area is the map
   picture's `world_rect` less `margin_m` (50). No physics body (every ray with the default mask would hit

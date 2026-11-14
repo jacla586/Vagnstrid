@@ -50,6 +50,10 @@ var _heal_left: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 
 
+## The tutorial's rule (Tank.damage_immune): hits, blasts, fragments and mines do no harm.
+var immune: bool = false
+
+
 func _init(tank_data: TankData) -> void:
 	data = tank_data
 	_rng.randomize()
@@ -241,7 +245,7 @@ func _wear_at(part: String, face: String, local_point: Vector3, mm: float) -> vo
 func apply_hit(shell: ShellData, result: HitResult, part: String, face: String,
 		local_point: Vector3, hull_from: Vector3, hull_dir: Vector3,
 		turret_from: Vector3, turret_dir: Vector3) -> bool:
-	if knocked_out:
+	if knocked_out or immune:
 		return false
 	var hp_before: float = hp
 	if shell.stops_repair_on_hit or (result.outcome == HitResult.Outcome.PENETRATION
@@ -328,6 +332,8 @@ func _from_front(hull_dir: Vector3) -> bool:
 ## A mine under track `id`: thrown (destroyed), the blast takes `blast_hp` structure
 ## (never the last points: a mine never knocks out), and repairs start over.
 func apply_mine(id: StringName, blast_hp: float = 0.0) -> void:
+	if immune:
+		return
 	if knocked_out or not _modules.has(id):
 		return
 	_restart_repair()
@@ -337,6 +343,8 @@ func apply_mine(id: StringName, blast_hp: float = 0.0) -> void:
 
 ## HE fragments reaching an external module.
 func apply_fragment(id: StringName, shell: ShellData) -> void:
+	if immune:
+		return
 	if knocked_out or not _modules.has(id):
 		return
 	_damage_module(id, shell.fragment_module_damage)

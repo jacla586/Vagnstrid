@@ -39,9 +39,12 @@ script = ExtResource("r1")
 lesson = 1
 title = "Drive"
 goal = 0
-text = "Drive to the orange marker: {move_forward} and {move_backward} for speed, {turn_left} and {turn_right} to turn."
+text = "Drive out of the grove to the orange marker: {move_forward} and {move_backward} for speed, {turn_left} and {turn_right} to turn."
 voice = ExtResource("r3")
 done_voice = ExtResource("r4")
+area = Vector2(905, 1700)
+area_radius_m = 15.0
+area_label = "DRIVE HERE"
 
 [sub_resource type="Resource" id="step_1"]
 script = ExtResource("r1")
@@ -73,9 +76,12 @@ script = ExtResource("r1")
 lesson = 3
 title = "Binoculars"
 goal = 4
-text = "Open the hatch and raise the binoculars with {binoculars}. A tank stands at the forest edge ahead – find it."
+text = "Open the hatch and raise the binoculars with {binoculars}. A tank stands at the forest edge inside the circle on the map ({toggle_map}) – find it."
 voice = ExtResource("r8")
 done_voice = ExtResource("r9")
+area = Vector2(960, 1890)
+area_radius_m = 60.0
+area_label = "TARGET AREA"
 
 [sub_resource type="Resource" id="step_5"]
 script = ExtResource("r1")
@@ -85,40 +91,55 @@ goal = 5
 text = "Mark the target with {spot} in the commander view: your whole team sees it on the map."
 voice = ExtResource("r10")
 done_voice = ExtResource("r11")
+area = Vector2(960, 1890)
+area_radius_m = 60.0
+area_label = "TARGET AREA"
 
 [sub_resource type="Resource" id="step_6"]
 script = ExtResource("r1")
 lesson = 5
 title = "Gunner's sight"
 goal = 6
-text = "Switch to the gunner's sight with {toggle_gunner_sight}, lay it on the target and fire with {fire}."
+text = "Press {turret_to_view} to turn the turret where you look. Then switch to the gunner's sight with {toggle_gunner_sight}, lay it on the target and fire with {fire}."
 voice = ExtResource("r12")
 done_voice = ExtResource("r13")
+area = Vector2(960, 1890)
+area_radius_m = 60.0
+area_label = "TARGET AREA"
 
 [sub_resource type="Resource" id="step_7"]
 script = ExtResource("r1")
 lesson = 6
 title = "Ammunition"
 goal = 7
-text = "AP won't bite on this one. Load HE with {select_ammo_2} and shoot its track."
+text = "AP won't bite on this one: it stands at the forest edge to the west (circle on the map). Load HE with {select_ammo_2}, turn the turret with {turret_to_view} and shoot its track."
 voice = ExtResource("r14")
 done_voice = ExtResource("r15")
+area = Vector2(815, 1770)
+area_radius_m = 40.0
+area_label = "HEAVY TANK"
 
 [sub_resource type="Resource" id="step_8"]
 script = ExtResource("r1")
 lesson = 7
 title = "Your squad"
 goal = 8
-text = "You have a squad with you. Open the squad map with {toggle_squad_map} and left-click a spot to send them there."
+text = "You have a squad with you. Open the squad map with {toggle_squad_map} and left-click in the grove (the circle) to send them there."
 voice = ExtResource("r16")
+area = Vector2(900, 1595)
+area_radius_m = 45.0
+area_label = "THE GROVE"
 
 [sub_resource type="Resource" id="step_9"]
 script = ExtResource("r1")
 lesson = 7
 title = "Your squad"
 goal = 9
-text = "Open the squad map again and right-click on a road: they lay a mine."
+text = "Open the squad map again and right-click on the road in the circle: they lay a mine there."
 voice = ExtResource("r17")
+area = Vector2(1035, 1670)
+area_radius_m = 40.0
+area_label = "ROAD"
 
 [sub_resource type="Resource" id="step_10"]
 script = ExtResource("r1")
@@ -134,7 +155,7 @@ script = ExtResource("r1")
 lesson = 8
 title = "Smoke"
 goal = 11
-text = "You're under fire! Lay smoke with {smoke} and back away behind the crest."
+text = "You're under fire from ahead! Lay smoke with {smoke} (it lands ahead of the turret) and back away behind the crest into the grove."
 voice = ExtResource("r20")
 done_voice = ExtResource("r21")
 
@@ -143,9 +164,12 @@ script = ExtResource("r1")
 lesson = 9
 title = "Final test"
 goal = 12
-text = "Last exercise: two enemy tanks in the area. Use everything you've learned. Knock them out."
+text = "Last exercise: two enemy tanks inside the circle on the map ({toggle_map}). Use everything you've learned. Knock them out."
 voice = ExtResource("r22")
 done_voice = ExtResource("r23")
+area = Vector2(880, 1840)
+area_radius_m = 110.0
+area_label = "ENEMY AREA"
 
 [resource]
 script = ExtResource("r2")
@@ -154,8 +178,11 @@ welcome = ExtResource("r24")
 skip = ExtResource("r25")
 restart = ExtResource("r26")
 short_hint = ExtResource("r27")
-start_position = Vector3(910, 69.4, 1510)
-start_yaw_deg = 45.0
+start_position = Vector3(905, 68, 1625)
+start_yaw_deg = 180.0
+hunt_every_s = 0.0
+attacker_min_m = 200.0
+attacker_max_m = 350.0
 target_config = ExtResource("r28")
 heavy_config = ExtResource("r29")
 bot_crew = ExtResource("r30")
