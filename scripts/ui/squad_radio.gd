@@ -181,7 +181,10 @@ func _physics_process(delta: float) -> void:
 	if randf() >= v.crash_chance:
 		_last["crew/crash"] = _time   # a crash that got no line still waits out the cooldown
 		return
-	_crew_call("crash", v.crash.pick_random(), v)
+	var tutorial: TutorialMode = TutorialMode.instance
+	var line: AudioStream = tutorial.data.crash if tutorial != null and tutorial.data.crash != null \
+			else v.crash.pick_random()
+	_crew_call("crash", line, v)
 
 
 ## A mine: its own call, and the "hit" call the struck right after would give is held back.

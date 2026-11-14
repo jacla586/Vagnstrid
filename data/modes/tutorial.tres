@@ -41,6 +41,7 @@
 [ext_resource type="AudioStream" path="res://assets/audio/radio/tut_6_bounce.ogg" id="v_tut_6_bounce"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/tut_9_map.ogg" id="v_tut_9_map"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/tut_9_one_left.ogg" id="v_tut_9_one_left"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_crash.ogg" id="v_tut_crash"]
 
 [sub_resource type="Resource" id="step_0"]
 script = ExtResource("r1")
@@ -190,6 +191,7 @@ welcome = ExtResource("r24")
 skip = ExtResource("r25")
 restart = ExtResource("r26")
 short_hint = ExtResource("r27")
+crash = ExtResource("v_tut_crash")
 long_hint = ExtResource("v_tut_5_long")
 hatch_first_hint = ExtResource("v_tut_3_hatch_first")
 bounce_hint = ExtResource("v_tut_6_bounce")

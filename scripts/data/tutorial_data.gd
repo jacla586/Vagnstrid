@@ -11,6 +11,9 @@ extends Resource
 @export var skip: AudioStream
 ## "Du kör som min svärmor. Försök igen." when the tank is knocked out or overturned.
 @export var restart: AudioStream
+## The instructor's "Hörru, Rally-Kalle, lugna ner dig lite!": in the tutorial in place of the
+## crew's crash lines (SquadRadio).
+@export var crash: AudioStream
 ## "Kort! Höj siktet ett streck..." when a round at the gunnery target lands short.
 @export var short_hint: AudioStream
 @export var short_hint_text: String = "SHORT! RAISE THE SIGHT ONE MARK ON THE RANGE SCALE"
