@@ -117,7 +117,9 @@ shows on the minimap. This is what we test first.
   `at_aim_time_s` (3 s) later with a back blast (once called, the round always goes: at the
   last seen track if sight is lost, at once if the squad must move; only the gunner's fall
   or the target's knock-out stops it), then "Träff!"/"Miss!" (`RADIO_AT_HIT/MISS`, from
-  `Shell.finished`, straight after the call in the queue); clients see it via `rpc_squad_aim`. A destroyed track immobilises the tank
+  `Shell.finished`, straight after the call in the queue); clients see it via `rpc_squad_aim`. Drawing detail (`Squad._process`, local): by seen distance (/ zoom) soldiers beyond
+  `LOD_NEAR_M` (60) cast no shadow and their AnimationPlayers (manual mode) step at 15 Hz, beyond 250 m at 6 Hz,
+  off screen at 2 Hz; nobody is hidden. A destroyed track immobilises the tank
   (`TankData.broken_track_immobilises`) until repaired; tracks take
   `ModuleData.repair_time_min_s..max_s` (20-30 s) standing still, other modules
   `TankData.repair_time_s`. Soldiers see through vegetation crowns
@@ -734,7 +736,8 @@ there and the break is over) and on the match's win/loss. Points
   it smooth). Never count rates in ticks: use `Ticks.every(hz)` (ticks apart) or
   `Ticks.due(clock, delta, hz)` (time-paced sends); net rates are in Hz (`SNAPSHOT_HZ` 20,
   `NetInput.SEND_HZ` 30, `SQUAD_SEND_HZ` 10). Ballistics is Heun-integrated, so shells land
-  where the sight says at any tick rate.
+  where the sight says at any tick rate. `Ballistics.superelevation_for_range` caches angles per shell in 5 m steps
+  (bots ask every scan; the bisection cost 3-4 ms a tick in a 10 v 10).
 - Per-frame cost (10 v 10 ThunderRoad, 1920x1080 window: 17.2 ms at 60 Hz before 2026-11-09,
   9.0 ms after 30 Hz and the HUD fixes): HUD code must not call `add_theme_*_override`, set
   bus effects or camera properties, or `queue_redraw` every frame when nothing changed
