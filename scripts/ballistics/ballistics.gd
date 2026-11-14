@@ -40,9 +40,42 @@ static func integrate(position: Vector3, velocity: Vector3, k: float,
 	return _integrate(position, velocity, k, gravity(), dt)
 
 
+## superelevation_for_range keeps found angles per shell in steps of this (m) and
+## interpolates between them: bots ask every scan for both guns, and each search
+## simulates the flight ~30 times.
+const CACHE_STEP_M: float = 5.0
+
+static var _angle_cache: Dictionary = {}   # ShellData instance id -> {step index: angle}
+
+
 ## Gun angle above the line of sight (radians) needed to hit a target at `range_m`
 ## on level ground at the gun's height. Returns MAX_SEARCH_ANGLE if out of reach.
+## Cached in CACHE_STEP_M steps (linear between them: well under 0.01 mrad off).
 static func superelevation_for_range(shell: ShellData, range_m: float) -> float:
+	if range_m <= 0.0:
+		return 0.0
+	var table: Dictionary = _angle_cache.get(shell.get_instance_id(), {})
+	if table.is_empty():
+		_angle_cache[shell.get_instance_id()] = table
+	var f: float = range_m / CACHE_STEP_M
+	var i: int = floori(f)
+	var a0: float = _cached_angle(shell, table, i)
+	var a1: float = _cached_angle(shell, table, i + 1)
+	if a1 >= MAX_SEARCH_ANGLE:
+		return a1 if f - i > 0.5 or a0 >= MAX_SEARCH_ANGLE else a0
+	return lerpf(a0, a1, f - i)
+
+
+static func _cached_angle(shell: ShellData, table: Dictionary, i: int) -> float:
+	if table.has(i):
+		return table[i]
+	var a: float = 0.0 if i <= 0 else search_superelevation(shell, i * CACHE_STEP_M)
+	table[i] = a
+	return a
+
+
+## superelevation_for_range without the cache: a bisection over simulated flights.
+static func search_superelevation(shell: ShellData, range_m: float) -> float:
 	var k: float = drag_factor(shell)
 	var g: float = gravity()
 	if _height_at_range(shell, k, g, MAX_SEARCH_ANGLE, range_m) < 0.0:

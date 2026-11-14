@@ -93,6 +93,16 @@ const TANK_LOOK_HEIGHTS: Array[float] = [0.5, 1.9]
 ## Targets farther than the view range plus this (m) can't be seen at all, so their
 ## cover and sight lines aren't checked.
 const VIEW_RANGE_MARGIN_M: float = 5.0
+## Drawing detail (local, cosmetic; nobody is ever hidden): by "seen" distance (true
+## distance / the camera's zoom against LOD_REFERENCE_FOV_DEG, so binoculars count as
+## near) soldiers beyond LOD_NEAR_M cast no shadow and animate at LOD_MID_HZ, beyond
+## LOD_FAR_M at LOD_FAR_HZ, outside the view at LOD_HIDDEN_HZ.
+const LOD_REFERENCE_FOV_DEG: float = 70.0
+const LOD_NEAR_M: float = 60.0
+const LOD_FAR_M: float = 250.0
+const LOD_MID_HZ: float = 15.0
+const LOD_FAR_HZ: float = 6.0
+const LOD_HIDDEN_HZ: float = 2.0
 ## Loaded at start, not preloaded: shell.gd refers back to Squad (a preload would cycle).
 const SHELL_SCENE_PATH: String = "res://scenes/weapons/shell.tscn"
 const LAUNCH_FLASH_SCENE: PackedScene = preload("res://scenes/effects/muzzle_flash.tscn")
@@ -168,6 +178,10 @@ var _meshes: Array[Node3D] = []
 var _body_offset: float = 0.0
 ## Per soldier: his model's AnimationPlayer (null for capsules) and what it plays.
 var _players: Array[AnimationPlayer] = []
+## Per soldier: animation time not yet applied (LOD), shadows on, his mesh instances.
+var _anim_owed: Array[float] = []
+var _lod_shadow: Array[bool] = []
+var _lod_meshes: Array = []
 ## Team look: [mesh instance, surface (-1 = whole mesh), friendly material] per uniform
 ## surface; [mesh instance, surface] painted blue on friends (helmets); and the TeamLook
 ## state they were last set for.
@@ -611,6 +625,42 @@ func _physics_process(delta: float) -> void:
 			_update_assault(delta)
 		_update_mine_laying(delta)
 		_fight(delta)
+
+
+## Drawing detail per soldier (see LOD_*): shadows and how often the animation steps.
+func _process(delta: float) -> void:
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var zoom: float = tan(deg_to_rad(LOD_REFERENCE_FOV_DEG) * 0.5) / tan(deg_to_rad(cam.fov) * 0.5)
+	var eye: Vector3 = cam.global_position
+	for i: int in _soldiers.size():
+		var player: AnimationPlayer = _players[i]
+		var body: Node3D = _soldiers[i]
+		if player == null:
+			continue
+		_anim_owed[i] = minf(_anim_owed[i] + delta, 5.0)   # unseen a while: no huge step
+		if not body.is_visible_in_tree():
+			continue
+		var at: Vector3 = body.global_position
+		var seen: float = eye.distance_to(at) / maxf(zoom, 0.01)
+		var shadow: bool = seen < LOD_NEAR_M
+		if shadow != _lod_shadow[i]:
+			_lod_shadow[i] = shadow
+			for mi: MeshInstance3D in _lod_meshes[i]:
+				if is_instance_valid(mi):
+					mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadow \
+							else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var step: float = 0.0
+		if not cam.is_position_in_frustum(at + Vector3.UP):
+			step = 1.0 / LOD_HIDDEN_HZ
+		elif seen >= LOD_FAR_M:
+			step = 1.0 / LOD_FAR_HZ
+		elif seen >= LOD_NEAR_M:
+			step = 1.0 / LOD_MID_HZ
+		if _anim_owed[i] >= step:
+			player.advance(_anim_owed[i])
+			_anim_owed[i] = 0.0
 
 
 ## Automatic ambush: holding ambush_after_s the squad lies down and holds fire beyond
@@ -2180,6 +2230,14 @@ func _add_soldier(i: int) -> void:
 			player.add_animation_library(ANIM_LIBRARY, data.model_animations)
 			player.playback_default_blend_time = data.anim_blend_s   # chained transitions
 	_players.append(player)
+	_anim_owed.append(0.0)
+	_lod_shadow.append(true)
+	var parts: Array[MeshInstance3D] = []
+	for node: Node in mesh.find_children("*", "MeshInstance3D", true, false):
+		parts.append(node as MeshInstance3D)
+	_lod_meshes.append(parts)
+	if player != null:
+		player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	_last_pos.append(Vector3.ZERO)
 	_playing.append(&"")
 	var hitbox := SoldierHitbox.new()
