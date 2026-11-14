@@ -71,6 +71,15 @@ func _ready() -> void:
 	var garage: Button = _button("Garage", func() -> void:
 		get_tree().change_scene_to_file(GARAGE_SCENE))
 	box.add_child(garage)
+	# The tutorial: highlighted until it has been played through once.
+	var tutorial: Button = _button("Tutorial (about 8 min)", func() -> void:
+		NetSession.instance.player_name = _name.text
+		Weather.resolve()
+		NetSession.instance.play_offline(NetSession.TUTORIAL_MAP))
+	if not TutorialMode.is_done():
+		MenuTheme.make_primary(tutorial)
+		tutorial.text = "New here? Tutorial (about 8 min)"
+	box.add_child(tutorial)
 	var help_row := HBoxContainer.new()
 	help_row.add_theme_constant_override("separation", 12)
 	for b: Button in [_button("Controls", _show_controls), _button("Settings", _show_settings)]:
@@ -286,7 +295,7 @@ static func find_maps() -> PackedStringArray:
 			continue
 		for f: String in d.get_files():
 			var name_: String = f.trim_suffix(".remap")
-			if name_.ends_with(".tscn"):
+			if name_.ends_with(".tscn") and not name_.get_basename().ends_with(NetSession.TUTORIAL_TAG):
 				out.append(dir + name_)
 	return out
 

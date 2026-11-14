@@ -1,0 +1,163 @@
+[gd_resource type="Resource" script_class="TutorialData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tutorial_step_data.gd" id="r1"]
+[ext_resource type="Script" path="res://scripts/data/tutorial_data.gd" id="r2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_1_drive.ogg" id="r3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_1_done.ogg" id="r4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_2_open.ogg" id="r5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_2_danger.ogg" id="r6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_2_close.ogg" id="r7"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_3_binoculars.ogg" id="r8"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_3_done.ogg" id="r9"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_4_spot.ogg" id="r10"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_4_done.ogg" id="r11"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_5_sight.ogg" id="r12"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_5_hit.ogg" id="r13"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_6_he.ogg" id="r14"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_6_done.ogg" id="r15"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_7_map.ogg" id="r16"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_7_mine.ogg" id="r17"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_7_recall.ogg" id="r18"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_7_done.ogg" id="r19"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_8_under_fire.ogg" id="r20"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_8_done.ogg" id="r21"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_9_test.ogg" id="r22"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_9_done.ogg" id="r23"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_0_welcome.ogg" id="r24"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_skip.ogg" id="r25"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_restart.ogg" id="r26"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/tut_5_short.ogg" id="r27"]
+[ext_resource type="Resource" path="res://data/configs/2_t34.tres" id="r28"]
+[ext_resource type="Resource" path="res://data/configs/4_kv2.tres" id="r29"]
+[ext_resource type="Resource" path="res://data/bots/bot_easy.tres" id="r30"]
+[ext_resource type="Resource" path="res://data/configs/1_bt7.tres" id="r31"]
+[ext_resource type="Resource" path="res://data/configs/2_t34.tres" id="r32"]
+[ext_resource type="Script" path="res://scripts/data/tank_config.gd" id="r_cfg"]
+
+[sub_resource type="Resource" id="step_0"]
+script = ExtResource("r1")
+lesson = 1
+title = "Drive"
+goal = 0
+text = "Drive to the orange marker: {move_forward} and {move_backward} for speed, {turn_left} and {turn_right} to turn."
+voice = ExtResource("r3")
+done_voice = ExtResource("r4")
+
+[sub_resource type="Resource" id="step_1"]
+script = ExtResource("r1")
+lesson = 2
+title = "The hatch"
+goal = 1
+text = "Open the hatch with {toggle_hatch}. Now you see everything around you."
+voice = ExtResource("r5")
+
+[sub_resource type="Resource" id="step_2"]
+script = ExtResource("r1")
+lesson = 2
+title = "The hatch"
+goal = 2
+text = "But remember: with the hatch open, shrapnel and bullets can hit you."
+voice = ExtResource("r6")
+wait_s = 4.0
+
+[sub_resource type="Resource" id="step_3"]
+script = ExtResource("r1")
+lesson = 2
+title = "The hatch"
+goal = 3
+text = "Close the hatch with {toggle_hatch}. Now you are safe, but you only see through the periscopes."
+voice = ExtResource("r7")
+
+[sub_resource type="Resource" id="step_4"]
+script = ExtResource("r1")
+lesson = 3
+title = "Binoculars"
+goal = 4
+text = "Open the hatch and raise the binoculars with {binoculars}. A tank stands at the forest edge ahead – find it."
+voice = ExtResource("r8")
+done_voice = ExtResource("r9")
+
+[sub_resource type="Resource" id="step_5"]
+script = ExtResource("r1")
+lesson = 4
+title = "Spotting"
+goal = 5
+text = "Mark the target with {spot} in the commander view: your whole team sees it on the map."
+voice = ExtResource("r10")
+done_voice = ExtResource("r11")
+
+[sub_resource type="Resource" id="step_6"]
+script = ExtResource("r1")
+lesson = 5
+title = "Gunner's sight"
+goal = 6
+text = "Switch to the gunner's sight with {toggle_gunner_sight}, lay it on the target and fire with {fire}."
+voice = ExtResource("r12")
+done_voice = ExtResource("r13")
+
+[sub_resource type="Resource" id="step_7"]
+script = ExtResource("r1")
+lesson = 6
+title = "Ammunition"
+goal = 7
+text = "AP won't bite on this one. Load HE with {select_ammo_2} and shoot its track."
+voice = ExtResource("r14")
+done_voice = ExtResource("r15")
+
+[sub_resource type="Resource" id="step_8"]
+script = ExtResource("r1")
+lesson = 7
+title = "Your squad"
+goal = 8
+text = "You have a squad with you. Open the squad map with {toggle_squad_map} and left-click a spot to send them there."
+voice = ExtResource("r16")
+
+[sub_resource type="Resource" id="step_9"]
+script = ExtResource("r1")
+lesson = 7
+title = "Your squad"
+goal = 9
+text = "Open the squad map again and right-click on a road: they lay a mine."
+voice = ExtResource("r17")
+
+[sub_resource type="Resource" id="step_10"]
+script = ExtResource("r1")
+lesson = 7
+title = "Your squad"
+goal = 10
+text = "Call the squad back with {squad_recall}."
+voice = ExtResource("r18")
+done_voice = ExtResource("r19")
+
+[sub_resource type="Resource" id="step_11"]
+script = ExtResource("r1")
+lesson = 8
+title = "Smoke"
+goal = 11
+text = "You're under fire! Lay smoke with {smoke} and back away behind the crest."
+voice = ExtResource("r20")
+done_voice = ExtResource("r21")
+
+[sub_resource type="Resource" id="step_12"]
+script = ExtResource("r1")
+lesson = 9
+title = "Final test"
+goal = 12
+text = "Last exercise: two enemy tanks in the area. Use everything you've learned. Knock them out."
+voice = ExtResource("r22")
+done_voice = ExtResource("r23")
+
+[resource]
+script = ExtResource("r2")
+steps = Array[ExtResource("r1")]([SubResource("step_0"), SubResource("step_1"), SubResource("step_2"), SubResource("step_3"), SubResource("step_4"), SubResource("step_5"), SubResource("step_6"), SubResource("step_7"), SubResource("step_8"), SubResource("step_9"), SubResource("step_10"), SubResource("step_11"), SubResource("step_12")])
+welcome = ExtResource("r24")
+skip = ExtResource("r25")
+restart = ExtResource("r26")
+short_hint = ExtResource("r27")
+start_position = Vector3(910, 69.4, 1510)
+start_yaw_deg = 45.0
+target_config = ExtResource("r28")
+heavy_config = ExtResource("r29")
+bot_crew = ExtResource("r30")
+bot_configs = Array[ExtResource("r_cfg")]([ExtResource("r31"), ExtResource("r32")])
+end_text = "You know the basics: drive, look out of the hatch, spot, shoot, use your squad and smoke. Press {show_help} in a match for every key."

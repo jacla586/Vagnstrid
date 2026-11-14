@@ -644,6 +644,16 @@ shows on the minimap. This is what we test first.
   `wave_gap_s` (the old bots go then, wrecks stay). All players out: `is_over()` (Scoreboard "DEFEATED", waves
   beaten, KO/assists/lost). HUD `FreeFightPanel`. Bot allies (main menu "Bot allies" in place of Tanks per team for Free fight maps, `MatchSettings.free_allies`, `FreeFightData` "Allies"): bots on the players' team, made beside the first player (`_make_allies`), keeping a place beside the nearest living player (`_ally_place`) until they or a player (`Tank.spotted`) know an enemy within `ally_engage_m`, then firing spots as the wave's attackers (`_ally_fight`); they count for the end (the match goes on while one lives), come back with the players and grow the waves by `ally_wave_weight`. NetGame starts no respawn timers with it; clients get
   `get_net_state()` by `rpc_free_state` (2 Hz and on its signals). The map's placed enemies are removed.
+- Tutorial (`TutorialMode`, node `Tutorial` in `scenes/scenarios/vidingsjo_tutorial.tscn`; data `TutorialData` with
+  `TutorialStepData` stages, `data/modes/tutorial.tres`; TUTORIAL_PLAN.md): offline only, no lobby (`NetSession.play_offline`
+  skips MatchLobby for `*_tutorial`; `MainMenu.find_maps` leaves it out of the map list and the server vote; the menu's
+  Tutorial button is highlighted until `user://settings.cfg` tutorial/done). The map's PlayerRig plays, moved to
+  `start_position`/`start_yaw_deg` (picked by a sight survey: Vidingsjö's own start sees almost nothing at 300-450 m).
+  Nine lessons (drive to a beam, hatch, binoculars on a target, spot it, hit it (a short round gets "Kort!"), HE on a KV-2's
+  track, squad out / mine / recall, smoke and back away 20 m out of a firing bot's sight, two easy bots); targets and bots
+  are placed per lesson round the tank (`_find_spot`: open ground in a cone ahead, in sight from the commander's eye, the
+  attacker also seeing the hull). Hold `skip_tutorial_step` (Backspace) 3 s to skip a lesson (`TutorialPanel` ring).
+  Knocked out or overturned: back where it last stood upright. Voices `assets/audio/radio/tut_*.ogg` via SquadRadio.
 - Map edge (`MapEdge`, `scripts/world/map_edge.gd`, `data/world/map_edge.tres`): the playable area is the map
   picture's `world_rect` less `margin_m` (50). No physics body (every ray with the default mask would hit
   it): `Tank._hold_inside_map` takes a tank's speed outwards past it and pushes it back in; `TacticalMap`

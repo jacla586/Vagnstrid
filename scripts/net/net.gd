@@ -180,6 +180,11 @@ func my_id() -> int:
 
 ## Single player: loads the map like a hosted one and adds the deploy lobby
 ## (MatchLobby) instead of NetGame.
+## Scenarios named <map>_tutorial: offline, no lobby, not in the map list or the server's vote.
+const TUTORIAL_TAG: String = "_tutorial"
+const TUTORIAL_MAP: String = "res://scenes/scenarios/vidingsjo_tutorial.tscn"
+
+
 func play_offline(path: String) -> void:
 	_load_map(path, true)
 
@@ -198,6 +203,8 @@ func _load_map(path: String, offline: bool = false) -> void:
 	get_tree().change_scene_to_packed(packed)
 	while get_tree().current_scene == null or get_tree().current_scene.scene_file_path != path:
 		await get_tree().process_frame
+	if offline and path.get_file().get_basename().ends_with(TUTORIAL_TAG):
+		return   # the tutorial plays the map's own PlayerRig (TutorialMode)
 	if offline:
 		var lobby := MatchLobby.new()
 		lobby.name = "MatchLobby"

@@ -56,3 +56,5 @@ utan att läsa något först. All text på engelska; svenska instruktörsröster
   ("HOLD TO SKIP"), så det aldrig sker av misstag.
 - Instruktörens repliker är inspelade (2026-11-14): `assets/audio/radio/tut_*.ogg` (`make_elevenlabs.sh … thunder`),
   bl.a. tut_0_welcome, tut_<steg>_<vad>, tut_5_short (skottet kort), tut_skip, tut_restart (fast/vält).
+- Byggd 2026-11-14 (alla nio lektioner, hoppa över, slutskärm, menyknapp). Avvikelser från planen: ingen egen
+  karta-markering för dungen (vilken plats som helst godkänns), starten flyttad till (910, 1510) för siktens skull.
