@@ -141,8 +141,11 @@ func _on_radio(kind: int, at: Vector3) -> void:
 func _on_struck(_outcome: int, _direction: Vector3) -> void:
 	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
 	if v != null:
-		var rare: bool = v.hit_rare != null and randf() < v.hit_rare_chance
-		_crew_call("hit", v.hit_rare if rare else v.hit, v)
+		var rares: Array[AudioStream] = v.hit_rare_more.duplicate()
+		if v.hit_rare != null:
+			rares.append(v.hit_rare)
+		var rare: bool = not rares.is_empty() and randf() < v.hit_rare_chance
+		_crew_call("hit", rares.pick_random() if rare else v.hit, v)
 
 
 ## A hard crash (CrewVoiceData "Crash"): the own tank's ground speed, from its position (so a
@@ -174,6 +177,9 @@ func _physics_process(delta: float) -> void:
 		if _time - float(_last.get(key, -INF)) < 1.5:
 			return
 	if _time - float(_last.get("crew/crash", -INF)) < v.crash_cooldown_s:
+		return
+	if randf() >= v.crash_chance:
+		_last["crew/crash"] = _time   # a crash that got no line still waits out the cooldown
 		return
 	_crew_call("crash", v.crash.pick_random(), v)
 

@@ -188,7 +188,8 @@ for pair in "tut_0_welcome tut-0-välkommen" "tut_1_drive tut-1-kör" "tut_1_don
     "tut_skip tut-hoppar" "tut_restart tut-omstart" "crew_crash_1 crash-rally-kalle" \
     "tut_3_map tut-3-kartan" "tut_3_hatch_first tut-3-lucka-först" "tut_5_turret tut-5-torn" \
     "tut_5_long tut-5-långt" "tut_6_west tut-6-väster" "tut_6_bounce tut-6-studs" \
-    "tut_9_map tut-9-kartan" "tut_9_one_left tut-9-en-kvar"; do
+    "tut_9_map tut-9-kartan" "tut_9_one_left tut-9-en-kvar" \
+    "crew_crash_2 crash-hur-kör-du" "crew_crash_3 crash-stevie-wonder" "crew_hit_rare_2 träffade-nu-är-jag-arg"; do
   set -- $pair
   trim "$S/ElevenLabs_$2.mp3" "$T/$1.wav"
   intercom "$1" "$T/$1.wav" -15

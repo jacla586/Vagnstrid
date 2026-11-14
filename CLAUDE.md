@@ -374,7 +374,7 @@ shows on the minimap. This is what we test first.
   and added to `make_elevenlabs.sh`.
 - Crew shouts: `TankData.crew_voice` (`CrewVoiceData`) "Vi är träffade!" on `Tank.struck` (a mine: "Mina! Bandet utslaget!"),
   "Närträff!" on `Tank.near_missed` (clients by `rpc_near_miss`), "Föraren/Skytten träffad!" on a
-  crew wound, rarely (`he_dirt_chance` 2 %) "Vilken jädra smäll!" when a burst dirties the optics, "Vagnchef träffad!" on `Tank.commander_wounded`, played by `SquadRadio`. A hard crash (ground speed falling `crash_drop_kmh` within `crash_window_s` from `crash_min_kmh`, read from the own tank's position, so clients too; not right after a hit or mine) gives "Hörru, Rally-Kalle, lugna ner dig lite!" (`CrewVoiceData` "Crash").
+  crew wound, rarely (`he_dirt_chance` 2 %) "Vilken jädra smäll!" when a burst dirties the optics, "Vagnchef träffad!" on `Tank.commander_wounded`, played by `SquadRadio`. A hard crash (ground speed falling `crash_drop_kmh` within `crash_window_s` from `crash_min_kmh`, read from the own tank's position, so clients too; not right after a hit or mine) gives, at `crash_chance` (0.35), a rare line ("Hörru, Rally-Kalle...", "Hur kör du egentligen?", Stevie Wonder; `CrewVoiceData` "Crash"); `hit_rare_more` adds "Nej, nu är jag arg!" to the rare hit lines.
   MG/rifle results are `HitResult.bullet`: no hit text for the shooter.
 - The open hatch lid stands up behind the commander and shields him from the rear:
   `Tank.hatch_lid_shields(from, to)` (segment through the lid's disc in its real pose) stops bullets
