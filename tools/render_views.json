@@ -772,6 +772,48 @@
 			],
 			"look_height_m": 0,
 			"fov": 55
+		},
+		{
+			"name": "j4_jarnvagsbron_mynning",
+			"at": [
+				588.5,
+				533
+			],
+			"height_m": 1.8,
+			"look_at": [
+				588.3,
+				505
+			],
+			"look_height_m": 1.5,
+			"fov": 60
+		},
+		{
+			"name": "j5_jarnvagsbron_snett",
+			"at": [
+				588.4,
+				540
+			],
+			"height_m": 5.0,
+			"look_at": [
+				588.3,
+				520
+			],
+			"look_height_m": 0.0,
+			"fov": 60
+		},
+		{
+			"name": "j6_ovanifran",
+			"at": [
+				600,
+				548
+			],
+			"height_m": 14.0,
+			"look_at": [
+				588.3,
+				530
+			],
+			"look_height_m": 0.0,
+			"fov": 50
 		}
 	],
 	"campus": [

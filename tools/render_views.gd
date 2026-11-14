@@ -118,6 +118,13 @@ func _strip_scene() -> void:
 	_camera.far = 4000.0
 	scene.add_child(_camera)
 	_camera.current = true
+	# Terrain3D's detail levels follow the camera it grabbed at load (the player's): without this a narrow
+	# cut (an underpass) far from it is drawn at a coarse level and looks filled in.
+	for terrain: Node in scene.find_children("*", "Terrain3D", true, false):
+		if terrain.has_method("set_camera"):
+			terrain.call("set_camera", _camera)
+		elif terrain.has_method("set_clipmap_target"):
+			terrain.call("set_clipmap_target", _camera)
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
 
 

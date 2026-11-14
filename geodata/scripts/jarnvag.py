@@ -42,10 +42,11 @@ KONTAKT_OVER_RALS, BAR_OVER_RALS, BAR_NEDHANG = 5.5, 6.7, 0.45
 SICKSACK_M = 0.2
 PERRONG_OVER_RALS = 0.58
 VAGPORT_FRI_M = 0.5           # murens insida utanför vägkanten
-VAGPORT_MUR_M = 0.8           # murens tjocklek
+VAGPORT_MUR_M = 2.6           # landfästets tjocklek (massiv mur; täcker höjdkartans 2 m-steg bakom insidan)
 VAGPORT_VALL_M = 3.4          # banvallens halva bredd utanför yttersta spåret (portens längd)
 VAGPORT_DACK_M = 1.0          # däckets tjocklek (överkant strax under makadamen)
 VAGPORT_FYLL_M = 7.0          # banvallen fylls så här långt ut från murarna
+VAGPORT_DACK_UT_M = 0.3        # däcket når så långt ut bakom murarna
 VAGPORT_MIN_FRI_M = 3.8       # vägen sänks (ramp VAGPORT_RAMP) tills vagnarna kommer under däcket
 VAGPORT_RAMP = 0.12
 SERVICE = ('crossover', 'siding', 'yard', 'spur')
@@ -306,7 +307,10 @@ class Jarnvag:
             sv = np.array([L.project(shapely.Point(x)) for x in X])
             lat = np.array([L.distance(shapely.Point(x)) for x in X])
             inne = (sv >= pt['s0']) & (sv <= pt['s1'])
-            oppning = lat <= pt['hw'] + VAGPORT_FRI_M + 0.3
+            # hela porten (ut till en rutnätspunkt bakom murarna) i vägens nivå: höjdkartan har RES m mellan
+            # punkterna, och en punkt på vallens höjd närmare än så gav en ränna med golvet stigande mot murarna
+            band = pt['hw'] + VAGPORT_FRI_M + VAGPORT_MUR_M - 0.3
+            oppning = lat <= band
             golv = np.interp(sv, r['s'], r['z']) - 0.05
             # vägen plan i porten (och 2 m utanför), banvallen fylld bakom murarna
             o = oppning
@@ -325,7 +329,7 @@ class Jarnvag:
                 v = sankt
                 h[i2[v], j2[v]] = np.minimum(h[i2[v], j2[v]], mal[v])
             f = inne & ~oppning
-            bak = np.maximum(lat[f] - (pt['hw'] + VAGPORT_FRI_M + VAGPORT_MUR_M) - 1.5, 0.0)
+            bak = np.maximum(lat[f] - band - 1.0, 0.0)
             vall = pt['topp'] - 0.1 - bak * 0.6   # krön bakom muren, sedan banvallens slänt
             h[ii[f], jj[f]] = np.maximum(h[ii[f], jj[f]], vall)
 
@@ -518,7 +522,8 @@ class Jarnvag:
             d_ = _riktning_l(L, (pt['s0'] + pt['s1']) / 2)
             Cd = ladar(np.c_[to_world(np.array([mitt.x]), np.array([mitt.y]))],
                        np.array([[d_[0], -d_[1]]]), (pt['s1'] - pt['s0']) / 2 + 0.6,
-                       pt['hw'] + VAGPORT_FRI_M + VAGPORT_MUR_M + 0.4, pt['topp'] - VAGPORT_DACK_M, pt['topp'])
+                       pt['hw'] + VAGPORT_FRI_M + VAGPORT_MUR_M + VAGPORT_DACK_UT_M, pt['topp'] - VAGPORT_DACK_M,
+                       pt['topp'])
             Vd, Fs, Ft = kuboider(Cd, ta_bort_botten=False)
             add_merged('Banhinder', trimesh.Trimesh(Vd, np.vstack([Fs, Ft]), process=False), M['betong'])
 
