@@ -814,6 +814,62 @@
 			],
 			"look_height_m": 0.0,
 			"fov": 50
+		},
+		{
+			"name": "i3_a_plan_ovan",
+			"at": [
+				530,
+				650
+			],
+			"height_m": 25,
+			"look_at": [
+				462,
+				593
+			],
+			"look_height_m": 0,
+			"fov": 55
+		},
+		{
+			"name": "i4_gripvallen",
+			"at": [
+				1250,
+				1190
+			],
+			"height_m": 1.8,
+			"look_at": [
+				1176,
+				1186
+			],
+			"look_height_m": 1.0,
+			"fov": 60
+		},
+		{
+			"name": "i1_himnabadet_ovan",
+			"at": [
+				420,
+				935
+			],
+			"height_m": 35,
+			"look_at": [
+				420,
+				870
+			],
+			"look_height_m": 0,
+			"fov": 55
+		},
+		{
+			"name": "i2_himnabadet_mark",
+			"at": [
+				430,
+				900
+			],
+			"height_m": 1.8,
+			"look_at": [
+				440,
+				878
+			],
+			"look_height_m": 0.0,
+			"fov": 65
 		}
 	],
 	"campus": [

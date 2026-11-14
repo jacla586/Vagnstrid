@@ -40,7 +40,8 @@ def build(osm_path):
         return [P[k] for k in w['nds'] if k in P]
 
     out = dict(buildings=[], roads=[], landcover=[], water=[], waterways=[], points=[], hedges=[],
-               rails=[], platforms=[], vagpunkter=[], lekplatser=[], lekredskap=[], idrottsbanor=[], byggdelar=[])
+               rails=[], platforms=[], vagpunkter=[], lekplatser=[], lekredskap=[], idrottsbanor=[], byggdelar=[],
+               idrottsplaner=[], bassanger=[])
     used_in_rel = set()
     bana_medlem = set()   # vägar i en löparbanas multipolygon (idrott.py) läggs inte till en gång till
     for rid, r in rels.items():
@@ -111,6 +112,10 @@ def build(osm_path):
             out['platforms'].append((Polygon(c).buffer(0) if closed else LineString(c), t))
         elif t.get('leisure') == 'track' and closed and wid not in bana_medlem:
             out['idrottsbanor'].append((Polygon(c).buffer(0), t, wid))   # idrott.py
+        elif t.get('leisure') == 'pitch' and closed:
+            out['idrottsplaner'].append((Polygon(c).buffer(0), t, wid))   # idrott.py: fotboll, tennis
+        elif t.get('leisure') == 'swimming_pool' and closed:
+            out['bassanger'].append((Polygon(c).buffer(0), t, wid))   # idrott.py: utomhusbad
         elif t.get('leisure') == 'playground' and closed:
             out['lekplatser'].append((Polygon(c).buffer(0), t, wid))   # lekplatser.py
         elif t.get('public_transport') == 'platform' and t.get('shelter') == 'yes':

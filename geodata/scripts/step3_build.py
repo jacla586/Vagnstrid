@@ -365,7 +365,7 @@ np.save(str(WORK / 'lekplatser_mask.npy'), _lek_mask)
 if IDROTT:
     for grupp in ('Idrott', 'Byggnader_laktare'):
         scene.graph.update(frame_to=grupp, frame_from=scene.graph.base_frame)
-    IDROTT.bygg(sample, h, to_world, add_merged, mat)
+    IDROTT.bygg(sample, h, to_world, add_merged, mat, valt=VALT)
 np.save(str(WORK / 'idrott_mask.npy'), IDROTT.mask((H, W), T))   # step4: inga träd eller buskar
 if LANDMARKEN.lista:
     scene.graph.update(frame_to='Byggnader_landmarken', frame_from=scene.graph.base_frame)

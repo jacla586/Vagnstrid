@@ -20,6 +20,8 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 
+import planer as planer_mod   # bollplaner och utomhusbad
+
 BANBREDD = 1.22
 FARG = {   # sRGB
     'tartan': (168, 66, 52), 'linje': (238, 238, 232), 'sarg': (225, 225, 220),
@@ -98,27 +100,29 @@ class Idrott:
                 kvar.append((gm, t))
         feat['buildings'] = kvar   # läktarna byggs här, inte som hus
         self.nivaer = []
+        self.plan = planer_mod.Planer(feat, box)
         print(f'idrott: {len(self.banor)} löparbanor, {len(self.laktare)} läktare')
 
     def __bool__(self):
-        return bool(self.banor or self.laktare)
+        return bool(self.banor or self.laktare or self.plan)
 
     def ytor(self):
         """Allt som inte ska bli laserhus, buskar eller träd."""
-        return [y for y, _, _ in self.banor] + [l.buffer(1.0) for l, _, _ in self.laktare]
+        return [y for y, _, _ in self.banor] + [l.buffer(1.0) for l, _, _ in self.laktare] + self.plan.ytor()
 
     def tartan(self):
-        return [y.difference(i) for y, i, _ in self.banor]
+        return [y.difference(i) for y, i, _ in self.banor] + self.plan.harda()
 
     def planer(self):
         """Innerplanerna (gräsmatta)."""
-        return [i for _, i, _ in self.banor]
+        return [i for _, i, _ in self.banor] + self.plan.gras()
 
     def forma(self, h, shape, T, RES):
         """Marken under banan plattas till medianhöjden innanför den: plant 10 m ut, sedan mjukt över
         20 m (Terrain3D:s grova detaljnivåer på avstånd tar annars med högre mark utanför och lägger
         den över banan), och under tartanen 8 cm lägre så att ytan alltid ligger ovanpå."""
         from scipy import ndimage as ndi
+        self.plan.forma(h, shape, T, RES)
         for yttre, inre, _ in self.banor:
             inne = rasterize([(yttre.buffer(10.0), 1)], out_shape=shape, transform=T).astype(bool)
             if not inne.any():
@@ -140,7 +144,8 @@ class Idrott:
         return rasterize([(y.buffer(2.0), 1) for y in self.ytor()], out_shape=shape, transform=T).astype(bool)
 
     # ------------------------------------------------------------------ meshar
-    def bygg(self, sample, h, to_world, add_merged, mat):
+    def bygg(self, sample, h, to_world, add_merged, mat, valt=None):
+        self.plan.bygg(sample, h, to_world, add_merged, mat, valt)
         m = {k: mat(f'Idrott_{k}', c, 0.85 if k != 'tak' else 0.5) for k, c in FARG.items()}
         for (yttre, inre, t), niva in zip(self.banor, self.nivaer or [None] * len(self.banor)):
             if niva is None:
