@@ -16,6 +16,7 @@
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_kill_3.ogg" id="r_crew_kill_3"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_kill_zone_1.ogg" id="r_crew_kill_zone_1"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_kill_zone_2.ogg" id="r_crew_kill_zone_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_crash_1.ogg" id="r_crew_crash_1"]
 
 [resource]
 script = ExtResource("1_crew")
@@ -30,3 +31,4 @@ hit_rare = ExtResource("r_crew_hit_rare")
 mine_rare = ExtResource("r_crew_mine_rare")
 kill = Array[AudioStream]([ExtResource("r_crew_kill_1"), ExtResource("r_crew_kill_2"), ExtResource("r_crew_kill_3")])
 kill_zone = Array[AudioStream]([ExtResource("r_crew_kill_zone_1"), ExtResource("r_crew_kill_zone_2")])
+crash = Array[AudioStream]([ExtResource("r_crew_crash_1")])

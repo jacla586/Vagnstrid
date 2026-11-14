@@ -48,8 +48,11 @@ utan att läsa något först. All text på engelska; svenska instruktörsröster
 4. Gesällprovet, slutskärmen, förslaget i huvudmenyn första gången.
 5. Finslipning: texter, markörer, timing, eventuella röstklipp. Testa med någon som aldrig spelat.
 
-## Öppna frågor till Jacob
+## Beslut (2026-11-14)
 
-- Vidingsjö eller en annan karta (Campus känns igen av fler)?
-- Instruktörsröst: ska du spela in fraser i ElevenLabs (förslag kan tas fram per steg), eller bara text?
-- Ska varje steg kunna hoppas över, eller bara hela tutorialen?
+- Karta: Vidingsjö.
+- Instruktörsröst: ja, ElevenLabs (filer `ElevenLabs_tut-<steg>-….mp3` i `geodata/sound/`), engelsk text på skärmen.
+- Varje steg kan hoppas över genom att hålla Backspace (`skip_tutorial_step`) i 3 s, med en ring som fylls
+  ("HOLD TO SKIP"), så det aldrig sker av misstag.
+- Instruktörens repliker är inspelade (2026-11-14): `assets/audio/radio/tut_*.ogg` (`make_elevenlabs.sh … thunder`),
+  bl.a. tut_0_welcome, tut_<steg>_<vad>, tut_5_short (skottet kort), tut_skip, tut_restart (fast/vält).

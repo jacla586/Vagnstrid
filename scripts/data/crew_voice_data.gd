@@ -37,3 +37,14 @@ extends Resource
 @export var volume_db: float = 2.0
 ## The same call isn't repeated within this long (s).
 @export var repeat_cooldown_s: float = 4.0
+
+@export_group("Crash")
+## "Hörru, Rally-Kalle, lugna ner dig lite!" when the own tank hits something hard: its ground
+## speed drops by crash_drop_kmh or more within crash_window_s from at least crash_min_kmh
+## (SquadRadio watches the own tank's position, so clients hear it too); at most once per
+## crash_cooldown_s.
+@export var crash: Array[AudioStream] = []
+@export var crash_min_kmh: float = 22.0
+@export var crash_drop_kmh: float = 15.0
+@export var crash_window_s: float = 0.35
+@export var crash_cooldown_s: float = 45.0

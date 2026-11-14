@@ -20,6 +20,8 @@ var _tank: Tank
 var _queue: Array = []          # [stream, volume_db, kind (-1: crew, -2: command)]
 var _last: Dictionary = {}      # call key -> time it was last played
 var _time: float = 0.0
+var _crash_prev: Vector3 = Vector3.INF
+var _crash_speeds: Array = []   # [time, ground speed km/h], the last crash_window_s
 
 
 func _ready() -> void:
@@ -141,6 +143,39 @@ func _on_struck(_outcome: int, _direction: Vector3) -> void:
 	if v != null:
 		var rare: bool = v.hit_rare != null and randf() < v.hit_rare_chance
 		_crew_call("hit", v.hit_rare if rare else v.hit, v)
+
+
+## A hard crash (CrewVoiceData "Crash"): the own tank's ground speed, from its position (so a
+## client's puppet too), falls by crash_drop_kmh within crash_window_s from crash_min_kmh up.
+## Not after a hit or a mine (they stop tanks too), nor across a respawn jump.
+func _physics_process(delta: float) -> void:
+	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null and is_instance_valid(_tank) else null
+	if v == null or v.crash.is_empty() or delta <= 0.0 or _tank.is_knocked_out():
+		_crash_prev = Vector3.INF
+		_crash_speeds.clear()
+		return
+	var pos: Vector3 = _tank.global_position
+	var prev: Vector3 = _crash_prev
+	_crash_prev = pos
+	if prev == Vector3.INF or pos.distance_to(prev) > 15.0:
+		_crash_speeds.clear()
+		return
+	var kmh: float = Vector2(pos.x - prev.x, pos.z - prev.z).length() / delta * 3.6
+	_crash_speeds.append([_time, kmh])
+	while not _crash_speeds.is_empty() and _time - float(_crash_speeds[0][0]) > v.crash_window_s:
+		_crash_speeds.pop_front()
+	var top: float = 0.0
+	for row: Array in _crash_speeds:
+		top = maxf(top, float(row[1]))
+	if top < v.crash_min_kmh or top - kmh < v.crash_drop_kmh:
+		return
+	_crash_speeds.clear()
+	for key: String in ["crew/hit", "crew/mine"]:
+		if _time - float(_last.get(key, -INF)) < 1.5:
+			return
+	if _time - float(_last.get("crew/crash", -INF)) < v.crash_cooldown_s:
+		return
+	_crew_call("crash", v.crash.pick_random(), v)
 
 
 ## A mine: its own call, and the "hit" call the struck right after would give is held back.
