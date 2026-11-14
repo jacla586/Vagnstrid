@@ -40,22 +40,18 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	theme = MenuTheme.get_theme()
 	MenuTheme.add_backdrop(self, true)
-	# A column on the left over the darkened side of the picture, scrolling if the
-	# window is too low for everything.
-	var scroll := ScrollContainer.new()
-	scroll.anchor_bottom = 1.0
-	scroll.offset_right = COLUMN_WIDTH + 2.0 * COLUMN_MARGIN
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	add_child(scroll)
+	# A fixed column on the left over the darkened side of the picture (no scrolling).
 	var margin := MarginContainer.new()
-	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	for side: String in ["left", "right", "top", "bottom"]:
+	margin.anchor_bottom = 1.0
+	margin.offset_right = COLUMN_WIDTH + 2.0 * COLUMN_MARGIN
+	for side: String in ["left", "right"]:
 		margin.add_theme_constant_override("margin_" + side, COLUMN_MARGIN)
-	scroll.add_child(margin)
+	for side: String in ["top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 16)
+	add_child(margin)
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 9)
+	box.add_theme_constant_override("separation", 7)
 	margin.add_child(box)
 	_add_title(box)
 
@@ -72,13 +68,13 @@ func _ready() -> void:
 		get_tree().change_scene_to_file(GARAGE_SCENE))
 	box.add_child(garage)
 	# The tutorial: highlighted until it has been played through once.
-	var tutorial: Button = _button("Tutorial (about 8 min)", func() -> void:
+	var tutorial: Button = _button("Tutorial", func() -> void:
 		NetSession.instance.player_name = _name.text
 		Weather.resolve()
 		NetSession.instance.play_offline(NetSession.TUTORIAL_MAP))
 	if not TutorialMode.is_done():
 		MenuTheme.make_primary(tutorial)
-		tutorial.text = "New here? Tutorial (about 8 min)"
+		tutorial.text = "New here? Tutorial"
 	box.add_child(tutorial)
 	var help_row := HBoxContainer.new()
 	help_row.add_theme_constant_override("separation", 12)
