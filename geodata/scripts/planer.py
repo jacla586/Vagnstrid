@@ -33,6 +33,7 @@ FARG = {   # sRGB
 SIDLINJE_IN_M = 1.5
 LINJE_B = 0.12
 BAD_DACK_M = 3.5
+TENNIS_BANA_B_M = 17.0        # en bana med utrymme runt (bredd); bredare ytor rymmer flera bredvid varandra
 PRIVAT_MAX_M2 = 100.0         # bassänger mindre än så (tillsammans): trädgårdspool
 STANGSEL_UT_M = 10.0
 FOTBOLL_MIN_M2 = 400
@@ -97,12 +98,32 @@ class Flygfoto:
         return float((hojd[inne] > 2.5).mean()) if inne.any() else 0.0
 
     def grasyta(self, poly):
+        return self._storsta_rektangel(poly, gras=True)
+
+    def bar_yta(self, poly):
+        """Den största rektangel som ryms i den fria, låga ytan utan växtlighet (grus, asfalt) inom polygonen."""
+        return self._storsta_rektangel(poly, gras=False)
+
+    def solbelyst_farg(self, poly):
+        """Median-RGB för de ljusare hälften av pixlarna (skuggor från träd bort)."""
+        from rasterio.windows import from_bounds
+        w = from_bounds(*poly.bounds, self.o.transform).round_offsets().round_lengths()
+        a = self.o.read([1, 2, 3], window=w).astype(np.float32)
+        inne = rasterize([(poly.buffer(-0.5), 1)], out_shape=a.shape[1:], transform=self.o.window_transform(w)).astype(bool)
+        px = a[:, inne]
+        if px.shape[1] < 20:
+            return None
+        lum = px.mean(0)
+        return np.median(px[:, lum >= np.median(lum)], 1)
+
+    def _storsta_rektangel(self, poly, gras):
         """Den största rektangel som ryms i den största sammanhängande gräsytan (grönt i IR, även torrt gräs;
         lågt enligt lasern) inom polygonen, riktad som gräsytan; None om för liten."""
         from scipy import ndimage as ndi
         from shapely.geometry import MultiPoint
         ndvi, hojd, inne, T = self._las(poly)
-        gras = ndi.binary_opening(inne & (ndvi > 0.08) & (hojd < 1.0), iterations=4)
+        mask = inne & (hojd < 1.0) & ((ndvi > 0.08) if gras else (ndvi < 0.05))
+        gras = ndi.binary_opening(mask, iterations=4)
         lab, n = ndi.label(gras)
         if n == 0:
             return None
@@ -175,11 +196,29 @@ class Planer:
                     g = Polygon([c + ax * su * hl + tv * sv * hb for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1))])
                 self.fotboll.append(dict(poly=g, t=t, id=wid, rekt=rekt, yta=self._fotbollsyta(g, t)))
             elif 'tennis' in t.get('sport', ''):
+                if self.foto is not None and (g.area / g.minimum_rotated_rectangle.area < 0.9 or g.area > 900):
+                    ny = self.foto.bar_yta(g)   # OSM-ytan tar med omgivningen: banorna på den fria ytan
+                    if ny is not None and ny.area > 300:
+                        print(f'planer: tennis {wid}: anpassad efter flygfotot ({g.area:.0f} -> {ny.area:.0f} m²)')
+                        g = ny
+                rekt = _rect(g)
+                lang, bred = 2 * rekt[3], 2 * rekt[4]
+                antal = max(1, int(round(bred / TENNIS_BANA_B_M))) if lang >= 28 else 1
+                if lang < 30 or bred < antal * 16:   # bara spelytan i OSM (24 x 11 m): ytan runt med
+                    c_, ax_, tv_ = rekt[:3]
+                    rekt = (c_, ax_, tv_, max(rekt[3], 18.0), max(rekt[4], antal * 8.6))
+                    g = Polygon([c_ + ax_ * su * rekt[3] + tv_ * sv * rekt[4]
+                                 for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1))])
+                    lang, bred = 2 * rekt[3], 2 * rekt[4]
                 hard = t.get('surface') in ('asphalt', 'concrete', 'acrylic', 'hard', 'paved', 'tartan')
-                if 'surface' not in t and self.foto is not None:   # flygfotot: rödgrus eller hård (grön/grå)
-                    rgb, _ = self.foto.farg(g)
-                    hard = rgb is not None and not (rgb[0] > rgb[1] + 15 and rgb[0] > rgb[2] + 20)
-                self.tennis.append(dict(poly=g, t=t, id=wid, rekt=_rect(g), hard=hard))
+                if t.get('surface') in (None, 'clay') and self.foto is not None:   # rödgrus eller hård (grön/grå)
+                    rgb = self.foto.solbelyst_farg(g)
+                    hard = rgb is not None and not (rgb[0] > rgb[1] + 8 and rgb[0] > rgb[2] + 15)
+                if t.get('surface') == 'clay':
+                    hard = False
+                print(f"planer: tennis {wid}: {antal} {'bana' if antal == 1 else 'banor'}, {'hård' if hard else 'grus'}, "
+                      f"{lang:.0f} x {bred:.0f} m")
+                self.tennis.append(dict(poly=g, t=t, id=wid, rekt=rekt, hard=hard, antal=antal))
         self.bassanger = [dict(poly=g, t=t, id=wid) for g, t, wid in feat.get('bassanger', [])
                           if g.intersects(box) and g.geom_type == 'Polygon' and g.area >= 20]
         for b in self.bassanger:
@@ -291,6 +330,20 @@ class Planer:
             self._fotboll(f, niva('f', i, f['poly']), to_world, add_merged, m, valt)
         for i, t in enumerate(self.tennis):
             self._tennis(t, niva('t', i, t['poly']), to_world, add_merged, m, valt)
+        # nätstängsel runt varje grupp av banor (banor kant i kant delar stängsel)
+        if self.tennis:
+            u = unary_union([t['poly'].buffer(0.05) for t in self.tennis])
+            for i_g, grupp in enumerate(getattr(u, 'geoms', [u])):
+                nv = float(np.median(sample(h, *np.array(grupp.exterior.coords).T)))
+                ring = np.array(grupp.exterior.coords)
+                V, F = [], []
+                for k in range(len(ring) - 1):
+                    base = len(V)
+                    for r_ in (ring[k], ring[k + 1]):
+                        x, z = to_world(*r_)
+                        V += [[x, nv - 0.3, z], [x, nv + 3.0, z]]
+                    F += [[base, base + 2, base + 3], [base, base + 3, base + 1]]
+                add_merged('Idrott', trimesh.Trimesh(np.array(V), np.array(F), process=False), m['natstangsel'])
         for i, b in enumerate(self.bad):
             self._bad(b, niva('b', i, b['dack']), to_world, add_merged, m)
 
@@ -386,26 +439,19 @@ class Planer:
                    m['hardplan'] if hard else m['grus'])
         yl = y + 0.012
         a, bd, bs, serv = 23.77 / 2, 10.97 / 2, 8.23 / 2, 6.40
-        for p, q in (((-a, -bd), (a, -bd)), ((-a, bd), (a, bd)), ((-a, -bd), (-a, bd)), ((a, -bd), (a, bd)),
-                     ((-a, -bs), (a, -bs)), ((-a, bs), (a, bs)), ((-serv, -bs), (-serv, bs)),
-                     ((serv, -bs), (serv, bs)), ((-serv, 0), (serv, 0))):
-            self._linje(L, p, q, 0.06, yl, to_world, add_merged, m['linje'])
-        # nätstängsel runt ytan
-        P = [L(-hl, -hb), L(hl, -hb), L(hl, hb), L(-hl, hb)]
-        V, F = [], []
-        for k in range(4):
-            p, q = P[k], P[(k + 1) % 4]
-            base = len(V)
-            for r_ in (p, q):
-                x, z = to_world(*r_)
-                V += [[x, niva, z], [x, niva + 3.0, z]]
-            F += [[base, base + 2, base + 3], [base, base + 3, base + 1]]
-        add_merged('Idrott', trimesh.Trimesh(np.array(V), np.array(F), process=False), m['natstangsel'])
+        n = t.get('antal', 1)
+        mitter = [(-hb + 2 * hb * (k + 0.5) / n) for k in range(n)]   # banorna bredvid varandra (tvärs)
+        for vm in mitter:
+            for p, q in (((-a, -bd), (a, -bd)), ((-a, bd), (a, bd)), ((-a, -bd), (-a, bd)), ((a, -bd), (a, bd)),
+                         ((-a, -bs), (a, -bs)), ((-a, bs), (a, bs)), ((-serv, -bs), (-serv, bs)),
+                         ((serv, -bs), (serv, bs)), ((-serv, 0), (serv, 0))):
+                self._linje(L, (p[0], p[1] + vm), (q[0], q[1] + vm), 0.06, yl, to_world, add_merged, m['linje'])
         if valt is not None:
-            q = L(0, 0)
-            x, z = to_world(*q)
-            w = np.array(to_world(q[0] + rekt[1][0], q[1] + rekt[1][1])) - np.array([x, z])
-            valt.placera('Tennisnat', [x, niva + 0.05, z], w)
+            for vm in mitter:
+                q = L(0, vm)
+                x, z = to_world(*q)
+                w = np.array(to_world(q[0] + rekt[1][0], q[1] + rekt[1][1])) - np.array([x, z])
+                valt.placera('Tennisnat', [x, niva + 0.05, z], w)
 
     def _bad(self, bad, niva, to_world, add_merged, m):
         yd = niva + 0.05

@@ -686,6 +686,34 @@
 			],
 			"look_height_m": -0.3,
 			"fov": 40.8
+		},
+		{
+			"name": "t_motionscenter_ovan",
+			"at": [
+				1420,
+				2530
+			],
+			"height_m": 18,
+			"look_at": [
+				1390,
+				2491
+			],
+			"look_height_m": 0,
+			"fov": 55
+		},
+		{
+			"name": "t_motionscenter_mark",
+			"at": [
+				1412,
+				2462
+			],
+			"height_m": 1.8,
+			"look_at": [
+				1390,
+				2491
+			],
+			"look_height_m": 0.5,
+			"fov": 65
 		}
 	],
 	"linghem": [
