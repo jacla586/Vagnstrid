@@ -147,6 +147,7 @@ BRO.spara_mask(str(WORK / 'broar_mask.npy'), (H, W), T)   # step4: inga träd i 
 # Järnväg (jarnvag.py): profil ur den orörda höjdmodellen, banvallen formas sist
 BANA = jarnvag.Jarnvag(feat.get('rails', []), feat.get('platforms', []), BOX,
                        np.load(str(WORK / 'h_raw.npy')).astype(np.float64), sample)
+BANA.vagportar(roads)   # vägar under järnvägsbroar: murar och däck (jarnvag.py)
 BANA.forma(h, (H, W), T, OX, OY, RES)
 # Idrottsplatser (idrott.py): löparbanor plattas till, läktare tas ur husen (byggs längre ned)
 IDROTT = idrott.Idrott(feat, BOX)

@@ -12,6 +12,12 @@ planet över alla spår (parallella spår och växlar hamnar på samma nivå). �
 används bara punkter utanför bron, så profilen går rakt över vägen under.
 Glb-grupper: `Jarnvag` (utseende: makadam, sliprar, räls, ledningar, utliggare) och `Banhinder`
 (kollision: stolpar, brodäck, landfästen, plattformar).
+
+Vägportar (`vagportar(roads)`, före forma): där en järnvägsbro går över en väg blir det en smal port som
+de gamla i Linköpingstrakten (Mapillary: Linghems infart): lodräta murar av granitblock VAGPORT_FRI_M
+utanför vägkanten längs hela banvallens bredd (alla spår), ett gemensamt betongdäck under makadamen,
+banvallen fylld ända fram till murarna (forma) och vägen plan i porten. De spåren får då inga egna
+brodäck och landfästen. Fria höjden skrivs ut (spelet: vagnarna ska komma igenom).
 """
 import numpy as np
 from scipy.spatial import cKDTree
@@ -35,7 +41,60 @@ STOLPE_SIDLED_M = 3.2
 KONTAKT_OVER_RALS, BAR_OVER_RALS, BAR_NEDHANG = 5.5, 6.7, 0.45
 SICKSACK_M = 0.2
 PERRONG_OVER_RALS = 0.58
+VAGPORT_FRI_M = 0.5           # murens insida utanför vägkanten
+VAGPORT_MUR_M = 0.8           # murens tjocklek
+VAGPORT_VALL_M = 3.4          # banvallens halva bredd utanför yttersta spåret (portens längd)
+VAGPORT_DACK_M = 1.0          # däckets tjocklek (överkant strax under makadamen)
+VAGPORT_FYLL_M = 7.0          # banvallen fylls så här långt ut från murarna
+VAGPORT_MIN_FRI_M = 3.8       # vägen sänks (ramp VAGPORT_RAMP) tills vagnarna kommer under däcket
+VAGPORT_RAMP = 0.12
 SERVICE = ('crossover', 'siding', 'yard', 'spur')
+
+
+def _riktning_l(L, d):
+    a = np.array(L.interpolate(max(d - 1.0, 0.0)).coords[0])
+    b = np.array(L.interpolate(min(d + 1.0, L.length)).coords[0])
+    v = b - a
+    n = np.linalg.norm(v)
+    return v / n if n > 1e-9 else np.array([1.0, 0.0])
+
+
+_GRANIT = None
+
+
+def _granit_material():
+    """Mur av huggna granitblock (0,9 × 0,45 m, förskjutna rader, grå i olika toner, mörka fogar),
+    2 × 2 m per textur."""
+    global _GRANIT
+    if _GRANIT is not None:
+        return _GRANIT
+    from PIL import Image
+    import zlib
+    c = 256
+    rng = np.random.default_rng(zlib.crc32(b'granit'))
+    a = np.zeros((c, c, 3), float)
+    a[:] = (46, 44, 42)
+    rad = c * 0.45 / 2.0
+    y = 0.0
+    r_i = 0
+    while y < c:
+        y0, y1 = int(y), int(min(y + rad, c))
+        x = -rng.uniform(0, 60) if r_i % 2 else 0.0
+        while x < c:
+            w = rng.uniform(0.7, 1.2) * c * 0.9 / 2.0
+            xs, xe = int(max(x + 2, 0)), int(min(x + w - 2, c))
+            if xe > xs:
+                ton = rng.uniform(0.7, 1.15)
+                bas = np.array((112, 112, 110)) * ton + rng.normal(0, 4, 3)
+                blk = a[y0 + 2:y1 - 2, xs:xe]
+                blk[:] = bas + rng.normal(0, 9, blk.shape)
+            x += w
+        y += rad
+        r_i += 1
+    im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
+    _GRANIT = trimesh.visual.material.PBRMaterial(name='Granitmur', baseColorTexture=im, metallicFactor=0.0,
+                                                  roughnessFactor=0.95)
+    return _GRANIT
 
 
 def _norm(v):
@@ -155,6 +214,69 @@ class Jarnvag:
     def __bool__(self):
         return bool(self.spar)
 
+    def vagportar(self, roads):
+        """Vägar under järnvägsbroar: en port per väg och plats (alla spår), sparas i self.portar."""
+        self.portar = []
+        if not self:
+            return
+        broar = [k for k, sp in enumerate(self.spar) if sp['bro']]
+        for r in roads:
+            if 'z' not in r or r['tags'].get('tunnel') not in (None, 'no') or r['tags'].get('bridge') not in (None, 'no'):
+                continue
+            L = r['line']
+            korsn = []
+            for k in broar:
+                x = L.intersection(self.spar[k]['line'])
+                for p in getattr(x, 'geoms', [x]):
+                    if p.is_empty or p.geom_type != 'Point':
+                        continue
+                    sp = self.spar[k]
+                    i = int(np.argmin(np.hypot(*(sp['pts'] - [p.x, p.y]).T)))
+                    s_v = L.project(p)
+                    rd = _riktning_l(L, s_v)
+                    sinv = max(abs(float(rd[0] * sp['dir'][i][1] - rd[1] * sp['dir'][i][0])), 0.4)
+                    korsn.append((s_v, float(sp['zb'][i]), sinv, k))
+            if not korsn:
+                continue
+            korsn.sort()
+            grupp = [korsn[0]]
+            for kk in korsn[1:] + [None]:
+                if kk is not None and kk[0] - grupp[-1][0] < 15.0:
+                    grupp.append(kk)
+                    continue
+                s0 = min(g[0] - VAGPORT_VALL_M / g[2] for g in grupp)
+                s1 = max(g[0] + VAGPORT_VALL_M / g[2] for g in grupp)
+                s0, s1 = max(s0, 0.0), min(s1, L.length)
+                dack_topp = min(g[1] for g in grupp) - 0.3
+                hw = float(np.interp((s0 + s1) / 2, r['s'], r['hw'])) if np.ndim(r.get('hw')) else r['width'] / 2
+                golv = float(np.interp((s0 + s1) / 2, r['s'], r['z']))
+                self.portar.append(dict(r=r, s0=s0, s1=s1, topp=dack_topp, hw=hw, spar={g[3] for g in grupp}))
+                fri = dack_topp - VAGPORT_DACK_M - golv
+                if fri < VAGPORT_MIN_FRI_M:   # sänk vägen genom porten, ramp på båda sidor (även grannvägarna)
+                    from shapely.ops import substring
+                    krav = dack_topp - VAGPORT_DACK_M - VAGPORT_MIN_FRI_M
+                    port_seg = substring(L, s0, s1)
+                    andar = [shapely.Point(L.coords[0]), shapely.Point(L.coords[-1])]
+                    sankta = []
+                    for r2 in roads:
+                        if 'z' not in r2 or r2['tags'].get('bridge') not in (None, 'no'):
+                            continue
+                        if r2 is not r and not any(e.distance(shapely.Point(c)) < 1.0 for e in andar
+                                                   for c in (r2['line'].coords[0], r2['line'].coords[-1])):
+                            continue
+                        dd = np.array([port_seg.distance(shapely.Point(q)) for q in r2['pts']])
+                        ny = np.minimum(r2['z'], krav + VAGPORT_RAMP * dd)
+                        if (ny < r2['z'] - 0.01).any():
+                            sankta.append((r2, r2['z'].copy()))
+                            r2['z'] = ny
+                    self.portar[-1]['sankta'] = sankta
+                    print(f'järnväg: vägen sänkt {fri:.1f} -> {VAGPORT_MIN_FRI_M} m fri höjd ({len(sankta)} vägbitar)')
+                print(f"järnväg: vägport under {len(grupp)} spår, {s1 - s0:.0f} m lång, {2 * (hw + VAGPORT_FRI_M):.1f} m "
+                      f"bred, fri höjd {fri:.1f} m ({r['tags'].get('name') or r['tags']['highway']})")
+                if kk is not None:
+                    grupp = [kk]
+        self.port_spar = set().union(*(p_['spar'] for p_ in self.portar)) if self.portar else set()
+
     def _celler(self, buffert, shape, T):
         u = [sp['line'].buffer(buffert) for sp in self.spar]
         return rasterize([(g, 1) for g in u], out_shape=shape, transform=T).astype(bool)
@@ -173,6 +295,39 @@ class Jarnvag:
         w = 1 - t * t * (3 - 2 * t)
         h[ii, jj] = h[ii, jj] * (1 - w) + (self.zb[idx] - FORM_UNDER) * w
         print('järnväg: formade celler', len(ii))
+        for pt in getattr(self, 'portar', []):
+            r, L = pt['r'], pt['r']['line']
+            ytter = pt['hw'] + VAGPORT_FRI_M + VAGPORT_MUR_M + VAGPORT_FYLL_M
+            from shapely.ops import substring
+            seg = substring(L, max(pt['s0'] - 2.0, 0.0), min(pt['s1'] + 2.0, L.length))
+            m = rasterize([(seg.buffer(ytter, cap_style=2), 1)], out_shape=shape, transform=T).astype(bool)
+            ii, jj = np.nonzero(m)
+            X = np.c_[OX + jj * RES, OY - ii * RES]
+            sv = np.array([L.project(shapely.Point(x)) for x in X])
+            lat = np.array([L.distance(shapely.Point(x)) for x in X])
+            inne = (sv >= pt['s0']) & (sv <= pt['s1'])
+            oppning = lat <= pt['hw'] + VAGPORT_FRI_M + 0.3
+            golv = np.interp(sv, r['s'], r['z']) - 0.05
+            # vägen plan i porten (och 2 m utanför), banvallen fylld bakom murarna
+            o = oppning
+            h[ii[o], jj[o]] = np.minimum(h[ii[o], jj[o]], golv[o])
+            for r2, z_fore in pt.get('sankta', []):   # rampen: vägen och 1:1-slänter utanför kanten
+                L2 = r2['line']
+                kant = (r2['width'] / 2) + VAGPORT_FRI_M + 0.3
+                m2 = rasterize([(L2.buffer(kant + 4.0, cap_style=2), 1)], out_shape=shape, transform=T).astype(bool)
+                i2, j2 = np.nonzero(m2)
+                X2 = np.c_[OX + j2 * RES, OY - i2 * RES]
+                sv2 = np.array([L2.project(shapely.Point(x)) for x in X2])
+                lat2 = np.array([L2.distance(shapely.Point(x)) for x in X2])
+                z2 = np.interp(sv2, r2['s'], r2['z'])
+                sankt = np.interp(sv2, r2['s'], z_fore) - z2 > 0.02
+                mal = z2 - 0.05 + np.maximum(lat2 - kant, 0.0)
+                v = sankt
+                h[i2[v], j2[v]] = np.minimum(h[i2[v], j2[v]], mal[v])
+            f = inne & ~oppning
+            bak = np.maximum(lat[f] - (pt['hw'] + VAGPORT_FRI_M + VAGPORT_MUR_M) - 1.5, 0.0)
+            vall = pt['topp'] - 0.1 - bak * 0.6   # krön bakom muren, sedan banvallens slänt
+            h[ii[f], jj[f]] = np.maximum(h[ii[f], jj[f]], vall)
 
     def spara_mask(self, fil, shape, T):
         m = self._celler(TRADFRITT_M, shape, T) if self else np.zeros(shape, bool)
@@ -271,7 +426,7 @@ class Jarnvag:
                                        zm + SLIPER_H, zm + SLIPER_H + RALS_H))
 
             # broar: däck, räcke på yttersidan och landfästen
-            if sp['bro']:
+            if sp['bro'] and k not in getattr(self, 'port_spar', set()):
                 ytter = self._yttersida(k, mid, snrm)
                 dack.append(ladar(W(mid), dirW(sdir), L / 2 + 0.02, 2.6, zm - 1.4, zm - 0.3))
                 for sida in (-1, 1):
@@ -309,7 +464,63 @@ class Jarnvag:
             if C:
                 lagg('Banhinder', np.vstack(C), M['betong'], botten=True)
         self._perronger(h, sample, W, add_merged, M)
+        self._bygg_portar(to_world, add_merged, M)
         print(f'järnväg: {n_sliper} sliprar, {n_stolpe} kontaktledningsstolpar')
+
+    def _bygg_portar(self, to_world, add_merged, M):
+        """Vägportarnas murar (granitblock, UV i meter) och däck (betong), i Banhinder."""
+        if not getattr(self, 'portar', None):
+            return
+        sten = _granit_material()
+        for pt in self.portar:
+            r, L = pt['r'], pt['r']['line']
+            ss = np.linspace(pt['s0'] - 0.3, pt['s1'] + 0.3, max(2, int(pt['s1'] - pt['s0']) + 2))
+            ss = np.clip(ss, 0.0, L.length)
+            c = np.array([L.interpolate(d).coords[0] for d in ss])
+            dv = _norm(np.gradient(c, axis=0))
+            nn = np.c_[-dv[:, 1], dv[:, 0]]
+            golv = np.interp(ss, r['s'], r['z']) - 0.4
+            under = np.full(len(ss), pt['topp'] - VAGPORT_DACK_M)
+            V, F, UV = [], [], []
+            for sida in (1.0, -1.0):
+                inner = pt['hw'] + VAGPORT_FRI_M
+                for off, ut in ((inner, -sida), (inner + VAGPORT_MUR_M, sida)):   # insida (mot vägen) och baksida
+                    q = c + nn * sida * off
+                    base = len(V)
+                    for i in range(len(ss)):
+                        x, z = to_world(q[i, 0], q[i, 1])
+                        V += [[x, golv[i], z], [x, under[i], z]]
+                        UV += [[ss[i] / 2.0, golv[i] / 2.0], [ss[i] / 2.0, under[i] / 2.0]]
+                    for i in range(len(ss) - 1):
+                        a, b, cc, d = base + 2 * i, base + 2 * i + 2, base + 2 * i + 3, base + 2 * i + 1
+                        n_w = np.array([nn[i, 0] * ut, 0.0, -nn[i, 1] * ut])
+                        tri = [[a, b, cc], [a, cc, d]]
+                        pa, pb, pc = np.array(V[a]), np.array(V[b]), np.array(V[cc])
+                        if np.dot(np.cross(pb - pa, pc - pa), n_w) < 0:
+                            tri = [[a, cc, b], [a, d, cc]]
+                        F += tri
+                # murens ändar mot mynningarna
+                for i, ut in ((0, -1.0), (len(ss) - 1, 1.0)):
+                    q0, q1 = c[i] + nn[i] * sida * inner, c[i] + nn[i] * sida * (inner + VAGPORT_MUR_M)
+                    base = len(V)
+                    for q in (q0, q1):
+                        x, z = to_world(q[0], q[1])
+                        V += [[x, golv[i], z], [x, under[i], z]]
+                        o = float(np.dot(q - c[i], nn[i]) * sida)
+                        UV += [[o / 2.0, golv[i] / 2.0], [o / 2.0, under[i] / 2.0]]
+                    a, b, cc, d = base, base + 2, base + 3, base + 1
+                    n_w = np.array([dv[i, 0] * ut, 0.0, -dv[i, 1] * ut])
+                    pa, pb, pc = np.array(V[a]), np.array(V[b]), np.array(V[cc])
+                    F += [[a, b, cc], [a, cc, d]] if np.dot(np.cross(pb - pa, pc - pa), n_w) >= 0 else [[a, cc, b], [a, d, cc]]
+            add_merged('Banhinder', trimesh.Trimesh(np.array(V), np.array(F), process=False), sten, uv=np.array(UV))
+            # däcket: över öppningen och murarna, något längre än porten
+            mitt = L.interpolate((pt['s0'] + pt['s1']) / 2)
+            d_ = _riktning_l(L, (pt['s0'] + pt['s1']) / 2)
+            Cd = ladar(np.c_[to_world(np.array([mitt.x]), np.array([mitt.y]))],
+                       np.array([[d_[0], -d_[1]]]), (pt['s1'] - pt['s0']) / 2 + 0.6,
+                       pt['hw'] + VAGPORT_FRI_M + VAGPORT_MUR_M + 0.4, pt['topp'] - VAGPORT_DACK_M, pt['topp'])
+            Vd, Fs, Ft = kuboider(Cd, ta_bort_botten=False)
+            add_merged('Banhinder', trimesh.Trimesh(Vd, np.vstack([Fs, Ft]), process=False), M['betong'])
 
     def _valtbar_ledning(self, valt, k, fotter, spann, M):
         """Stolpar som mallar (två utliggarlängder: a när stolpens sida och sicksacken är lika,

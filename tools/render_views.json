@@ -730,6 +730,48 @@
 			],
 			"look_height_m": 0.0,
 			"fov": 60
+		},
+		{
+			"name": "j1_jarnvagsbron_soder",
+			"at": [
+				588.5,
+				545
+			],
+			"height_m": 1.8,
+			"look_at": [
+				588.3,
+				505
+			],
+			"look_height_m": 3.0,
+			"fov": 55
+		},
+		{
+			"name": "j2_jarnvagsbron_norr",
+			"at": [
+				588,
+				490
+			],
+			"height_m": 1.8,
+			"look_at": [
+				588.4,
+				530
+			],
+			"look_height_m": 3.0,
+			"fov": 55
+		},
+		{
+			"name": "j3_jarnvagsbron_ovan",
+			"at": [
+				620,
+				560
+			],
+			"height_m": 25,
+			"look_at": [
+				588,
+				518
+			],
+			"look_height_m": 0,
+			"fov": 55
 		}
 	],
 	"campus": [
