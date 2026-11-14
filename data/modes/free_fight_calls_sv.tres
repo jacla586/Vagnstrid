@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="ModeCallsData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/mode_calls_data.gd" id="1_calls"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_1.ogg" id="r_crew_start_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_2.ogg" id="r_crew_start_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_3.ogg" id="r_crew_start_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_4.ogg" id="r_crew_start_4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_5.ogg" id="r_crew_start_5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_6.ogg" id="r_crew_start_6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_7.ogg" id="r_crew_start_7"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_1.ogg" id="r_crew_win_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_2.ogg" id="r_crew_win_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_3.ogg" id="r_crew_win_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_4.ogg" id="r_crew_win_4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_5.ogg" id="r_crew_win_5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_6.ogg" id="r_crew_win_6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_7.ogg" id="r_crew_win_7"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_1.ogg" id="r_crew_loss_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_2.ogg" id="r_crew_loss_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_3.ogg" id="r_crew_loss_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_4.ogg" id="r_crew_loss_4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_5.ogg" id="r_crew_loss_5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_6.ogg" id="r_crew_loss_6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_bh_wave_new_1.ogg" id="r_cmd_bh_wave_new_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_bh_wave_new_2.ogg" id="r_cmd_bh_wave_new_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_bh_wave_cleared_1.ogg" id="r_cmd_bh_wave_cleared_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_bh_wave_cleared_2.ogg" id="r_cmd_bh_wave_cleared_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_tank_lost.ogg" id="r_cmd_tank_lost"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_alone_1.ogg" id="r_crew_alone_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_alone_2.ogg" id="r_crew_alone_2"]
+
+[resource]
+script = ExtResource("1_calls")
+round_start = Array[AudioStream]([ExtResource("r_crew_start_1"), ExtResource("r_crew_start_2"), ExtResource("r_crew_start_3"), ExtResource("r_crew_start_4"), ExtResource("r_crew_start_5"), ExtResource("r_crew_start_6"), ExtResource("r_crew_start_7")])
+victory = Array[AudioStream]([ExtResource("r_crew_win_1"), ExtResource("r_crew_win_2"), ExtResource("r_crew_win_3"), ExtResource("r_crew_win_4"), ExtResource("r_crew_win_5"), ExtResource("r_crew_win_6"), ExtResource("r_crew_win_7")])
+defeat = Array[AudioStream]([ExtResource("r_crew_loss_1"), ExtResource("r_crew_loss_2"), ExtResource("r_crew_loss_3"), ExtResource("r_crew_loss_4"), ExtResource("r_crew_loss_5"), ExtResource("r_crew_loss_6")])
+wave_new = Array[AudioStream]([ExtResource("r_cmd_bh_wave_new_1"), ExtResource("r_cmd_bh_wave_new_2")])
+wave_cleared = Array[AudioStream]([ExtResource("r_cmd_bh_wave_cleared_1"), ExtResource("r_cmd_bh_wave_cleared_2")])
+tank_lost = Array[AudioStream]([ExtResource("r_cmd_tank_lost")])
+alone = Array[AudioStream]([ExtResource("r_crew_alone_1"), ExtResource("r_crew_alone_2")])

@@ -9,6 +9,7 @@
 [ext_resource type="Resource" path="res://data/configs/3_pz4.tres" id="6_pz4"]
 [ext_resource type="Resource" path="res://data/configs/4_kv2.tres" id="7_kv2"]
 [ext_resource type="Resource" path="res://data/configs/5_sherman.tres" id="8_sherman"]
+[ext_resource type="Resource" path="res://data/modes/free_fight_calls_sv.tres" id="calls_free_fight_calls_sv"]
 
 [resource]
 script = ExtResource("1_ff")
@@ -19,3 +20,4 @@ hard_bot = ExtResource("3_hard")
 easy_configs = Array[ExtResource("9_cfg")]([ExtResource("4_bt7"), ExtResource("5_t34")])
 ally_bot = ExtResource("3_hard")
 hard_configs = Array[ExtResource("9_cfg")]([ExtResource("4_bt7"), ExtResource("5_t34"), ExtResource("6_pz4"), ExtResource("7_kv2"), ExtResource("8_sherman")])
+calls = ExtResource("calls_free_fight_calls_sv")

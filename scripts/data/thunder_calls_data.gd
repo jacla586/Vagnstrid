@@ -18,6 +18,9 @@ extends Resource
 @export var lost_rare_chance: float = 0.08
 @export var return_rare: AudioStream
 @export var return_rare_chance: float = 0.15
+## "Systemet stänger klockan tre!" instead of the attackers' last clock call.
+@export var attack_clock_last_rare: AudioStream
+@export var attack_clock_last_rare_chance: float = 0.25
 
 @export_group("Crew banter")
 ## The own crew on the intercom: one picked at random when a round starts (once the own
@@ -35,17 +38,36 @@ extends Resource
 ## Mid-ceasefire.
 @export var regrouping: AudioStream
 @export var attack_clock: Array[AudioStream] = []
+## Fighting retreat (retreat_instead_of_pause): instead of `taken`, one of these ("Tryck på!").
+@export var advance: Array[AudioStream] = []
+## This long after a capture, if defenders are left behind: "Städa bort eftersläntrarna!".
+@export var stragglers: Array[AudioStream] = []
+@export var stragglers_delay_s: float = 4.0
+## The next checkpoint opens.
+@export var next_open: Array[AudioStream] = []
 
 @export_group("Defenders")
 @export var lost: AudioStream
 ## "Fall tillbaka till ÅSA <n>!": one per checkpoint number (1-based: [0] is ÅSA 1); the
 ## text takes the number.
 @export var fall_back: Array[AudioStream] = []
-## The ceasefire is over.
+## The ceasefire / retreat is over: `enemy_coming` or one of `enemy_coming_more`.
 @export var enemy_coming: AudioStream
+@export var enemy_coming_more: Array[AudioStream] = []
+## A teammate left behind was knocked out: "Vi har förlorat en vagn!".
+@export var tank_lost: AudioStream
+@export var tank_lost_cooldown_s: float = 15.0
 ## The round ended with the attackers short: the line held.
 @export var held: AudioStream
 @export var defend_clock: Array[AudioStream] = []
+
+@export_group("Left behind (crew)")
+## The own tank left behind after a capture (ThunderRoadMode.is_left_behind), on the intercom:
+## when it starts, at `left_behind_late_s` left, and when it gets back past the line.
+@export var left_behind: Array[AudioStream] = []
+@export var left_behind_late: AudioStream
+@export var left_behind_late_s: float = 10.0
+@export var made_it_back: Array[AudioStream] = []
 
 @export_group("Both")
 ## The own tank outside its corridor.

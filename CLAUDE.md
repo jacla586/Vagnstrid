@@ -361,6 +361,15 @@ shows on the minimap. This is what we test first.
   trying to drive without getting `abandon_stuck_m` away): a knock-out nobody scores.
   `Tank.repair()` (respawn) puts everything back as at the first spawn, squad included
   (`Squad.restore_on_tank`).
+- Mode voices (`ModeRadio`, player rig HUD, through SquadRadio; data `ModeCallsData` on `KothData.calls` /
+  `FreeFightData.calls`, `data/modes/koth_calls_sv.tres`, `free_fight_calls_sv.tres`): crew banter at the start and
+  the end; KotH zone open / next zone / more or fewer of ours in the zone (held `count_hold_s`, counted from tank
+  positions, so clients too) / closing / near win either side; Bot hunt new wave / wave beaten / teammate lost /
+  last one alive. Kill banter in every mode (`CrewVoiceData` "Kill banter", own kills from `KillFeed.entry_added`
+  matched by player name; a victim in the KotH zone or a ThunderRoad checkpoint gets the zone lines), and rare
+  stand-ins `hit_rare`/`mine_rare`. New recordings: `geodata/.venv/bin/python tools/audio/transcribe.py <files>`
+  (faster-whisper, local) prints their text, so they can be named `ElevenLabs_<slug>.mp3` in `geodata/sound/`
+  and added to `make_elevenlabs.sh`.
 - Crew shouts: `TankData.crew_voice` (`CrewVoiceData`) "Vi är träffade!" on `Tank.struck` (a mine: "Mina! Bandet utslaget!"),
   "Närträff!" on `Tank.near_missed` (clients by `rpc_near_miss`), "Föraren/Skytten träffad!" on a
   crew wound, rarely (`he_dirt_chance` 2 %) "Vilken jädra smäll!" when a burst dirties the optics, "Vagnchef träffad!" on `Tank.commander_wounded`, played by `SquadRadio`.
@@ -664,7 +673,7 @@ advancing, enemy regrouping, 2/1 minutes left). No Swedish subtitles anywhere (t
 shouts, before squad calls): taken / last one secured, lost + "Fall tillbaka till ÅSA n" (n = the next checkpoint: the recording, which ends on "ÅSA", plus a number cut from the clock hours, cut points in the script), the enemy regrouping mid-ceasefire
 (attackers), "Fienden kommer" when it ends (defenders), 2 and 1 min left per side, leaving the corridor, the line
 held at the round's end; rare stand-ins (`lost_rare`, `return_rare`, a few %); crew banter on the intercom
-(`crew_start/win/loss_*`): a random line when a round gets going (`_start_pending`, once the own tank is
+(`crew_start/win/loss_*`; fighting retreat: `advance`, `stragglers` (4 s after a capture if any defender is left behind), `next_open`, `enemy_coming_more`, `tank_lost` for a teammate lost behind the line, crew `left_behind`/`left_behind_late`/`made_it_back` for the own tank): a random line when a round gets going (`_start_pending`, once the own tank is
 there and the break is over) and on the match's win/loss. Points
   (`ThunderRoadData` "Points", stats column 5, Scoreboard sorted by them, signal `points_scored`): kill 20,
   assist 10, each attacker in the zone when it falls 100, attackers taking it 2/s, defenders in it with

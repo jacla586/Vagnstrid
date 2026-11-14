@@ -42,4 +42,13 @@ The maps are built from open data by the pipeline in `geodata/`.
 - [Terrain3D](https://github.com/TokisanGames/Terrain3D) by Cory Petkovsek, Roope Palmroos and
   contributors (MIT).
 
+## Development tools
+- Code, map pipeline and tools written with [Claude Code](https://claude.com/claude-code)
+  (Anthropic, Claude Opus 5.5).
+- Voice clips named and matched to their game events by speech recognition:
+  [Whisper](https://github.com/openai/whisper) (OpenAI, MIT) through
+  [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (MIT), run locally
+  (`tools/audio/transcribe.py`). Nothing of it ships with the game.
+- Audio filtering and video with [FFmpeg](https://ffmpeg.org) (LGPL/GPL).
+
 The in-game list (main menu → Credits) is `data/ui/credits.txt`; keep the two in step.

@@ -61,6 +61,14 @@ Sources in `geodata/sound/` (`ElevenLabs_*.mp3`; the clock hours cut into
 `geodata/sound/klockan/`), filtered with `tools/audio/make_elevenlabs.sh`.
 `make_radio.sh` (Piper) made the earlier versions and would overwrite these.
 
+From 2026-11-14 also (same voice, same script): the fighting retreat (`radio/cmd_advance_*`,
+`cmd_stragglers_*`, `cmd_next_open_*`, `cmd_enemy_coming_2/3`, `cmd_tank_lost`,
+`crew_left_behind_*`, `crew_made_it_*`), King of the Hill (`cmd_koth_*`), Bot hunt
+(`cmd_bh_*`, `crew_alone_*`) and crew banter (`crew_kill_*`, `crew_hit_rare`, `crew_mine_rare`,
+`crew_win_5–7`, `crew_start_7`, `cmd_attack_1min_rare`). Their lines are the file names of the
+sources in `geodata/sound/`; the recordings were named from their text with Whisper
+(`tools/audio/transcribe.py`, faster-whisper, run locally).
+
 ## Weather
 
 `weather/rain_outside.ogg`, `weather/rain_roof.ogg`: made from generated noise by

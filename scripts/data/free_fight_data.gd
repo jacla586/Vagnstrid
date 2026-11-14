@@ -8,6 +8,10 @@ extends Resource
 @export var display_name: String = "Free fight"
 @export_multiline var briefing: String = ""
 
+@export_group("Radio")
+## Command radio and crew banter (ModeRadio); none = silent.
+@export var calls: ModeCallsData
+
 @export_group("Spawns")
 ## Players start at a random spot in a circle round the map's centre, this far inside
 ## the map's edge (MapEdge) at its narrowest (m).

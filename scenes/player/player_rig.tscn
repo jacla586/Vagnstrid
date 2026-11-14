@@ -48,6 +48,7 @@
 [ext_resource type="Script" path="res://scripts/world/prop_break.gd" id="93_prop_break"]
 [ext_resource type="Resource" path="res://data/world/prop_break.tres" id="94_prop_break_data"]
 [ext_resource type="Script" path="res://scripts/ui/help_overlay.gd" id="95_help_overlay"]
+[ext_resource type="Script" path="res://scripts/ui/mode_radio.gd" id="96_mode_radio"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -236,6 +237,11 @@ views = NodePath("../../PlayerViews")
 
 [node name="ThunderPanel" type="Control" parent="HUD" node_paths=PackedStringArray("views", "radio")]
 script = ExtResource("90_thunder_panel")
+views = NodePath("../../PlayerViews")
+radio = NodePath("../SquadRadio")
+
+[node name="ModeRadio" type="Node" parent="HUD" node_paths=PackedStringArray("views", "radio")]
+script = ExtResource("96_mode_radio")
 views = NodePath("../../PlayerViews")
 radio = NodePath("../SquadRadio")
 

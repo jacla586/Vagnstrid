@@ -146,4 +146,34 @@ for pair in "crew_he he-vilken-jädra-smäll" \
   trim "$S/ElevenLabs_$2.mp3" "$T/$1.wav"
   intercom "$1" "$T/$1.wav" -15
 done
+# 2026-11-14: the fighting retreat (ThunderCallsData), King of the Hill (KothCallsData), Bot hunt
+# (FreeFightCallsData) and kill banter (ModeRadio, CrewVoiceData rare lines). Sources were named
+# from their text by tools/audio/transcribe.py (Whisper).
+for pair in "cmd_bh_wave_new_1 bh-våg-ny-spaning-rapporterar" "cmd_bh_wave_new_2 bh-våg-ny-fientligt-pansar" \
+    "cmd_bh_wave_cleared_1 bh-våg-slagen-fienden-nedkämpad" "cmd_bh_wave_cleared_2 bh-våg-slagen-ladda-om" \
+    "cmd_tank_lost vi-har-förlorat-en-vagn" "cmd_koth_open koth-zon-öppen-ny-anfallsorder" \
+    "cmd_koth_next koth-zon-nästa-punkt-markerad" "cmd_koth_advantage koth-övertaget" \
+    "cmd_koth_outnumbered koth-de-är-fler" "cmd_koth_closing koth-zonen-stänger-snart" \
+    "cmd_koth_near_win koth-nära-vinst-lite-till" "cmd_koth_enemy_near_1 koth-fiende-nära-skärpning" \
+    "cmd_koth_enemy_near_2 koth-fiende-nära-kom-igen" "cmd_attack_1min_rare 1min-systemet-stänger" \
+    "cmd_advance_1 avancera-fienden-retirerar" "cmd_advance_2 avancera-fortsätt-framåt" \
+    "cmd_stragglers_1 eftersläntrare-städa-bort" "cmd_stragglers_2 eftersläntrare-markerade" \
+    "cmd_next_open_1 nästa-öppen-anfallsorder-nästa-punkt" "cmd_next_open_2 nästa-öppen-nästa-åsa" \
+    "cmd_enemy_coming_2 fienden-kommer-alla-redo" "cmd_enemy_coming_3 fienden-kommer-eldställningar"; do
+  set -- $pair
+  trim "$S/ElevenLabs_$2.mp3" "$T/$1.wav"
+  radio "$1" "$T/$1.wav" -16
+done
+for pair in "crew_alone_1 bh-ensamma-nu-grabbar" "crew_alone_2 bh-ensam-är-stark" \
+    "crew_hit_rare träffade-jävlar-jävlar" "crew_mine_rare mina-volvo-240" \
+    "crew_kill_1 kill-tjosan" "crew_kill_2 kill-tjosan-2" "crew_kill_3 kill-12-poäng" \
+    "crew_kill_zone_1 kill-zon-allemansrätten" "crew_kill_zone_2 kill-zon-parkeringsförbud" \
+    "crew_win_5 vinst-klappat-och-klart" "crew_win_6 vinst-en-kaffe" "crew_win_7 vinst-jävligt-lagom" \
+    "crew_start_7 start-bara-att-åka" "crew_left_behind_1 kvar-avskurna-backa" \
+    "crew_left_behind_2 kvar-bakom-fiendens-linjer" "crew_left_behind_10s kvar-tio-sekunder" \
+    "crew_made_it_1 tillbaka-mammas-gata" "crew_made_it_2 tillbaka-puh-nära"; do
+  set -- $pair
+  trim "$S/ElevenLabs_$2.mp3" "$T/$1.wav"
+  intercom "$1" "$T/$1.wav" -15
+done
 rm -rf "$T"

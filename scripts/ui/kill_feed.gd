@@ -11,6 +11,9 @@ extends VBoxContainer
 
 const GROUP: StringName = &"kill_feed"
 
+## Every line shown (ModeRadio's kill banter listens).
+signal entry_added(entry: Array)
+
 @export var views: PlayerViews
 @export var font_size: int = 17
 @export var max_lines: int = 5
@@ -90,6 +93,7 @@ func add_entry(entry: Array) -> void:
 			_who(String(entry[3]), String(entry[4]), int(entry[5]) == own)]
 	add_child(line)
 	_ages.append(0.0)
+	entry_added.emit(entry)
 	while _ages.size() > max_lines:
 		_ages.remove_at(0)
 		var oldest: Node = get_child(0)

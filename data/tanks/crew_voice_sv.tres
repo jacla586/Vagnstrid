@@ -9,6 +9,13 @@
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_commander_hit.ogg" id="6_commander"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_mine.ogg" id="7_mine"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_he.ogg" id="8_he"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_hit_rare.ogg" id="r_crew_hit_rare"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_mine_rare.ogg" id="r_crew_mine_rare"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_kill_1.ogg" id="r_crew_kill_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_kill_2.ogg" id="r_crew_kill_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_kill_3.ogg" id="r_crew_kill_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_kill_zone_1.ogg" id="r_crew_kill_zone_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_kill_zone_2.ogg" id="r_crew_kill_zone_2"]
 
 [resource]
 script = ExtResource("1_crew")
@@ -19,3 +26,7 @@ gunner_hit = ExtResource("5_gunner")
 commander_hit = ExtResource("6_commander")
 mine = ExtResource("7_mine")
 he_dirt = ExtResource("8_he")
+hit_rare = ExtResource("r_crew_hit_rare")
+mine_rare = ExtResource("r_crew_mine_rare")
+kill = Array[AudioStream]([ExtResource("r_crew_kill_1"), ExtResource("r_crew_kill_2"), ExtResource("r_crew_kill_3")])
+kill_zone = Array[AudioStream]([ExtResource("r_crew_kill_zone_1"), ExtResource("r_crew_kill_zone_2")])

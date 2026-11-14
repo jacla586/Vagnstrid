@@ -36,6 +36,25 @@
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_4.ogg" id="crew_loss_4"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_5.ogg" id="crew_loss_5"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_6.ogg" id="crew_loss_6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_attack_1min_rare.ogg" id="r_cmd_attack_1min_rare"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_advance_1.ogg" id="r_cmd_advance_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_advance_2.ogg" id="r_cmd_advance_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_stragglers_1.ogg" id="r_cmd_stragglers_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_stragglers_2.ogg" id="r_cmd_stragglers_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_next_open_1.ogg" id="r_cmd_next_open_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_next_open_2.ogg" id="r_cmd_next_open_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_enemy_coming_2.ogg" id="r_cmd_enemy_coming_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_enemy_coming_3.ogg" id="r_cmd_enemy_coming_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_tank_lost.ogg" id="r_cmd_tank_lost"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_left_behind_1.ogg" id="r_crew_left_behind_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_left_behind_2.ogg" id="r_crew_left_behind_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_left_behind_10s.ogg" id="r_crew_left_behind_10s"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_made_it_1.ogg" id="r_crew_made_it_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_made_it_2.ogg" id="r_crew_made_it_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_7.ogg" id="r_crew_start_7"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_5.ogg" id="r_crew_win_5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_6.ogg" id="r_crew_win_6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_7.ogg" id="r_crew_win_7"]
 
 [resource]
 script = ExtResource("1_calls")
@@ -51,6 +70,15 @@ defend_clock = Array[AudioStream]([ExtResource("d2"), ExtResource("d1")])
 return_to_lines = ExtResource("ret")
 lost_rare = ExtResource("cmd_lost_rare")
 return_rare = ExtResource("cmd_return_rare")
-round_start = Array[AudioStream]([ExtResource("crew_start_1"), ExtResource("crew_start_2"), ExtResource("crew_start_3"), ExtResource("crew_start_4"), ExtResource("crew_start_5"), ExtResource("crew_start_6")])
-victory = Array[AudioStream]([ExtResource("crew_win_1"), ExtResource("crew_win_2"), ExtResource("crew_win_3"), ExtResource("crew_win_4")])
+round_start = Array[AudioStream]([ExtResource("crew_start_1"), ExtResource("crew_start_2"), ExtResource("crew_start_3"), ExtResource("crew_start_4"), ExtResource("crew_start_5"), ExtResource("crew_start_6"), ExtResource("r_crew_start_7")])
+victory = Array[AudioStream]([ExtResource("crew_win_1"), ExtResource("crew_win_2"), ExtResource("crew_win_3"), ExtResource("crew_win_4"), ExtResource("r_crew_win_5"), ExtResource("r_crew_win_6"), ExtResource("r_crew_win_7")])
 defeat = Array[AudioStream]([ExtResource("crew_loss_1"), ExtResource("crew_loss_2"), ExtResource("crew_loss_3"), ExtResource("crew_loss_4"), ExtResource("crew_loss_5"), ExtResource("crew_loss_6")])
+attack_clock_last_rare = ExtResource("r_cmd_attack_1min_rare")
+advance = Array[AudioStream]([ExtResource("r_cmd_advance_1"), ExtResource("r_cmd_advance_2")])
+stragglers = Array[AudioStream]([ExtResource("r_cmd_stragglers_1"), ExtResource("r_cmd_stragglers_2")])
+next_open = Array[AudioStream]([ExtResource("r_cmd_next_open_1"), ExtResource("r_cmd_next_open_2")])
+enemy_coming_more = Array[AudioStream]([ExtResource("r_cmd_enemy_coming_2"), ExtResource("r_cmd_enemy_coming_3")])
+tank_lost = ExtResource("r_cmd_tank_lost")
+left_behind = Array[AudioStream]([ExtResource("r_crew_left_behind_1"), ExtResource("r_crew_left_behind_2")])
+left_behind_late = ExtResource("r_crew_left_behind_10s")
+made_it_back = Array[AudioStream]([ExtResource("r_crew_made_it_1"), ExtResource("r_crew_made_it_2")])

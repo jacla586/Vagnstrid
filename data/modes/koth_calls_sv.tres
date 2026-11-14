@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="ModeCallsData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/mode_calls_data.gd" id="1_calls"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_1.ogg" id="r_crew_start_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_2.ogg" id="r_crew_start_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_3.ogg" id="r_crew_start_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_4.ogg" id="r_crew_start_4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_5.ogg" id="r_crew_start_5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_6.ogg" id="r_crew_start_6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_start_7.ogg" id="r_crew_start_7"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_1.ogg" id="r_crew_win_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_2.ogg" id="r_crew_win_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_3.ogg" id="r_crew_win_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_4.ogg" id="r_crew_win_4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_5.ogg" id="r_crew_win_5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_6.ogg" id="r_crew_win_6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_win_7.ogg" id="r_crew_win_7"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_1.ogg" id="r_crew_loss_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_2.ogg" id="r_crew_loss_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_3.ogg" id="r_crew_loss_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_4.ogg" id="r_crew_loss_4"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_5.ogg" id="r_crew_loss_5"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_loss_6.ogg" id="r_crew_loss_6"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_koth_open.ogg" id="r_cmd_koth_open"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_next_open_1.ogg" id="r_cmd_next_open_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_koth_next.ogg" id="r_cmd_koth_next"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_koth_advantage.ogg" id="r_cmd_koth_advantage"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_koth_outnumbered.ogg" id="r_cmd_koth_outnumbered"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_koth_closing.ogg" id="r_cmd_koth_closing"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_koth_near_win.ogg" id="r_cmd_koth_near_win"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_koth_enemy_near_1.ogg" id="r_cmd_koth_enemy_near_1"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/cmd_koth_enemy_near_2.ogg" id="r_cmd_koth_enemy_near_2"]
+
+[resource]
+script = ExtResource("1_calls")
+round_start = Array[AudioStream]([ExtResource("r_crew_start_1"), ExtResource("r_crew_start_2"), ExtResource("r_crew_start_3"), ExtResource("r_crew_start_4"), ExtResource("r_crew_start_5"), ExtResource("r_crew_start_6"), ExtResource("r_crew_start_7")])
+victory = Array[AudioStream]([ExtResource("r_crew_win_1"), ExtResource("r_crew_win_2"), ExtResource("r_crew_win_3"), ExtResource("r_crew_win_4"), ExtResource("r_crew_win_5"), ExtResource("r_crew_win_6"), ExtResource("r_crew_win_7")])
+defeat = Array[AudioStream]([ExtResource("r_crew_loss_1"), ExtResource("r_crew_loss_2"), ExtResource("r_crew_loss_3"), ExtResource("r_crew_loss_4"), ExtResource("r_crew_loss_5"), ExtResource("r_crew_loss_6")])
+zone_open = Array[AudioStream]([ExtResource("r_cmd_koth_open"), ExtResource("r_cmd_next_open_1")])
+zone_next = Array[AudioStream]([ExtResource("r_cmd_koth_next")])
+advantage = Array[AudioStream]([ExtResource("r_cmd_koth_advantage")])
+outnumbered = Array[AudioStream]([ExtResource("r_cmd_koth_outnumbered")])
+closing = Array[AudioStream]([ExtResource("r_cmd_koth_closing")])
+near_win = Array[AudioStream]([ExtResource("r_cmd_koth_near_win")])
+enemy_near_win = Array[AudioStream]([ExtResource("r_cmd_koth_enemy_near_1"), ExtResource("r_cmd_koth_enemy_near_2")])

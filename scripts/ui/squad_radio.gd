@@ -139,7 +139,8 @@ func _on_radio(kind: int, at: Vector3) -> void:
 func _on_struck(_outcome: int, _direction: Vector3) -> void:
 	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
 	if v != null:
-		_crew_call("hit", v.hit, v)
+		var rare: bool = v.hit_rare != null and randf() < v.hit_rare_chance
+		_crew_call("hit", v.hit_rare if rare else v.hit, v)
 
 
 ## A mine: its own call, and the "hit" call the struck right after would give is held back.
@@ -147,7 +148,8 @@ func _on_mine_hit() -> void:
 	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
 	if v == null or v.mine == null:
 		return
-	_crew_call("mine", v.mine, v)
+	var rare: bool = v.mine_rare != null and randf() < v.mine_rare_chance
+	_crew_call("mine", v.mine_rare if rare else v.mine, v)
 	_last["crew/hit"] = _time
 
 

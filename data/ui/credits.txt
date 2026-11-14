@@ -30,3 +30,5 @@ ambientCG (CC0)
 ENGINE AND TOOLS
 Godot Engine (MIT), Jolt Physics (MIT), Terrain3D by Cory Petkovsek,
 Roope Palmroos and contributors (MIT)
+Made with Claude Code (Anthropic). Voice clips sorted with Whisper
+(OpenAI, MIT, via faster-whisper) and filtered with FFmpeg

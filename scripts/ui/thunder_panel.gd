@@ -48,6 +48,11 @@ var _start_pending: bool = true
 var _start_flash: bool = true
 var _flash_scale: float = 1.0
 var _result_said: bool = false
+var _stragglers_left: float = -1.0    # s until the stragglers check after a capture
+var _left_behind: bool = false        # the own tank, last frame
+var _late_said: bool = false
+var _behind_mates: Dictionary = {}    # teammates left behind -> true
+var _lost_clock: float = INF
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # full size: text centres on the screen
@@ -103,6 +108,10 @@ func _call(stream: AudioStream) -> void:
 ## The plain call, or now and then its rare (funny) stand-in.
 func _call_or_rare(stream: AudioStream, rare: AudioStream, chance: float) -> void:
 	_call(rare if rare != null and randf() < chance else stream)
+
+
+static func _pick(streams: Array[AudioStream]) -> AudioStream:
+	return null if streams.is_empty() else streams[randi() % streams.size()]
 
 
 ## One of the crew's lines at random, sound only.
@@ -169,6 +178,9 @@ func _on_checkpoint_taken(index: int) -> void:
 	if attacking == 1:
 		if last:
 			_call(c.secured)
+		elif _mode.data.retreat_instead_of_pause and not c.advance.is_empty():
+			_call(_pick(c.advance))
+			_stragglers_left = c.stragglers_delay_s
 		else:
 			_call(c.taken)
 	else:
@@ -180,14 +192,19 @@ func _on_checkpoint_taken(index: int) -> void:
 
 func _on_pause_ended(index: int) -> void:
 	var attacking: int = _own_attacking(_mode)
+	var c: ThunderCallsData = _mode.data.calls
 	if attacking == 1:
 		_flash("CHECKPOINT %d OPEN" % (index + 1), "ATTACK", attack_color, 0.75)
+		if c != null and not c.next_open.is_empty():
+			_call(_pick(c.next_open))
 	elif attacking == 0:
 		_flash("ENEMY ADVANCING", "TAKE YOUR POSITIONS   ·   HOLD CHECKPOINT %d" % (index + 1),
 				defend_color, 0.75)
-		var c: ThunderCallsData = _mode.data.calls
 		if c != null:
-			_call(c.enemy_coming)
+			var all: Array[AudioStream] = c.enemy_coming_more.duplicate()
+			if c.enemy_coming != null:
+				all.append(c.enemy_coming)
+			_call(_pick(all))
 
 
 func _on_round_over(_round_number: int, result: Dictionary) -> void:
@@ -229,7 +246,11 @@ func _watch_calls(mode: ThunderRoadMode, delta: float) -> void:
 		for i: int in c.clock_call_s.size():
 			var at: float = c.clock_call_s[i]
 			if _last_time > at and time <= at:
-				_call(streams[i] if i < streams.size() else null)
+				var stream: AudioStream = streams[i] if i < streams.size() else null
+				if attacking and i == c.clock_call_s.size() - 1 and c.attack_clock_last_rare != null \
+						and randf() < c.attack_clock_last_rare_chance:
+					stream = c.attack_clock_last_rare
+				_call(stream)
 				var minutes: int = roundi(at / 60.0)
 				_flash("%d MINUTE%s LEFT" % [minutes, "" if minutes == 1 else "S"],
 						"PRESS THE ATTACK" if attacking else "HOLD THE LINE", warn_color, 0.75)
@@ -241,6 +262,51 @@ func _watch_calls(mode: ThunderRoadMode, delta: float) -> void:
 		_return_clock = 0.0
 		_call_or_rare(c.return_to_lines, c.return_rare, c.return_rare_chance)
 	_was_outside = outside
+	_watch_retreat(mode, tank, c, attacking, delta)
+
+
+## The fighting retreat: stragglers for the attackers; for a defender its own last stand
+## (crew on the intercom) and teammates lost behind the line.
+func _watch_retreat(mode: ThunderRoadMode, tank: Tank, c: ThunderCallsData, attacking: bool,
+		delta: float) -> void:
+	if _stragglers_left >= 0.0:
+		_stragglers_left -= delta
+		if _stragglers_left < 0.0 and attacking:
+			for node: Node in get_tree().get_nodes_in_group("tanks"):
+				var other := node as Tank
+				if other != null and other.team != tank.team and not other.is_knocked_out() \
+						and mode.is_left_behind(other):
+					_call(_pick(c.stragglers))
+					break
+	var behind: bool = not tank.is_knocked_out() and mode.is_left_behind(tank)
+	if behind and not _left_behind:
+		_late_said = false
+		_banter(c.left_behind)
+	elif behind and not _late_said and mode.data.retreat_s - mode.outside_time(tank) <= c.left_behind_late_s:
+		_late_said = true
+		if c.left_behind_late != null:
+			radio.command_call(c.left_behind_late, c.banter_volume_db)
+	elif not behind and _left_behind and not tank.is_knocked_out():
+		_banter(c.made_it_back)
+	_left_behind = behind
+	_lost_clock += delta
+	if attacking:
+		_behind_mates.clear()
+		return
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var mate := node as Tank
+		if mate == null or mate == tank or mate.team != tank.team:
+			continue
+		if mate.is_knocked_out():
+			if _behind_mates.has(mate):
+				_behind_mates.erase(mate)
+				if _lost_clock >= c.tank_lost_cooldown_s:
+					_lost_clock = 0.0
+					_call(c.tank_lost)
+		elif mode.is_left_behind(mate):
+			_behind_mates[mate] = true
+		else:
+			_behind_mates.erase(mate)
 
 
 func _draw() -> void:
