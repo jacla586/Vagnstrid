@@ -29,22 +29,13 @@ curve = SubResource("Curve3D_route")
 [node name="CP1" type="Marker3D" parent="ThunderRoad/Checkpoints" unique_id=666467774]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 920.86, 67.39, 2067.40)
 
-[node name="CP2" type="Marker3D" parent="ThunderRoad/Checkpoints" unique_id=275800801]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 612.87, 61.02, 1963.42)
-
-[node name="CP3" type="Marker3D" parent="ThunderRoad/Checkpoints" unique_id=429756248]
+[node name="CP2" type="Marker3D" parent="ThunderRoad/Checkpoints" unique_id=429756248]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 615.52, 55.66, 1580.49)
 
-[node name="CP4" type="Marker3D" parent="ThunderRoad/Checkpoints" unique_id=620547238]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 622.76, 57.06, 1207.47)
-
-[node name="CP5" type="Marker3D" parent="ThunderRoad/Checkpoints" unique_id=1073928196]
+[node name="CP3" type="Marker3D" parent="ThunderRoad/Checkpoints" unique_id=1073928196]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 732.98, 56.88, 958.69)
 
-[node name="CP6" type="Marker3D" parent="ThunderRoad/Checkpoints" unique_id=1417455602]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1020.07, 53.96, 741.96)
-
-[node name="CP7" type="Marker3D" parent="ThunderRoad/Checkpoints" unique_id=220835041]
+[node name="CP4" type="Marker3D" parent="ThunderRoad/Checkpoints" unique_id=220835041]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1271.20, 56.18, 423.60)
 
 [node name="ThunderRoadBots" type="Node" parent="." unique_id=709497598 node_paths=PackedStringArray("mode")]
