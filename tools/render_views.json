@@ -1336,6 +1336,20 @@
 			],
 			"look_height_m": 15,
 			"fov": 55
+		},
+		{
+			"name": "cp4_datalinjen",
+			"at": [
+				640,
+				620
+			],
+			"height_m": 40,
+			"look_at": [
+				480,
+				400
+			],
+			"look_height_m": 0,
+			"fov": 60
 		}
 	]
 }

@@ -736,11 +736,11 @@ there and the break is over) and on the match's win/loss. Points
   puppets' wrecks go). NetGame starts no respawn timers with ThunderRoad and spawns joiners
   by `spawn_for_new`; `ThunderRoadBots` has `make_room`/`refill` like KothBots
   (`NetGame._bots_director`). Both bot directors wait a frame after NetGame so the map's
-  own PlayerRig isn't counted when filling teams. Checkpoints at least 500 m apart (2026-11-15: every route had ~320-350 m after the first, and attackers spawning 250 m behind the front took the rest at a run; Vidingsjö Red/Orange 5, Linghem 4, Road to Science 3, Corson 2). Missions: `vidingsjo_thunder_red` (Haningeleden) and
+  own PlayerRig isn't counted when filling teams. Checkpoints at least 500 m apart (2026-11-15: every route had ~320-350 m after the first, and attackers spawning 250 m behind the front took the rest at a run; Vidingsjö Red/Orange 5, Linghem 4, Road to Science 4, Corson 2). Missions: `vidingsjo_thunder_red` (Haningeleden) and
   `vidingsjo_thunder_orange` (Ålerydsvägen + Haningeleden), made by
   `tools/thunder_route_from_osm.py` (named OSM roads between two points -> scene; rerun
   overwrites checkpoint moves; `--join=M` across roundabouts), and `road_to_science_thunder` (Åsmestadsrondellen at
-  Lambohovsleden -> Vallastaden past Isovalen -> Campus Valla -> Mjärdevi, 2.5 km, 3 checkpoints; the 5.4 km
+  Lambohovsleden -> Vallastaden past Isovalen -> Campus Valla -> Mjärdevi and up Datalinjen to the north edge, 3.1 km, 4 checkpoints (the corridor and route extended along Datalinjen 2026-11-15 by hand, so rerunning thunder_route_from_osm.py would lose it); the 5.4 km
   Vidingsjö version was dropped 2026-11-11, raw data in `geodata/road_to_science_lang/`) on the corridor map `road_to_science` (see below), made with
   `--path=geodata/road_to_science/korridor.json` (a ready route of any roads/paths). `corson_thunder` (corridor map
   `corson`, 1.25 × 2.7 km): a short course, a straight line north -> south through Campus Valla (1.5 km, 2
