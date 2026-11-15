@@ -599,6 +599,221 @@
    "huvudtak_max_m": 9.0,
    "topp_min_yta_m2": 100,
    "topp_forenkla_m": 1.2
+  },
+  {
+   "namn": "Cykeltak norr om C-huset 1",
+   "_anm": "OSM bicycle_parking; Mapillary (corson/data/mapillary/cykelgarage_c): rött korrugerat tak på stålpelare, öppna sidor",
+   "typ": "cykeltak",
+   "osm_hus": [
+    438293195
+   ],
+   "fotavtryck": [
+    [
+     533776.7,
+     6473714.8
+    ],
+    [
+     533776.8,
+     6473702.5
+    ],
+    [
+     533781.7,
+     6473702.5
+    ],
+    [
+     533781.6,
+     6473714.8
+    ]
+   ],
+   "hojd_m": 2.4,
+   "tak_farg": [
+    150,
+    44,
+    40
+   ],
+   "ram_farg": [
+    70,
+    72,
+    74
+   ],
+   "betongvagg": false,
+   "fascia_farg": [
+    150,
+    44,
+    40
+   ]
+  },
+  {
+   "namn": "Cykeltak norr om C-huset 2",
+   "_anm": "OSM bicycle_parking; Mapillary (corson/data/mapillary/cykelgarage_c): rött korrugerat tak på stålpelare, öppna sidor",
+   "typ": "cykeltak",
+   "osm_hus": [
+    438293197
+   ],
+   "fotavtryck": [
+    [
+     533768.3,
+     6473714.4
+    ],
+    [
+     533768.4,
+     6473702.1
+    ],
+    [
+     533773.3,
+     6473702.2
+    ],
+    [
+     533773.2,
+     6473714.5
+    ]
+   ],
+   "hojd_m": 2.4,
+   "tak_farg": [
+    150,
+    44,
+    40
+   ],
+   "ram_farg": [
+    70,
+    72,
+    74
+   ],
+   "betongvagg": false,
+   "fascia_farg": [
+    150,
+    44,
+    40
+   ]
+  },
+  {
+   "namn": "Cykeltak norr om C-huset 3",
+   "_anm": "OSM bicycle_parking; Mapillary (corson/data/mapillary/cykelgarage_c): rött korrugerat tak på stålpelare, öppna sidor",
+   "typ": "cykeltak",
+   "osm_hus": [
+    438293199
+   ],
+   "fotavtryck": [
+    [
+     533766.4,
+     6473739.5
+    ],
+    [
+     533766.5,
+     6473727.2
+    ],
+    [
+     533771.4,
+     6473727.3
+    ],
+    [
+     533771.3,
+     6473739.6
+    ]
+   ],
+   "hojd_m": 2.4,
+   "tak_farg": [
+    150,
+    44,
+    40
+   ],
+   "ram_farg": [
+    70,
+    72,
+    74
+   ],
+   "betongvagg": false,
+   "fascia_farg": [
+    150,
+    44,
+    40
+   ]
+  },
+  {
+   "namn": "Cykeltak norr om C-huset 4",
+   "_anm": "OSM bicycle_parking; Mapillary (corson/data/mapillary/cykelgarage_c): rött korrugerat tak på stålpelare, öppna sidor",
+   "typ": "cykeltak",
+   "osm_hus": [
+    438293202
+   ],
+   "fotavtryck": [
+    [
+     533765.5,
+     6473718.3
+    ],
+    [
+     533773.8,
+     6473718.4
+    ],
+    [
+     533773.7,
+     6473723.2
+    ],
+    [
+     533765.5,
+     6473723.1
+    ]
+   ],
+   "hojd_m": 2.4,
+   "tak_farg": [
+    150,
+    44,
+    40
+   ],
+   "ram_farg": [
+    70,
+    72,
+    74
+   ],
+   "betongvagg": false,
+   "fascia_farg": [
+    150,
+    44,
+    40
+   ]
+  },
+  {
+   "namn": "Cykeltak norr om C-huset 5",
+   "_anm": "OSM bicycle_parking; Mapillary (corson/data/mapillary/cykelgarage_c): rött korrugerat tak på stålpelare, öppna sidor",
+   "typ": "cykeltak",
+   "osm_hus": [
+    438293203
+   ],
+   "fotavtryck": [
+    [
+     533776.8,
+     6473718.6
+    ],
+    [
+     533785.0,
+     6473718.7
+    ],
+    [
+     533785.0,
+     6473723.5
+    ],
+    [
+     533776.7,
+     6473723.4
+    ]
+   ],
+   "hojd_m": 2.4,
+   "tak_farg": [
+    150,
+    44,
+    40
+   ],
+   "ram_farg": [
+    70,
+    72,
+    74
+   ],
+   "betongvagg": false,
+   "fascia_farg": [
+    150,
+    44,
+    40
+   ]
   }
  ],
  "hus_justera": [
@@ -678,6 +893,12 @@
     6472650,
     534010,
     6473600
+   ],
+   [
+    533740,
+    6473590,
+    533800,
+    6473745
    ]
   ],
   "utom": [
@@ -701,6 +922,33 @@
     533758.5,
     6473463.9
    ]
-  }
+  },
+  "tvinga": [
+   {
+    "namn": "Mellan A- och C-huset (byggplats i ortofotot 2025, stenlagt enligt användaren)",
+    "yta": [
+     [
+      533754,
+      6473590
+     ],
+     [
+      533797,
+      6473590
+     ],
+     [
+      533797,
+      6473704
+     ],
+     [
+      533792,
+      6473742
+     ],
+     [
+      533755,
+      6473742
+     ]
+    ]
+   }
+  ]
  }
 }

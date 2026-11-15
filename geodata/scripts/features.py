@@ -94,6 +94,19 @@ def build(osm_path):
             if val.get('extra_fri_hojd'):
                 t['_extra_fri_hojd'] = str(float(val['extra_fri_hojd']))
 
+    # <projekt>/vagar_justera.json: {"<OSM-väg-id>": {"width": "9", ...}}: taggar som läggs på vägen
+    # (t.ex. en GC-väg som är mycket bredare än OSM-tabellens stig, Märkesbacken på Campus Valla)
+    vjust = WORK.parent / 'vagar_justera.json'
+    if vjust.exists():
+        for wid, val in json.loads(vjust.read_text()).items():
+            if wid.startswith('_'):
+                continue
+            t = ways.get(wid, ways.get(int(wid) if wid.isdigit() else wid, {})).get('tags')
+            if t is None:
+                print(f'vagar_justera.json: ingen väg {wid}')
+                continue
+            t.update({k: str(v) for k, v in val.items()})
+
     for wid, w in ways.items():
         t = w['tags']
         c = coords(w)

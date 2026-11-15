@@ -110,21 +110,26 @@ def lager_glb(mv, h, RES, ut_fil):
     nb_i, nb_j = H // LAGER_RUTA, W // LAGER_RUTA
     blk = mv[:nb_i * LAGER_RUTA, :nb_j * LAGER_RUTA].reshape(nb_i, LAGER_RUTA, nb_j, LAGER_RUTA)
     blk = blk.transpose(0, 2, 1, 3).reshape(nb_i, nb_j, -1)
-    # vanligaste klassen i blocket
-    antal = np.stack([(blk == k).sum(-1) for k in range(len(KLASSER))], -1)
-    klass = antal.argmax(-1)
-    keep = np.isin(klass, LAGER_KLASSER)
-    ii, jj = np.nonzero(keep)
-    if len(ii) == 0:
+    # hela block av samma höga klass: en 4 m-ruta; blandade block (kanter mot vägar, stenläggning, öar):
+    # en 2 m-ruta per cell med hög klass, så att lagret aldrig ligger över en yta (där är mv 0)
+    hog = np.isin(blk, LAGER_KLASSER)
+    hel = hog.all(-1) & (blk == blk[..., :1]).all(-1)
+    bi, bj = np.nonzero(hel)
+    s4 = LAGER_RUTA * RES
+    i_hel = np.zeros((H, W), bool)
+    i_hel[:nb_i * LAGER_RUTA, :nb_j * LAGER_RUTA] = np.kron(hel, np.ones((LAGER_RUTA, LAGER_RUTA), bool))
+    ci, cj = np.nonzero(np.isin(mv, LAGER_KLASSER) & ~i_hel)
+    x0 = np.r_[bj * s4, cj * RES] - RES / 2
+    z0 = np.r_[bi * s4, ci * RES] - RES / 2
+    sz = np.r_[np.full(len(bi), s4), np.full(len(ci), RES)]
+    kl = np.r_[blk[bi, bj, 0], mv[ci, cj]].astype(int)
+    if len(x0) == 0:
         return 0
-    s = LAGER_RUTA * RES
-    x0 = jj * s - RES / 2
-    z0 = ii * s - RES / 2
     from scipy import ndimage as ndi
     def hojd(x, z):
         return ndi.map_coordinates(h, [z / RES, x / RES], order=1, mode='nearest')
-    hx = [x0, x0 + s, x0 + s, x0]
-    hz = [z0, z0, z0 + s, z0 + s]
+    hx = [x0, x0 + sz, x0 + sz, x0]
+    hz = [z0, z0, z0 + sz, z0 + sz]
     ys = [hojd(a, b) for a, b in zip(hx, hz)]
     scene = trimesh.Scene()
     tile = (np.floor(x0 / LAGER_TILE_M).astype(int), np.floor(z0 / LAGER_TILE_M).astype(int))
@@ -141,7 +146,7 @@ def lager_glb(mv, h, RES, ut_fil):
         a = np.arange(n) * 4
         # medurs sett uppifrån (Godots framsida); x österut, z söderut
         F = np.r_[np.c_[a, a + 2, a + 1], np.c_[a, a + 3, a + 2]]
-        uv = np.repeat(np.c_[klass[ii[idx], jj[idx]].astype(float), np.zeros(n)], 4, axis=0)
+        uv = np.repeat(np.c_[kl[idx].astype(float), np.zeros(n)], 4, axis=0)
         m = trimesh.Trimesh(V, F, process=False)
         if m.face_normals[:, 1].mean() < 0:
             m.faces = m.faces[:, ::-1]
@@ -150,8 +155,8 @@ def lager_glb(mv, h, RES, ut_fil):
         namn = f'Markvegetation_{tx}_{tz}'
         scene.add_geometry(m, node_name=namn, geom_name=namn)
     scene.export(ut_fil)
-    print(f'markvegetation: växtlager {len(ii)} rutor i {len(nycklar)} bitar -> {ut_fil}')
-    return len(ii)
+    print(f'markvegetation: växtlager {len(bi)} hela 4 m-rutor + {len(ci)} 2 m-celler i {len(nycklar)} bitar -> {ut_fil}')
+    return len(x0)
 
 
 

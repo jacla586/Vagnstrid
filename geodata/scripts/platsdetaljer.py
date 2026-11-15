@@ -590,22 +590,26 @@ class Platsdetaljer:
         p = Plats(c[0], c[1], y0, grad, self.to_world)   # f längs taket, r tvärs
         hl, hb = L / 2, B / 2
         H = o.get('hojd_m', 2.6)
-        rod = self._m('Cykeltak_vinrod', (104, 36, 40), 0.6)
-        tak = self._m('Cykeltak_tak', (62, 64, 66), 0.8)
+        rf, tf = tuple(o.get('ram_farg', (104, 36, 40))), tuple(o.get('tak_farg', (62, 64, 66)))
+        rod = self._m('Cykeltak_ram_%02x%02x%02x' % rf, rf, 0.6)
+        tak = self._m('Cykeltak_tak_%02x%02x%02x' % tf, tf, 0.8)
         n = max(2, int(round(L / 3.3)))
         for k in range(n + 1):
             f = -hl + 0.15 + (L - 0.3) * k / n
             for r in (-hb + 0.3, hb - 0.3):
                 self._del(p, lada((r, (H - 0.1) / 2 - 0.2, f), (0.14, H + 0.1, 0.14)), rod)
         self._del(p, lada_mellan(-hb, hb, H, H + 0.15, -hl, hl), tak)
+        ff = tuple(o.get('fascia_farg', rf))
+        fascia = self._m('Cykeltak_kant_%02x%02x%02x' % ff, ff, 0.6)
         for r in (-hb, hb):   # fascia
-            self._del(p, lada_mellan(r - 0.04, r + 0.04, H - 0.3, H + 0.2, -hl, hl), rod)
+            self._del(p, lada_mellan(r - 0.04, r + 0.04, H - 0.3, H + 0.2, -hl, hl), fascia)
         for f in (-hl, hl):
-            self._del(p, lada_mellan(-hb, hb, H - 0.3, H + 0.2, f - 0.04, f + 0.04), rod)
+            self._del(p, lada_mellan(-hb, hb, H - 0.3, H + 0.2, f - 0.04, f + 0.04), fascia)
         # betongvägg i ena änden (östra: den med störst E)
-        f_vagg = hl if p.en(0, hl)[0] > p.en(0, -hl)[0] else -hl
-        s_ = 1 if f_vagg > 0 else -1
-        self._del(p, lada_mellan(-hb, hb, -0.2, H, f_vagg - s_ * 0.25, f_vagg), self._m('Betong', (156, 154, 148), 0.95))
+        if o.get('betongvagg', True):
+            f_vagg = hl if p.en(0, hl)[0] > p.en(0, -hl)[0] else -hl
+            s_ = 1 if f_vagg > 0 else -1
+            self._del(p, lada_mellan(-hb, hb, -0.2, H, f_vagg - s_ * 0.25, f_vagg), self._m('Betong', (156, 154, 148), 0.95))
         # tvåvåningsställ: galvade ramar längs taket
         galv = self._m('Cykelstall_galv', (176, 180, 182), 0.4)
         for r in (-hb * 0.45, hb * 0.45):

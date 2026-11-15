@@ -36,8 +36,19 @@ def surface_of(t):
     return 'grus'
 
 
+def osm_bredd(r):
+    """OSM:s width-tagg om den är satt (även GC-vägar), annars tabellen per vägtyp."""
+    try:
+        b = float(str(r['tags'].get('width', '')).replace(',', '.').split()[0])
+        if 0.5 < b < 40:
+            return b
+    except (ValueError, IndexError):
+        pass
+    return WIDTH.get(r['tags']['highway'], 3.0)
+
+
 def ny_vag(line, t):
-    return dict(line=line, tags=t, width=WIDTH.get(t['highway'], 3.0), surface=surface_of(t),
+    return dict(line=line, tags=t, width=osm_bredd(dict(tags=t)), surface=surface_of(t),
                 name=t.get('name') or t.get('ref') or t['highway'])
 
 
@@ -209,7 +220,7 @@ def forbered(roads, ruta, work):
     roads[:] = rondeller(roads)
     roads[:] = korsningsstumpar(roads)
     NV = nvdb.Matchning(nvdb.utdrag(ruta, work))
-    nvdb.berika(roads, NV, lambda r: WIDTH.get(r['tags']['highway'], 3.0))
+    nvdb.berika(roads, NV, osm_bredd)
     nvdb.harmonisera(roads)
     for r in roads:   # rondellerna: fast bredd efter körfälten
         if r.get('rondell'):

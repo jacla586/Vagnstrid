@@ -19,7 +19,7 @@ from PIL import Image, ImageDraw
 from rasterio.enums import Resampling
 from rasterio.features import rasterize
 from scipy import ndimage as ndi
-from shapely.geometry import box as sbox
+from shapely.geometry import Polygon, box as sbox
 
 LYFT_M = 0.06
 CELL_M = 1.0
@@ -28,8 +28,14 @@ OKARTA_HARD = 5         # okarta.KODER['hardgjord']
 PLATTA_RUTA_M = 4.8     # texturens storlek
 NDVI_GRONT = 0.16
 GC = ('cycleway', 'footway', 'path', 'pedestrian')
+GRUS_YTOR = ('gravel', 'fine_gravel', 'compacted', 'dirt', 'ground', 'earth', 'sand', 'unpaved', 'grass', 'pebblestone',
+             'mud', 'woodchips')
+GRONA = dict(landuse=('grass', 'meadow', 'flowerbed', 'village_green', 'forest', 'orchard', 'plant_nursery'),
+             natural=('scrub', 'grassland', 'wood', 'heath', 'wetland'), leisure=('garden',))
 PLATS_B, PLATS_D, GATA_B = 2.5, 5.0, 6.0   # P-platser: bredd, djup, körgata
 LINJE_B = 0.12
+ASFALT_LYFT_M = LYFT_M + 0.02   # parkeringarnas asfalt ligger över plattorna i kanten
+KRONA_O_M, KRONA_NDVI = 1.5, 0.08   # trädöar på parkeringar: gröna kronor i fotot, krympta med
 
 
 def _srgb2lin(c):
@@ -65,6 +71,8 @@ class Stenlaggning:
         self.conf = conf or {}
         self.omraden = [sbox(*r) for r in self.conf.get('omraden', [])]
         self.utom = [sbox(*r) for r in self.conf.get('utom', [])]
+        # tvinga: ytor som alltid är sten (där kartan och fotot är gamla, t.ex. en byggplats som blivit torg)
+        self.tvinga = [Polygon(t['yta']) for t in self.conf.get('tvinga', [])]
         self.hav = self.conf.get('blahavet')
         self.okarta = work / 'okarta_klass.npy'
         self.ortofoto = data_dir / f'ortofoto_{namn}.tif'
@@ -72,6 +80,8 @@ class Stenlaggning:
         self.havmask = None
         self.osm = data_dir / 'export.osm'
         self.parkeringar = []
+        self.p_ytor = []   # (OSM-ytan, asfaltsytan) per parkering
+        self.grona, self.grus = [], []   # OSM: aldrig sten (grus blir grus i marktäcket)
         self.overtackta = set()   # id(r) för GC-vägar inne i stenläggningen
 
     def __bool__(self):
@@ -88,36 +98,127 @@ class Stenlaggning:
         ndvi = (nir - a[0]) / (nir + a[0] + 1e-6) if nir is not None else np.zeros_like(ljus)
         return ljus, ndvi, rgb
 
-    def _las_parkeringar(self):
-        """OSM amenity=parking (ytor på marken) inom områdena, i SWEREF."""
+    @staticmethod
+    def _tradoar(ndvi):
+        """Gräsöar under trädkronor (1 m-rutor): gröna fläckar i fotot (NDVI > KRONA_NDVI; lasern ser inte de
+        planterade träden: band 1 är oklassade punkter), KRONA_O_M innanför kronans kant (kronorna hänger ut
+        över asfalten), öar under 6 m² bort."""
+        krona = ndi.binary_opening(ndi.binary_closing(ndvi > KRONA_NDVI, iterations=2), iterations=1)
+        o = ndi.distance_transform_edt(krona) * CELL_M > KRONA_O_M
+        lab, n = ndi.label(o)
+        if n:
+            o &= np.isin(lab, 1 + np.nonzero(ndi.sum(o, lab, range(1, n + 1)) >= 6)[0])
+        return o
+
+    def _parkeringsytor(self, byggnader, vatten, roads):
+        """Parkeringarna som polygoner: OSM-ytan minus hus, vatten, bilvägar (egna meshar), OSM:s gröna ytor och
+        grus och trädöarna (_tradoar ur fotot, vektoriserade och rundade). -> [(OSM-ytan, asfaltsytan)]"""
+        from rasterio.features import shapes
+        from shapely.geometry import shape
+        from shapely.ops import unary_union
+        bil = [r['line'].buffer(r['width'] / 2) for r in roads if not self._under_sten(r)]
+        ut = []
+        for g in self.parkeringar:
+            E0, N0, E1, N1 = g.bounds
+            E0, N0, E1, N1 = math.floor(E0) - 2, math.floor(N0) - 2, math.ceil(E1) + 2, math.ceil(N1) + 2
+            nE, nN = int(E1 - E0), int(N1 - N0)
+            _, ndvi, _ = self._ortho(E0, N0, E1, N1, nN, nE)
+            oar = self._tradoar(ndvi)
+            T1 = rasterio.transform.from_origin(E0, N1, CELL_M, CELL_M)
+            # öarna rundade: pixeltrapporna bort (förenkla 1 m, sedan rundade hörn)
+            hinder = [shape(geo).simplify(1.0).buffer(-1.0).buffer(1.6).buffer(-0.6)
+                      for geo, _ in shapes(oar.astype(np.uint8), mask=oar, transform=T1)]
+            hinder = [x for x in hinder if not x.is_empty]
+            hinder += [b.buffer(0.3) for b in byggnader if b.intersects(g)]
+            hinder += [x for x in vatten + self.grona + self.grus + self.utom + bil if x.intersects(g)]
+            yta = g.difference(unary_union(hinder)) if hinder else g
+            yta = unary_union([p for p in getattr(yta, 'geoms', [yta])
+                               if p.geom_type == 'Polygon' and p.area >= 8.0])
+            ut.append((g, yta))
+        return ut
+
+    def _las_osm(self):
+        """Ur OSM inom områdena (SWEREF): parkeringar på marken (asfalt), gröna ytor (gräs, rabatter, häckar,
+        snår: aldrig sten) och grus (byggarbetsplatser, grusparkeringar, grusytor och grusgångar: aldrig sten,
+        marktäcket blir grus). -> (parkeringar, grona, grus)"""
         if not self.osm.exists():
-            return []
+            return [], [], []
         import xml.etree.ElementTree as ET
         from pyproj import Transformer
-        from shapely.geometry import Polygon
+        from shapely.geometry import LineString
         t = Transformer.from_crs(4326, 3006, always_xy=True)
         rot = ET.parse(str(self.osm)).getroot()
         noder = {n.get('id'): (float(n.get('lon')), float(n.get('lat'))) for n in rot.iter('node')}
-        ut = []
+        pk, gron, grus = [], [], []
         for w in rot.iter('way'):
             tg = {x.get('k'): x.get('v') for x in w.findall('tag')}
-            if tg.get('amenity') != 'parking' or tg.get('parking') in ('underground', 'multi-storey', 'rooftop'):
-                continue
             ref = [nd.get('ref') for nd in w.findall('nd')]
-            if len(ref) < 4 or ref[0] != ref[-1] or any(r not in noder for r in ref):
+            if not tg or len(ref) < 2 or any(r not in noder for r in ref):
                 continue
             ll = np.array([noder[r] for r in ref])
             E, N = t.transform(ll[:, 0], ll[:, 1])
-            g = Polygon(np.column_stack([E, N])).buffer(0)
-            if g.area > 60 and any(g.intersects(o) for o in self.omraden):
-                ut.append(g)
+            sluten = ref[0] == ref[-1] and len(ref) >= 4
+            g = Polygon(np.column_stack([E, N])).buffer(0) if sluten else LineString(np.column_stack([E, N]))
+            if not any(g.intersects(o) for o in self.omraden):
+                continue
+            ytan = tg.get('surface', '')
+            if tg.get('amenity') == 'parking' and sluten:
+                if tg.get('parking') in ('underground', 'multi-storey', 'rooftop'):
+                    continue
+                if ytan in GRUS_YTOR:
+                    grus.append(g)
+                elif g.area > 60:
+                    pk.append(g)
+            elif tg.get('landuse') == 'construction' and sluten:
+                grus.append(g)
+            elif sluten and (tg.get('landuse') in GRONA['landuse'] or tg.get('natural') in GRONA['natural']
+                             or tg.get('leisure') in GRONA['leisure']
+                             or (tg.get('leisure') == 'pitch' and ytan == 'grass')):
+                gron.append(g)
+            elif tg.get('barrier') == 'hedge':
+                gron.append(g if sluten else g.buffer(0.6))
+            elif 'highway' in tg and ytan in GRUS_YTOR:
+                if sluten and tg.get('area') == 'yes' or tg.get('highway') == 'pedestrian' and sluten:
+                    grus.append(g)
+                elif not sluten:
+                    grus.append(g.buffer(1.0))
+        return pk, gron, grus
+
+    def raster(self, shape, OX, OY, RES, nagon=False):
+        """Heightmapens celler (mitten) som ligger på stenläggningen (bool, shape). `nagon`: celler som stenen
+        täcker någon del av (hörnen och mitten provas), t.ex. för att inget gräs ska sticka upp vid kanterna."""
+        if nagon:
+            ut = np.zeros(shape, bool)
+            d = RES / 2 - 0.25
+            for dx, dy in ((0, 0), (-d, -d), (-d, d), (d, -d), (d, d)):
+                ut |= self.raster(shape, OX + dx, OY + dy, RES)
+            return ut
+        H, W = shape
+        ut = np.zeros(shape, bool)
+        ytor_pk = [y for _, y in getattr(self, 'p_ytor', []) if not y.is_empty]
+        if ytor_pk:   # parkeringarna: alla celler de nuddar (marken sänks under hela asfalten)
+            T = rasterio.transform.from_origin(OX - RES / 2, OY + RES / 2, RES, RES)
+            ut |= rasterize([(y, 1) for y in ytor_pk], out_shape=shape, transform=T, all_touched=True).astype(bool)
+        for E0, N1, m, _ in getattr(self, 'ytor', []):
+            nN, nE = m.shape
+            j0, j1 = max(0, int((E0 - OX) / RES)), min(W, int((E0 + nE * CELL_M - OX) / RES) + 1)
+            i0, i1 = max(0, int((OY - N1) / RES)), min(H, int((OY - (N1 - nN * CELL_M)) / RES) + 1)
+            if j0 >= j1 or i0 >= i1:
+                continue
+            jj, ii = np.meshgrid(np.arange(j0, j1), np.arange(i0, i1))
+            c = ((OX + jj * RES - E0) / CELL_M).astype(int)
+            r = ((N1 - (OY - ii * RES)) / CELL_M).astype(int)
+            ok = (c >= 0) & (c < nE) & (r >= 0) & (r < nN)
+            ut[ii[ok], jj[ok]] = m[r[ok], c[ok]]
         return ut
 
     def berakna(self, lc, CIDX, to_px, RES, byggnader, vatten, roads):
         if not self:
             return
         ok = np.load(str(self.okarta))
-        self.parkeringar = self._las_parkeringar()
+        self.parkeringar, self.grona, self.grus = self._las_osm()
+        self.p_ytor = self._parkeringsytor(byggnader, vatten, roads)
+        grusandel = np.zeros(lc.shape, float)
         vagar = np.isin(lc, [CIDX['sjö'], CIDX['hav']])
         H, W = lc.shape
         andel = np.zeros(lc.shape, float)
@@ -137,9 +238,23 @@ class Stenlaggning:
             kant = ndi.binary_dilation(hard, iterations=2) & ~inre
             m = inre | (kant & ~gront & (ljus > 70))
             T1 = rasterio.transform.from_origin(E0, N1, CELL_M, CELL_M)
-            pk_omr = [g for g in self.parkeringar if g.intersects(omr)]
-            if pk_omr:   # OSM-parkeringarna är alltid asfalt (utom där det växer)
-                m |= rasterize([(g, 1) for g in pk_omr], out_shape=m.shape, transform=T1).astype(bool) & ~gront
+            pk_omr = [(g, y) for g, y in self.p_ytor if g.intersects(omr)]
+            # OSM:s gräsytor, rabatter, häckar och grusytor är aldrig sten (orienteringskartan tar ofta med dem)
+            inte = [g for g in self.grona + self.grus if g.intersects(omr)]
+            if inte:
+                m &= ~rasterize([(g, 1) for g in inte], out_shape=m.shape, transform=T1).astype(bool)
+            gr = [g for g in self.grus if g.intersects(omr)]
+            if gr:
+                gm = rasterize([(g, 1) for g in gr], out_shape=m.shape, transform=T1).astype(bool) & hard
+                np.add.at(grusandel, (ri[gm], ci[gm]), 1.0)
+            if pk_omr:   # parkeringarna är egna polygoner (asfalt): inga plattor helt inne i dem
+                inne = [g.buffer(-0.71) for g, _ in pk_omr]
+                inne = [g for g in inne if not g.is_empty]
+                if inne:
+                    m &= ~rasterize([(g, 1) for g in inne], out_shape=m.shape, transform=T1).astype(bool)
+            tv = [g for g in self.tvinga if g.intersects(omr)]
+            if tv:
+                m |= rasterize([(g, 1) for g in tv], out_shape=m.shape, transform=T1).astype(bool)
             hinder = [g.buffer(0.3) for g in byggnader if g.intersects(omr)] + [g for g in vatten if g.intersects(omr)]
             hinder += [g for g in self.utom if g.intersects(omr)]
             if hinder:
@@ -154,13 +269,12 @@ class Stenlaggning:
             if n:
                 st = ndi.sum(m, lab, range(1, n + 1))
                 m &= np.isin(lab, 1 + np.nonzero(st >= 8)[0])
-            # asfalt: OSM-parkeringarna (skuggor i fotot är inte asfalt)
-            asf = np.zeros(m.shape, bool)
-            pk = [g for g in self.parkeringar if g.intersects(omr)]
-            if pk:
-                asf = rasterize([(g, 1) for g in pk], out_shape=m.shape, transform=T1).astype(bool)
-            self.ytor.append((E0, N1, m, asf & m))
+            self.ytor.append((E0, N1, m, np.zeros(m.shape, bool)))
             np.add.at(andel, (ri[m], ci[m]), 1.0)
+            ytor_pk = [y for _, y in pk_omr if not y.is_empty]
+            if ytor_pk:   # marktäcket under asfalten
+                pa = rasterize([(y, 1) for y in ytor_pk], out_shape=m.shape, transform=T1).astype(bool) & ~m
+                np.add.at(andel, (ri[pa], ci[pa]), 1.0)
         # GC-vägar och körgångar på parkeringar som till minst 80 % går i stenläggningen ritas inte själva
         for r in roads:
             if not self._under_sten(r):
@@ -169,15 +283,24 @@ class Stenlaggning:
             if not any(L.intersects(o) for o in self.omraden):
                 continue
             pts = [L.interpolate(d) for d in np.arange(0, L.length + 0.01, 2.0)]
-            if pts and np.mean([self.ar_sten(p.x, p.y) for p in pts]) >= 0.8:
+            # på stenen eller inne i en parkering (gräsöarna bryter inte körgångarna)
+            andel = np.mean([self.ar_sten(p.x, p.y) or any(g.contains(p) for g in self.parkeringar)
+                             for p in pts]) if pts else 0.0
+            # körvägar (infarter, körgångar) räcker det att hälften ligger i parkeringen: annars ligger en
+            # mörkare stump ovanpå asfalten
+            if andel >= (0.5 if r['tags']['highway'] == 'service' else 0.8):
                 self.overtackta.add(id(r))
         # marktäcket: celler som till minst hälften är sten
         if 'hårdgjord' in CIDX:
             fyll = andel >= 0.5 * (RES / CELL_M) ** 2
             fyll &= ~np.isin(lc, [CIDX['väg_asfalt'], CIDX['väg_grus'], CIDX['sjö'], CIDX['hav']])
             lc[fyll] = CIDX['hårdgjord']
-        print('stenläggning:', sum(int(m.sum()) for *_, m, _ in self.ytor), 'm² varav asfalt',
-              sum(int(a.sum()) for *_, a in self.ytor), '; parkeringar', len(self.parkeringar),
+            # grus: hårdgjort enligt orienteringskartan men grus enligt OSM (byggplatser, grusparkeringar)
+            gfyll = (grusandel >= 0.5 * (RES / CELL_M) ** 2) & ~fyll
+            gfyll &= ~np.isin(lc, [CIDX['väg_asfalt'], CIDX['sjö'], CIDX['hav']])
+            lc[gfyll] = CIDX['väg_grus']
+        print('stenläggning:', sum(int(m.sum()) for *_, m, _ in self.ytor), 'm² plattor, asfalt',
+              int(sum(y.area for _, y in self.p_ytor)), '; parkeringar', len(self.parkeringar), '; OSM grönt/grus', len(self.grona), len(self.grus),
               '; GC-vägar under stenen', len(self.overtackta))
         if self.hav:
             self._blahavet_zoner()
@@ -197,6 +320,9 @@ class Stenlaggning:
         return L.length > 0 and pa / L.length >= 0.7
 
     def ar_sten(self, E, N):
+        import shapely
+        if any(shapely.contains_xy(y, E, N) for _, y in getattr(self, 'p_ytor', [])):
+            return True
         for E0, N1, m, _ in self.ytor:
             j, i = int((E - E0) / CELL_M), int((N1 - N) / CELL_M)
             if 0 <= i < m.shape[0] and 0 <= j < m.shape[1] and m[i, j]:
@@ -229,14 +355,41 @@ class Stenlaggning:
                     for sort, mm in (('platta', m & ~asf), ('asfalt', asf)):
                         sub = mm[bi:bi + blk, bj:bj + blk]
                         if sub.any():
-                            msh, uv = self._yta(sub, E0 + bj * CELL_M, N1 - bi * CELL_M, sample, h, to_world)
+                            msh, uv = self._yta(sub, E0 + bj * CELL_M, N1 - bi * CELL_M, sample, h, to_world,
+                                                hel=m, off=(bi, bj))   # grannar: båda ytorna
                             if sort == 'platta':
                                 add_merged('Stenlaggning', msh, platta, uv)
                             else:
                                 add_merged('Stenlaggning', msh, asfalt)
+        for _, y in self.p_ytor:
+            if not y.is_empty:
+                add_merged('Stenlaggning', self._poly_yta(y, sample, h, to_world, ASFALT_LYFT_M), asfalt)
         if self.hav:
             self._bygg_blahavet(sample, h, to_world, add_merged)
         self._plinjer(sample, h, to_world, add_merged, mat)
+
+    @staticmethod
+    def _poly_yta(poly, sample, h, to_world, lyft, steg=2.0):
+        """Polygon -> mesh med exakta kanter: delad i steg × steg-rutor (så att den följer terrängen),
+        varje bit trianguleras (constrained Delaunay), draperad lyft över terrängen, normalen uppåt."""
+        import shapely
+        E0, N0, E1, N1 = poly.bounds
+        xs = np.arange(math.floor(E0 / steg) * steg, E1, steg)
+        ys = np.arange(math.floor(N0 / steg) * steg, N1, steg)
+        X, Y = np.meshgrid(xs, ys)
+        rutor = shapely.box(X.ravel(), Y.ravel(), X.ravel() + steg, Y.ravel() + steg)
+        bitar = shapely.intersection(rutor, poly)
+        bitar = shapely.get_parts(bitar[~shapely.is_empty(bitar)])
+        bitar = bitar[shapely.get_type_id(bitar) == 3]   # bara polygoner
+        tri = shapely.get_parts(shapely.constrained_delaunay_triangles(bitar))
+        P = shapely.get_coordinates(tri).reshape(-1, 4, 2)[:, :3]   # triangelns tre hörn (sista = första)
+        nyck, inv = np.unique(np.round(P.reshape(-1, 2), 3), axis=0, return_inverse=True)
+        y = sample(h, nyck[:, 0], nyck[:, 1]) + lyft
+        x, z = to_world(nyck[:, 0], nyck[:, 1])
+        msh = trimesh.Trimesh(np.column_stack([x, y, z]), inv.reshape(-1, 3), process=False)
+        ned = msh.face_normals[:, 1] < 0
+        msh.faces[ned] = msh.faces[ned][:, ::-1]
+        return msh
 
     def _rader_ur_fotot(self, g):
         """Parkeringsradernas riktning och mittlinjer ur ortofotot: tunna ljusa linjer (top-hat), den riktning
@@ -290,7 +443,18 @@ class Stenlaggning:
                 break
             if all(abs(mitt[k] - q) >= 12.0 for q in toppar):
                 toppar.append(float(mitt[k]))
-        return u, v, sorted(toppar)
+        toppar = sorted(toppar)
+        # luckor: fotot ser inte alla rader (skuggor, bilar); fyll i med radavståndet mellan de funna
+        if len(toppar) >= 2:
+            d = float(np.median(np.diff(toppar)))
+            d = d if 12.0 <= d <= 20.0 else period
+            fylld = [toppar[0]]
+            for q in toppar[1:]:
+                n = int(round((q - fylld[-1]) / d))
+                fylld += [fylld[-1] + (q - fylld[-1]) * k / n for k in range(1, n)] if n > 1 else []
+                fylld.append(q)
+            toppar = fylld
+        return u, v, toppar
 
     def _plinjer(self, sample, h, to_world, add_merged, mat):
         """P-platslinjer. Raderna ur ortofotot (_rader_ur_fotot): en mittlinje per dubbelrad och tvärstreck
@@ -300,16 +464,18 @@ class Stenlaggning:
         n = 0
 
         def lagg(a, b, tvars, yta, min_l):
+            # klipps mot asfaltsytan: en linje över en gräsö blir två bitar
             seg = LineString([a, b]).intersection(yta)
-            if seg.is_empty or seg.geom_type != 'LineString' or seg.length < min_l:
-                return 0
-            p0, p1 = np.array(seg.coords[0]), np.array(seg.coords[-1])
-            if not self.ar_sten(*((p0 + p1) / 2)):   # mitten på asfalten (ändarna kan nudda en kant)
-                return 0
-            self._linje(p0, p1, tvars, sample, h, to_world, add_merged, vit)
-            return 1
-        for g in self.parkeringar:
-            yta = g.buffer(-0.4)
+            k = 0
+            for bit in getattr(seg, 'geoms', [seg]):
+                if bit.is_empty or bit.geom_type != 'LineString' or bit.length < min_l:
+                    continue
+                self._linje(np.array(bit.coords[0]), np.array(bit.coords[-1]), tvars, sample, h, to_world,
+                            add_merged, vit)
+                k += 1
+            return k
+        for g, asfalt_yta in self.p_ytor:
+            yta = asfalt_yta.buffer(-0.4)
             if yta.is_empty:
                 continue
             rader = self._rader_ur_fotot(g)
@@ -346,21 +512,32 @@ class Stenlaggning:
 
     @staticmethod
     def _linje(p0, p1, tvars, sample, h, to_world, add_merged, material):
+        """En målad linje, delad var 1 m så att den följer terrängen som asfalten (annars sjunker långa
+        linjer in under den där marken buktar)."""
         d = tvars * LINJE_B / 2
-        P = np.array([p0 - d, p0 + d, p1 + d, p1 - d])
-        y = sample(h, P[:, 0], P[:, 1]) + LYFT_M + 0.015
+        n = max(1, int(math.ceil(np.hypot(*(p1 - p0)) / 1.0)))
+        t = np.linspace(0.0, 1.0, n + 1)[:, None]
+        C = p0 + t * (p1 - p0)
+        P = np.vstack([C - d, C + d])   # 0..n vänster, n+1..2n+1 höger
+        y = sample(h, P[:, 0], P[:, 1]) + ASFALT_LYFT_M + 0.015
         x, z = to_world(P[:, 0], P[:, 1])
-        msh = trimesh.Trimesh(np.column_stack([x, y, z]), np.array([[0, 1, 2], [0, 2, 3]]), process=False)
+        k = np.arange(n)
+        F = np.vstack([np.column_stack([k, k + n + 1, k + n + 2]), np.column_stack([k, k + n + 2, k + 1])])
+        msh = trimesh.Trimesh(np.column_stack([x, y, z]), F, process=False)
         ned = msh.face_normals[:, 1] < 0
         msh.faces[ned] = msh.faces[ned][:, ::-1]
         add_merged('Stenlaggning', msh, material)
 
     @staticmethod
-    def _yta(sub, E0, N1, sample, h, to_world, tex_m=PLATTA_RUTA_M):
-        """Celler -> mesh med delade hörn, draperad över terrängen, normalen uppåt; UV i världen."""
+    def _yta(sub, E0, N1, sample, h, to_world, tex_m=PLATTA_RUTA_M, hel=None, off=(0, 0)):
+        """Celler -> mesh med delade hörn, draperad över terrängen, normalen uppåt; UV i världen.
+        Trappsteg i kanten blir diagonaler: en cell vars två grannar åt ett hörn (t.ex. norr och väster) saknas
+        men de motsatta finns får det hörnet avskuret (`hel` = hela masken, så att blockgränserna inte syns)."""
         ii, jj = np.nonzero(sub)
         horn = {}
         V, F = [], []
+        M = np.pad(hel if hel is not None else sub, 1)
+        oi, oj = (off[0] + 1, off[1] + 1) if hel is not None else (1, 1)
 
         def hrn(i, j):
             k = (i, j)
@@ -370,7 +547,18 @@ class Stenlaggning:
             return horn[k]
         for i, j in zip(ii, jj):
             a, b, c, d = hrn(i, j), hrn(i, j + 1), hrn(i + 1, j + 1), hrn(i + 1, j)
-            F += [[a, c, b], [a, d, c]]
+            n_, s_ = M[i + oi - 1, j + oj], M[i + oi + 1, j + oj]
+            w_, e_ = M[i + oi, j + oj - 1], M[i + oi, j + oj + 1]
+            if not n_ and not w_ and s_ and e_:
+                F.append([b, d, c])          # nordvästra hörnet bort
+            elif not n_ and not e_ and s_ and w_:
+                F.append([a, d, c])          # nordöstra
+            elif not s_ and not e_ and n_ and w_:
+                F.append([a, d, b])          # sydöstra
+            elif not s_ and not w_ and n_ and e_:
+                F.append([a, c, b])          # sydvästra
+            else:
+                F += [[a, c, b], [a, d, c]]
         EN = np.array(V)
         y = sample(h, EN[:, 0], EN[:, 1]) + LYFT_M
         x, z = to_world(EN[:, 0], EN[:, 1])

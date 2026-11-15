@@ -45,6 +45,7 @@ def sample(hh, xs, ys):
 
 # ---------- Vägar ---------- (vagnat.py: OSM-listan, körbanor genom korsningar, NVDB, harmonisering)
 WIDTH, surface_of = vagnat.WIDTH, vagnat.surface_of
+GC_MARKTACKE_M = 3.0   # GC-vägar minst så breda blir väg i marktäcket
 roads = vagnat.vaglista(feat['roads'], BOX)
 print('vägsegment', len(roads), 'total km', round(sum(r['line'].length for r in roads) / 1000, 1))
 NV = vagnat.forbered(roads, (X0, Y1 - H * RES, X0 + W * RES, Y1), WORK)
@@ -156,12 +157,6 @@ PLATS = platsdetaljer.Platsdetaljer(BOX)   # platsdetaljer.py: handplacerade fö
 IDROTT.forma(h, (H, W), T, RES)
 BANA.spara_mask(str(WORK / 'jarnvag_mask.npy'), (H, W), T)   # step4: inga träd nära spåret
 
-# ---------- Heightmap-export ----------
-hmin, hmax = float(h.min()), float(h.max())
-u16 = np.round((h - hmin) / (hmax - hmin) * 65535).astype(np.uint16)
-Image.fromarray(u16).save(f'{OUT}/heightmap_16bit.png')
-u16.astype('<u2').tofile(f'{OUT}/heightmap.r16')
-np.save(str(WORK / 'h_final.npy'), h)
 
 # ---------- Marktäcke ----------
 CLASSES = [('hav', (58, 96, 128)), ('mark', (122, 140, 82)), ('skog', (62, 92, 50)), ('åker', (170, 152, 96)),
@@ -195,8 +190,8 @@ if OKARTA_KLASS.exists():
 if water_polys:
     lc[rasterize([(x, 1) for x in water_polys], out_shape=(H, W), transform=T).astype(bool)] = CIDX['sjö']
 for r in roads:
-    if r['tags']['highway'] in ('path', 'footway'):
-        continue
+    if r['tags']['highway'] in ('path', 'footway') and r['width'] < GC_MARKTACKE_M:
+        continue   # smala stigar ligger på marken; breda GC-vägar (Märkesbacken) är väg, inget gräs genom dem
     mm = rasterize([(r['line'].buffer(r['width'] / 2), 1)], out_shape=(H, W), transform=T).astype(bool)
     lc[mm] = CIDX['väg_asfalt' if r['surface'] == 'asfalt' else 'väg_grus']
 BANA.marktacke(lc, CIDX['väg_grus'], (H, W), T)
@@ -205,7 +200,8 @@ if IDROTT.planer():   # innerplanerna: gräsmatta (tomt), tartanen under banan: 
     lc[rasterize([(p_, 1) for p_ in IDROTT.tartan()], out_shape=(H, W), transform=T).astype(bool)] = CIDX['väg_grus']
 # Stenläggning (stenlaggning.py): hårdgjorda ytor inom platsdetaljer.json:s områden -> marktäcke 'hårdgjord'
 STEN = stenlaggning.Stenlaggning(PLATS.conf.get('stenlaggning'), WORK, WORK.parent / 'data', NAMN)
-STEN.berakna(lc, CIDX, to_px, RES, [gm for gm, _ in feat['buildings']], water_polys, roads)
+STEN.berakna(lc, CIDX, to_px, RES, [gm for gm, t in feat['buildings'] if t.get('building') not in ('roof', 'carport')],
+             water_polys, roads)   # öppna tak (cykeltak) står på stenen
 # Markvegetation för spelet (markvegetation.py): klass per 2 m-cell
 import markvegetation
 MV = markvegetation.bygg(lc, CIDX, T, (H, W), WORK.parent / 'data' if WORK.name == 'work' and WORK.parent != ROOT else ROOT / 'data',
@@ -213,6 +209,35 @@ MV = markvegetation.bygg(lc, CIDX, T, (H, W), WORK.parent / 'data' if WORK.name 
                     str(ROOT / 'forhandsbilder' / f'markvegetation_{NAMN}.png'), water_polys, RES,
                     [x[0] for x in feat.get('lekplatser', [])] + IDROTT.planer())   # gräsmatta
 markvegetation.vatten(water_polys, water_levels, T, (H, W), OUT)   # sjöarnas nivåer för vadningen
+
+# ---------- Markytor karvar ur terrängen (regel för allt som ritas som yta på marken) ----------
+# GC-vägar (alla bredder), stenläggning och parkeringar är meshar några cm över h. Terrängen
+# (Terrain3D delar rutorna i trianglar på sitt sätt, och vägarnas meshar har hörn bara i kanterna) kunde
+# sticka upp genom dem, med gräs ovanpå. Därför: under varje ritad yta sänks den exporterade terrängen
+# KARVA_M (bara celler vars mitt ligger på ytan: kanten lutar ned in under ytan, ingen synlig grop),
+# och där växer inga grässtrån (markvegetation 0). Meshar och h_final (träd, föremål) använder det
+# okarvade h, så ytorna ligger kvar där de låg.
+KARVA_M = 0.10
+# Bilvägar ligger redan 0,15 m över en planad profil (och vagnarna kör på terrängen): de karvas inte,
+# men får inget gräs heller.
+_ras = lambda gs: (rasterize([(g_, 1) for g_ in gs], out_shape=(H, W), transform=T).astype(bool)
+                   if gs else np.zeros((H, W), bool))
+_lag = [r['line'].buffer(r['width'] / 2) for r in roads if broar.lyft(r['tags']) < 0.1]
+YTMASK = _ras(_lag) | STEN.raster((H, W), OX, OY, RES)
+YTMASK &= ~BRO.dack_raster((H, W), T)   # under broar ligger marken redan lägre
+YTOR_ALLA = YTMASK | STEN.raster((H, W), OX, OY, RES, nagon=True) | _ras([r['line'].buffer(r['width'] / 2) for r in roads])   # allt som ritas som markyta (minsta del)
+MV[YTOR_ALLA] = 0
+MV.tofile(f'{OUT}/markvegetation.bin')
+h_ut = h.copy()
+h_ut[YTMASK] -= KARVA_M
+print('markytor: terrängen karvad', KARVA_M, 'm under', int(YTMASK.sum()), 'celler')
+
+# ---------- Heightmap-export ----------
+hmin, hmax = float(h_ut.min()), float(h_ut.max())
+u16 = np.round((h_ut - hmin) / (hmax - hmin) * 65535).astype(np.uint16)
+Image.fromarray(u16).save(f'{OUT}/heightmap_16bit.png')
+u16.astype('<u2').tofile(f'{OUT}/heightmap.r16')
+np.save(str(WORK / 'h_final.npy'), h)
 pal = np.array([c for _, c in CLASSES], np.uint8)
 Image.fromarray(lc).save(f'{OUT}/landcover_index.png')
 Image.fromarray(pal[lc]).save(f'{OUT}/landcover_color.png')
@@ -307,7 +332,7 @@ for k, r in enumerate(roads):
     hw = r['hw'][:, None]
     L = pts + nrm * hw; Rr = pts - nrm * hw
     lift = broar.lyft(r['tags'])
-    if r['tags']['highway'] in ('path', 'footway'):
+    if r['tags']['highway'] in ('path', 'footway') and r['width'] < GC_MARKTACKE_M:
         zl = sample(h, L[:, 0], L[:, 1]) + lift; zr = sample(h, Rr[:, 0], Rr[:, 1]) + lift
     else:
         zc = np.maximum(sample(h, pts[:, 0], pts[:, 1]), np.maximum(sample(h, L[:, 0], L[:, 1]), sample(h, Rr[:, 0], Rr[:, 1])))
@@ -409,6 +434,7 @@ if STEN_FIL.exists():
                       transform=T).astype(bool) if feat['buildings'] else np.zeros((H, W), bool)
     bro_r = np.load(str(WORK / 'broar_mask.npy')) if (WORK / 'broar_mask.npy').exists() else np.zeros((H, W), bool)
     stopp = hus_r | bro_r | np.isin(lc, [CIDX['väg_asfalt'], CIDX['väg_grus'], CIDX['sjö'], CIDX['hav']])
+    stopp |= ndi.binary_dilation(YTOR_ALLA, iterations=1)   # inga stenblock på (eller vid kanten av) någon markyta
     def sten_hinder(E, N):
         c, r_ = to_px(E, N)
         i_, j_ = int(round(r_)), int(round(c))
