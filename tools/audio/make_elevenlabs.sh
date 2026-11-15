@@ -177,7 +177,8 @@ for pair in "crew_alone_1 bh-ensamma-nu-grabbar" "crew_alone_2 bh-ensam-är-star
   intercom "$1" "$T/$1.wav" -15
 done
 # 2026-11-14: the tutorial instructor (TutorialData, TUTORIAL_PLAN.md) and the crash line
-# (CrewVoiceData "Crash"); named from their text by tools/audio/transcribe.py.
+# (CrewVoiceData "Crash"); named from their text by tools/audio/transcribe.py. 2026-11-15: near-miss
+# variants; near-hit-jävlar is the last word of träffade-jävlar-jävlar (cut at 1.62-2.62 s by ffmpeg atrim).
 for pair in "tut_0_welcome tut-0-välkommen" "tut_1_drive tut-1-kör" "tut_1_done tut-1-klar" \
     "tut_2_open tut-2-öppna" "tut_2_danger tut-2-fara" "tut_2_close tut-2-stäng" \
     "tut_3_binoculars tut-3-kikare" "tut_3_done tut-3-klar" "tut_4_spot tut-4-markera" "tut_4_done tut-4-klar" \
@@ -189,7 +190,8 @@ for pair in "tut_0_welcome tut-0-välkommen" "tut_1_drive tut-1-kör" "tut_1_don
     "tut_3_map tut-3-kartan" "tut_3_hatch_first tut-3-lucka-först" "tut_5_turret tut-5-torn" \
     "tut_5_long tut-5-långt" "tut_6_west tut-6-väster" "tut_6_bounce tut-6-studs" \
     "tut_9_map tut-9-kartan" "tut_9_one_left tut-9-en-kvar" \
-    "crew_crash_1 crash-lugn-nu-rallykalle" "crew_crash_2 crash-hur-kör-du" "crew_crash_3 crash-stevie-wonder" "crew_hit_rare_2 träffade-nu-är-jag-arg"; do
+    "crew_crash_1 crash-lugn-nu-rallykalle" "crew_crash_2 crash-hur-kör-du" "crew_crash_3 crash-stevie-wonder" "crew_hit_rare_2 träffade-nu-är-jag-arg" \
+    "crew_near_miss_2 near-hit-det-var-nära" "crew_near_miss_3 near-hit-de-har-oss-på-kornet" "crew_near_miss_4 near-hit-jävlar"; do
   set -- $pair
   trim "$S/ElevenLabs_$2.mp3" "$T/$1.wav"
   intercom "$1" "$T/$1.wav" -15

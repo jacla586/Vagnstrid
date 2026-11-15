@@ -24,6 +24,8 @@ var _crash_prev: Vector3 = Vector3.INF
 var _crash_speeds: Array = []   # [time, ground speed km/h], the last crash_window_s
 
 
+var _last_near: AudioStream   # the near-miss line said last (not repeated straight after)
+
 func _ready() -> void:
 	_player = AudioStreamPlayer.new()
 	_player.bus = GameSettings.VOICE_BUS
@@ -206,8 +208,18 @@ func _on_optics_dirtied(_amount: float) -> void:
 
 func _on_near_miss(_direction: Vector3) -> void:
 	var v: CrewVoiceData = _tank.data.crew_voice if _tank != null else null
-	if v != null:
-		_crew_call("near", v.near_miss, v)
+	if v == null or _time - float(_last.get("crew/near", -INF)) < v.near_miss_cooldown_s:
+		return
+	var lines: Array[AudioStream] = []
+	if v.near_miss != null:
+		lines.append(v.near_miss)
+	lines.append_array(v.near_miss_more)
+	if lines.size() > 1:
+		lines.erase(_last_near)   # never the same line twice in a row
+	if lines.is_empty():
+		return
+	_last_near = lines[randi() % lines.size()]
+	_crew_call("near", _last_near, v)
 
 
 func _on_module_changed(id: StringName, state: int) -> void:

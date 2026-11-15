@@ -373,7 +373,7 @@ shows on the minimap. This is what we test first.
   (faster-whisper, local) prints their text, so they can be named `ElevenLabs_<slug>.mp3` in `geodata/sound/`
   and added to `make_elevenlabs.sh`.
 - Crew shouts: `TankData.crew_voice` (`CrewVoiceData`) "Vi är träffade!" on `Tank.struck` (a mine: "Mina! Bandet utslaget!"),
-  "Närträff!" on `Tank.near_missed` (clients by `rpc_near_miss`), "Föraren/Skytten träffad!" on a
+  "Närträff!" on `Tank.near_missed` (clients by `rpc_near_miss`; varied with `near_miss_more`: "Det var nära!", "De har oss på kornet!", "Jävlar!" (cut from the hit_rare clip), never the same twice in a row, at most every `near_miss_cooldown_s` 12 s), "Föraren/Skytten träffad!" on a
   crew wound, rarely (`he_dirt_chance` 2 %) "Vilken jädra smäll!" when a burst dirties the optics, "Vagnchef träffad!" on `Tank.commander_wounded`, played by `SquadRadio`. A hard crash (ground speed falling `crash_drop_kmh` within `crash_window_s` from `crash_min_kmh`, read from the own tank's position, so clients too; not right after a hit or mine) gives, at `crash_chance` (0.35), a rare line ("Lugn nu, Rally-Kalle!", "Hur kör du egentligen?", Stevie Wonder; `CrewVoiceData` "Crash"; in the tutorial the instructor's "Hörru, Rally-Kalle..." instead, `TutorialData.crash`); `hit_rare_more` adds "Nej, nu är jag arg!" to the rare hit lines.
   MG/rifle results are `HitResult.bullet`: no hit text for the shooter.
 - The open hatch lid stands up behind the commander and shields him from the rear:

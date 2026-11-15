@@ -9,6 +9,10 @@ extends Resource
 
 @export var hit: AudioStream
 @export var near_miss: AudioStream
+## More lines for a near miss ("Det var nära!", "De har oss på kornet!", "Jävlar!"): one of these and
+## near_miss at random, never the one just said; and not more often than near_miss_cooldown_s.
+@export var near_miss_more: Array[AudioStream] = []
+@export var near_miss_cooldown_s: float = 12.0
 @export var driver_hit: AudioStream
 @export var gunner_hit: AudioStream
 @export var commander_hit: AudioStream

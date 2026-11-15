@@ -20,11 +20,15 @@
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_crash_2.ogg" id="r_crew_crash_2"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_crash_3.ogg" id="r_crew_crash_3"]
 [ext_resource type="AudioStream" path="res://assets/audio/radio/crew_hit_rare_2.ogg" id="r_crew_hit_rare_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_near_miss_2.ogg" id="r_crew_near_miss_2"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_near_miss_3.ogg" id="r_crew_near_miss_3"]
+[ext_resource type="AudioStream" path="res://assets/audio/radio/crew_near_miss_4.ogg" id="r_crew_near_miss_4"]
 
 [resource]
 script = ExtResource("1_crew")
 hit = ExtResource("2_hit")
 near_miss = ExtResource("3_near")
+near_miss_more = Array[AudioStream]([ExtResource("r_crew_near_miss_2"), ExtResource("r_crew_near_miss_3"), ExtResource("r_crew_near_miss_4")])
 driver_hit = ExtResource("4_driver")
 gunner_hit = ExtResource("5_gunner")
 commander_hit = ExtResource("6_commander")
