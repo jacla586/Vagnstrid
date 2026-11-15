@@ -20,7 +20,9 @@ Så här:
 4. Bildernas lägen har några meters fel, så en del punkter hamnar på himmel, mark eller bilar. De
    hamnar olika i olika bilder; fasaden är det alla är överens om: den färg som har flest prov inom
    KLUSTER_AVSTAND, från minst MIN_BILDER bilder och minst KLUSTER_ANDEL av proven.
-Bilderna (1024 px) cachas i <projekt>/data/mapillary/cache/. De följer aldrig med i spelet.
+Bilderna (1024 px) cachas i <projekt>/data/mapillary/cache/. De följer aldrig med i spelet. `--rensa` tar
+efteråt bort de bilder som inte bar någon husfärg (husfarger.json `bild_ids`), så att cachen bara håller det
+en ombyggnad behöver.
 Kontrollbild: forhandsbilder/husfarger_<projekt>.jpg (urklipp per hus och vald färg).
 """
 import argparse, colorsys, json, math, pickle, sys, time, urllib.request
@@ -268,9 +270,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('projekt')
     ap.add_argument('--max-bilder-per-hus', type=int, default=MAX_BILDER_PER_HUS)
-    a = ap.parse_args()
+    ap.add_argument('--rensa', action='store_true',
+                    help='ta bort cachade bilder som inte bar någon husfärg (bild_ids i husfarger.json)')
+    args = ap.parse_args()
     mly.token()
-    projekt = a.projekt
+    projekt = args.projekt
     ruta = mly.ruta_for(projekt)
     bilder = hamta_bilder(projekt, ruta)
     print(f'{len(bilder)} bilder med kamerageometri')
@@ -320,7 +324,7 @@ def main():
                 continue
             anv.add(t[1])
             valda.append(t)
-            if len(valda) >= a.max_bilder_per_hus:
+            if len(valda) >= args.max_bilder_per_hus:
                 break
         if valda:
             plan[hi] = valda
@@ -377,8 +381,10 @@ def main():
         farg, n_k, bilder_k = res
         rel = float(np.median([r_ for c, _, r_ in prov if np.linalg.norm(c - farg) < KLUSTER_AVSTAND]))
         fam, kanon = kanonisk(farg, rel)
+        bild_ids = sorted({str(b) for c, b, _ in prov if np.linalg.norm(c - farg) < KLUSTER_AVSTAND})
         resultat[hus[hi]['id']] = dict(farg='#%02x%02x%02x' % kanon, familj=fam, uppmatt='#%02x%02x%02x' % tuple(
-            int(round(v)) for v in farg), ljus=round(rel, 2), n=n_k, prov=len(prov), bilder=bilder_k)
+            int(round(v)) for v in farg), ljus=round(rel, 2), n=n_k, prov=len(prov), bilder=bilder_k,
+            bild_ids=bild_ids)
         if len(urklipp) < 80:   # kontrollbild: väggens mitt i upp till sex bilder
             sedda = []
             for ki, p in klipp:
@@ -395,6 +401,15 @@ def main():
                              ensure_ascii=False, indent=1))
     print(f'{len(resultat)} hus med fasadfärg -> {ut}')
     kontrollbild(projekt, resultat, urklipp)
+    if args.rensa:   # behåll bara bilderna som bar en färg: en ombyggnad läser dem ur cachen igen
+        behall = {i for r in resultat.values() for i in r.get('bild_ids', [])}
+        bort = [f for f in cache.glob('*.jpg') if f.stem not in behall]
+        storlek = sum(f.stat().st_size for f in bort)
+        for f in bort:
+            f.unlink()
+        kvar = list(cache.glob('*.jpg'))
+        print(f'cache: {len(bort)} bilder bort ({storlek / 1e6:.0f} MB), {len(kvar)} kvar '
+              f'({sum(f.stat().st_size for f in kvar) / 1e6:.0f} MB)')
 
 
 def kontrollbild(projekt, resultat, urklipp):

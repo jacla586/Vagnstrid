@@ -24,7 +24,8 @@
 		"strand": "sand",
 		"sjö": "sand",
 		"väg_asfalt": "gravel",
-		"väg_grus": "gravel"
+		"väg_grus": "gravel",
+		"hårdgjord": "gravel"
 	},
 	"_doc_rules": "blend_sigma_m: how soft the borders between classes are. rock_slope_deg: rock fades in between these slopes. albedo_color: multiplies a texture (above 1 brightens). road_shoulder_m: gravel this far beside roads (under the road meshes and their edges). tint_strength/tint_gain: the land cover colour over the textures (0 = none; the old import used 0.7 / 1.9).",
 	"blend_sigma_m": 2.5,

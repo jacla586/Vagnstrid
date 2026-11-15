@@ -26,7 +26,7 @@ K = {n: i for i, n in enumerate(KLASSER)}
 # marktäcke (step3 CLASSES) -> klass
 FRAN_MARKTACKE = {'hav': 'ingen', 'mark': 'kort gräs', 'skog': 'skogsbotten', 'åker': 'gröda', 'äng': 'högt gräs',
                   'tomt': 'gräsmatta', 'gård': 'kort gräs', 'våtmark': 'våtmark', 'berg': 'ingen',
-                  'buskmark': 'snår', 'strand': 'ingen', 'sjö': 'ingen', 'väg_asfalt': 'ingen', 'väg_grus': 'ingen'}
+                  'buskmark': 'snår', 'strand': 'ingen', 'sjö': 'ingen', 'väg_asfalt': 'ingen', 'väg_grus': 'ingen', 'hårdgjord': 'ingen'}
 # Jordbruksverkets grödkoder (huvudgröda): bete kort, vall/äng/skyddszon högt, annars gröda
 BETE = {52, 55, 56, 61}
 VASS_LAND_M = 4.0

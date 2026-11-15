@@ -35,10 +35,19 @@ TILL_WGS = Transformer.from_crs('EPSG:3006', 'EPSG:4326', always_xy=True)
 TILL_SWEREF = Transformer.from_crs('EPSG:4326', 'EPSG:3006', always_xy=True)
 
 
+# alternativ till MLY_TOKEN: projektrotens mapillary.txt (gitignorerad) eller en privat fil i hemkatalogen
+TOKEN_FILER = [Path(__file__).resolve().parents[2] / 'mapillary.txt',
+               Path.home() / '.config' / 'vagnstrid' / 'mapillary_token']
+
+
 def token():
     t = os.environ.get('MLY_TOKEN', '').strip()
+    for fil in TOKEN_FILER:
+        if not t and fil.exists():
+            t = fil.read_text().strip()
     if not t:
-        sys.exit("Ingen nyckel: export MLY_TOKEN='MLY|...' (Client Token från mapillary.com/dashboard/developers).")
+        sys.exit("Ingen nyckel: export MLY_TOKEN='MLY|...' eller lägg den i "
+                 + ' / '.join(str(f) for f in TOKEN_FILER) + " (Client Token från mapillary.com/dashboard/developers).")
     return t
 
 

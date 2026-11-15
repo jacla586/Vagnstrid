@@ -27,7 +27,8 @@
   "kontor": {"vaning_m": 3.6, "fonster": "band", "skorsten": false, "varianter": [
    {"id": "kontor_betong", "vagg": "betong", "farg": [196, 194, 188], "knutar": false, "vikt": 10, "tak": ["papp"]},
    {"id": "kontor_tegel", "vagg": "tegel", "farg": [150, 70, 52], "knutar": false, "vikt": 6, "tak": ["papp"]},
-   {"id": "kontor_glas", "vagg": "glas", "farg": [78, 96, 112], "knutar": false, "vikt": 6, "tak": ["papp"], "fonster": "glas"}
+   {"id": "kontor_glas", "vagg": "glas", "farg": [78, 96, 112], "knutar": false, "vikt": 6, "tak": ["papp"], "fonster": "glas"},
+   {"id": "kontor_plat_rod", "vagg": "plat", "farg": [107, 43, 43], "knutar": false, "vikt": 0, "tak": ["papp"]}
   ]},
   "butik": {"vaning_m": 4.0, "fonster": "band", "skorsten": false, "varianter": [
    {"id": "butik_plat", "vagg": "plat", "farg": [196, 200, 204], "knutar": false, "vikt": 6, "tak": ["papp"]},

@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant, lekplatser, valtbart, idrott, landmarken, overfarter, mapillary_objekt
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant, lekplatser, valtbart, idrott, landmarken, overfarter, mapillary_objekt, platsdetaljer, stenlaggning
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -152,6 +152,7 @@ BANA.forma(h, (H, W), T, OX, OY, RES)
 # Idrottsplatser (idrott.py): löparbanor plattas till, läktare tas ur husen (byggs längre ned)
 IDROTT = idrott.Idrott(feat, BOX)
 LANDMARKEN = landmarken.Landmarken(feat, BOX)   # landmarken.py: hus som byggs efter sina OSM-delar
+PLATS = platsdetaljer.Platsdetaljer(BOX)   # platsdetaljer.py: handplacerade föremål (platsdetaljer.json)
 IDROTT.forma(h, (H, W), T, RES)
 BANA.spara_mask(str(WORK / 'jarnvag_mask.npy'), (H, W), T)   # step4: inga träd nära spåret
 
@@ -166,7 +167,7 @@ np.save(str(WORK / 'h_final.npy'), h)
 CLASSES = [('hav', (58, 96, 128)), ('mark', (122, 140, 82)), ('skog', (62, 92, 50)), ('åker', (170, 152, 96)),
            ('äng', (132, 160, 80)), ('tomt', (110, 130, 78)), ('gård', (128, 118, 92)), ('våtmark', (96, 112, 80)),
            ('berg', (112, 114, 100)), ('buskmark', (88, 110, 60)), ('strand', (196, 184, 140)), ('sjö', (64, 104, 132)),
-           ('väg_asfalt', (70, 70, 72)), ('väg_grus', (150, 138, 116))]
+           ('väg_asfalt', (70, 70, 72)), ('väg_grus', (150, 138, 116)), ('hårdgjord', (150, 148, 142))]
 CIDX = {n: i for i, (n, _) in enumerate(CLASSES)}
 cmap = dict(forest='skog', farmland='åker', meadow='äng', residential='tomt', farmyard='gård', wetland='våtmark',
             rock='berg', scrub='buskmark', beach='strand')
@@ -202,6 +203,9 @@ BANA.marktacke(lc, CIDX['väg_grus'], (H, W), T)
 if IDROTT.planer():   # innerplanerna: gräsmatta (tomt), tartanen under banan: grus
     lc[rasterize([(p_, 1) for p_ in IDROTT.planer()], out_shape=(H, W), transform=T).astype(bool)] = CIDX['tomt']
     lc[rasterize([(p_, 1) for p_ in IDROTT.tartan()], out_shape=(H, W), transform=T).astype(bool)] = CIDX['väg_grus']
+# Stenläggning (stenlaggning.py): hårdgjorda ytor inom platsdetaljer.json:s områden -> marktäcke 'hårdgjord'
+STEN = stenlaggning.Stenlaggning(PLATS.conf.get('stenlaggning'), WORK, WORK.parent / 'data', NAMN)
+STEN.berakna(lc, CIDX, to_px, RES, [gm for gm, _ in feat['buildings']], water_polys, roads)
 # Markvegetation för spelet (markvegetation.py): klass per 2 m-cell
 import markvegetation
 MV = markvegetation.bygg(lc, CIDX, T, (H, W), WORK.parent / 'data' if WORK.name == 'work' and WORK.parent != ROOT else ROOT / 'data',
@@ -324,7 +328,8 @@ for k, r in enumerate(roads):
     # se till att normalerna pekar uppåt
     if mesh.face_normals[:, 1].mean() < 0:
         mesh.faces = mesh.faces[:, ::-1]
-    add_merged('Vagar', mesh, asfalt_mat(r) if r['surface'] == 'asfalt' else ROADMAT[r['surface']], uv)
+    if not STEN.overtackt(r):   # GC-vägar inne i stenläggningen (stenlaggning.py) ritas inte
+        add_merged('Vagar', mesh, asfalt_mat(r) if r['surface'] == 'asfalt' else ROADMAT[r['surface']], uv)
     cw = np.array([to_world(*p) for p in pts[::2]] + ([to_world(*pts[-1])] if (len(pts) - 1) % 2 else []))
     cz = np.r_[r['z'][::2], [r['z'][-1]] if (len(pts) - 1) % 2 else []]
     road_json.append(dict(name=r['name'], highway=r['tags']['highway'], ref=r['tags'].get('ref'), surface=r['surface'],
@@ -360,6 +365,24 @@ for _poly, _pts in _lek:
     for _p in _pts:
         c, r_ = to_px(*_p)
         _lek_mask[max(int(r_) - 2, 0):int(r_) + 3, max(int(c) - 2, 0):int(c) + 3] = True
+# Platsdetaljer (platsdetaljer.py): konst, lampor, Studenthuset ...; träd och buskar hålls borta via lekplatsmasken
+if STEN:
+    scene.graph.update(frame_to='Stenlaggning', frame_from=scene.graph.base_frame)
+    STEN.bygg(sample, h, to_world, add_merged, mat)
+if PLATS.lista:
+    for grupp in ('Byggnader_konst', 'Konst'):
+        scene.graph.update(frame_to=grupp, frame_from=scene.graph.base_frame)
+    _laser_tidig = None
+    if OBJ:
+        from laserhus import Objekthojd
+        _laser_tidig = Objekthojd(OBJ)
+    PLATS.bygg(sample, h, to_world, add_merged, mat, valt=VALT, laser=_laser_tidig)
+    for _E, _N in STEN.tradfritt():   # Blå havet: inga (gamla) laserträd på torget
+        PLATS.punkter.append((_E, _N, 0.6))
+    for _E, _N, _r in PLATS.punkter:
+        c, r_ = to_px(_E, _N)
+        _k = int(math.ceil(_r / RES))
+        _lek_mask[max(int(r_) - _k, 0):int(r_) + _k + 1, max(int(c) - _k, 0):int(c) + _k + 1] = True
 np.save(str(WORK / 'lekplatser_mask.npy'), _lek_mask)
 # Löparbanor och läktare (idrott.py)
 if IDROTT:
@@ -518,6 +541,7 @@ def bygg_alla_hus():
         if f_nyckel in fasader and not taggar.get('building:colour'):
             taggar = dict(taggar, **{'building:colour': fasader[f_nyckel]})
             n_fasad += 1
+        taggar = PLATS.justera_hus(poly, taggar)   # platsdetaljer.json hus_justera: fasadstil
         poly = poly.buffer(0)
         if poly.geom_type == 'MultiPolygon':
             poly = max(poly.geoms, key=lambda q: q.area)
@@ -590,8 +614,8 @@ for k, (gm, t) in enumerate(osm_b):
     hh = laser.heights_in(gm) if laser else None
     n_h += hh is not None
     bpolys.append(gm)
-    if LANDMARKEN.ar(t):
-        continue   # byggs av landmarken.py
+    if LANDMARKEN.ar(t) or PLATS.ar(t):
+        continue   # byggs av landmarken.py / platsdetaljer.py
     add_building(gm, t, 'Byggnader_OSM', hh)
 print('OSM-byggnader', len(osm_b), 'varav med laserhöjd', n_h)
 
@@ -600,7 +624,7 @@ if laser:
     scene.graph.update(frame_to='Byggnader_laser', frame_from=scene.graph.base_frame)
     excl = unary_union([b.buffer(1.0) for b in bpolys]
                        + [r['line'].buffer(r['width'] / 2 + 1.0) for r in roads if r['tags']['highway'] not in ('path', 'footway')]
-                       + water_polys + IDROTT.ytor())
+                       + water_polys + IDROTT.ytor() + PLATS.fotavtryck())   # platsdetaljer.py bygger egna hus där
     n_l = 0
     for rect, poly in laser.detect(exclude=excl):
         c_, r_ = to_px(rect.centroid.x, rect.centroid.y)

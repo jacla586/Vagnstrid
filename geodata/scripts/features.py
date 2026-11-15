@@ -64,8 +64,8 @@ def build(osm_path):
         if t.get('leisure') == 'track':
             out['idrottsbanor'].append((g, t, rid))   # idrott.py: löparbana med hål
             bana_medlem.update(m[1] for m in r['members'] if m[0] == 'way')
-        elif 'building' in t:
-            out['buildings'].append((g, t))
+        elif 'building' in t:   # multipolygon-hus (A-, B-huset ...): id 'r<relation>' för husfarger/landmärken
+            out['buildings'].append((g, dict(t, _osm_id=f'r{rid}')))
         elif cls == 'water':
             out['water'].append((g, t))
         elif cls:

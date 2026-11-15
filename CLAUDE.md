@@ -241,6 +241,7 @@ shows on the minimap. This is what we test first.
   roads): pipe ends in hollows at the road banks (geodata `trummor.py`, glb group `Trummor`).
 - Sports grounds (geodata `idrott.py`): OSM running tracks get a flat tartan oval with lane lines and a lawn infield (glb group `Idrott`, no collision); a long building beside one (or `building=grandstand`) becomes a roofed grandstand (`Byggnader_laktare`, collision). So far Isovalen on campus.
 - Landmarks (geodata `landmarken.py`, `geodata/landmarken.json` by OSM way id): built from their OSM building parts; one part can be a glass tower (taller, V-shaped, floor bands and mullions). Group `Byggnader_landmarken` (collision). So far Mjärdevi Center (campus, road_to_science).
+- Place details (geodata `platsdetaljer.py` + `stenlaggning.py`, data `geodata/platsdetaljer.json`, hand-placed from the user's photos and GPS points): the park opposite Campushallen (rusty H-beams, statues, allotment cottage ...), Corson's lamp groups (toppleable `Corsonlampa`), Studenthuset's red panel facade, its bike shelter, the district-heating tank, Kårallen's gangway and the Blå havet stage with painted waves, Campushallen's entrance and ramp, KEY/I-HUSET pylons, Ångströmhuset as a ring with a sloped roof; paved areas from the orienteering map (plates, parking asphalt with bay lines), land cover class `hårdgjord` (no grass). Glb groups `Byggnader_konst` (collision), `Konst`, `Stenlaggning` (none).
 - Roadside (geodata `vagkant.py`, glb group `Vagkant`, no collision; where Mapillary has street photos its detected street lights and road signs replace the rules, `mapillary_objekt.py`): reflector posts on rural roads
   from 70 km/h, street lamps every 32 m in built-up areas, guard rails on high banks, speed signs where
   NVDB's limit changes, give-way/stop signs and bus stop signs from OSM nodes, pedestrian-crossing
@@ -928,6 +929,7 @@ there and the break is over) and on the match's win/loss. Points
   cheats: reload, AP that pings, light wrecks, a pushed turret, hits that always land), advance (filler: seven
   T-34s and their squads cross the field towards Vallastaden, HE in the field);
   `record_all.sh` films every take.
+- Spot views of a geodata map by SWEREF coordinates (checking hand-placed details against photos): `godot --path . --disable-vsync --script res://tools/render_spots.gd -- <map> <out dir> "name:E,N,dy:E,N,dy:fov" ...` (needs a window; origin from `geodata/<map>/work/grid.json`). Orthophoto/laser crops with a grid: geodata `scripts/ortobild.py`.
 - Graphics before/after: `godot --path . --disable-vsync --script res://tools/render_views.gd --
   <map> <label> [weather,...]` renders the fixed views in `tools/render_views.json` (1920x1080,
   bots removed, HUD hidden) to `renders/views/<label>/` with frame/GPU ms, draw calls and

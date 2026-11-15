@@ -1,0 +1,706 @@
+{
+ "_anm": "Platsdetaljer (scripts/platsdetaljer.py och stenlaggning.py, step3): handplacerade föremål efter användarens foton (geodata/bilder uni/, 2026-11-15), ortofotot, OSM och användarens GPS-punkter. Lägen i SWEREF 99 TM. riktning_grad = vart föremålet vetter (kompassgrader, 0 = norr). Byggs i varje karta vars ruta täcker läget (campus, road_to_science, corson). osm_hus: OSM-hus som byggs här i stället. hus_justera: huset med OSM-id (osm_id, relationer 'r<id>') eller som innehåller punkten får taggarna. planer: OSM-id -> fotbollsplanens justeringar (planer.py). stenlaggning: områden där orienteringskartans hårdgjorda yta blir plattor/asfalt (stenlaggning.py).",
+ "objekt": [
+  {
+   "namn": "Rostiga balkar (A synthetic Blockade, Joel Danielsson)",
+   "typ": "balkrad",
+   "_anm": "11 stålbalkar i rad, 24,6 m isär (skuggorna i ortofotot: nr 0-5 och 7-9; 10-11 under träd). Nr 6 skulle stå 5 m ut i dammen och finns inte.",
+   "fran": [
+    533753.8,
+    6472743.2
+   ],
+   "till": [
+    533560.1,
+    6472932.2
+   ],
+   "antal": 12,
+   "utan": [
+    6
+   ],
+   "hojd_m": 7.0,
+   "bredd_m": 0.36
+  },
+  {
+   "namn": "Vit sten",
+   "typ": "vit_sten",
+   "_anm": "Vit fläck med skugga i ortofotot, 1 m från användarens punkt (533740.3, 6472775.6).",
+   "lage": [
+    533740.0,
+    6472774.7
+   ],
+   "riktning_grad": 105,
+   "hojd_m": 2.5
+  },
+  {
+   "namn": "Hukande flicka med platåskor",
+   "typ": "flicka",
+   "lage": [
+    533697.5,
+    6472838.7
+   ],
+   "riktning_grad": 255
+  },
+  {
+   "namn": "Konstig hund",
+   "typ": "hund",
+   "lage": [
+    533616.3,
+    6472835.9
+   ],
+   "riktning_grad": 170
+  },
+  {
+   "namn": "Kolonistuga (Gamla Valla koloniområde. Ett levande monument., Martin Karlsson)",
+   "typ": "kolonistuga",
+   "_anm": "Stugan byggs här i stället för som vanligt OSM-hus (osm_hus hoppas över i step3). Fotavtryck och staket ur OSM 39496944 / 39496945. Nocken går mot nordost (vindskivorna i ortofotot), flaggstången på västra sidan, grinden på nordöstra sidan (fotot).",
+   "nock_grad": 28,
+   "flaggstang": [
+    533740.5,
+    6472798.0
+   ],
+   "osm_hus": 39496944,
+   "hus": [
+    [
+     533741.14,
+     6472795.06
+    ],
+    [
+     533742.82,
+     6472798.11
+    ],
+    [
+     533746.3,
+     6472796.19
+    ],
+    [
+     533744.62,
+     6472793.14
+    ]
+   ],
+   "staket": [
+    [
+     533741.08,
+     6472805.9
+    ],
+    [
+     533733.66,
+     6472792.69
+    ],
+    [
+     533745.89,
+     6472785.83
+    ],
+    [
+     533753.3,
+     6472799.02
+    ]
+   ],
+   "grind_sida": 3
+  },
+  {
+   "namn": "Livboj",
+   "typ": "livboj",
+   "lage": [
+    533668.8,
+    6472844.3
+   ],
+   "riktning_grad": 64
+  },
+  {
+   "namn": "Bad förbjudet",
+   "typ": "skylt_badforbud",
+   "lage": [
+    533667.2,
+    6472840.8
+   ],
+   "riktning_grad": 64
+  },
+  {
+   "namn": "Lampgrupper längs Corson",
+   "typ": "corsonlampa",
+   "_anm": "Användarens klick i Google Maps (bilder uni/lampa+skylt-pos.png, inpassad mot ortofotot med korskorrelation, 0,81 m/px) och nr 17 ur GPS; finjusterade till gruppernas skuggor i ortofotot (nr 0 och 8 skymda). Vältbara (Valtbart: Corsonlampa).",
+   "lagen": [
+    [
+     533767.2,
+     6473695.0
+    ],
+    [
+     533767.1,
+     6473637.5
+    ],
+    [
+     533766.7,
+     6473579.3
+    ],
+    [
+     533767.4,
+     6473520.0
+    ],
+    [
+     533762.3,
+     6473493.0
+    ],
+    [
+     533763.3,
+     6473468.4
+    ],
+    [
+     533762.1,
+     6473445.5
+    ],
+    [
+     533768.3,
+     6473337.2
+    ],
+    [
+     533768.2,
+     6473296.3
+    ],
+    [
+     533770.9,
+     6473206.3
+    ],
+    [
+     533771.1,
+     6473108.1
+    ],
+    [
+     533773.0,
+     6473058.3
+    ],
+    [
+     533773.0,
+     6472988.4
+    ],
+    [
+     533772.5,
+     6472958.9
+    ],
+    [
+     533775.4,
+     6472900.1
+    ],
+    [
+     533774.3,
+     6472856.1
+    ],
+    [
+     533775.3,
+     6472794.0
+    ],
+    [
+     533779.4,
+     6472718.5
+    ]
+   ],
+   "riktning_grad": 0
+  },
+  {
+   "namn": "Sju bågar (D-skulpturen)",
+   "typ": "d_skulptur",
+   "lage": [
+    533483.1,
+    6472733.6
+   ],
+   "hojd_m": 2.5,
+   "bagar": 7,
+   "riktning_grad": 0
+  },
+  {
+   "namn": "Trädbänk",
+   "typ": "tradbank",
+   "lage": [
+    533630.6,
+    6472887.5
+   ]
+  },
+  {
+   "namn": "Fjärrvärmeackumulatorn (cisternen)",
+   "typ": "cistern",
+   "_anm": "OSM 1112565410 (building=construction, height 45); användaren uppskattade ~35 m. Diameter ur ortofotot.",
+   "osm_hus": [
+    1112565410
+   ],
+   "lage": [
+    533652.1,
+    6472309.0
+   ],
+   "radie_m": 17.0,
+   "hojd_m": 40.0,
+   "staver": 260
+  },
+  {
+   "namn": "Cykeltaket vid Studenthuset",
+   "typ": "cykeltak",
+   "osm_hus": [
+    642915915
+   ],
+   "fotavtryck": [
+    [
+     533785.6,
+     6473112.2
+    ],
+    [
+     533838.3,
+     6473112.8
+    ],
+    [
+     533838.3,
+     6473117.9
+    ],
+    [
+     533785.6,
+     6473117.4
+    ]
+   ],
+   "hojd_m": 2.6
+  },
+  {
+   "namn": "Studenthuset",
+   "typ": "studenthuset",
+   "_anm": "Röd ram ur ortofotot (OSM-ytan har hack); höjden ur lasern. Glasad bottenvåning, indragen mest mot Corson.",
+   "osm_hus": [
+    39439115
+   ],
+   "ram": [
+    533785.5,
+    6473047.0,
+    533834.8,
+    6473097.8
+   ],
+   "bas_h_m": 5.5,
+   "glas_in_m": [
+    2.0,
+    0.6,
+    0.6,
+    0.6
+   ]
+  },
+  {
+   "namn": "Vindbryggan till Kårallen",
+   "typ": "vindbrygga",
+   "_anm": "Remsan i ortofotot från Corson till entrén (OSM-nod 472405390).",
+   "fran": [
+    533770.5,
+    6473480.0
+   ],
+   "till": [
+    533779.0,
+    6473480.0
+   ],
+   "bredd_m": 3.4
+  },
+  {
+   "namn": "Scenen på Blå havet (flotten)",
+   "typ": "scen",
+   "ram": [
+    533747.5,
+    6473450.0,
+    533758.5,
+    6473463.9
+   ],
+   "hojd_m": 0.5
+  },
+  {
+   "namn": "Campushallens entré och ramp",
+   "typ": "campushallen",
+   "ramp": {
+    "fran": [
+     533802.0,
+     6472852.0
+    ],
+    "till": [
+     533802.0,
+     6472808.0
+    ],
+    "bredd_m": 2.2,
+    "hojd_m": 2.8,
+    "vagg_till_vanster": true
+   },
+   "entre": {
+    "fran": [
+     533792.5,
+     6472790.9
+    ],
+    "till": [
+     533803.0,
+     6472790.9
+    ],
+    "riktning_grad": 0,
+    "hojd_m": 4.2
+   }
+  },
+  {
+   "namn": "Skyltpelare KEY",
+   "typ": "skyltpelare",
+   "text": "KEY",
+   "lage": [
+    533783.0,
+    6472972.0
+   ],
+   "riktning_grad": 270
+  },
+  {
+   "namn": "Skyltpelare I-HUSET",
+   "typ": "skyltpelare",
+   "text": "I-HUSET",
+   "lage": [
+    533765.5,
+    6472950.0
+   ],
+   "riktning_grad": 90
+  },
+  {
+   "namn": "Pressbyrån",
+   "typ": "fasadskylt",
+   "stil": "pressbyran",
+   "lage": [
+    533785.4,
+    6472995.0
+   ],
+   "riktning_grad": 270,
+   "bredd_m": 2.6,
+   "hojd_m": 0.55,
+   "over_mark_m": 3.1
+  },
+  {
+   "namn": "Ångströmhuset",
+   "typ": "ringhus",
+   "_anm": "Ring ur ortofotot och lasern (mitt, radier); takplanet anpassat till laserhöjderna: 9,3 grader, stiger mot 63 grader (användaren uppskattade ~12). OSM har huset som multipolygon (läses inte), så spelet hade laserhus här.",
+   "lage": [
+    533963.8,
+    6472960.3
+   ],
+   "r_ute_m": 12.8,
+   "r_inne_m": 4.6,
+   "tak_mitt_m": 5.5,
+   "lutning_grad": 9.3,
+   "stiger_mot_grad": 63
+  },
+  {
+   "namn": "Kårallen",
+   "typ": "friform",
+   "_anm": "Kontur ur OSM 39439589, taket ur laserns objekthöjd. Fyra våningar: under vindbryggan och i dess nivå ljusgul/gräddvit puts, två över i liggande ljust blågrå panel; plåttak; 'kommandobryggan' = takpartier högre än topp_min_m som egen volym med glas runt om (användarens beskrivning, 2026-11-15).",
+   "osm_hus": [
+    39439589
+   ],
+   "omkrets": [
+    [
+     533806.6,
+     6473446.4
+    ],
+    [
+     533799.4,
+     6473453.6
+    ],
+    [
+     533799.3,
+     6473460.4
+    ],
+    [
+     533796.7,
+     6473460.4
+    ],
+    [
+     533786.5,
+     6473470.4
+    ],
+    [
+     533786.5,
+     6473473.0
+    ],
+    [
+     533779.2,
+     6473472.9
+    ],
+    [
+     533777.8,
+     6473477.1
+    ],
+    [
+     533777.8,
+     6473478.2
+    ],
+    [
+     533779.1,
+     6473478.3
+    ],
+    [
+     533779.1,
+     6473480.0
+    ],
+    [
+     533779.1,
+     6473481.6
+    ],
+    [
+     533777.8,
+     6473481.6
+    ],
+    [
+     533777.5,
+     6473501.6
+    ],
+    [
+     533779.0,
+     6473506.1
+    ],
+    [
+     533786.7,
+     6473506.1
+    ],
+    [
+     533786.7,
+     6473509.4
+    ],
+    [
+     533785.2,
+     6473510.8
+    ],
+    [
+     533785.2,
+     6473515.7
+    ],
+    [
+     533797.0,
+     6473527.8
+    ],
+    [
+     533796.1,
+     6473528.6
+    ],
+    [
+     533798.5,
+     6473531.3
+    ],
+    [
+     533799.6,
+     6473531.3
+    ],
+    [
+     533805.2,
+     6473531.3
+    ],
+    [
+     533805.2,
+     6473532.5
+    ],
+    [
+     533822.2,
+     6473532.6
+    ],
+    [
+     533822.3,
+     6473519.4
+    ],
+    [
+     533819.5,
+     6473519.3
+    ],
+    [
+     533819.5,
+     6473510.4
+    ],
+    [
+     533807.6,
+     6473510.2
+    ],
+    [
+     533805.2,
+     6473507.6
+    ],
+    [
+     533805.3,
+     6473494.6
+    ],
+    [
+     533807.5,
+     6473492.4
+    ],
+    [
+     533819.5,
+     6473492.5
+    ],
+    [
+     533819.5,
+     6473501.2
+    ],
+    [
+     533823.2,
+     6473501.2
+    ],
+    [
+     533823.2,
+     6473499.7
+    ],
+    [
+     533828.8,
+     6473499.7
+    ],
+    [
+     533828.7,
+     6473501.2
+    ],
+    [
+     533831.7,
+     6473501.3
+    ],
+    [
+     533832.0,
+     6473463.6
+    ],
+    [
+     533823.3,
+     6473463.6
+    ],
+    [
+     533823.5,
+     6473456.2
+    ],
+    [
+     533824.4,
+     6473456.2
+    ],
+    [
+     533828.8,
+     6473451.6
+    ],
+    [
+     533828.2,
+     6473450.9
+    ],
+    [
+     533828.6,
+     6473450.5
+    ],
+    [
+     533820.6,
+     6473442.4
+    ],
+    [
+     533816.3,
+     6473446.5
+    ],
+    [
+     533806.6,
+     6473446.4
+    ]
+   ],
+   "buffert_m": 2.5,
+   "forenkla_m": 0.8,
+   "nedre": "puts",
+   "ovre": "panel",
+   "vaning_m": 3.3,
+   "referens": [
+    533770.5,
+    6473480.0
+   ],
+   "topp_min_m": 9.6,
+   "huvudtak_max_m": 9.0,
+   "topp_min_yta_m2": 100,
+   "topp_forenkla_m": 1.2
+  }
+ ],
+ "hus_justera": [
+  {
+   "namn": "Key-huset",
+   "punkt": [
+    533790.0,
+    6472950.0
+   ],
+   "taggar": {
+    "building": "apartments",
+    "building:material": "brick",
+    "building:colour": "#8f4230"
+   }
+  },
+  {
+   "namn": "I-huset (laserhus)",
+   "punkt": [
+    533758.0,
+    6472910.0
+   ],
+   "taggar": {
+    "building": "apartments",
+    "building:material": "brick",
+    "building:colour": "#8a3f2e"
+   }
+  },
+  {
+   "namn": "A-huset",
+   "osm_id": "r1750706",
+   "_anm": "Mapillary (corson/data/mapillary/a_huset): mörkt vinröd liggande profilerad plåt, fönsterband, betongsockel.",
+   "taggar": {
+    "building:material": "metal",
+    "building:colour": "#6b2b2b"
+   }
+  },
+  {
+   "namn": "B-huset",
+   "osm_id": "r1748510",
+   "_anm": "Mapillary (b_huset): som A-huset.",
+   "taggar": {
+    "building:material": "metal",
+    "building:colour": "#6b2b2b"
+   }
+  },
+  {
+   "namn": "C-huset",
+   "osm_id": "r1897886",
+   "_anm": "Mapillary (c_huset): ljusgrå betong, rödbrun takkant.",
+   "taggar": {
+    "building:material": "concrete",
+    "building:colour": "#b9b7b1"
+   }
+  },
+  {
+   "namn": "D-huset",
+   "osm_id": "r392687",
+   "_anm": "Mapillary (d_huset): rött tegel med vita fönster, glasade trapphus.",
+   "taggar": {
+    "building": "apartments",
+    "building:material": "brick",
+    "building:colour": "#8f4230"
+   }
+  }
+ ],
+ "planer": {
+  "39439121": {
+   "utan_linjer": true,
+   "sma_mal": true
+  }
+ },
+ "stenlaggning": {
+  "_anm": "Rutor [E0, N0, E1, N1] (Campus Valla). utom: ingen vanlig stenläggning (Blå havet har sin egen).",
+  "omraden": [
+   [
+    533540,
+    6472650,
+    534010,
+    6473600
+   ]
+  ],
+  "utom": [
+   [
+    533735,
+    6473436,
+    533764,
+    6473499
+   ]
+  ],
+  "blahavet": {
+   "ruta": [
+    533735,
+    6473436,
+    533764,
+    6473499
+   ],
+   "scen": [
+    533747.5,
+    6473450.0,
+    533758.5,
+    6473463.9
+   ]
+  }
+ }
+}

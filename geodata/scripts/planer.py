@@ -14,7 +14,9 @@ och banlinor) i bassänger minst 40 m långa, ett betongdäck BAD_DACK_M runt de
 hela badet. Marken under bassängerna sänks under botten, däcket plattas.
 Allt i glb-gruppen `Idrott` (ingen kollision; vagnarna kör på marken), utom vältbara mål, nät och master.
 """
+import json
 import math
+from pathlib import Path
 
 import numpy as np
 import rasterio
@@ -39,6 +41,17 @@ STANGSEL_UT_M = 10.0
 FOTBOLL_MIN_M2 = 400
 TRAD_MAX_ANDEL = 0.2          # mer träd än så (laser) inom en plans OSM-yta: fel läge i OSM, ingen plan
 FOTBOLL_MAX_M = (105.0, 68.0)   # fullt mått (FIFA); större OSM-ytor krymps runt mitten
+
+
+def _justera():
+    fil = Path(__file__).resolve().parent.parent / 'platsdetaljer.json'
+    try:
+        return json.loads(fil.read_text()).get('planer', {}) if fil.exists() else {}
+    except ValueError:
+        return {}
+
+
+JUSTERA = _justera()   # OSM-id -> {'utan_linjer': bool, 'sma_mal': bool}
 
 
 def _rect(poly):
@@ -378,6 +391,7 @@ class Planer:
 
     def _fotboll(self, f, niva, to_world, add_merged, m, valt):
         rekt = f['rekt']
+        just = JUSTERA.get(str(f.get('id')), {})   # platsdetaljer.json "planer": utan linjer, små mål
         L = self._lokal(rekt)
         hl, hb = rekt[3], rekt[4]
         yta = f.get('yta', 'gras')
@@ -393,10 +407,11 @@ class Planer:
         yl = y + 0.015
         a, b = hl - SIDLINJE_IN_M, hb - SIDLINJE_IN_M
         sk = min(1.0, (2 * b) / 68.0)   # mindre planer: skalade områden
-        for p, q in (((-a, -b), (a, -b)), ((a, -b), (a, b)), ((a, b), (-a, b)), ((-a, b), (-a, -b)), ((0, -b), (0, b))):
+        for p, q in [] if just.get('utan_linjer') else (((-a, -b), (a, -b)), ((a, -b), (a, b)), ((a, b), (-a, b)), ((-a, b), (-a, -b)), ((0, -b), (0, b))):
             self._linje(L, p, q, LINJE_B, yl, to_world, add_merged, m['linje'])
-        self._bage(L, 0, 0, 9.15 * sk, 0, 2 * math.pi, yl, to_world, add_merged, m['linje'], 36)
-        for s in (1, -1):
+        if not just.get('utan_linjer'):
+            self._bage(L, 0, 0, 9.15 * sk, 0, 2 * math.pi, yl, to_world, add_merged, m['linje'], 36)
+        for s in () if just.get('utan_linjer') else (1, -1):
             ex = s * a
             for djup, bredd in ((16.5 * sk, 40.32 * sk), (5.5 * sk, 18.32 * sk)):
                 bredd = min(bredd, 2 * b - 2)
@@ -420,7 +435,7 @@ class Planer:
             inat = -rekt[1] * s
             x, z = to_world(*q)
             w = np.array(to_world(q[0] + inat[0], q[1] + inat[1])) - np.array([x, z])
-            valt.placera('Fotbollsmal', [x, niva, z], w)
+            valt.placera('Fotbollsmal_liten' if just.get('sma_mal') else 'Fotbollsmal', [x, niva, z], w)
         if konst or f['t'].get('lit') == 'yes':
             for su in (1, -1):
                 for sv in (1, -1):
@@ -543,6 +558,15 @@ class Planer:
                        _plan([(0, 2.44, -3.72), (-1.8, 0.9, -3.72), (-1.8, 0, -3.72), (0, 0, -3.72)]),
                        _plan([(0, 2.44, 3.72), (-1.8, 0.9, 3.72), (-1.8, 0, 3.72), (0, 0, 3.72)])])
             valt.mall('Fotbollsmal', [(ram, m['mal']), (bak, m['stolpe']), (nat, m['nat'])])
+        if not valt.har_mall('Fotbollsmal_liten'):   # 3 x 2 m (spontanplaner), x mot planen
+            ram = cat([lada(0, z, 0.04, 0.04, 0, 2.0) for z in (-1.5, 1.5)] + [lada(0, 0, 0.04, 1.54, 1.96, 2.04)])
+            bak = cat([lada(-1.0, z, 0.025, 0.025, 0, 0.5) for z in (-1.5, 1.5)] + [lada(-1.0, 0, 0.025, 1.52, 0, 0.05)]
+                      + [lada(-0.5, z, 0.5, 0.02, 1.96, 2.0) for z in (-1.5, 1.5)])
+            nat = cat([_plan([(0, 2.0, -1.5), (0, 2.0, 1.5), (-1.0, 0.5, 1.5), (-1.0, 0.5, -1.5)]),
+                       _plan([(-1.0, 0.5, -1.5), (-1.0, 0.5, 1.5), (-1.0, 0, 1.5), (-1.0, 0, -1.5)]),
+                       _plan([(0, 2.0, -1.5), (-1.0, 0.5, -1.5), (-1.0, 0, -1.5), (0, 0, -1.5)]),
+                       _plan([(0, 2.0, 1.5), (-1.0, 0.5, 1.5), (-1.0, 0, 1.5), (0, 0, 1.5)])])
+            valt.mall('Fotbollsmal_liten', [(ram, m['mal']), (bak, m['stolpe']), (nat, m['nat'])])
         if not valt.har_mall('Belysningsmast'):   # x mot planen: lamporna lutar ditåt
             valt.mall('Belysningsmast', [(lada(0, 0, 0.18, 0.18, -0.5, 18.0), m['mast']),
                                          (lada(0.25, 0, 0.12, 1.4, 17.2, 18.4), m['stolpe']),
