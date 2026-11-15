@@ -1351,5 +1351,35 @@
 			"look_height_m": 0,
 			"fov": 60
 		}
+	],
+	"corson": [
+		{
+			"name": "k_start_malmslattsvagen",
+			"at": [
+				1490,
+				470
+			],
+			"height_m": 30,
+			"look_at": [
+				1150,
+				580
+			],
+			"look_height_m": 0,
+			"fov": 60
+		},
+		{
+			"name": "k_vallarondellen",
+			"at": [
+				1060,
+				520
+			],
+			"height_m": 45,
+			"look_at": [
+				906,
+				643
+			],
+			"look_height_m": 0,
+			"fov": 60
+		}
 	]
 }

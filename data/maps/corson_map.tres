@@ -6,4 +6,4 @@
 [resource]
 script = ExtResource("1_script")
 texture = ExtResource("2_texture")
-world_rect = Rect2(0.0, 0.0, 1250.0, 2740.0)
+world_rect = Rect2(0.0, 0.0, 1710.0, 2740.0)
