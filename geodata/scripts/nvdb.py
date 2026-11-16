@@ -240,6 +240,10 @@ def berika(roads, M, osm_bredd):
 INTE_GRANNE = GC + ('service', 'track')
 PARALLELL_DEG = 25.0
 MIN_HW = 1.6
+MITTREMSA_MIN_M = 1.0       # dubbla körbanor flyttas isär till minst så här mycket mellan kanterna (målas)
+SKIFT_MAX_M = 3.0           # högst så här långt per körbana
+SKIFT_AVTRAPPNING_M = 15.0  # förflyttningen trappas av mot ändar där körbanorna delar sig / ansluter
+SKIFT_JAMNA_M = 10.0        # utjämning längs körbanan (gauss, sigma i m)
 
 
 def harmonisera(roads):
@@ -292,6 +296,7 @@ def harmonisera(roads):
     tree = shapely.STRtree([roads[k]['line'] for k in grannar])
     max_hw = max((float(roads[k]['hw'].max()) for k in grannar), default=0.0)
     n_kap = 0
+    skift = {k: np.zeros(len(roads[k]['hw'])) for k in bil}   # dubbla körbanor: förflyttning åt vänster (m)
     for k in bil:
         r = roads[k]
         L = r['line']
@@ -322,13 +327,121 @@ def harmonisera(roads):
                     continue   # korsande väg: inte en grannkörbana
                 sida = 0 if np.dot(q - pts[i], nrm[i]) > 0 else 1
                 r['granne'][i, sida] = True
+                if _korbanepar(r, roads[j]):
+                    # dubbla körbanor: isär (full bredd + målad mittremsa) i stället för smalare
+                    brist = hw[i] + hj + MITTREMSA_MIN_M - d
+                    if brist > 0:
+                        v_ = -min(brist / 2, SKIFT_MAX_M) * (1 if sida == 0 else -1)
+                        if abs(v_) > abs(skift[k][i]):
+                            skift[k][i] = v_
+                    continue
                 ny = max(min(hw[i], d / 2), MIN_HW)
                 if ny < hw[i] - 0.05:
                     hw[i] = ny
                     n_kap += 1
         if (hw < r['hw']).any():
             r['hw'] = np.minimum(r['hw'], _lopande_median(hw, 9))
-    print(f'vägar: {n_kedjor} gator med en bredd, {n_kap} punkter kapade mot grannkörbanor')
+    n_skift = _flytta_isar(roads, bil, skift)
+    print(f'vägar: {n_kedjor} gator med en bredd, {n_kap} punkter kapade mot grannkörbanor, '
+          f'{n_skift} körbanor flyttade isär')
+
+
+def _korbanepar(a, b):
+    """Två enkelriktade körbanor av samma gata (OSM ritar dem ofta för tätt)."""
+    na = a['tags'].get('name') or a['tags'].get('ref')
+    return bool(na) and _enkel(a) and _enkel(b) and na == (b['tags'].get('name') or b['tags'].get('ref'))
+
+
+def _flytta_isar(roads, bil, skift):
+    """Flyttar dubbla körbanor i sidled enligt skift: längs hela körbanan (OSM-bitarna i följd), utjämnat
+    (SKIFT_JAMNA_M) och avtrappat mot kedjans ändar (där körbanorna delar sig ur en dubbelriktad väg,
+    korsningar). Per-punkt-värdena samplas om till den nya längden."""
+    from scipy.ndimage import gaussian_filter1d
+    andar = [(k, e, np.array(roads[k]['line'].coords[e])) for k in bil for e in (0, -1)]
+    P = np.array([p for _, _, p in andar]) if andar else np.zeros((0, 2))
+
+    def nasta(k):
+        """Nästa bit av samma körbana (dess start vid k:s slut), om det är entydigt."""
+        p = np.array(roads[k]['line'].coords[-1])
+        vid = [andar[i] for i in np.where(np.linalg.norm(P - p, axis=1) < 1.0)[0] if andar[i][0] != k]
+        if len(vid) != 1 or vid[0][1] != 0 or not _korbanepar(roads[k], roads[vid[0][0]]):
+            return None
+        return vid[0][0]
+    efter = {k: nasta(k) for k in skift}
+    fore = {}
+    for k, j in efter.items():
+        if j is not None:
+            fore[j] = None if j in fore else k   # två föregångare: ingen kedja
+    kedjor, sedd = [], set()
+    for k in skift:
+        if k in sedd or (fore.get(k) is not None and fore[k] not in sedd and fore[k] in skift):
+            continue
+        kedja = []
+        while k is not None and k not in sedd and k in skift:
+            kedja.append(k)
+            sedd.add(k)
+            k = efter.get(k)
+        kedjor.append(kedja)
+    for k in skift:   # ringar och rester
+        if k not in sedd:
+            kedjor.append([k])
+            sedd.add(k)
+    n_ = 0
+    for kedja in kedjor:
+        if not any(np.any(np.abs(skift[k]) > 0.05) for k in kedja):
+            continue
+        # sammanhängande position längs kedjan
+        pos, val, bitar, s0 = [], [], [], 0.0
+        for k in kedja:
+            Lk = roads[k]['line']
+            ss = np.linspace(0, Lk.length, len(skift[k]))
+            pos.append(s0 + ss)
+            val.append(skift[k])
+            bitar.append((k, s0, ss))
+            s0 += Lk.length
+        pos, val = np.concatenate(pos), np.concatenate(val)
+        jamn = np.arange(0, s0 + 2.0, 2.0)
+        v = np.interp(jamn, pos, val)
+        v = gaussian_filter1d(v, SKIFT_JAMNA_M / 2.0, mode='nearest')
+        f = np.clip(np.minimum(jamn, s0 - jamn) / SKIFT_AVTRAPPNING_M, 0, 1)
+        v = v * (f * f * (3 - 2 * f))
+        for k, b0, ss in bitar:
+            Lk = roads[k]['line']
+            sk = np.interp(b0 + ss, jamn, v)
+            if not np.any(np.abs(sk) > 0.02):
+                continue
+            pts = np.array([Lk.interpolate(d).coords[0] for d in ss])
+            dv = np.gradient(pts, axis=0)
+            dv /= np.maximum(np.linalg.norm(dv, axis=1, keepdims=True), 1e-9)
+            nrm = np.c_[-dv[:, 1], dv[:, 0]]
+            ny = shapely.LineString(pts + nrm * sk[:, None])
+            if ny.is_valid and ny.length > 0.5 * Lk.length:
+                roads[k]['line'] = ny
+                n_ += 1
+    # skarvarna inom kedjorna: exakt samma punkt (normalerna skiljer lite i knäckar)
+    for k, j in efter.items():
+        if j is None:
+            continue
+        ck, cj = list(roads[k]['line'].coords), list(roads[j]['line'].coords)
+        m = tuple((np.array(ck[-1]) + np.array(cj[0])) / 2)
+        ck[-1], cj[0] = m, m
+        roads[k]['line'], roads[j]['line'] = shapely.LineString(ck), shapely.LineString(cj)
+    # per-punkt-värdena (var ~2 m som i step3) följer den nya längden
+    for k in bil:
+        r = roads[k]
+        n_gl = len(r['hw'])
+        n_ny = max(2, int(r['line'].length / 2) + 1)
+        if n_ny == n_gl:
+            continue
+        f_gl, f_ny = np.linspace(0, 1, n_gl), np.linspace(0, 1, n_ny)
+        for nyckel_, v_ in list(r.items()):
+            if not isinstance(v_, np.ndarray) or v_.ndim == 0 or v_.shape[0] != n_gl:
+                continue
+            if v_.dtype.kind == 'f' and v_.ndim == 1:
+                r[nyckel_] = np.interp(f_ny, f_gl, v_)
+            else:   # bool, heltal, (n, 2): närmaste
+                r[nyckel_] = v_[np.clip(np.rint(f_ny * (n_gl - 1)).astype(int), 0, n_gl - 1)]
+    return n_
 
 
 OVERGANG_M = 30.0

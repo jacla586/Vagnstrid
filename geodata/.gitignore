@@ -24,3 +24,6 @@ __pycache__/
 # Orienteringskartor i original (klubbarnas, bara privat bruk)
 /orientering*.png
 /*/out_fore/
+
+# analysskriptens utdata (geodata/analys/*.py)
+analys/ut/

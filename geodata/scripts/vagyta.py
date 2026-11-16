@@ -465,6 +465,10 @@ class Vagyta:
                  if self.roads[k]['tags'].get('name') not in namn and self.poly[k].intersects(u_.buffer(SPARR_KORSNING_M))]
         if andra:
             u_ = u_.difference(unary_union(andra))
+        # bara mellanrummet: fyllningen går mittlinje till mittlinje, körbanorna själva målas inte
+        korbanor = [self.poly[k] for k in self.bil_ytor if self.poly[k].intersects(u_)]
+        if korbanor:
+            u_ = u_.difference(unary_union(korbanor))
         for p in getattr(u_, 'geoms', [u_]):
             if p.geom_type != 'Polygon' or p.area < 2.0:
                 continue
