@@ -408,6 +408,7 @@ if PLATS.lista:
         c, r_ = to_px(_E, _N)
         _k = int(math.ceil(_r / RES))
         _lek_mask[max(int(r_) - _k, 0):int(r_) + _k + 1, max(int(c) - _k, 0):int(c) + _k + 1] = True
+_lek_mask |= STEN.asfalt_mask((H, W), T)   # inga träd på parkeringarnas asfalt (step4)
 np.save(str(WORK / 'lekplatser_mask.npy'), _lek_mask)
 # Löparbanor och läktare (idrott.py)
 if IDROTT:

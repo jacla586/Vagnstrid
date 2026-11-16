@@ -35,6 +35,7 @@ GRONA = dict(landuse=('grass', 'meadow', 'flowerbed', 'village_green', 'forest',
 PLATS_B, PLATS_D, GATA_B = 2.5, 5.0, 6.0   # P-platser: bredd, djup, körgata
 LINJE_B = 0.12
 ASFALT_LYFT_M = LYFT_M + 0.02   # parkeringarnas asfalt ligger över plattorna i kanten
+REMSA_MAX_M = 7.0   # planteringsremsor på parkeringar: högst så breda (bredare fläckar är flera kronor)
 KRONA_O_M, KRONA_NDVI = 1.5, 0.08   # trädöar på parkeringar: gröna kronor i fotot, krympta med
 
 
@@ -117,8 +118,17 @@ class Stenlaggning:
         from shapely.geometry import shape
         from shapely.ops import unary_union
         bil = [r['line'].buffer(r['width'] / 2) for r in roads if not self._under_sten(r)]
+        self.gangar = {}   # id(OSM-ytan) -> [(körgångens linje inom ytan, bredd)]
+        tj = [r for r in roads if r['tags']['highway'] == 'service']
         ut = []
         for g in self.parkeringar:
+            gg = []
+            for r in tj:
+                if r['line'].intersects(g):
+                    L = r['line'].intersection(g.buffer(2.0))
+                    gg += [(x, r['width']) for x in getattr(L, 'geoms', [L]) if x.geom_type == 'LineString']
+            self.gangar[id(g)] = gg
+            u = self._riktning(gg)
             E0, N0, E1, N1 = g.bounds
             E0, N0, E1, N1 = math.floor(E0) - 2, math.floor(N0) - 2, math.ceil(E1) + 2, math.ceil(N1) + 2
             nE, nN = int(E1 - E0), int(N1 - N0)
@@ -126,8 +136,10 @@ class Stenlaggning:
             oar = self._tradoar(ndvi)
             T1 = rasterio.transform.from_origin(E0, N1, CELL_M, CELL_M)
             # öarna rundade: pixeltrapporna bort (förenkla 1 m, sedan rundade hörn)
-            hinder = [shape(geo).simplify(1.0).buffer(-1.0).buffer(1.6).buffer(-0.6)
-                      for geo, _ in shapes(oar.astype(np.uint8), mask=oar, transform=T1)]
+            hinder = [self._o_form(shape(geo), u) for geo, _ in shapes(oar.astype(np.uint8), mask=oar, transform=T1)]
+            if gg:   # kronor över en körgång gör ingen ö på den
+                korbana = unary_union([L.buffer(b / 2) for L, b in gg])
+                hinder = [x.difference(korbana) for x in hinder]
             hinder = [x for x in hinder if not x.is_empty]
             hinder += [b.buffer(0.3) for b in byggnader if b.intersects(g)]
             hinder += [x for x in vatten + self.grona + self.grus + self.utom + bil if x.intersects(g)]
@@ -136,6 +148,47 @@ class Stenlaggning:
                                if p.geom_type == 'Polygon' and p.area >= 8.0])
             ut.append((g, yta))
         return ut
+
+    @staticmethod
+    def _riktning(gangar):
+        """Körgångarnas huvudriktning (enhetsvektor, längdviktad, mod 180°) eller None."""
+        v = np.zeros(2)
+        for L, _ in gangar:
+            c = np.array(L.coords)
+            d = np.diff(c, axis=0)
+            vin = np.arctan2(d[:, 1], d[:, 0]) * 2.0   # dubblad vinkel: riktning utan tecken
+            ln = np.hypot(d[:, 0], d[:, 1])
+            v += [(ln * np.cos(vin)).sum(), (ln * np.sin(vin)).sum()]
+        if np.hypot(*v) < 10.0:
+            return None
+        a = math.atan2(v[1], v[0]) / 2.0
+        return np.array([math.cos(a), math.sin(a)])
+
+    @staticmethod
+    def _o_form(p, u):
+        """En trädö ur fotot. Avlång i radernas riktning (u, minst dubbelt så lång som bred): en rak
+        planteringsremsa, bredden mellan 15:e och 85:e percentilen av öns yta tvärs raderna (kronornas
+        bulor bort). Annars rundad. Pixeltrapporna bort."""
+        from shapely import affinity
+        from shapely.geometry import Point
+        p = p.simplify(1.0)
+        if u is not None and p.area > 0:
+            a = math.degrees(math.atan2(u[1], u[0]))
+            c = p.centroid
+            q = affinity.rotate(p, -a, origin=c)
+            x0, y0, x1, y1 = q.bounds
+            if x1 - x0 >= 2.0 * (y1 - y0) or x1 - x0 >= 12.0:
+                xs, ys = np.meshgrid(np.arange(x0 + 0.25, x1, 0.5), np.arange(y0 + 0.25, y1, 0.5))
+                import shapely
+                inne = shapely.contains_xy(q, xs, ys)
+                if inne.sum() > 8:
+                    yv, xv = ys[inne], xs[inne]
+                    lo, hi = np.percentile(yv, [15, 85])
+                    rekt = sbox(np.percentile(xv, 2), lo - 0.25, np.percentile(xv, 98), hi + 0.25)
+                    if (1.5 <= hi - lo <= REMSA_MAX_M and rekt.bounds[2] - rekt.bounds[0] >= 2.0 * (hi - lo)
+                            and q.intersection(rekt).area >= 0.7 * rekt.area):
+                        return affinity.rotate(rekt, a, origin=c)
+        return p.buffer(-1.0).buffer(1.6).buffer(-0.6)
 
     def _las_osm(self):
         """Ur OSM inom områdena (SWEREF): parkeringar på marken (asfalt), gröna ytor (gräs, rabatter, häckar,
@@ -214,6 +267,16 @@ class Stenlaggning:
 
     def berakna(self, lc, CIDX, to_px, RES, byggnader, vatten, roads):
         if not self:
+            return
+        H, W = lc.shape
+
+        def inne(E0, N0, E1, N1):   # rutans mitt ligger på kartan
+            c, r = to_px((E0 + E1) / 2, (N0 + N1) / 2)
+            return 0 <= c < W and 0 <= r < H
+        self.omraden = [o for o in self.omraden if inne(*o.bounds)]
+        if self.hav and not inne(*self.hav['ruta']):
+            self.hav = None
+        if not self.omraden:
             return
         ok = np.load(str(self.okarta))
         self.parkeringar, self.grona, self.grus = self._las_osm()
@@ -331,6 +394,14 @@ class Stenlaggning:
 
     def overtackt(self, r):
         return id(r) in self.overtackta
+
+    def asfalt_mask(self, shape, T, in_m=1.0):
+        """Celler (mitten) mer än in_m inne på parkeringarnas asfalt: där står inga träd (de står på öarna)."""
+        ytor = [y.buffer(-in_m) for _, y in self.p_ytor]
+        ytor = [y for y in ytor if not y.is_empty]
+        if not ytor:
+            return np.zeros(shape, bool)
+        return rasterize([(y, 1) for y in ytor], out_shape=shape, transform=T).astype(bool)
 
     def tradfritt(self):
         """(E, N) för celler där träd och buskar inte ska stå (Blå havet: torget byggdes efter laserskanningen)."""
@@ -475,6 +546,10 @@ class Stenlaggning:
                 k += 1
             return k
         for g, asfalt_yta in self.p_ytor:
+            gangar = self.gangar.get(id(g), [])
+            if sum(L.length for L, _ in gangar) >= 15.0:   # platser längs körgångarna (OSM)
+                n += self._platser_langs_gangar(gangar, asfalt_yta, lagg)
+                continue
             yta = asfalt_yta.buffer(-0.4)
             if yta.is_empty:
                 continue
@@ -509,6 +584,52 @@ class Stenlaggning:
                         n += lagg(c + u * uu + v * v0, c + u * uu + v * v1, u, yta, PLATS_D * 0.8)
         if n:
             print('P-platslinjer:', n)
+
+    @staticmethod
+    def _platser_langs_gangar(gangar, asfalt_yta, lagg):
+        """Parkeringsplatser på båda sidor om varje körgång: tvärstreck var PLATS_B, från gångens kant
+        PLATS_D ut, klippta mot asfalten minus körgångarna (inga streck på en annan gång eller en ö).
+        Där två gångars platser korsar varandra (korsningar, kurvor) vinner den längre gångens streck."""
+        import shapely
+        from shapely.geometry import LineString
+        from shapely.ops import unary_union
+        yta = asfalt_yta.buffer(-0.4).difference(unary_union([L.buffer(b / 2) for L, b in gangar]))
+        if yta.is_empty:
+            return 0
+        kand = []   # (segmentets längd, segment-id, p0, p1, u)
+        sid = 0
+        for L, b in gangar:
+            c = np.array(L.coords)
+            for a, e in zip(c[:-1], c[1:]):
+                d = e - a
+                ln = float(np.hypot(*d))
+                sid += 1
+                if ln < PLATS_B * 2:
+                    continue
+                u = d / ln
+                v = np.array([-u[1], u[0]])
+                for t in np.arange(PLATS_B / 2, ln, PLATS_B):
+                    q = a + u * t
+                    for sida in (1.0, -1.0):
+                        p0 = q + sida * v * (b / 2)
+                        kand.append((ln, sid, p0, p0 + sida * v * PLATS_D, u))
+        if not kand:
+            return 0
+        linjer = [LineString([k[2], k[3]]).intersection(yta) for k in kand]
+        trad = shapely.STRtree(linjer)
+        n = 0
+        for i, k in enumerate(kand):
+            if linjer[i].is_empty:
+                continue
+            slagen = False
+            for j in trad.query(linjer[i], predicate='intersects'):
+                o = kand[j]
+                if o[1] != k[1] and (o[0], -j) > (k[0], -i) and abs(float(k[4] @ o[4])) < 0.94:
+                    slagen = True
+                    break
+            if not slagen:
+                n += lagg(k[2], k[3], k[4], yta, PLATS_D * 0.8)
+        return n
 
     @staticmethod
     def _linje(p0, p1, tvars, sample, h, to_world, add_merged, material):
