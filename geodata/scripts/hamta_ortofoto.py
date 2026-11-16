@@ -5,6 +5,9 @@ Hämtar Lantmäteriets ortofoto (STAC-bild, CC BY 4.0) för ett spelområde som 
     .venv/bin/python scripts/hamta_ortofoto.py lista --omrade vidingsjo
     .venv/bin/python scripts/hamta_ortofoto.py hamta --omrade vidingsjo [--upplosning 0.5] [--samling orto-l2-2025]
     .venv/bin/python scripts/hamta_ortofoto.py hamta --omrade linghem,campus    # flera med en inloggning
+    .venv/bin/python scripts/hamta_ortofoto.py hamta --omrade vidingsjo --upplosning 0.16 --suffix 16cm
+        -> ortofoto_vidingsjo_16cm.tif (full upplösning för analysskripten i geodata/analys/; bygget läser
+           bara ortofoto_<omrade>.tif)
 
   lista  -> vilka flygningar (samlingar) som täcker rutan, ingen inloggning
   hamta  -> <omrade>/data/ortofoto_<omrade>.tif (RGB + IR, SWEREF 99 TM, vald upplösning)
@@ -115,6 +118,8 @@ def main():
     ap.add_argument("--omrade", required=True, help="ett eller flera områden, kommaseparerade (en inloggning)")
     ap.add_argument("--samling", help="t.ex. orto-l2-2025 (förval: senaste 0.16 m som täcker rutan)")
     ap.add_argument("--upplosning", type=float, default=0.5, help="meter per pixel (förval 0.5)")
+    ap.add_argument("--suffix", default="", help="sparar ortofoto_<omrade>_<suffix>.tif (t.ex. 16cm), så att "
+                    "bygget fortsätter läsa sitt 0.5 m-foto")
     a = ap.parse_args()
     for omrade in a.omrade.split(","):
         print(f"== {omrade}")
@@ -127,7 +132,8 @@ def main():
             continue
         s = valj_samling(per, ruta, a.samling)
         print(f"Samling {s}: {info(per[s])}")
-        hamta(ruta, per[s], str(GEO / omrade / "data" / f"ortofoto_{omrade}.tif"), a.upplosning)
+        namn = f"ortofoto_{omrade}_{a.suffix}.tif" if a.suffix else f"ortofoto_{omrade}.tif"
+        hamta(ruta, per[s], str(GEO / omrade / "data" / namn), a.upplosning)
 
 
 if __name__ == "__main__":
