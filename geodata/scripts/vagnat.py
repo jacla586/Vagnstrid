@@ -15,6 +15,12 @@ from shapely.geometry import LineString, Point
 
 WIDTH = dict(trunk=8, primary=7.5, secondary=7, tertiary=6.5, unclassified=5, residential=5, living_street=4.5,
              pedestrian=3.0, service=3.5, track=3.0, path=1.2, footway=1.5, cycleway=2.5)
+GC_SEPARERAD_M = 4.0       # gc_bredd: separerad gång- och cykelbana (segregated=yes)
+GC_M = 3.0                 # gång- och cykelväg
+GANG_BELAGD_M = 2.0        # belagd gångväg, trottoar
+GANG_GRUS_M = 2.0          # grusad gångväg
+STIG_M = 1.2               # stig utan beläggning
+STIG_SMAL_M = 0.9          # trampad stig (jord, gräs)
 STUMP_MAX_M = 150.0
 RONDELL_BREDD_M = 7.0      # cirkulationsplatsens körbana (en körbana runt; två körfält: +3 m)
 STUMP_MATT_M = 30.0
@@ -25,12 +31,15 @@ _DEBUG = bool(os.environ.get('VAGNAT_DEBUG'))
 
 def surface_of(t):
     s = t.get('surface')
-    if s in ('asphalt', 'paved', 'concrete'):
+    if s in ('asphalt', 'paved', 'concrete', 'paving_stones', 'concrete:plates'):
         return 'asfalt'
     if s in ('unpaved', 'gravel', 'compacted', 'fine_gravel', 'dirt', 'ground'):
         return 'grus' if t['highway'] not in ('path', 'footway') else 'stig'
     if t['highway'] in ('trunk', 'primary', 'secondary', 'tertiary'):
         return 'asfalt'
+    if t['highway'] in ('path', 'footway') and (t.get('bicycle') == 'designated' or t.get('footway') == 'sidewalk'
+                                                or t.get('segregated') in ('yes', 'no')):
+        return 'asfalt'   # GC-vägar och trottoarer utan surface-tagg: belagda
     if t['highway'] in ('path', 'footway'):
         return 'stig'
     return 'grus'
@@ -44,7 +53,34 @@ def osm_bredd(r):
             return b
     except (ValueError, IndexError):
         pass
-    return WIDTH.get(r['tags']['highway'], 3.0)
+    gc = gc_bredd(r['tags'])
+    return gc if gc is not None else WIDTH.get(r['tags']['highway'], 3.0)
+
+
+BELAGT = ('asphalt', 'paved', 'concrete', 'paving_stones', 'sett', 'concrete:plates')
+GRUS = ('gravel', 'fine_gravel', 'compacted', 'unpaved', 'pebblestone')
+
+
+def gc_bredd(t):
+    """Gång- och cykelvägarnas bredd efter typ (svenska normalmått, ungefär), när OSM inte har width:
+    separerad GC-väg 4 m, GC-väg 3 m, belagd gångväg/trottoar 2 m, grusad gångväg 2 m, stig 0,8-1,2 m.
+    None för andra vägar."""
+    hw = t.get('highway')
+    if hw not in ('cycleway', 'path', 'footway', 'pedestrian'):
+        return None
+    if hw == 'pedestrian':
+        return None   # gågator: tabellen
+    yta = t.get('surface')
+    cykel = hw == 'cycleway' or t.get('bicycle') in ('designated', 'yes')
+    if cykel and yta not in GRUS + ('ground', 'dirt', 'grass', 'earth', 'mud', 'sand', 'woodchips'):
+        return GC_SEPARERAD_M if t.get('segregated') == 'yes' else GC_M
+    if yta in BELAGT or t.get('footway') in ('sidewalk', 'crossing'):
+        return GANG_BELAGD_M
+    if yta in GRUS or cykel:
+        return GANG_GRUS_M
+    if yta in ('ground', 'dirt', 'grass', 'earth', 'mud', 'sand', 'woodchips'):
+        return STIG_SMAL_M
+    return STIG_M
 
 
 def ny_vag(line, t):

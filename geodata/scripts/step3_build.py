@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, trummor, vagkant, lekplatser, valtbart, idrott, landmarken, overfarter, mapillary_objekt, platsdetaljer, stenlaggning
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, vagyta, trummor, vagkant, lekplatser, valtbart, idrott, landmarken, overfarter, mapillary_objekt, platsdetaljer, stenlaggning
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -201,7 +201,9 @@ if IDROTT.planer():   # innerplanerna: gräsmatta (tomt), tartanen under banan: 
 # Stenläggning (stenlaggning.py): hårdgjorda ytor inom platsdetaljer.json:s områden -> marktäcke 'hårdgjord'
 STEN = stenlaggning.Stenlaggning(PLATS.conf.get('stenlaggning'), WORK, WORK.parent / 'data', NAMN)
 STEN.berakna(lc, CIDX, to_px, RES, [gm for gm, t in feat['buildings'] if t.get('building') not in ('roof', 'carport')],
-             water_polys, roads)   # öppna tak (cykeltak) står på stenen
+             water_polys, roads, karta=(X0, Y1 - H * RES, X0 + W * RES, Y1),
+             byggnader_t=[(gm, t) for gm, t in feat['buildings'] if t.get('building') not in ('roof',)])
+             # öppna tak (cykeltak) står på stenen
 # Markvegetation för spelet (markvegetation.py): klass per 2 m-cell
 import markvegetation
 MV = markvegetation.bygg(lc, CIDX, T, (H, W), WORK.parent / 'data' if WORK.name == 'work' and WORK.parent != ROOT else ROOT / 'data',
@@ -223,9 +225,14 @@ KARVA_M = 0.10
 _ras = lambda gs: (rasterize([(g_, 1) for g_ in gs], out_shape=(H, W), transform=T).astype(bool)
                    if gs else np.zeros((H, W), bool))
 _lag = [r['line'].buffer(r['width'] / 2) for r in roads if broar.lyft(r['tags']) < 0.1]
+# Vägytan (vagyta.py): en sammanhängande yta med rundade korsningar och fyllda mittremsor
+VY = vagyta.Vagyta(roads, BRO, [gm for gm, t in feat['buildings'] if gm.intersects(BOX)] + water_polys,
+                   overtackt=STEN.overtackt, rutnat=(OX, OY))
 YTMASK = _ras(_lag) | STEN.raster((H, W), OX, OY, RES)
 YTMASK &= ~BRO.dack_raster((H, W), T)   # under broar ligger marken redan lägre
 YTOR_ALLA = YTMASK | STEN.raster((H, W), OX, OY, RES, nagon=True) | _ras([r['line'].buffer(r['width'] / 2) for r in roads])   # allt som ritas som markyta (minsta del)
+YTOR_ALLA |= VY.mask(_ras)
+np.save(str(WORK / 'vagyta_mask.npy'), VY.mask(_ras, alla=True))   # step4: inga träd på vägytan
 MV[YTOR_ALLA] = 0
 MV.tofile(f'{OUT}/markvegetation.bin')
 h_ut = h.copy()
@@ -337,29 +344,17 @@ for k, r in enumerate(roads):
     else:
         zc = np.maximum(sample(h, pts[:, 0], pts[:, 1]), np.maximum(sample(h, L[:, 0], L[:, 1]), sample(h, Rr[:, 0], Rr[:, 1])))
         zl = zr = zc + lift
-    dack = BRO.pa_dack(k, r['s'])
-    zl = np.where(dack, r['z'] + lift, zl); zr = np.where(dack, r['z'] + lift, zr)  # brobanans yta
+    dack = VY.pa_dack(k, r['s'])
+    zd = np.maximum(r['z'] + lift, VY.tak_hojd(pts, k)) if dack.any() else r['z'] + lift   # aldrig under tunneltaken
+    zl = np.where(dack, zd, zl); zr = np.where(dack, zd, zr)  # brobanans yta
     r['zm'], r['nrm'] = (zl + zr) / 2, nrm   # vägmarkeringarna (vagmarkering.py)
-    wl = np.array([to_world(*p) for p in L]); wr = np.array([to_world(*p) for p in Rr])
-    V = np.empty((2 * len(pts), 3))
-    V[0::2] = np.c_[wl[:, 0], zl, wl[:, 1]]
-    V[1::2] = np.c_[wr[:, 0], zr, wr[:, 1]]
-    n = len(pts)
-    a = np.arange(n - 1) * 2
-    F = np.r_[np.c_[a, a + 1, a + 2], np.c_[a + 1, a + 3, a + 2]]
-    s = np.cumsum(np.r_[0, np.linalg.norm(np.diff(pts, axis=0), axis=1)])
-    uv = np.empty((2 * n, 2)); uv[0::2] = np.c_[np.zeros(n), s / r['width']]; uv[1::2] = np.c_[np.ones(n), s / r['width']]
-    mesh = trimesh.Trimesh(V, F, process=False)
-    # se till att normalerna pekar uppåt
-    if mesh.face_normals[:, 1].mean() < 0:
-        mesh.faces = mesh.faces[:, ::-1]
-    if not STEN.overtackt(r):   # GC-vägar inne i stenläggningen (stenlaggning.py) ritas inte
-        add_merged('Vagar', mesh, asfalt_mat(r) if r['surface'] == 'asfalt' else ROADMAT[r['surface']], uv)
     cw = np.array([to_world(*p) for p in pts[::2]] + ([to_world(*pts[-1])] if (len(pts) - 1) % 2 else []))
     cz = np.r_[r['z'][::2], [r['z'][-1]] if (len(pts) - 1) % 2 else []]
     road_json.append(dict(name=r['name'], highway=r['tags']['highway'], ref=r['tags'].get('ref'), surface=r['surface'],
                           width_m=r['width'], osm_name=r['tags'].get('name'),
                           points=[[round(float(x), 2), round(float(z), 2), round(float(y), 2)] for (x, y), z in zip(cw, cz)]))
+VY.bygg(h, sample, to_world, add_merged, asfalt_mat, ROADMAT, vit=mat('Vagmarkering', (232, 232, 226), 0.6), matfn=mat)
+VY.refuger(feat.get('vagpunkter', []), h, sample, to_world, add_merged, mat)   # öar vid övergångsställen   # ytorna (vagyta.py) i stället för band per väg
 MARK = vagmarkering.Markering(roads, NV, feat.get('vagpunkter', []))
 MARK.bygg(add_merged, mat, to_world)
 scene.graph.update(frame_to='Broar', frame_from=scene.graph.base_frame)

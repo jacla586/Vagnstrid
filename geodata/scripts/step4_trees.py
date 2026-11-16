@@ -90,7 +90,7 @@ if blds:
 # broar och undergångar (step3/broar.py): inga träd i schakten eller på brobanorna
 bro_fil = WORK / 'broar_mask.npy'
 bro_mask = np.load(str(bro_fil)) if bro_fil.exists() else None
-for extra in ('stenar_mask.npy', 'jarnvag_mask.npy', 'lekplatser_mask.npy', 'idrott_mask.npy'):   # stenblock (orienteringskartan), järnväg (step3)
+for extra in ('stenar_mask.npy', 'jarnvag_mask.npy', 'lekplatser_mask.npy', 'idrott_mask.npy', 'vagyta_mask.npy'):   # stenblock (orienteringskartan), järnväg (step3)
     if (WORK / extra).exists():
         sm = np.load(str(WORK / extra))
         bro_mask = sm if bro_mask is None else (bro_mask | sm)

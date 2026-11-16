@@ -26,7 +26,7 @@ KANT_MIN_BREDD = 6.5
 LINJE_B_MITT, LINJE_B_KANT = 0.12, 0.10
 KANT_IN_M = 0.3
 KORFALT_MAX_M = 3.75   # kantlinjen skiljer körfältet från vägrenen: högst så här långt från mitten
-LYFT = 0.015
+LYFT = 0.025
 VARNING_M = {True: 60.0, False: 35.0}           # >= 70 km/h : lägre
 SIKT_KRAV_M = [(90, 350.0), (80, 300.0), (70, 250.0), (60, 200.0)]
 OGA_M = 1.1

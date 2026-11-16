@@ -80,13 +80,20 @@ class Stenlaggning:
         self.ytor = []   # (E0, N1, mask (nN, nE), asfalt (nN, nE))
         self.havmask = None
         self.osm = data_dir / 'export.osm'
+        if not self.osm.exists() and (data_dir.parent / f'{namn}.osm').exists():   # Vidingsjö
+            self.osm = data_dir.parent / f'{namn}.osm'
         self.parkeringar = []
         self.p_ytor = []   # (OSM-ytan, asfaltsytan) per parkering
         self.grona, self.grus = [], []   # OSM: aldrig sten (grus blir grus i marktäcket)
         self.overtackta = set()   # id(r) för GC-vägar inne i stenläggningen
+        self.work = work
+        self.uppfarter = []   # (polygon, 'asfalt' | 'sten'), uppfarter.py
+        self.karta = None
+        self.objhojd = data_dir / f'objekthojd_{namn}.tif'
 
     def __bool__(self):
-        return bool(self.omraden) and self.okarta.exists() and self.ortofoto.exists()
+        # plattorna: bara inom områdena (orienteringskartan); parkeringar och uppfarter: hela kartan
+        return self.ortofoto.exists() and (self.osm.exists() or bool(self.omraden) and self.okarta.exists())
 
     # ------------------------------------------------------------------ var
     def _ortho(self, E0, N0, E1, N1, nN, nE):
@@ -212,7 +219,7 @@ class Stenlaggning:
             E, N = t.transform(ll[:, 0], ll[:, 1])
             sluten = ref[0] == ref[-1] and len(ref) >= 4
             g = Polygon(np.column_stack([E, N])).buffer(0) if sluten else LineString(np.column_stack([E, N]))
-            if not any(g.intersects(o) for o in self.omraden):
+            if not g.intersects(self.karta):
                 continue
             ytan = tg.get('surface', '')
             if tg.get('amenity') == 'parking' and sluten:
@@ -248,8 +255,8 @@ class Stenlaggning:
             return ut
         H, W = shape
         ut = np.zeros(shape, bool)
-        ytor_pk = [y for _, y in getattr(self, 'p_ytor', []) if not y.is_empty]
-        if ytor_pk:   # parkeringarna: alla celler de nuddar (marken sänks under hela asfalten)
+        ytor_pk = [y for _, y in getattr(self, 'p_ytor', []) if not y.is_empty] + [p for p, _ in self.uppfarter]
+        if ytor_pk:   # parkeringarna och uppfarterna: alla celler de nuddar (marken sänks under hela asfalten)
             T = rasterio.transform.from_origin(OX - RES / 2, OY + RES / 2, RES, RES)
             ut |= rasterize([(y, 1) for y in ytor_pk], out_shape=shape, transform=T, all_touched=True).astype(bool)
         for E0, N1, m, _ in getattr(self, 'ytor', []):
@@ -265,10 +272,12 @@ class Stenlaggning:
             ut[ii[ok], jj[ok]] = m[r[ok], c[ok]]
         return ut
 
-    def berakna(self, lc, CIDX, to_px, RES, byggnader, vatten, roads):
+    def berakna(self, lc, CIDX, to_px, RES, byggnader, vatten, roads, karta=None, byggnader_t=None):
+        """karta: (E0, N0, E1, N1) för hela kartan; byggnader_t: [(polygon, taggar)] för uppfarterna."""
         if not self:
             return
         H, W = lc.shape
+        self.karta = sbox(*karta)
 
         def inne(E0, N0, E1, N1):   # rutans mitt ligger på kartan
             c, r = to_px((E0 + E1) / 2, (N0 + N1) / 2)
@@ -276,11 +285,18 @@ class Stenlaggning:
         self.omraden = [o for o in self.omraden if inne(*o.bounds)]
         if self.hav and not inne(*self.hav['ruta']):
             self.hav = None
-        if not self.omraden:
-            return
-        ok = np.load(str(self.okarta))
+        if not self.okarta.exists():
+            self.omraden = []
+        ok = np.load(str(self.okarta)) if self.omraden else None
         self.parkeringar, self.grona, self.grus = self._las_osm()
         self.p_ytor = self._parkeringsytor(byggnader, vatten, roads)
+        if byggnader_t is not None:
+            import uppfarter
+            self.uppfarter = uppfarter.bygg(byggnader_t, roads, vatten, [y for _, y in self.p_ytor if not y.is_empty]
+                                            + self.grona, self.ortofoto, self.objhojd, self.karta)
+        import pickle   # för kontrollbilder (ortobild-överlägg)
+        with open(self.work / 'markytor.pkl', 'wb') as f:
+            pickle.dump({'uppfarter': self.uppfarter, 'parkeringar': [y for _, y in self.p_ytor]}, f)
         grusandel = np.zeros(lc.shape, float)
         vagar = np.isin(lc, [CIDX['sjö'], CIDX['hav']])
         H, W = lc.shape
@@ -338,24 +354,30 @@ class Stenlaggning:
             if ytor_pk:   # marktäcket under asfalten
                 pa = rasterize([(y, 1) for y in ytor_pk], out_shape=m.shape, transform=T1).astype(bool) & ~m
                 np.add.at(andel, (ri[pa], ci[pa]), 1.0)
+        from shapely.strtree import STRtree
+        pk_trad = STRtree(self.parkeringar)
         # GC-vägar och körgångar på parkeringar som till minst 80 % går i stenläggningen ritas inte själva
         for r in roads:
             if not self._under_sten(r):
                 continue
             L = r['line']
-            if not any(L.intersects(o) for o in self.omraden):
+            if not (any(L.intersects(o) for o in self.omraden) or len(pk_trad.query(L, predicate='intersects'))):
                 continue
             pts = [L.interpolate(d) for d in np.arange(0, L.length + 0.01, 2.0)]
             # på stenen eller inne i en parkering (gräsöarna bryter inte körgångarna)
-            andel = np.mean([self.ar_sten(p.x, p.y) or any(g.contains(p) for g in self.parkeringar)
+            del_ = np.mean([self.ar_sten(p.x, p.y) or len(pk_trad.query(p, predicate='within'))
                              for p in pts]) if pts else 0.0
             # körvägar (infarter, körgångar) räcker det att hälften ligger i parkeringen: annars ligger en
             # mörkare stump ovanpå asfalten
-            if andel >= (0.5 if r['tags']['highway'] == 'service' else 0.8):
+            if del_ >= (0.5 if r['tags']['highway'] == 'service' else 0.8):
                 self.overtackta.add(id(r))
-        # marktäcket: celler som till minst hälften är sten
+        # marktäcket: celler som till minst hälften är sten; parkeringar och uppfarter på hela kartan
         if 'hårdgjord' in CIDX:
             fyll = andel >= 0.5 * (RES / CELL_M) ** 2
+            asf = [y for _, y in self.p_ytor if not y.is_empty] + [p for p, _ in self.uppfarter]
+            if asf:
+                Tk = rasterio.transform.from_origin(karta[0], karta[3], RES, RES)
+                fyll |= rasterize([(y, 1) for y in asf], out_shape=lc.shape, transform=Tk).astype(bool)
             fyll &= ~np.isin(lc, [CIDX['väg_asfalt'], CIDX['väg_grus'], CIDX['sjö'], CIDX['hav']])
             lc[fyll] = CIDX['hårdgjord']
             # grus: hårdgjort enligt orienteringskartan men grus enligt OSM (byggplatser, grusparkeringar)
@@ -364,7 +386,7 @@ class Stenlaggning:
             lc[gfyll] = CIDX['väg_grus']
         print('stenläggning:', sum(int(m.sum()) for *_, m, _ in self.ytor), 'm² plattor, asfalt',
               int(sum(y.area for _, y in self.p_ytor)), '; parkeringar', len(self.parkeringar), '; OSM grönt/grus', len(self.grona), len(self.grus),
-              '; GC-vägar under stenen', len(self.overtackta))
+              '; GC-vägar under stenen', len(self.overtackta), '; uppfarter', len(self.uppfarter))
         if self.hav:
             self._blahavet_zoner()
 
@@ -397,7 +419,7 @@ class Stenlaggning:
 
     def asfalt_mask(self, shape, T, in_m=1.0):
         """Celler (mitten) mer än in_m inne på parkeringarnas asfalt: där står inga träd (de står på öarna)."""
-        ytor = [y.buffer(-in_m) for _, y in self.p_ytor]
+        ytor = [y.buffer(-in_m) for _, y in self.p_ytor] + [p.buffer(-0.5) for p, _ in self.uppfarter]
         ytor = [y for y in ytor if not y.is_empty]
         if not ytor:
             return np.zeros(shape, bool)
@@ -413,7 +435,7 @@ class Stenlaggning:
 
     # ------------------------------------------------------------------ meshar
     def bygg(self, sample, h, to_world, add_merged, mat):
-        if not self.ytor:
+        if not (self.ytor or self.p_ytor or self.uppfarter):
             return
         platta = trimesh.visual.material.PBRMaterial(name='Stenlaggning', baseColorTexture=_plattor(),
                                                      metallicFactor=0.0, roughnessFactor=0.85)
@@ -435,6 +457,11 @@ class Stenlaggning:
         for _, y in self.p_ytor:
             if not y.is_empty:
                 add_merged('Stenlaggning', self._poly_yta(y, sample, h, to_world, ASFALT_LYFT_M), asfalt)
+        if self.uppfarter:
+            sten = mat('Stenlaggning_marksten', (150, 146, 140), 0.85)
+            for p, sort in self.uppfarter:
+                add_merged('Stenlaggning', self._poly_yta(p, sample, h, to_world, ASFALT_LYFT_M),
+                           asfalt if sort == 'asfalt' else sten)
         if self.hav:
             self._bygg_blahavet(sample, h, to_world, add_merged)
         self._plinjer(sample, h, to_world, add_merged, mat)

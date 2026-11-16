@@ -43,6 +43,10 @@ STOR = ('trunk', 'primary', 'secondary', 'tertiary', 'unclassified')
 GATA = ('primary', 'secondary', 'tertiary', 'unclassified', 'residential', 'living_street')
 KANTSTOLPE_M = 50.0
 LYKTA_M = 32.0
+GC_LYKTA_M = 28.0       # GC-vägarnas lyktor (_gc_lyktor): avstånd
+GC_LYKTA_KANT_M = 0.7   # från GC-vägens kant
+GC_LYKTA_HOJD_M = 4.5
+GC_TATORT_M = 80.0      # GC-väg utan lit-tagg får lyktor om en tätortsgata ligger så nära
 RACKE_BANK_M = 2.0
 KORSNING_FRI_M = 14.0
 HASTIGHETER = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
@@ -292,6 +296,7 @@ class Vagkant:
 
     # ---------- delar ----------
     def bygg(self):
+        self.lyktlagen = []   # alla lyktor (gator, Mapillary): GC-lyktorna håller avstånd till dem
         for r in self.roads:
             if 'pts' not in r or 'zm' not in r:
                 continue
@@ -309,6 +314,9 @@ class Vagkant:
         self._overgang_skyltar()
         if self.mly is not None and self.valt is not None:
             self._mly_lyktor()
+        if self.valt is not None:
+            self._gc_lyktor()
+        if self.mly is not None and self.valt is not None:
             self._mly_skyltar()
             self._mly_mobler()
         self._skriv()
@@ -368,6 +376,7 @@ class Vagkant:
                 wd = np.array(self.to_world(q[0] + nn[0], q[1] + nn[1])) - w
                 self.valt.placera('Lyktstolpe', [w[0], z, w[1]], wd)
                 self.antal['lyktor'] += 1
+                self.lyktlagen.append(q)
                 continue
             z = self._stolpe(q, 6.0, 0.13, stal)
             # arm ut över vägen och lampkupa
@@ -379,6 +388,72 @@ class Vagkant:
             w2 = np.array(self.to_world(hq[0], hq[1]))
             self._box(lampa, ladar(w2[None], wd[None], 0.28, 0.13, z + 5.75, z + 5.95))
             self.antal['lyktor'] += 1
+
+    def _gc_lyktor(self):
+        """Lyktor längs gång- och cykelvägar: där OSM säger lit=yes, och (utan lit-tagg) längs belagda
+        GC-vägar i tätort (en tätortsgata inom GC_TATORT_M). Var GC_LYKTA_M:e m på ena sidan,
+        GC_LYKTA_KANT_M från kanten; kedjor av korta OSM-bitar räknas ihop (en lykta tar bort kandidater
+        inom GC_LYKTA_M, även andra vägars och Mapillarys lyktor). Mapillary-täckta sträckor hoppas över."""
+        from shapely import STRtree
+        gc = ('path', 'footway', 'cycleway')
+        gator = [r['line'] for r in self.roads if r['tags']['highway'] in GATA and 'tatt' in r
+                 and np.size(r['tatt']) and r['tatt'].mean() > 0.5]
+        gtrad = STRtree(gator) if gator else None
+        self._gc_lykt_mall()
+        rut = {}   # rutnät GC_LYKTA_M: lyktor i närheten
+
+        def nara(q):
+            i, j = int(q[0] // GC_LYKTA_M), int(q[1] // GC_LYKTA_M)
+            return any(np.hypot(*(q - o)) < GC_LYKTA_M for a in (i - 1, i, i + 1) for b in (j - 1, j, j + 1)
+                       for o in rut.get((a, b), ()))
+
+        def lagg(q):
+            rut.setdefault((int(q[0] // GC_LYKTA_M), int(q[1] // GC_LYKTA_M)), []).append(q)
+        for q in self.lyktlagen:
+            lagg(np.asarray(q, float))
+        for r in self.roads:
+            t = r['tags']
+            if t['highway'] not in gc or 'pts' not in r or self._pa_bro(r) or t.get('lit') in ('no', 'disused'):
+                continue
+            if t.get('lit') not in ('yes', 'automatic', '24/7', 'sunset-sunrise', 'limited'):
+                if r['surface'] != 'asfalt' or gtrad is None or r['width'] < 1.8:
+                    continue
+                if not len(gtrad.query(r['line'].centroid.buffer(GC_TATORT_M))):
+                    continue
+            for p, d, nn, hw, sv in self._langs(r, 2.0, fas=-1.0):
+                q = p + nn * (hw + GC_LYKTA_KANT_M)
+                if nara(q):
+                    continue
+                if self.mly is not None and self.mly.tacker([q])[0]:
+                    continue
+                if self._pa_vag(q):
+                    continue
+                lagg(q)
+                w = np.array(self.to_world(q[0], q[1]))
+                wd = np.array(self.to_world(q[0] - nn[0], q[1] - nn[1])) - w
+                self.valt.placera('Gclykta', [w[0], self._mark(*q), w[1]], wd)
+                self.antal['lyktor_gc'] = self.antal.get('lyktor_gc', 0) + 1
+
+    def _pa_vag(self, q):
+        """Står punkten på en (annan) vägs yta?"""
+        from shapely import STRtree
+        if not hasattr(self, '_ytor_trad'):
+            self._ytor = [r['line'].buffer(r['width'] / 2 + 0.3) for r in self.roads if 'line' in r]
+            self._ytor_trad = STRtree(self._ytor)
+        pt = Point(q[0], q[1])
+        return any(self._ytor[i].contains(pt) for i in self._ytor_trad.query(pt))
+
+    def _gc_lykt_mall(self):
+        stal = self.mat('Lyktstolpe', (120, 124, 126), 0.5)
+        lampa = self.mat('Lykta', (235, 232, 215), 0.4)
+        if not self.valt.har_mall('Gclykta'):
+            # parklykta: rak stolpe, lyktkupa på toppen (foten i origo)
+            self.valt.mall('Gclykta', [
+                (lador_mesh(np.vstack([ladar([[0, 0]], [[1, 0]], 0.09, 0.09, -0.3, GC_LYKTA_HOJD_M - 0.45),
+                                       ladar([[0, 0]], [[1, 0]], 0.42, 0.42, GC_LYKTA_HOJD_M - 0.02,
+                                             GC_LYKTA_HOJD_M + 0.04)])), stal),
+                (lador_mesh(ladar([[0, 0]], [[1, 0]], 0.32, 0.32, GC_LYKTA_HOJD_M - 0.45,
+                                  GC_LYKTA_HOJD_M - 0.02)), lampa)])
 
     def _lykt_mall(self):
         stal = self.mat('Lyktstolpe', (120, 124, 126), 0.5)
@@ -438,6 +513,7 @@ class Vagkant:
             wd = np.array(self.to_world(q[0] - nn[0] * sida, q[1] - nn[1] * sida)) - w
             self.valt.placera('Lyktstolpe', [w[0], self._mark(*q), w[1]], wd)
             self.antal['lyktor_mly'] += 1
+            self.lyktlagen.append(q)
 
     def _mly_mobler(self):
         """Mapillarys gatumöbler (gatumobler.py): vid sitt läge, utflyttade från vägbanan, vända mot

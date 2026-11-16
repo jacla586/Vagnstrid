@@ -33,6 +33,9 @@ TRA = {'path', 'footway', 'bridleway', 'steps'}   # små gångbroar i trä
 DACK_TJOCKLEK = 0.8      # brobanans tjocklek (m)
 TRA_TJOCKLEK = 0.35      # gångbro i trä
 TAK_TJOCKLEK = 0.6       # tunneltaket över en undergång
+TAK_UNDER_ASFALT_M = 0.06   # tunneltakets ovansida under vägbanan (vägen ritas på profilen över hela taket)
+KANTBALK_BRO_B = 0.45    # brobanornas kantbalkar (betong längs kanterna, räcket står på dem)
+KANTBALK_BRO_H = 0.22    # över vägbanan
 GC_BRO_MIN_BREDD = 2.5   # gångbroar är minst så här breda
 TRA_MAX_LANGD = 40.0     # längre gångbroar blir betong
 FRI_HOJD_GC = 3.8        # fri höjd under däck för stigar och GC-vägar (körbart för vagnar)
@@ -214,6 +217,21 @@ class Broar:
             m |= (s >= s0) & (s <= s1)
         return m
 
+    def tak_ytor(self):
+        """Tunneltakens fotavtryck (SWEREF) och de undre vägarnas index: vägarna ovanför ritas på
+        sin profil (inte på schaktets botten) där de går över ett tak, aldrig under takets ovansida.
+        -> [(polygon, {undre}, gångvägens linje, s längs den, takets ovansida per s)]"""
+        from shapely.geometry import Polygon as _P
+        ut = []
+        for (pts, tp, hw, _t, u), info in zip(self.tak, getattr(self, 'tak_info', [])):
+            hw = np.broadcast_to(np.asarray(hw, float), (len(pts),))[:, None]
+            Lp, Rp = pts + u * hw, pts - u * hw
+            p = _P(np.vstack([Lp, Rp[::-1]])).buffer(0)
+            if not p.is_empty:
+                s_ = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
+                ut.append((p, set(info.get('undre', [])), LineString(pts), s_, np.asarray(tp, float)))
+        return ut
+
     def pa_bro(self, k, s):
         """Som pa_dack, men bara för riktiga broar (där vägschaktningen inte får fylla under)."""
         return self.pa_dack(k, s) if self.bro[k] else np.zeros(len(s), bool)
@@ -382,7 +400,7 @@ class Broar:
                 s_hi = min(max(b for _, b, _, _ in tak_kanter), rutt.length)
                 ordn = sorted((c, t) for _, _, c, t in tak_kanter)
                 sp = np.r_[s_lo, ss[(ss > s_lo) & (ss < s_hi)], s_hi]
-                tp = np.interp(sp, [c for c, _ in ordn], [t for _, t in ordn]) - 0.03
+                tp = np.interp(sp, [c for c, _ in ordn], [t for _, t in ordn]) - TAK_UNDER_ASFALT_M
                 zr = np.interp(sp, ss, z_r)
                 hw = bredd / 2 + SLANT * np.maximum(0.0, tp - TAK_TJOCKLEK - zr) + 0.6
                 # mynningarna parallella med vägen ovanför (medelriktning, samma håll som normalen)
@@ -396,7 +414,7 @@ class Broar:
                 self.tak.append((np.array([rutt.interpolate(d).coords[0] for d in sp]), tp, hw / sin,
                                  self.roads[j]['tags'], u))
                 self.tak_info.append(dict(rutt=rutt, s_lo=float(s_lo), s_hi=float(s_hi), bredd=float(bredd),
-                                          u=u, n_r=n_r, sp=sp, tp=tp))
+                                          u=u, n_r=n_r, sp=sp, tp=tp, undre=list(medlemmar)))
             for botten, s_p in bottnar:
                 if schakt:
                     golvet = float(np.interp(s_p, ss, z_r))
@@ -424,7 +442,7 @@ class Broar:
             r = self.roads[k]
             L = r['line']
             gc = r['tags']['highway'] in GC
-            bredd = max(r['width'], GC_BRO_MIN_BREDD) if gc else r['width'] + 0.6
+            bredd = (max(r['width'], GC_BRO_MIN_BREDD) if gc else r['width']) + 2 * KANTBALK_BRO_B - 0.1
             for s0, s1 in spann:
                 a, b = max(s0, 0.0), min(s1, L.length)
                 if b - a < 0.5:
@@ -461,7 +479,7 @@ class Broar:
         for i, d in enumerate(dack):
             m = _Mesh(to_world)
             tjock = TRA_TJOCKLEK if d['tra'] else DACK_TJOCKLEK
-            m.platta(d['pts'], d['topp'], d['bredd'] / 2, tjock)
+            m.platta(d['pts'], d['topp'], d['bredd'] / 2, tjock, ovan_under=0.06)
             r = self.roads[d['k']]
             L = r['line']
             if d['b'] - d['a'] > PELARE_FRAN and not r['tags'].get('_utan_pelare'):
@@ -482,8 +500,15 @@ class Broar:
                     if i < o:   # fyll glipan till grannbron (en gång per par)
                         m.fyllnad(d['pts'], d['nrm'], sida, d['bredd'] / 2, d['topp'], dack[o], tjock)
                     continue
-                linje = d['pts'] + d['nrm'] * sida * (d['bredd'] / 2 - STOLPE)
-                mr.racke(linje, d['topp'] - 0.02, RACKE_HOJD_GC if d['gc'] else RACKE_HOJD)
+                if d['tra']:
+                    linje = d['pts'] + d['nrm'] * sida * (d['bredd'] / 2 - STOLPE)
+                    mr.racke(linje, d['topp'] - 0.02, RACKE_HOJD_GC if d['gc'] else RACKE_HOJD)
+                    continue
+                # kantbalk: betongen syns bara här (och på sidorna/under), vägbanan är asfalt hela vägen
+                balk = d['pts'] + d['nrm'] * sida * (d['bredd'] / 2 - KANTBALK_BRO_B / 2)
+                m.mur(balk, d['topp'] + KANTBALK_BRO_H, d['topp'] - 0.1, KANTBALK_BRO_B)
+                linje = d['pts'] + d['nrm'] * sida * (d['bredd'] / 2 - KANTBALK_BRO_B / 2)
+                mr.racke(linje, d['topp'] + KANTBALK_BRO_H, RACKE_HOJD_GC if d['gc'] else RACKE_HOJD)
             add_merged('Broar', m.trimesh(), tra if d['tra'] else betong)
             if mr.V:
                 add_merged('Broar', mr.trimesh(), tra if d['tra'] else metall)
