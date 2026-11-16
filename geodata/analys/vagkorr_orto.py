@@ -15,7 +15,9 @@
 3. Spelets vägyta (vagyta.Vagyta, samma kod som bygget) byggs två gånger per testplats: före och efter.
    Båda jämförs med fotots asfalt (vagform_orto.foto_yta) inom ±KANT_M från vägkanterna: IoU före/efter.
 Ut (geodata/analys/ut/<karta>_korr/): <plats>.png (fotot; gul = dagens väg, grön = rättad), rattningar.csv
-(alla föreslagna ändringar: det ett bygge skulle läsa) och sammanfattning.txt.
+(alla föreslagna ändringar) och sammanfattning.txt.
+--skriv: rättningarna till geodata/<karta>/vagrattningar.csv, som bygget läser (vagnat.forbered ->
+tillampa_rattningar); ta bort filen för att bygga utan dem.
 """
 import argparse
 import copy
@@ -99,26 +101,16 @@ def rattningar(roads, res):
 
 
 def tillampa(roads, ratt):
-    """Kopia av roads med rättade bredder (hw skalas, variationen längs vägen behålls) och flyttade mittlinjer."""
+    """Kopia av roads med rättningarna, med samma funktion som bygget (vagnat.tillampa_rattningar)."""
+    import vagnat
     ny = [dict(r) for r in roads]
-    for k, rt in ratt.items():
-        r = dict(roads[k])
-        r['hw'] = np.asarray(roads[k]['hw'], float) * (rt['bredd_efter'] / max(rt['bredd_fore'], 0.1))
-        if rt['forsk']:
-            L = r['line']
-            n = len(r['hw'])
-            ss = np.linspace(0, L.length, n)
-            pts = np.array([L.interpolate(d).coords[0] for d in ss])
-            dv = np.gradient(pts, axis=0)
-            dv /= np.maximum(np.linalg.norm(dv, axis=1, keepdims=True), 1e-9)
-            nrm = np.c_[-dv[:, 1], dv[:, 0]]
-            f = np.clip(np.minimum(ss, L.length - ss) / AVTRAPP_M, 0, 1)
-            sk = rt['forsk'] * f * f * (3 - 2 * f)
-            r['line'] = LineString(pts + nrm * sk[:, None])
-            Ln = r['line']
-            r['s'] = np.linspace(0, Ln.length, len(r['s']))
-            r['pts'] = np.array([Ln.interpolate(d).coords[0] for d in r['s']])
-        ny[k] = r
+    vagnat.tillampa_rattningar(ny, ratt, kontroll=False)
+    for k in ratt:   # vagyta behöver s och pts var 2 m (som step3)
+        L = ny[k]['line']
+        n = max(2, int(L.length / 2) + 1)
+        ny[k]['s'] = np.linspace(0, L.length, n)
+        ny[k]['pts'] = np.array([L.interpolate(d).coords[0] for d in ny[k]['s']])
+        ny[k]['z'] = np.zeros(n)
     return ny
 
 
@@ -127,6 +119,8 @@ def main():
     ap.add_argument('karta')
     ap.add_argument('--ruta', default=None)
     ap.add_argument('--halv', type=float, default=60.0)
+    ap.add_argument('--skriv', action='store_true',
+                    help='skriv rättningarna till geodata/<karta>/vagrattningar.csv (bygget läser den)')
     a = ap.parse_args()
     import matplotlib
     matplotlib.use('Agg')
@@ -155,6 +149,16 @@ def main():
             w.writerow([k, r['tags'].get('name', ''), r['tags']['highway'], r['tags'].get('oneway', ''),
                         round(r['line'].length), round(rt['bredd_fore'], 2), round(rt['bredd_efter'], 2),
                         round(rt['forsk'], 2), round(m.x), round(m.y)])
+    if a.skriv:
+        fil = G.ROOT / a.karta / 'vagrattningar.csv'
+        with open(fil, 'w', newline='') as fh:
+            w = csv.writer(fh)
+            w.writerow(['index', 'E', 'N', 'bredd_fore_m', 'bredd_efter_m', 'forskjutning_m', 'osm_namn', 'highway'])
+            for k, rt in sorted(ratt.items()):
+                m = roads[k]['line'].interpolate(0.5, normalized=True)
+                w.writerow([k, round(m.x, 2), round(m.y, 2), round(rt['bredd_fore'], 3), round(rt['bredd_efter'], 3),
+                            round(rt['forsk'], 3), roads[k]['tags'].get('name', ''), roads[k]['tags']['highway']])
+        print(f'skrev {fil} ({len(ratt)} vägar)')
     km = lambda ks: sum(roads[k]['line'].length for k in ks) / 1000
     bredare = [k for k, rt in ratt.items() if rt['bredd_efter'] > rt['bredd_fore']]
     smalare = [k for k, rt in ratt.items() if rt['bredd_efter'] < rt['bredd_fore']]

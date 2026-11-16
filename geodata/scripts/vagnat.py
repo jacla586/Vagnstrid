@@ -10,6 +10,8 @@ STUMP_MAX_M med samma namn, där båda ändarna möter ett par enkelriktade kör
 tas bort; körbanorna slås ihop över den, förskjutna åt var sitt håll lika mycket som de ligger isär
 STUMP_MATT_M från korsningen (de närmaste STUMP_MATT_M, där de svänger in mot stumpen, ersätts).
 """
+from pathlib import Path
+
 import numpy as np
 from shapely.geometry import LineString, Point
 
@@ -251,13 +253,21 @@ def rondeller(roads):
     return [r for k, r in enumerate(roads) if k not in borta] + nya
 
 
-def forbered(roads, ruta, work):
+RATTNING_TOL_M = 1.0          # vagrattningar.csv: vägens mittpunkt måste stämma så här noga
+RATTNING_AVTRAPP_M = 15.0     # sidoförflyttningen trappas av mot vägändarna (korsningarna hänger ihop)
+
+
+def forbered(roads, ruta, work, rattningar=True):
+    """rattningar: läs <karta>/vagrattningar.csv (analys/vagkorr_orto.py --skriv) om den finns."""
     import nvdb
     roads[:] = rondeller(roads)
     roads[:] = korsningsstumpar(roads)
     NV = nvdb.Matchning(nvdb.utdrag(ruta, work))
     nvdb.berika(roads, NV, osm_bredd)
     nvdb.harmonisera(roads)
+    fil = Path(work).parent / 'vagrattningar.csv'
+    if rattningar and fil.exists():
+        tillampa_rattningar(roads, las_rattningar(fil))
     for r in roads:   # rondellerna: fast bredd efter körfälten
         if r.get('rondell'):
             try:
@@ -268,3 +278,51 @@ def forbered(roads, ruta, work):
             r['hw'] = np.full(len(r['hw']), b / 2)
             r['width'] = b
     return NV
+
+
+# ---------- rättningar ur ortofotot (geodata/analys/vagkorr_orto.py) ----------
+def las_rattningar(fil):
+    """{index: dict(E, N, bredd_fore, bredd_efter, forsk)} ur vagrattningar.csv."""
+    import csv
+    ut = {}
+    with open(fil, newline='') as fh:
+        for rad in csv.DictReader(fh):
+            ut[int(rad['index'])] = dict(E=float(rad['E']), N=float(rad['N']), bredd_fore=float(rad['bredd_fore_m']),
+                                         bredd_efter=float(rad['bredd_efter_m']), forsk=float(rad['forskjutning_m']))
+    return ut
+
+
+def tillampa_rattningar(roads, ratt, kontroll=True):
+    """Uppmätta bredder och lägen (efter harmoniseringen): hw skalas till den uppmätta bredden (variationen
+    längs vägen behålls), mittlinjen flyttas forsk m åt vänster, avtrappat mot ändarna. Raden gäller bara om
+    vägens mittpunkt stämmer (kontroll; annars har vägnätet ändrats sedan mätningen). Ändrar r-dictarna
+    genom att byta värden (inte på plats), så att kopior (analysens före/efter) inte påverkar originalet."""
+    import nvdb
+    n_ok = n_fel = 0
+    for k, rt in ratt.items():
+        if k >= len(roads):
+            n_fel += 1
+            continue
+        r = roads[k]
+        if kontroll and 'E' in rt:
+            m = r['line'].interpolate(0.5, normalized=True)
+            if abs(m.x - rt['E']) > RATTNING_TOL_M or abs(m.y - rt['N']) > RATTNING_TOL_M:
+                n_fel += 1
+                continue
+        r['hw'] = np.asarray(r['hw'], float) * (rt['bredd_efter'] / max(rt['bredd_fore'], 0.1))
+        r['width'] = float(np.median(r['hw']) * 2)
+        if rt['forsk']:
+            L = r['line']
+            n = max(2, int(L.length / 2) + 1)
+            ss = np.linspace(0, L.length, n)
+            pts = np.array([L.interpolate(d).coords[0] for d in ss])
+            dv = np.gradient(pts, axis=0)
+            dv /= np.maximum(np.linalg.norm(dv, axis=1, keepdims=True), 1e-9)
+            nrm = np.c_[-dv[:, 1], dv[:, 0]]
+            f = np.clip(np.minimum(ss, L.length - ss) / RATTNING_AVTRAPP_M, 0, 1)
+            sk = rt['forsk'] * f * f * (3 - 2 * f)
+            r['line'] = LineString(pts + nrm * sk[:, None])
+            nvdb.sampla_om(r)
+        n_ok += 1
+    print(f'vägnät: {n_ok} vägar rättade efter ortofotot (vagrattningar.csv)'
+          + (f', {n_fel} rader stämde inte med vägnätet' if n_fel else ''))

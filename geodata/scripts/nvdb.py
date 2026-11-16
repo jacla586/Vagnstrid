@@ -426,22 +426,25 @@ def _flytta_isar(roads, bil, skift):
         m = tuple((np.array(ck[-1]) + np.array(cj[0])) / 2)
         ck[-1], cj[0] = m, m
         roads[k]['line'], roads[j]['line'] = shapely.LineString(ck), shapely.LineString(cj)
-    # per-punkt-värdena (var ~2 m som i step3) följer den nya längden
     for k in bil:
-        r = roads[k]
-        n_gl = len(r['hw'])
-        n_ny = max(2, int(r['line'].length / 2) + 1)
-        if n_ny == n_gl:
-            continue
-        f_gl, f_ny = np.linspace(0, 1, n_gl), np.linspace(0, 1, n_ny)
-        for nyckel_, v_ in list(r.items()):
-            if not isinstance(v_, np.ndarray) or v_.ndim == 0 or v_.shape[0] != n_gl:
-                continue
-            if v_.dtype.kind == 'f' and v_.ndim == 1:
-                r[nyckel_] = np.interp(f_ny, f_gl, v_)
-            else:   # bool, heltal, (n, 2): närmaste
-                r[nyckel_] = v_[np.clip(np.rint(f_ny * (n_gl - 1)).astype(int), 0, n_gl - 1)]
+        sampla_om(roads[k])
     return n_
+
+
+def sampla_om(r):
+    """Per-punkt-värdena (var ~2 m som i step3: hw, hastighet, tatt, granne ...) följer linjens nya längd."""
+    n_gl = len(r['hw'])
+    n_ny = max(2, int(r['line'].length / 2) + 1)
+    if n_ny == n_gl:
+        return
+    f_gl, f_ny = np.linspace(0, 1, n_gl), np.linspace(0, 1, n_ny)
+    for nyckel_, v_ in list(r.items()):
+        if nyckel_ in ('s', 'pts', 'z') or not isinstance(v_, np.ndarray) or v_.ndim == 0 or v_.shape[0] != n_gl:
+            continue
+        if v_.dtype.kind == 'f' and v_.ndim == 1:
+            r[nyckel_] = np.interp(f_ny, f_gl, v_)
+        else:   # bool, heltal, (n, 2): närmaste
+            r[nyckel_] = v_[np.clip(np.rint(f_ny * (n_gl - 1)).astype(int), 0, n_gl - 1)]
 
 
 OVERGANG_M = 30.0

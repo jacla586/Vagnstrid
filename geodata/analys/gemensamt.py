@@ -60,7 +60,7 @@ def las_vagar(karta, med_bro=True):
     ruta = (g['x0'], g['y0'], g['x1'], g['y1'])
     feat = pickle.load(open(work / 'features.pkl', 'rb'))
     roads = vagnat.vaglista(feat['roads'], box(*ruta))
-    vagnat.forbered(roads, ruta, work)
+    vagnat.forbered(roads, ruta, work, rattningar=False)   # analysen mäter alltid mot vägnätet utan rättningar
     BRO = broar.Broar(roads) if med_bro else None
     for r in roads:   # som step3: punkter var 2 m (höjden behövs inte här)
         L = r['line']
