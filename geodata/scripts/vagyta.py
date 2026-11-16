@@ -47,11 +47,14 @@ REFUG_GANG_M = 3.0        # gångbanan genom ön
 REFUG_H_M = 0.12
 TROTTOAR_B_M = 2.0        # trottoarer ur OSM sidewalk=*
 TROTTOAR_H_M = 0.12       # kantstenens höjd över vägbanan
-TROTTOAR_YTTER_M = 0.12   # trottoarens ytterkant över marken (fall utåt)    # spärrområdet slutar så långt från en anslutande gata          # där en GC-väg korsar mittremsan blir den en refug (fylls inte)         # smalare mittremsa mellan två körbanor med samma namn: asfalt (målad refug)         # ingen rundning i korsningar så nära ett däck (olika nivåer)
+TROTTOAR_YTTER_M = 0.12   # trottoarens ytterkant över marken (fall utåt)
+BUSSFICKA_B_M = 3.0       # busshållplatsficka (OSM bus_bay=right/left/both på vägen): bredd utanför kanten
+BUSSFICKA_KIL_M = 15.0    # avsmalning i varje ände (kortare vägar: en tredjedel var)    # spärrområdet slutar så långt från en anslutande gata          # där en GC-väg korsar mittremsan blir den en refug (fylls inte)         # smalare mittremsa mellan två körbanor med samma namn: asfalt (målad refug)         # ingen rundning i korsningar så nära ett däck (olika nivåer)
 CELL_M = 2.0              # trianguleringens rutor (terrängens hörnavstånd)
 BIL_CELL_M = 4.0          # bilvägarna: terrängen under är planad efter profilen, glesare räcker
 RUTA_M = 250.0            # som step3:s MERGE_TILE
 HW_STEG = 0.1             # bredden kvantiseras för buffringen
+ENKEL_UV = 50.0           # lage_uv: enkelriktade körbanor får halvbredden + detta (shadern vet då körfälten)
 
 
 def _ar_gc(r):
@@ -78,12 +81,14 @@ class Vagyta:
         bil = [k for k in self.poly if not _ar_gc(roads[k])]
         gc = [k for k in self.poly if _ar_gc(roads[k])]
         self.mitt = self._mittremsor(bil)
-        self.fyll = self._rundningar(bil, hinder) + self.mitt
+        self.fickor = self._busfickor(bil)
+        self.fyll = self._rundningar(bil, hinder) + self.mitt + self.fickor
         print(f'vägyta: {len(bil)} bilvägar, {len(gc)} GC-vägar, {len(self.fyll)} korsningsrundningar',
-              f'({int(sum(p.area for p, _ in self.fyll))} m²), {len(self.dack_bitar)} däckband')
+              f'({int(sum(p.area for p, _ in self.fyll))} m²), {len(self.dack_bitar)} däckband, {len(self.fickor)} bussfickor')
         self.bil_ytor, self.gc_ytor = bil, gc
         self.hinder = hinder
         self.trottoar = self._trottoarer(bil, gc, hinder)
+        self.o_nosar = []         # (nosens punkt, riktning mot trafiken): hålla höger-skyltar (vagkant.py)
 
     # ------------------------------------------------------------------ polygoner
     def _vagpoly(self, k):
@@ -345,6 +350,34 @@ class Vagyta:
         print('vägyta: trottoarer', int(y.area), 'm²')
         return y
 
+    def _busfickor(self, bil):
+        """Busshållplatsfickor: OSM bus_bay=right/left/both på en väg (sträckan är fickan) -> en remsa
+        BUSSFICKA_B_M bred utanför kanten på den sidan, avsmalnande i ändarna. [(polygon, k)]"""
+        ut = []
+        for k in bil:
+            r = self.roads[k]
+            sida = r['tags'].get('bus_bay')
+            if sida not in ('right', 'left', 'both') or self.spann_k.get(k):
+                continue
+            L = r['line']
+            if L.length < 12.0:
+                continue
+            kil = min(BUSSFICKA_KIL_M, L.length / 3)
+            ss = np.linspace(0, L.length, max(4, int(L.length / 2.0) + 1))
+            pts = np.array([L.interpolate(d).coords[0] for d in ss])
+            dv = np.gradient(pts, axis=0)
+            dv /= np.maximum(np.linalg.norm(dv, axis=1, keepdims=True), 1e-9)
+            nrm = np.c_[-dv[:, 1], dv[:, 0]]   # vänster om vägens riktning
+            hw = np.interp(ss, r['s'], r['hw'])
+            w = BUSSFICKA_B_M * np.clip(np.minimum(ss, L.length - ss) / kil, 0, 1)
+            for tecken in ([-1] if sida == 'right' else [1] if sida == 'left' else [-1, 1]):
+                inne = pts + nrm * (tecken * (hw - 0.2))[:, None]
+                ute = pts + nrm * (tecken * (hw + w))[:, None]
+                p = Polygon(np.r_[inne, ute[::-1]]).buffer(0)
+                if not p.is_empty and p.area > 5.0:
+                    ut.append((p, k))
+        return ut
+
     def _mellan_korbanor(self, d, grannar):
         """Ligger biten mellan två enkelriktade körbanor med samma namn (trafikön vid en rondells infart)?"""
         namn, andra = {}, 0
@@ -389,7 +422,8 @@ class Vagyta:
             if tagen is not None:
                 y = y.difference(tagen)
             tagen = y if tagen is None else tagen.union(y)
-            n_tri += self._mesh(y, h, sample, to_world, add_merged, m, broar.lyft({'highway': 'residential'}), BIL_CELL_M)
+            n_tri += self._mesh(y, h, sample, to_world, add_merged, m, broar.lyft({'highway': 'residential'}), BIL_CELL_M,
+                                uv_fn=self.lage_uv)
         bil = tagen
         if vit is not None:
             n_tri += self._sparromraden(h, sample, to_world, add_merged, vit)
@@ -415,7 +449,7 @@ class Vagyta:
         for k, s0, s1 in self.dack_bitar:
             msh = self._dack_band(k, s0, s1)
             if msh is not None:
-                add_merged('Vagar', msh, material(k))
+                add_merged('Vagar', msh, material(k), uv=msh.metadata.get('uv'))
                 n_tri += len(msh.faces)
         print('vägyta:', n_tri, 'trianglar')
 
@@ -508,6 +542,7 @@ class Vagyta:
                 self._prisma(del_, h, sample, to_world, add_merged, topp_mat, kant_mat, lyft, REFUG_H_M)
                 n += 1
             lagda.append(p)
+            self.o_nosar += [(c - d * (REFUG_HALV_L_M - 0.5), -d), (c + d * (REFUG_HALV_L_M - 0.5), d)]
         print('vägyta: refuger', len(lagda))
         return n
 
@@ -606,7 +641,7 @@ class Vagyta:
             sel = np.all(nyck == key, axis=1)
             yield tuple(key), msh.submesh([np.nonzero(sel)[0]], append=True)
 
-    def _mesh(self, y, h, sample, to_world, add_merged, m, lyft, cell=None):
+    def _mesh(self, y, h, sample, to_world, add_merged, m, lyft, cell=None, uv_fn=None):
         if y is None or y.is_empty:
             return 0
         E0, N0, E1, N1 = y.bounds
@@ -616,13 +651,13 @@ class Vagyta:
                 d = y.intersection(shapely.box(tx, ty, tx + RUTA_M, ty + RUTA_M))
                 if d.is_empty or d.area < 0.05:
                     continue
-                msh = self._triangulera(d, h, sample, to_world, lyft, cell or CELL_M)
+                msh = self._triangulera(d, h, sample, to_world, lyft, cell or CELL_M, uv_fn)
                 if msh is not None:
-                    add_merged('Vagar', msh, m)
+                    add_merged('Vagar', msh, m, uv=msh.metadata.get('uv'))
                     n += len(msh.faces)
         return n
 
-    def _triangulera(self, poly, h, sample, to_world, lyft, CELL_M=CELL_M):
+    def _triangulera(self, poly, h, sample, to_world, lyft, CELL_M=CELL_M, uv_fn=None):
         ox, oy = self.rutnat
         E0, N0, E1, N1 = poly.bounds
         xs = ox + np.arange(math.floor((E0 - ox) / CELL_M), math.ceil((E1 - ox) / CELL_M)) * CELL_M
@@ -648,7 +683,40 @@ class Vagyta:
         msh = trimesh.Trimesh(np.column_stack([x, yy, z]), F, process=False)
         ned = msh.face_normals[:, 1] < 0
         msh.faces[ned] = msh.faces[ned][:, ::-1]
+        if uv_fn is not None:
+            msh.metadata['uv'] = uv_fn(nyck)
         return msh
+
+    def lage_uv(self, P):
+        """Vägytans läge per punkt (för asfaltens shader, hjulspåren): (v, hw) med v = avstånd åt vänster
+        från närmaste bilvägs mittlinje och hw dess halva bredd (+ ENKEL_UV på enkelriktade körbanor);
+        (0, -1) utanför vägens egen yta (korsningsrundningar, fickor)."""
+        ut = np.tile([0.0, -1.0], (len(P), 1))
+        if not len(P) or not self.bil_ytor:
+            return ut
+        if not hasattr(self, '_bil_trad'):
+            self._bil_trad = STRtree([self.roads[k]['line'] for k in self.bil_ytor])
+        pts = shapely.points(P)
+        ix, jx = self._bil_trad.query_nearest(pts, all_matches=False)
+        for j in np.unique(jx):
+            sel = ix[jx == j]
+            k = self.bil_ytor[j]
+            r = self.roads[k]
+            L = r['line']
+            sp = shapely.line_locate_point(L, pts[sel])
+            c = shapely.get_coordinates(shapely.line_interpolate_point(L, sp))
+            fr = shapely.get_coordinates(shapely.line_interpolate_point(L, np.minimum(sp + 0.5, L.length)))
+            ba = shapely.get_coordinates(shapely.line_interpolate_point(L, np.maximum(sp - 0.5, 0.0)))
+            t = fr - ba
+            t /= np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-9)
+            d = P[sel] - c
+            v = t[:, 0] * d[:, 1] - t[:, 1] * d[:, 0]
+            hw = np.interp(sp, r['s'], r['hw'])
+            inne = np.abs(v) <= hw + 0.3
+            enkel = r['tags'].get('oneway') in ('yes', '1', '-1') or bool(r.get('rondell'))
+            ut[sel[inne], 0] = v[inne]
+            ut[sel[inne], 1] = hw[inne] + (ENKEL_UV if enkel else 0.0)
+        return ut
 
     def _dack_band(self, k, s0, s1):
         r = self.roads[k]
@@ -673,6 +741,12 @@ class Vagyta:
         msh = trimesh.Trimesh(V, F, process=False)
         if msh.face_normals[:, 1].mean() < 0:
             msh.faces = msh.faces[:, ::-1]
+        if not _ar_gc(r):
+            hwv = hw[:, 0] + (ENKEL_UV if r['tags'].get('oneway') in ('yes', '1', '-1') else 0.0)
+            uv = np.empty((2 * n, 2))
+            uv[0::2] = np.c_[hw[:, 0], hwv]
+            uv[1::2] = np.c_[-hw[:, 0], hwv]
+            msh.metadata['uv'] = uv
         return msh
 
 

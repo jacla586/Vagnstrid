@@ -246,9 +246,12 @@ def zlib_crc(E, N):
     return zlib.crc32(f'{round(E)},{round(N)}'.encode())
 
 
+HALL_HOGER_SAMMA_M = 8.0
+
+
 class Vagkant:
     def __init__(self, roads, korsningar, vagpunkter, h, h_raw, sample, to_world, add_merged, mat, valt=None,
-                 platser=None, overgangar=None, mly=None):
+                 platser=None, overgangar=None, mly=None, o_nosar=None):
         self.roads = roads
         self.kors = korsningar
         self.punkter = vagpunkter
@@ -265,6 +268,7 @@ class Vagkant:
         self.valt_skyltar = []   # vältbara skyltar: (p, mot, atlasnamn, höjd, storlek, dubbel, hållplatsnamn)
         self._skydd = []
         self.overgangar = overgangar or []   # vagmarkering.Markering.overgangar (skyltar E1)
+        self.o_nosar = o_nosar or []         # vagyta/vagdetaljer: refugernas och trafiköarnas nosar (D1)
         self.ljus = []   # trafikljus före sammanslagningen: dict(p, rikt (färdriktning), hw, gang, prio, grupp)
         # mapillary_objekt.MlyObjekt: verkliga lyktor och vägmärken; där Mapillary har bilder ersätter de
         # reglerna (lyktor var 32:a m, NVDB:s hastighetsbyten, OSM:s väjningsplikt)
@@ -319,9 +323,24 @@ class Vagkant:
         if self.mly is not None and self.valt is not None:
             self._mly_skyltar()
             self._mly_mobler()
+        self._hall_hoger()
         self._skriv()
         print('vägkant:', ', '.join(f'{k} {v}' for k, v in self.antal.items()),
               '(allt utom räckenas bankar vältbart)' if self.valt is not None else '')
+
+    def _hall_hoger(self):
+        """Påbjuden passage (D1, 'hall_hoger') på varje refugs och trafikös nos mot trafiken, utom där
+        Mapillary redan har en inom HALL_HOGER_SAMMA_M."""
+        fanns = [np.asarray(q[0]) for q in self.valt_skyltar if q[2] == 'hall_hoger']
+        n = 0
+        for p, mot in self.o_nosar:
+            p = np.asarray(p, float)
+            if any(np.hypot(*(p - q)) < HALL_HOGER_SAMMA_M for q in fanns):
+                continue
+            self._skylt(p, np.asarray(mot, float), 'hall_hoger', 1.4, 0.5)
+            fanns.append(p)
+            n += 1
+        self.antal['hall_hoger'] = n
 
     def _langs(self, r, delning, fas=0.0):
         """(punkt, riktning, vänsternormal, halvbredd, s) var delning:e m längs vägen."""

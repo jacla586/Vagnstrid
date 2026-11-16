@@ -49,6 +49,7 @@
 [ext_resource type="Resource" path="res://data/world/prop_break.tres" id="94_prop_break_data"]
 [ext_resource type="Script" path="res://scripts/ui/help_overlay.gd" id="95_help_overlay"]
 [ext_resource type="Script" path="res://scripts/ui/mode_radio.gd" id="96_mode_radio"]
+[ext_resource type="Script" path="res://scripts/world/road_look.gd" id="97_road_look"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -312,6 +313,9 @@ script = ExtResource("92_water_look")
 
 [node name="StoneLook" type="Node" parent="."]
 script = ExtResource("96_stone_look")
+
+[node name="RoadLook" type="Node" parent="."]
+script = ExtResource("97_road_look")
 
 [node name="PropBreak" type="Node" parent="."]
 script = ExtResource("93_prop_break")

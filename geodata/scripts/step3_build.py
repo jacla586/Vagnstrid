@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, vagyta, trummor, vagkant, lekplatser, valtbart, idrott, landmarken, overfarter, mapillary_objekt, platsdetaljer, stenlaggning
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, vagyta, vagdetaljer, trummor, vagkant, lekplatser, valtbart, idrott, landmarken, overfarter, mapillary_objekt, platsdetaljer, stenlaggning
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -307,7 +307,10 @@ def add_merged(group, mesh, material, uv=None):
 def flush_merged():
     for (group, tx, tz, mname), e in sorted(merged.items()):
         m = trimesh.Trimesh(np.vstack(e['V']), np.vstack(e['F']), process=False)
-        uv = np.vstack(e['UV']) if all(u is not None for u in e['UV']) else None
+        if any(u is not None for u in e['UV']):   # vägytans läge (vagyta.py); bitar utan: (0, -1) = inget läge
+            uv = np.vstack([u if u is not None else np.tile([0.0, -1.0], (len(v), 1)) for u, v in zip(e['UV'], e['V'])])
+        else:
+            uv = None
         m.visual = trimesh.visual.TextureVisuals(uv=uv, material=e['mat'])
         name = f'{group}_{tx}_{tz}_{mname}'
         scene.add_geometry(m, node_name=f'{group}/{name}', geom_name=name, parent_node_name=group)
@@ -355,6 +358,8 @@ for k, r in enumerate(roads):
                           points=[[round(float(x), 2), round(float(z), 2), round(float(y), 2)] for (x, y), z in zip(cw, cz)]))
 VY.bygg(h, sample, to_world, add_merged, asfalt_mat, ROADMAT, vit=mat('Vagmarkering', (232, 232, 226), 0.6), matfn=mat)
 VY.refuger(feat.get('vagpunkter', []), h, sample, to_world, add_merged, mat)   # öar vid övergångsställen   # ytorna (vagyta.py) i stället för band per väg
+vagdetaljer.Vagdetaljer(VY, roads, feat.get('vagpunkter', []), h, sample, to_world, add_merged,
+                        mat('Vagmarkering', (232, 232, 226), 0.6), asfalt_mat, ROADMAT, mat).bygg()   # linjer, pilar, farthinder
 MARK = vagmarkering.Markering(roads, NV, feat.get('vagpunkter', []))
 MARK.bygg(add_merged, mat, to_world)
 scene.graph.update(frame_to='Broar', frame_from=scene.graph.base_frame)
@@ -364,7 +369,7 @@ BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 
 scene.graph.update(frame_to='Vagkant', frame_from=scene.graph.base_frame)
 VALT = valtbart.Samling()   # vältbart (lyktstolpar, kontaktledning): glb-gruppen Valtbart
 vagkant.Vagkant(roads, MARK.korsningar, feat.get('vagpunkter', []), h, np.load(str(WORK / 'h_raw.npy')).astype(np.float64),
-                sample, to_world, add_merged, mat, valt=VALT, overgangar=MARK.overgangar,
+                sample, to_world, add_merged, mat, valt=VALT, overgangar=MARK.overgangar, o_nosar=VY.o_nosar,
                 mly=mapillary_objekt.MlyObjekt(WORK.parent / 'data'),   # verkliga lyktor och skyltar
                 platser=json.loads((WORK / 'platser.json').read_text()) if (WORK / 'platser.json').exists() else None
                 ).bygg()   # platser.json: platser.py (ortnamnsskyltarna)

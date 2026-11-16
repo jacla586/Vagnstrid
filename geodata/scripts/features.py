@@ -145,7 +145,7 @@ def build(osm_path):
         if 'name' in t and ('place' in t or 'historic' in t):
             out['points'].append((Point(P[nid]), t))
         # vägkanten (vagkant.py): hållplatser, väjnings- och stopplikt, gatlyktor, trafikljus
-        if t.get('highway') in ('bus_stop', 'give_way', 'stop', 'street_lamp', 'traffic_signals') and nid in P:
+        if (t.get('highway') in ('bus_stop', 'give_way', 'stop', 'street_lamp', 'traffic_signals') or 'traffic_calming' in t) and nid in P:
             out['vagpunkter'].append((Point(P[nid]), t))
         elif t.get('highway') == 'crossing' and nid in P:
             out['vagpunkter'].append((Point(P[nid]), t))   # övergångsställen (vagmarkering.py, vagkant.py)

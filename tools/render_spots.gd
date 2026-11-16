@@ -31,6 +31,7 @@ func _init() -> void:
 	get_root().size = Vector2i(1280, 720)
 	var scene: Node = (load("res://scenes/maps/%s.tscn" % map) as PackedScene).instantiate()
 	get_root().add_child(scene)
+	current_scene = scene   # the rig's looks (RoadLook, StoneLook) dress current_scene
 	for n: Node in scene.find_children("*", "", true, false):
 		if n.name.begins_with("Enemy") or (not keep_rig and (n is CharacterBody3D or n is RigidBody3D
 				or n.name.begins_with("PlayerRig"))):

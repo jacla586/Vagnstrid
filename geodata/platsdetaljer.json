@@ -877,6 +877,15 @@
     "building:material": "brick",
     "building:colour": "#8f4230"
    }
+  },
+  {
+   "namn": "Ortgatan 27",
+   "osm_id": "389339763",
+   "_anm": "Användaren: huset är blått (Vidingsjö).",
+   "taggar": {
+    "building:material": "wood",
+    "building:colour": "#54769e"
+   }
   }
  ],
  "planer": {

@@ -10,7 +10,8 @@
    {"id": "villa_brun", "vagg": "panel_liggande", "farg": [102, 74, 54], "knutar": false, "vikt": 9, "tak": ["betong_svart"]},
    {"id": "villa_tegel", "vagg": "tegel", "farg": [150, 70, 52], "knutar": false, "vikt": 16, "tak": ["betong_svart", "tegel_rod"]},
    {"id": "villa_tegel_gul", "vagg": "tegel_gult", "farg": [206, 178, 120], "knutar": false, "vikt": 8, "tak": ["betong_svart"]},
-   {"id": "villa_puts", "vagg": "puts", "farg": [232, 222, 196], "knutar": false, "vikt": 8, "tak": ["tegel_rod", "betong_svart"]}
+   {"id": "villa_puts", "vagg": "puts", "farg": [232, 222, 196], "knutar": false, "vikt": 8, "tak": ["tegel_rod", "betong_svart"]},
+   {"id": "villa_bla", "vagg": "panel_staende", "farg": [84, 118, 158], "knutar": true, "vikt": 0, "tak": ["betong_svart", "plat_svart"]}
   ]},
   "radhus": {"vaning_m": 2.7, "fonster": "villa", "skorsten": false, "varianter": [
    {"id": "radhus_brun", "vagg": "panel_liggande", "farg": [110, 80, 58], "knutar": false, "vikt": 10, "tak": ["betong_svart"]},
