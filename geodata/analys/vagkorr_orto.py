@@ -5,11 +5,12 @@
 
 1. Mätning som vagbredd_orto.py (tvärsnitt var 10 m, vårfotot där löv skymmer) på alla asfalterade bilvägar.
 2. Rättning, bara av säkra mätningar (vagbredd_orto: klass 'säker'):
-   - en bredd per gata: vägar med samma namn och enkelriktning som hänger ihop (som nvdb.harmonisera)
+   - en bredd per gata: vägar med samma namn, enkelriktning och vägklass som hänger ihop
      får den längdviktade medianen av sina säkra mätningar; onamngivna vägar var för sig
    - smala (asfaltbredd under SMAL_M): den hårdgjorda bredden om den är rimlig (plattbelagda gångar
      mellan hus mäts annars för smalt)
-   - ändringen begränsas till faktor BREDD_FAKTOR och minst MIN_BREDD_M; mindre än MIN_ANDRING_M ändras inte
+   - ändringen begränsas till faktor BREDD_FAKTOR och minst MIN_BREDD_M; mindre än MIN_ANDRING_M ändras inte;
+     smalare än KRYMP_UTAN_STOD × dagens bara om även den hårdgjorda bredden är smalare än dagens väg
    - mittlinjen flyttas med den uppmätta förskjutningen (median per väg, om över MIN_FORSKJ_M, högst
      MAX_FORSKJ_M), avtrappad över AVTRAPP_M mot vägändarna så att korsningarna hänger ihop
 3. Spelets vägyta (vagyta.Vagyta, samma kod som bygget) byggs två gånger per testplats: före och efter.
@@ -41,6 +42,7 @@ MIN_FORSKJ_M = 0.3
 MAX_FORSKJ_M = 2.5
 AVTRAPP_M = 15.0
 KANT_M = 3.0
+KRYMP_UTAN_STOD = 0.7
 
 
 def kedjor(roads, ks):
@@ -60,8 +62,8 @@ def kedjor(roads, ks):
             continue
         enk = t.get('oneway') in ('yes', '1', '-1')
         L = roads[k]['line']
-        for p in (L.coords[0], L.coords[-1]):
-            nyck.setdefault((namn, enk, round(p[0]), round(p[1])), []).append(k)
+        for p in (L.coords[0], L.coords[-1]):   # samma vägklass: en huvudgata och gårdsgator med samma namn är olika
+            nyck.setdefault((namn, enk, t['highway'], round(p[0]), round(p[1])), []).append(k)
     for lista in nyck.values():
         for k in lista[1:]:
             far[rot(k)] = rot(lista[0])
@@ -86,11 +88,16 @@ def rattningar(roads, res):
                 b = max(b, s['hard'])
             matt.append(b)
         matt = np.array(matt)
-        o = np.argsort(matt)
-        med = float(matt[o][np.searchsorted(np.cumsum(vikt[o]) / vikt.sum(), 0.5)])
+        hard = np.array([s['hard'] if np.isfinite(s.get('hard', np.inf)) else np.inf for _, s in saker])
+        vmed = lambda v: float(v[np.argsort(v)][np.searchsorted(np.cumsum(vikt[np.argsort(v)]) / vikt.sum(), 0.5)])
+        med, med_hard = vmed(matt), vmed(hard)
         for k in grp:
             fore = float(np.median(roads[k]['hw'])) * 2
             efter = float(np.clip(med, max(MIN_BREDD_M, fore * BREDD_FAKTOR[0]), fore * BREDD_FAKTOR[1]))
+            # att krympa är riskablare än att bredda (mätningen kan stanna vid skugga, bil, lagning): mer än
+            # KRYMP_UTAN_STOD bara om även den hårdgjorda ytan är smalare än dagens väg
+            if efter < fore * KRYMP_UTAN_STOD and not med_hard < fore:
+                efter = fore * KRYMP_UTAN_STOD
             forsk = res[k].get('forsk', 0.0) if res[k].get('klass') == 'säker' else 0.0
             forsk = float(np.clip(forsk, -MAX_FORSKJ_M, MAX_FORSKJ_M)) if abs(forsk) > MIN_FORSKJ_M else 0.0
             if abs(efter - fore) < MIN_ANDRING_M:
