@@ -74,6 +74,11 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	# With the mouse free (Esc menu, the end-of-match scoreboard) clicks belong to the
+	# buttons: taking them here, before the GUI, left Main menu unclickable.
+	var free_mouse: bool = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED
+	if free_mouse and event is InputEventMouseButton:
+		return
 	if _spectating:
 		if event.is_action_pressed("fire"):
 			_watched = _next_teammate(_watched)
