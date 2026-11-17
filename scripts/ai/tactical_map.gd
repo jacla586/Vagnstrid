@@ -13,6 +13,10 @@ const SNAP_RADIUS_CELLS: int = 8
 const SMOOTH_LOOKAHEAD: int = 48
 ## How far round an unreachable goal to look for a reachable cell (cells).
 const COMPONENT_SEARCH_CELLS: int = 40
+## Open areas with fewer cells than this that connect to nothing else (courtyards closed
+## in by houses, a patch walled in by water and banks) are closed like houses: nobody
+## spawns, is sent or parks there, as there's no way out. 150 cells = ~1 ha.
+const POCKET_MAX_CELLS: int = 150
 ## Commander's eye above the ground with the hatch open (m).
 const EYE_HEIGHT_M: float = 3.0
 ## What a position must see: points this high above the ground (a tank's hull, m).
@@ -84,6 +88,7 @@ func _init(data: TacticalGridData, tactics: TacticsData, inside: Rect2 = Rect2()
 			_weights[i] = w
 			_astar.set_point_weight_scale(c, w)
 	_label_components()
+	_close_pockets()
 
 
 ## Open, drivable cells with forest or bushes in a neighbouring cell.
@@ -252,7 +257,9 @@ static func _sight_clear(world: World3D, from: Vector3, to: Vector3, exclude: Ar
 
 func is_blocked(point: Vector3) -> bool:
 	var c: Vector2i = grid.cell_of(point)
-	return grid.flags_at(c) & TacticalGridData.BLOCKED != 0 or not _is_inside(c)
+	if grid.flags_at(c) & TacticalGridData.BLOCKED != 0 or not _is_inside(c):
+		return true
+	return grid.has_cell(c) and _components[grid.index_of(c)] < 0
 
 
 ## The cell's centre lies in the map's playable area (MapEdge).
@@ -387,6 +394,23 @@ func _label_components() -> void:
 					_components[n] = label
 					stack.append(n)
 		label += 1
+
+
+## Closes the small areas with no way out (POCKET_MAX_CELLS): solid for A*, no
+## component, so is_blocked, _snap and find_position keep off them.
+func _close_pockets() -> void:
+	var sizes: Dictionary = {}   # component -> cells
+	for i: int in _components.size():
+		var k: int = _components[i]
+		if k >= 0:
+			sizes[k] = int(sizes.get(k, 0)) + 1
+	for i: int in _components.size():
+		var k: int = _components[i]
+		if k < 0 or int(sizes[k]) >= POCKET_MAX_CELLS:
+			continue
+		_components[i] = -1
+		_weights[i] = INF
+		_astar.set_point_solid(Vector2i(i % grid.width, i / grid.width), true)
 
 
 ## The nearest cell of `component` within COMPONENT_SEARCH_CELLS of `cell`, else (-1, -1).

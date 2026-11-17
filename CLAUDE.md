@@ -518,6 +518,10 @@ shows on the minimap. This is what we test first.
   `data/maps/<map>_tactical.res` (`TacticalGridData`, 8 m cells: height, flags for
   house/stone, water (widened, not across roads), steep (also 2 m-scale banks),
   forest, road, wetland, cover, near-obstacle, thick trees; land cover from geodata).
+  House cells: a box touching walls or a ray from above meeting a roof first (`_under_roof`; the box
+  alone left wide houses' insides open). Open areas under `TacticalMap.POCKET_MAX_CELLS` (150) cells
+  that connect to nothing (courtyards walled in by houses, e.g. B-huset on campus) are closed
+  (`_close_pockets`): `is_blocked` true, so no spawns, goals or positions there.
   Rerun after map changes. `TacticalMap.for_scene()` builds an `AStarGrid2D` (costs
   in `TacticsData`, `data/bots/tactics_regular.tres`) and `find_path()` straightens
   the result; tree lines (open cells beside forest/bushes) are cheap and count as

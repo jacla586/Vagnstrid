@@ -28,6 +28,9 @@ const HOUSE_BOX_TOP_M: float = 2.5
 ## tree_push_max_diameter_m of the medium tanks).
 const PUSHABLE_TRUNK_M: float = 0.7
 ## Object groups (children of the map's object glb) that block, and that don't.
+## Roof test: a ray from this high above the ground, looking past this many other things.
+const ROOF_RAY_FROM_M: float = 120.0
+const ROOF_RAY_TRIES: int = 4
 const BLOCKING_PREFIXES: Array[String] = ["Byggnader", "Stenar"]
 ## Land cover classes (geodata heightmap_info.json "landcover_classes").
 const LC_SEA: int = 0
@@ -109,7 +112,7 @@ func _run() -> void:
 				f |= TacticalGridData.WATER
 			house_query.transform = Transform3D(Basis(), p + Vector3.UP * (HOUSE_BOX_BOTTOM_M
 					+ HOUSE_BOX_TOP_M) * 0.5)
-			if _hits_blocking(space, house_query):
+			if _hits_blocking(space, house_query) or _under_roof(space, p):
 				f |= TacticalGridData.HOUSE
 			if _has_cover(space, p):
 				f |= TacticalGridData.CONCEALED
@@ -200,6 +203,25 @@ func _hits_blocking(space: PhysicsDirectSpaceState3D, query: PhysicsShapeQueryPa
 			continue
 		if _is_blocking_object(collider as Node):
 			return true
+	return false
+
+
+## A house over the cell's centre: a ray from above meets a roof before the ground. The
+## box above only touches walls, so cells inside a wide house (B-huset's wings) were open
+## and let enclosed courtyards connect to the streets.
+func _under_roof(space: PhysicsDirectSpaceState3D, p: Vector3) -> bool:
+	var query := PhysicsRayQueryParameters3D.create(p + Vector3.UP * ROOF_RAY_FROM_M,
+			p + Vector3.UP * HOUSE_BOX_BOTTOM_M, 1)
+	var exclude: Array[RID] = []
+	for i: int in ROOF_RAY_TRIES:
+		query.exclude = exclude
+		var hit: Dictionary = space.intersect_ray(query)
+		if hit.is_empty():
+			return false
+		var collider: Object = hit["collider"]
+		if not (collider is Terrain3D or collider is TreeField) and _is_blocking_object(collider as Node):
+			return true
+		exclude.append(hit["rid"])   # a bridge deck, a tree: look on below it
 	return false
 
 
