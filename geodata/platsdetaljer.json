@@ -814,6 +814,61 @@
     44,
     40
    ]
+  },
+  {
+   "namn": "Märkesbackens konstverk (fyra pelare med röda cylindrar)",
+   "typ": "markeskonst",
+   "_anm": "Efter användarens foton (konst1-4.png) och ortofotot 2023: cylindrarnas axlar mot 36° (den långa stångens riktning), pelarna på rad tvärs; stången i östra änden, den stora skivan på det smala röret i västra. pelare = [r, bredd, rund, topp_m, cylinder_radie, cylinder_langd].",
+   "lage": [
+    533776.0,
+    6473753.2
+   ],
+   "riktning_grad": 36.0,
+   "pelare": [
+    [
+     1.8,
+     0.45,
+     0,
+     10.8,
+     0.07,
+     6.0
+    ],
+    [
+     0.6,
+     0.45,
+     0,
+     11.1,
+     0.28,
+     1.8
+    ],
+    [
+     -0.5,
+     0.36,
+     1,
+     11.4,
+     0.42,
+     0.9
+    ],
+    [
+     -1.5,
+     0.18,
+     1,
+     11.6,
+     0.62,
+     0.35
+    ]
+   ]
+  },
+  {
+   "namn": "Rondellhund under Märkesbackens konstverk",
+   "typ": "rondellhund",
+   "_anm": "Lila med gula detaljer, ca 1,2 m, lyfter höger bakben mot det smala röret (ortofotot visar en lila fläck vid pelarnas fot).",
+   "lage": [
+    533774.32,
+    6473753.43
+   ],
+   "riktning_grad": 306.0,
+   "hojd_m": 1.2
   }
  ],
  "hus_justera": [

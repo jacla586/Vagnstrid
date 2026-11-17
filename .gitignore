@@ -16,6 +16,8 @@
 # Google Maps screenshot used to trace the road_to_science route (not ours to share)
 /geodata/road_to_science_lang/rutt_google.png
 /geodata/road_to_science/rutt_google.png
+/geodata/peking/rutt_google.png
+/geodata/peking.png
 
 # Private notes, contest material and screenshots in the project root (kept on disk, not in git)
 /*.png

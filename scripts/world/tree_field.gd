@@ -32,6 +32,7 @@ signal tree_index_felled(tree: int, direction: Vector3)
 const PUSH_REACH_M: float = 0.65
 ## A shell hit belongs to the nearest trunk within this distance of its axis (m).
 const SHELL_HIT_SEARCH_M: float = 1.0
+const GROUP: StringName = &"tree_fields"
 const SNAP_MIN_CALIBER_MM: float = 20.0
 ## Cell size of the lookup grid for trees near a point (m). Small, so a tank only looks at
 ## the few trees around it instead of every tree in its chunk (thousands, every tick).
@@ -87,6 +88,7 @@ var _push_time: Dictionary = {}  # "tank id:tree" -> seconds pushed slowly
 
 
 func _ready() -> void:
+	add_to_group(GROUP)
 	set_physics_process(false)
 	if info_path.is_empty() or data_path.is_empty():
 		return
@@ -151,10 +153,42 @@ func on_shell_hit(shell_data: ShellData, point: Vector3, _normal: Vector3,
 			or _trunk_diameter[tree] > _type_data[_type[tree]].shell_snap_max_diameter_m:
 		return null
 	fell_tree(tree, velocity)
-	var result := HitResult.new()
-	result.note = "TREE DOWN"
-	result.target = self
-	return result
+	return null   # nothing for the shooter's HUD
+
+
+## Diameter (m) of the standing trunk nearest the global `point` (a shell hit), 0 if none.
+func trunk_diameter_near(point: Vector3) -> float:
+	var tree: int = _nearest_standing_tree(to_local(point))
+	return _trunk_diameter[tree] if tree >= 0 else 0.0
+
+
+## Fells every standing tree (with a trunk) whose foot is within `radius` of the global
+## `point`, away from it (an HE burst). Host/offline: felled trees go out as usual.
+func fell_within(point: Vector3, radius: float) -> int:
+	if _physics == null or radius <= 0.0:
+		return 0
+	var local: Vector3 = to_local(point)
+	var count: int = 0
+	for i: int in _trees_near(local, radius + 1.0):
+		if _felled[i] != 0 or not _type_data[_type[i]].has_trunk:
+			continue
+		var foot: Vector3 = _chunk_centre[_chunk_of[i]] + _position[i]
+		var away := Vector3(foot.x - local.x, 0.0, foot.z - local.z)
+		if away.length() - _trunk_diameter[i] * 0.5 > radius:
+			continue
+		if away.length() < 0.1:
+			away = Vector3(randf_range(-1.0, 1.0), 0.0, randf_range(-1.0, 1.0))
+		fell_tree(i, global_basis * away.normalized())
+		count += 1
+	return count
+
+
+## Every TreeField in the scene fells its trees within `radius` of `point`.
+static func fell_near(tree: SceneTree, point: Vector3, radius: float) -> void:
+	if radius <= 0.0 or NetRole.is_client():
+		return
+	for node: Node in tree.get_nodes_in_group(GROUP):
+		(node as TreeField).fell_within(point, radius)
 
 
 func get_tree_count() -> int:

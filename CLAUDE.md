@@ -41,6 +41,13 @@ shows on the minimap. This is what we test first.
 - Shells are simulated (gravity, travel time); hit detection by raycasting from the
   previous to the current position each physics frame, not by fast physics bodies.
   MG bullets are Shells too (`mg_bullet.tres`).
+  Trees: a gun round (>= 20 mm) that isn't explosive goes through a trunk (thin ones fall), turned
+  `ShellData.tree_deflection_min..max_deg` (5-15°) in a random direction and keeping `tree_speed_keep`
+  (0.85) of its speed (`Shell._through_tree`; the host sends the new path like a ricochet); bullets stop
+  in trunks thicker than `tree_pass_max_diameter_m` (MG bullets: through trunks up to 0.25 m, 5-20°,
+  0.7 of the speed, still deadly to soldiers; rifle bullets 0 = stop; clients' cosmetic bullets just
+  stop, nothing is sent). An explosive round fells every tree with a trunk within `ShellData.tree_fell_radius_m`
+  (75 mm 3 m, 152 mm 6 m; `TreeField.fell_near`, group `tree_fields`). No "TREE DOWN" text any more.
 - Damage model (`TankDamage`, owned by Tank): structure hp (`TankData.structure_hp`) and
   modules from `TankData.layout` (`ModuleLayoutData`, e.g. `data/tanks/layout_medium.tres`:
   engine, fuel, tracks, turret ring, ammo in the turret rear). A penetration takes
@@ -237,11 +244,11 @@ shows on the minimap. This is what we test first.
   rim at the shore, normal maps drifting with `WeatherData.wind_mps`, rain rings by `rain_intensity`.
   Fording: `GroundCoverData.water_ids/water_levels` (lakes, from geodata `vatten.bin`),
   `GroundCover.water_depth()`; `Tank._ford_factor()` slows the drive by `TankData.ford_slow_share` at
-  `ford_depth_m` (1.2 m), deeper `too_deep_speed_factor` (a crawl). Culverts (Trafikverket, state
+  `ford_depth_m` (1.2 m), deeper `too_deep_speed_factor` (a crawl). Deeper than `TankData.impassable_depth_m` (1.6 m; bottoms reach 2 m, `peking` 3 m) the water holds the tank like the map edge (`Tank._hold_out_of_deep_water`: no speed further in, pushed back towards shallower water, direction from depths probed `DEEP_PROBE_M` aside); the sea counts (`water_depth` = −ground below y = 0); a hull centre `ABOVE_WATER_M` (2 m) over the surface is on a bridge and ignores the water. Culverts (Trafikverket, state
   roads): pipe ends in hollows at the road banks (geodata `trummor.py`, glb group `Trummor`).
 - Sports grounds (geodata `idrott.py`): OSM running tracks get a flat tartan oval with lane lines and a lawn infield (glb group `Idrott`, no collision); a long building beside one (or `building=grandstand`) becomes a roofed grandstand (`Byggnader_laktare`, collision). So far Isovalen on campus.
 - Landmarks (geodata `landmarken.py`, `geodata/landmarken.json` by OSM way id): built from their OSM building parts; one part can be a glass tower (taller, V-shaped, floor bands and mullions). Group `Byggnader_landmarken` (collision). So far Mjärdevi Center (campus, road_to_science).
-- Place details (geodata `platsdetaljer.py` + `stenlaggning.py`, data `geodata/platsdetaljer.json`, hand-placed from the user's photos and GPS points): the park opposite Campushallen (rusty H-beams, statues, allotment cottage ...), Corson's lamp groups (toppleable `Corsonlampa`), Studenthuset's red panel facade, its bike shelter, the district-heating tank, Kårallen's gangway and the Blå havet stage with painted waves, Campushallen's entrance and ramp, KEY/I-HUSET pylons, Ångströmhuset as a ring with a sloped roof; paved areas from the orienteering map (plates; Campus Valla only), land cover class `hårdgjord` (no grass); on every map OSM parkings become asphalt with bay lines and villa driveways (`uppfarter.py`: garage to street where the orthophoto shows a hard strip) asphalt or pavers. Glb groups `Byggnader_konst` (collision), `Konst`, `Stenlaggning` (none).
+- Place details (geodata `platsdetaljer.py` + `stenlaggning.py`, data `geodata/platsdetaljer.json`, hand-placed from the user's photos and GPS points): the park opposite Campushallen (rusty H-beams, statues, allotment cottage ...), Corson's lamp groups (toppleable `Corsonlampa`), Studenthuset's red panel facade, its bike shelter, the district-heating tank, Kårallen's gangway and the Blå havet stage with painted waves, Campushallen's entrance and ramp, KEY/I-HUSET pylons, Ångströmhuset as a ring with a sloped roof; the artwork in Märkesbacken (four posts with red cylinders) with a purple roundabout dog; paved areas from the orienteering map (plates; Campus Valla only), land cover class `hårdgjord` (no grass); on every map OSM parkings become asphalt with bay lines and villa driveways (`uppfarter.py`: garage to street where the orthophoto shows a hard strip) asphalt or pavers. Glb groups `Byggnader_konst` (collision), `Konst`, `Stenlaggning` (none).
 - Roadside (geodata `vagkant.py`, glb group `Vagkant`, no collision; where Mapillary has street photos its detected street lights and road signs replace the rules, `mapillary_objekt.py`): reflector posts on rural roads
   from 70 km/h, street lamps every 32 m in built-up areas, guard rails on high banks, speed signs where
   NVDB's limit changes, give-way/stop signs and bus stop signs from OSM nodes, pedestrian-crossing
@@ -269,7 +276,7 @@ shows on the minimap. This is what we test first.
   `highway=traffic_signals` (stop line towards the nearest junction, `traffic_signals:direction`, or a
   junction-centre node = one per approach) and `crossing=traffic_signals` (both ways mid-block); a tank's
   hull footprint touching one hides it and a `FallenProp` topples (a mast drops its catenary spans
-  `Ledning__<track>_<i>`); playground pieces (`Lekplatser`) fall apart into their solids (at most
+  `Ledning__<track>_<i>`); gravestones `Gravsten_<form>_<colour>` (geodata `gravar.py`, small kind); playground pieces (`Lekplatser`) fall apart into their solids (at most
   `debris_max_parts`, thrown and spinning). Fallen things lie `lie_s` (30 s), sink and are gone until
   ThunderRoad's map reset (`PropBreak.restore_all`).
 - Sign backs: the glb's `*_bak` materials (road and place-name signs) are the face texture darkened,
@@ -548,7 +555,7 @@ shows on the minimap. This is what we test first.
   `hunt_*`): bots radio spots to the team and go after known enemies, those in the open
   zone first (any range, no time limit, pressing closer), others near the zone for
   `hunt_max_s`; firing spots for an enemy in the zone are inside it. Needs a baked grid. Without a baked grid bots drive
-  straight. Baked so far: vidingsjo, linghem, campus, road_to_science, corson. Spawns avoid blocked cells.
+  straight. Baked so far: vidingsjo, linghem, campus, road_to_science, corson, peking. Spawns avoid blocked cells.
 - Bot roles (`BotRoleData`, `data/bots/roles/*.tres`; the chassis' favourite `ChassisData.bot_role`
   -> `TankData.bot_role`; `BotController.get_role()` = `role_override` (a role given for now) or the
   favourite, none = brawler): BT-7 scout (-> harasser in contact: `contact_role`, set by
@@ -746,7 +753,7 @@ there and the break is over) and on the match's win/loss. Points
   `--path=geodata/road_to_science/korridor.json` (a ready route of any roads/paths). `corson_thunder` (corridor map
   `corson`, 1.71 × 2.7 km since 2026-11-15, widened east with the NW corner kept): starts east on Malmslättsvägen, through Vallarondellen (CP1), then a straight line north -> south through Campus Valla (2.5 km, 3
   checkpoints; `geodata/corson/korridor.json` written by hand, not from OSM), checkpoints moved along the route
-  off the houses by `tools/thunder_checkpoints_avoid_houses.py`. `linghem_thunder` (whole map, not a corridor):
+  off the houses by `tools/thunder_checkpoints_avoid_houses.py`. `peking_thunder` (corridor map `peking`, Norrköping, 3.3 × 2.6 km, 2026-11-16): Finspångsvägen -> Norra Promenaden -> Kaktusparken (Stationsrondellen, CP2) -> Tullhusbron -> Drottninggatan south -> Södra Promenaden, 4.3 km, 4 checkpoints moved by hand along the route (`--spacing=`); Motala ström can't be crossed west of Drottningbron (geodata `vagar_bort.json` removes those bridges, steep deep bottoms), Drottningbron, Tullhusbron, Hamnbron, Sjötullsgatan and Varvsbron are open and at least 5 m wide (`broar_justera.json` `min_bredd`). `linghem_thunder` (whole map, not a corridor):
   south -> north, forest paths, then along Himnavägen, diagonally through the houses to the station (3.2 km,
   4 checkpoints; the last ~260 m before the end so defender spawns stay on the map). Route from a Google Maps
   screenshot by `rutt_ur_bild.py` run in a scratch folder (it writes a korridor.json, which in
@@ -856,7 +863,7 @@ there and the break is over) and on the match's win/loss. Points
   (rewrites `terrain/<name>/`, copies object glb, trees and tree models to
   `assets/maps/<name>/`). `tools/build_geodata_scene.gd` made each scene once; don't
   rerun it on a scene that has been edited. Buildings get collision via
-  `scripts/world/mesh_collision.gd`. Laser trees (`scripts/world/tree_field.gd`,
+  `scripts/world/mesh_collision.gd` (groups starting with `Kollision` are collision only, hidden: the invisible walls along bridge railings). Laser trees (`scripts/world/tree_field.gd`,
   `@tool`, per-instance colour, models and species from the info file) follow the `BreakableTree` rules without nodes.
   Drawing: each 500 m data chunk is split into `draw_cell_m` (250 m) draw cells; the tree
   meshes get detail levels at load (`ImporterMesh.generate_lods`, lost when `_mesh_from`

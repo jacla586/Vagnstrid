@@ -40,6 +40,10 @@ FLAGGGUL = (254, 204, 2)
 LIVROD = (210, 40, 35)
 STOLPE_TRA = (150, 135, 110)
 LIVSTOLPE = (190, 190, 185)
+KONST_GRA = (168, 170, 168)      # Märkesbackens pelare (betong/stål)
+KONST_ROD = (196, 38, 32)        # och deras cylindrar
+HUND_LILA = (112, 48, 150)       # rondellhunden
+HUND_GUL = (240, 200, 40)
 
 
 # ---------------------------------------------------------------- primitiver (lokalt: r höger, u upp, f fram)
@@ -312,6 +316,69 @@ class Platsdetaljer:
         for s in (-1, 1):   # långa hängande öron som halsdukar
             self._del(p, lada_mellan(s * 0.10 - 0.02, s * 0.10 + 0.02, 0.30, 0.74, 0.38, 0.52), m)
         self.punkter.append((E, N, 1.5))
+
+    # ---------------------------------------------------------------- Märkesbackens konstverk
+    def _markeskonst(self, o):
+        """Fyra pelare på rad (lokalt r) med en röd cylinder överst var, axlarna längs `riktning_grad`
+        (lokalt f): en lång tunn stång, två mellanstora och en kort bred skiva (samma sak i olika
+        proportioner). Efter användarens foton (Google Street View) och ortofotot 2023 (stångens riktning).
+        `pelare`: [r, bredd, rund (0/1), topp_m, cylinder_radie, cylinder_langd]."""
+        E, N = o['lage']
+        y0 = self._mark(E, N, 2.5) - 0.3
+        p = Plats(E, N, y0, o['riktning_grad'], self.to_world)
+        gra, rod = self._m('Konst_pelare', KONST_GRA, 0.7), self._m('Konst_rod_cylinder', KONST_ROD, 0.45)
+        for r, b, rund, topp, cr, cl in o['pelare']:
+            topp += 0.3   # foten ligger 0,3 m i marken
+            if rund:
+                self._del(p, cylinder((r, 0.0, 0.0), (r, topp, 0.0), b / 2, n=14), gra, platt=False)
+            else:
+                self._del(p, lada_mellan(r - b / 2, r + b / 2, 0.0, topp, -b / 2, b / 2), gra)
+            self._del(p, cylinder((r, topp + cr, -cl / 2), (r, topp + cr, cl / 2), cr, n=20), rod, LOS, platt=False)
+        self.punkter.append((E, N, 4.0))
+
+    # ---------------------------------------------------------------- rondellhund
+    def _rondellhund(self, o):
+        """Rondellhund av svetsade rör: lila, gula detaljer, lyfter höger bakben och kissar (tunn gul
+        stråle). Ungefär `hojd_m` hög; framåt = `riktning_grad`."""
+        E, N = o['lage']
+        k = o.get('hojd_m', 1.2) / 1.2
+        p = Plats(E, N, self._mark(E, N, 0.6) - 0.02, o['riktning_grad'], self.to_world)
+        lila, gul = self._m('Konst_lila', HUND_LILA, 0.5), self._m('Konst_gul', HUND_GUL, 0.5)
+        S = lambda *v: tuple(x * k for x in v)
+        rör = [   # (från, till, radie, material)
+            (S(0, 0.72, -0.42), S(0, 0.78, 0.36), 0.17, lila),          # kroppen
+            (S(-0.12, 0.66, 0.30), S(-0.12, 0.06, 0.32), 0.065, lila),  # framben
+            (S(0.12, 0.66, 0.30), S(0.12, 0.06, 0.34), 0.065, lila),
+            (S(-0.12, 0.66, -0.36), S(-0.14, 0.06, -0.40), 0.07, lila),  # vänster bakben (står)
+            (S(0.12, 0.70, -0.36), S(0.42, 0.86, -0.30), 0.07, lila),    # höger bakben: lyft åt sidan
+            (S(0.42, 0.86, -0.30), S(0.58, 0.70, -0.30), 0.06, lila),
+            (S(0, 0.86, 0.34), S(0, 1.04, 0.48), 0.10, lila),            # hals
+            (S(0, 1.06, 0.40), S(0, 1.08, 0.74), 0.13, lila),            # huvud
+            (S(0, 1.02, 0.74), S(0, 1.00, 0.86), 0.07, lila),            # nos
+            (S(0, 0.84, -0.42), S(0, 1.06, -0.62), 0.04, lila),          # svans upp
+        ]
+        for a, b, r, m in rör:
+            self._del(p, cylinder(a, b, r * k, n=12), m, LOS, platt=False)
+        gula = [
+            (S(0, 0.95, 0.40), S(0, 1.00, 0.46), 0.12),                  # halsband
+            (S(-0.12, 0.0, 0.30), S(-0.12, 0.06, 0.32), 0.09),           # tassar
+            (S(0.12, 0.0, 0.32), S(0.12, 0.06, 0.34), 0.09),
+            (S(-0.14, 0.0, -0.40), S(-0.14, 0.06, -0.40), 0.09),
+            (S(0.58, 0.64, -0.30), S(0.62, 0.70, -0.30), 0.08),          # den lyfta tassen
+            (S(-0.10, 1.16, 0.50), S(-0.14, 1.30, 0.46), 0.05),          # öron
+            (S(0.10, 1.16, 0.50), S(0.14, 1.30, 0.46), 0.05),
+            (S(0, 1.06, -0.62), S(0, 1.12, -0.68), 0.05),                # svanstipp
+            (S(-0.09, 1.14, 0.68), S(-0.09, 1.16, 0.74), 0.03),          # ögon
+            (S(0.09, 1.14, 0.68), S(0.09, 1.16, 0.74), 0.03),
+            (S(0, 0.99, 0.86), S(0, 0.99, 0.89), 0.05),                  # nostipp
+        ]
+        for a, b, r in gula:
+            self._del(p, cylinder(a, b, r * k, n=12), gul, LOS, platt=False)
+        # strålen: tre korta raka bitar i en båge från magen ut mot pelaren
+        båge = [S(0.16, 0.62, -0.20), S(0.42, 0.52, -0.18), S(0.62, 0.28, -0.16), S(0.74, 0.02, -0.14)]
+        for a, b in zip(båge[:-1], båge[1:]):
+            self._del(p, cylinder(a, b, 0.012 * k, n=6), gul, LOS, platt=False)
+        self.punkter.append((E, N, 1.2))
 
     # ---------------------------------------------------------------- kolonistuga, staket, flaggstång
     def _kolonistuga(self, o):

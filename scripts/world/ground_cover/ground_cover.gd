@@ -63,9 +63,10 @@ func ground_y(x: float, z: float) -> float:
 ## Water depth (m) over the ground at `pos` in a lake, 0 outside one.
 func water_depth(pos: Vector3) -> float:
 	var level: float = data.water_level_at(pos)
-	if is_nan(level):
-		return 0.0
 	var g: float = ground_y(pos.x, pos.z)
+	if is_nan(level):
+		# Not a lake: the sea is the plane y = 0 (geodata keeps land >= 0.25 m).
+		return maxf(-g, 0.0) if not is_nan(g) else 0.0
 	return maxf(level - g, 0.0) if not is_nan(g) else 0.0
 
 

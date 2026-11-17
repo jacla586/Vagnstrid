@@ -1,0 +1,14 @@
+{
+ "_anm": "Thunder Road i Norrköping: väster om Drottningbron ska det inte gå att ta sig över Motala ström (användaren 2026-11-16), så alla broar över strömmen där tas bort helt (features.py): Riksvägen, Femöresbron, Dragsbron, Universitetsbron, Kungsgatan, Laxholmsbron, Holmbrogränd, Västgötegatan och gångbroarna i Industrilandskapet. Öppna: Drottningbron, Tullhusbron, Hamnbron, Sjötullsgatan, Fleminggatan, Varvsbron (broar_justera.json).",
+ "vagar": [
+  "23281732", "23281734", "26646914", "26735302",
+  "1354233011", "26520579", "8189388",
+  "182081653", "182081883", "239470502", "1212234768", "1212234769", "1212234770",
+  "1212234772", "1212234773", "1212234776", "99871009",
+  "26154805", "93319286", "93319288", "93319289",
+  "1209326370", "1209326371", "1209326372", "1101395230",
+  "8237053", "93356007", "88798763", "1101385374", "320014293",
+  "26154679", "315670211", "760535017", "243821538",
+  "26154766", "275578953", "350376441", "350376442", "350376444"
+ ]
+}

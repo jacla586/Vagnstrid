@@ -71,7 +71,10 @@ def hamta(vag, **param):
 
 
 def ruta_for(projekt):
-    g = json.load(open(GEO / projekt / 'work' / 'grid.json'))
+    f = GEO / projekt / 'work' / 'grid.json'
+    if not f.exists():          # inte byggd än: rutan ur omrade.json (nytt_omrade.py)
+        return tuple(float(v) for v in json.load(open(GEO / projekt / 'omrade.json'))['ruta'])
+    g = json.load(open(f))
     x0, y1 = g['x0'], g['y1']
     return x0, y1 - g['H'] * g['RES'], x0 + g['W'] * g['RES'], y1
 

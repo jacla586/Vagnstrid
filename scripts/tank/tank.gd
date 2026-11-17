@@ -97,6 +97,13 @@ signal repaired
 const THREAT_MIN_CALIBER_MM: float = 20.0
 ## A round passing or landing this close to the hull centre is a near miss (m).
 const NEAR_MISS_M: float = 8.0
+## Deep water (_hold_out_of_deep_water): depth probed this far to each side, and the push
+## back out per metre past TankData.impassable_depth_m, at most DEEP_PUSH_MAX_MPS.
+const DEEP_PROBE_M: float = 3.0
+const DEEP_PUSH_MPS_PER_M: float = 4.0
+const DEEP_PUSH_MAX_MPS: float = 2.0
+## The hull's centre this high above the water's surface (m) = on a bridge: no fording.
+const ABOVE_WATER_M: float = 2.0
 const KMH_TO_MS: float = 1.0 / 3.6
 ## After a shot the hull's speed says nothing about driving for this long (s): recoil.
 const RECOIL_SETTLE_S: float = 1.5
@@ -181,6 +188,10 @@ var _wreck_pending_no_turret: bool = false
 ## Smoothed drive effort that pitches the hull (-1 full braking .. 1 full throttle), and
 ## a slow copy of it: the difference is the kick while the effort changes.
 var _ford: float = 1.0   # _ford_factor
+## Too deep (TankData.impassable_depth_m): the way to deeper water (unit, ground plane) and
+## how far past the limit (m); zero length when not too deep. Set by _ford_factor.
+var _deep_dir: Vector2 = Vector2.ZERO
+var _deep_over_m: float = 0.0
 var _rock: float = 0.0
 var _rock_slow: float = 0.0
 var _commander_wound_remaining: float = 0.0
@@ -1561,6 +1572,7 @@ func _physics_process(delta: float) -> void:
 	if _command.abandon and not _knocked_out:
 		_knock_out(true)   # the crew bails out: a loss, but nobody's kill
 	_hold_inside_map()
+	_hold_out_of_deep_water()
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -2200,6 +2212,10 @@ func _ford_factor() -> float:
 	if Engine.get_physics_frames() % Ticks.every(5.0) == 0:
 		var gc: GroundCover = GroundCover.of(self)
 		var depth: float = gc.water_depth(global_position) if gc != null else 0.0
+		if depth > 0.0 and global_position.y - (gc.ground_y(global_position.x, global_position.z) + depth) \
+				> ABOVE_WATER_M:
+			depth = 0.0   # on a bridge over the water
+		_update_deep_water(gc, depth)
 		if depth <= 0.0:
 			_ford = 1.0
 		elif depth > data.ford_depth_m:
@@ -2207,6 +2223,38 @@ func _ford_factor() -> float:
 		else:
 			_ford = 1.0 - data.ford_slow_share * depth / maxf(data.ford_depth_m, 0.01)
 	return _ford
+
+
+## Past TankData.impassable_depth_m: which way the water gets deeper (from the depth a few
+## metres to each side), so _hold_out_of_deep_water can stop the tank going further in.
+func _update_deep_water(gc: GroundCover, depth: float) -> void:
+	var limit: float = data.impassable_depth_m
+	if gc == null or limit <= 0.0 or depth <= limit:
+		_deep_dir = Vector2.ZERO
+		_deep_over_m = 0.0
+		return
+	var p: Vector3 = global_position
+	var step: float = DEEP_PROBE_M
+	var grad := Vector2(
+			gc.water_depth(p + Vector3(step, 0.0, 0.0)) - gc.water_depth(p - Vector3(step, 0.0, 0.0)),
+			gc.water_depth(p + Vector3(0.0, 0.0, step)) - gc.water_depth(p - Vector3(0.0, 0.0, step)))
+	if grad.length() < 0.001:
+		# Flat bottom: back the way the tank came.
+		var v := Vector2(linear_velocity.x, linear_velocity.z)
+		grad = v if v.length() > 0.1 else Vector2(-global_basis.z.x, -global_basis.z.z)
+	_deep_dir = grad.normalized()
+	_deep_over_m = depth - limit
+
+
+## Deep water works like the map edge: no speed further in, a push back out.
+func _hold_out_of_deep_water() -> void:
+	if _deep_over_m <= 0.0 or net_puppet:
+		return
+	var v: Vector3 = linear_velocity
+	var inward: float = v.x * _deep_dir.x + v.z * _deep_dir.y
+	var push: float = minf(_deep_over_m * DEEP_PUSH_MPS_PER_M, DEEP_PUSH_MAX_MPS)
+	var change: float = maxf(inward, 0.0) + push
+	linear_velocity = Vector3(v.x - _deep_dir.x * change, v.y, v.z - _deep_dir.y * change)
 
 
 func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,

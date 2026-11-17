@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, vagyta, vagdetaljer, trummor, vagkant, lekplatser, valtbart, idrott, landmarken, overfarter, mapillary_objekt, platsdetaljer, stenlaggning
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, vagyta, vagdetaljer, trummor, vagkant, lekplatser, gravar, valtbart, idrott, landmarken, overfarter, mapillary_objekt, platsdetaljer, stenlaggning
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -97,13 +97,25 @@ print('schaktade celler', len(ii), 'varav dike', int((dike & (prof > 0)).sum()))
 water_polys = [part for gm, t in feat['water'] if gm.intersects(BOX)
                for part in getattr(gm.buffer(0), 'geoms', [gm.buffer(0)]) if part.geom_type == 'Polygon' and part.area > 1]
 water_levels = []
+# Sjöbottnens lutning (m per m från stranden) och största djup; <projekt>/omrade.json kan ändra dem:
+# "vatten_lutning", "vatten_djup_m" (peking: branta kajer, så att smala armar av strömmen blir för
+# djupa att köra över; spelet stoppar vagnar där vattnet är djupare än TankData.impassable_depth_m)
+_omr = WORK.parent / 'omrade.json'
+_omr = json.loads(_omr.read_text()) if _omr.exists() else {}
+VATTEN_LUTNING = float(_omr.get('vatten_lutning', 0.15))
+VATTEN_DJUP_M = float(_omr.get('vatten_djup_m', 2.0))
+# Avståndet räknas från hela vattenytans strand: där två polygoner möts (en å delad vid en damm)
+# blev det annars en grund remsa tvärs över vattnet, som vagnar kunde köra på.
+_vatten_inne = unary_union(water_polys).buffer(-1) if water_polys else Polygon()
+_vm_alla = rasterize([(_vatten_inne, 1)], out_shape=(H, W), transform=T).astype(bool) \
+    if not _vatten_inne.is_empty else np.zeros((H, W), bool)
+_dist_alla = ndi.distance_transform_edt(_vm_alla) * RES
 for wp in water_polys:
     ring = np.array(wp.exterior.coords)
     lvl = float(np.percentile(sample(h, ring[:, 0], ring[:, 1]), 10)) - 0.3
-    wm = rasterize([(wp.buffer(-1), 1)], out_shape=(H, W), transform=T).astype(bool) if wp.buffer(-1).area > 0 else None
-    if wm is not None and wm.any():
-        dist = ndi.distance_transform_edt(wm) * RES
-        h[wm] = np.minimum(h[wm], lvl - np.minimum(dist[wm] * 0.15, 2.0))
+    wm = rasterize([(wp, 1)], out_shape=(H, W), transform=T).astype(bool) & _vm_alla
+    if wm.any():
+        h[wm] = np.minimum(h[wm], lvl - np.minimum(_dist_alla[wm] * VATTEN_LUTNING, VATTEN_DJUP_M))
     water_levels.append(lvl)
 
 # Vattendrag i orienteringskartan som saknas i OSM (okarta.py klassa): läggs till som bäckar,
@@ -142,6 +154,7 @@ for geom, t in feat['waterways']:
 h = ndi.gaussian_filter(h, 0.6) * 0.5 + h * 0.5  # mjuka kanter efter schaktning
 overfarter.forma(overfarter.las(WORK.parent), h, OX, OY, RES)   # körbara diken (<projekt>/overfarter.json)
 BRO.schakta(h, sample, (H, W), T, OX, OY, RES)   # undergångar: fri höjd under däcken
+BRO.landfasten(h, (H, W), T, OX, OY, RES)   # marken möter däckändarna (inga gupp vid brofästena)
 TRUMMOR = trummor.las((X0, Y1 - H * RES, X0 + W * RES, Y1))   # vägtrummor (trummor.py)
 trummor.schakta(TRUMMOR, h, (H, W), T, OX, OY, RES)
 BRO.spara_mask(str(WORK / 'broar_mask.npy'), (H, W), T)   # step4: inga träd i schakt och på broar
@@ -363,6 +376,8 @@ vagdetaljer.Vagdetaljer(VY, roads, feat.get('vagpunkter', []), h, sample, to_wor
 MARK = vagmarkering.Markering(roads, NV, feat.get('vagpunkter', []))
 MARK.bygg(add_merged, mat, to_world)
 scene.graph.update(frame_to='Broar', frame_from=scene.graph.base_frame)
+scene.graph.update(frame_to='Brorack', frame_from=scene.graph.base_frame)           # räckena: ingen kollision
+scene.graph.update(frame_to='Kollision_broar', frame_from=scene.graph.base_frame)   # osynliga tjocka väggar
 BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 0.95),
                 mat('Tra', (120, 88, 58), 0.9), mat('Racke', (72, 74, 76), 0.6), mat=mat)
 # Vägkanten (vagkant.py): kantstolpar, lyktor, räcken, skyltar, hållplatser
@@ -390,6 +405,18 @@ for _poly, _pts in _lek:
     for _p in _pts:
         c, r_ = to_px(*_p)
         _lek_mask[max(int(r_) - 2, 0):int(r_) + 3, max(int(c) - 2, 0):int(c) + 3] = True
+# Gravstenar (gravar.py): rader längs kyrkogårdarnas häckar och familjegravar, ur ortofotot
+_data = WORK.parent / 'data'
+GRAV = gravar.Gravar([x for x in feat.get('kyrkogardar', []) if x[0].intersects(BOX)],
+                     [_data / f'ortofoto_{NAMN}_16cm.tif', _data / f'ortofoto_{NAMN}.tif'], Path(OBJ) if OBJ else None,
+                     roads, [x for x in feat['buildings'] if x[0].intersects(BOX)], WORK,
+                     inne=lambda E, N: korridor.inne(WORK, E, N)[0])
+if GRAV:
+    scene.graph.update(frame_to='Gravar', frame_from=scene.graph.base_frame)
+    GRAV.berakna()
+    GRAV.bygg(sample, h, to_world, add_merged, mat, VALT)
+elif (WORK / 'gravhackar.pkl').exists():
+    (WORK / 'gravhackar.pkl').unlink()
 # Platsdetaljer (platsdetaljer.py): konst, lampor, Studenthuset ...; träd och buskar hålls borta via lekplatsmasken
 if STEN:
     scene.graph.update(frame_to='Stenlaggning', frame_from=scene.graph.base_frame)
@@ -632,9 +659,11 @@ laser = None
 if OBJ:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from laserhus import Objekthojd
-    laser = Objekthojd(OBJ)
+    laser = Objekthojd(OBJ, WORK.parent / 'data' / f'ortofoto_{WORK.parent.name}.tif')   # ortofotot: kronor är gröna
 osm_b = [(gm, t) for gm, t in feat['buildings'] if BOX.intersects(gm)
          and korridor.inne(WORK, gm.centroid.x, gm.centroid.y)[0]]   # korridorkarta: bara nära rutten
+if laser:
+    laser.rensa_trad(osm_b)   # trädkronor över taken räknas inte som tak
 bpolys = []
 n_h = 0
 for k, (gm, t) in enumerate(osm_b):

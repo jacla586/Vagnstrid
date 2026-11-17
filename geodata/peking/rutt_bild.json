@@ -1,0 +1,6 @@
+{"anm": "Punkter (px) avlästa ur rutt_google.png (Google Maps avståndsmätning, 1408x1047), från start (Riksvägen/Finspångsvägen) längs Norra Promenaden till Centralen (Kaktusparken), över strömmen vid Strömsholmens östra spets (Tullhusbron), tillbaka till Drottninggatan, söderut till Södra Promenaden och Vasaparken (slut). Bara en grov ledlinje; rutten tas ur OSM. Kontrollpunkterna är korsningar ur OSM (Finspångsvägen/Norra Promenaden, Norra Promenaden/Drottninggatan, Södra Promenaden/Drottninggatan).",
+ "px": [[70,177],[227,306],[630,211],[968,121],[1152,198],[1189,356],[1050,415],[1180,902],[1302,958]],
+ "kontroll": [{"px": [227,306], "sweref": [567512,6495412]},
+              {"px": [968,121], "sweref": [568822,6495649]},
+              {"px": [1180,902], "sweref": [569211,6494362]}],
+ "gc_faktor": 3.0}

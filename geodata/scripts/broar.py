@@ -20,6 +20,7 @@ vägen dyker ner i den. Här:
 Koordinater: SWEREF 99 TM (x, y) för all geometri; to_world() ger Godot (x, z) vid meshbygget.
 """
 import numpy as np
+import shapely
 from scipy.spatial import cKDTree
 from shapely import STRtree
 from shapely.geometry import LineString, Point
@@ -49,6 +50,19 @@ MASK_MARGINAL = 6.0      # profilen interpoleras även så här långt utanför 
 ANSLUT_MASK = 8.0        # vägar som ansluter till en bro maskas så här långt från noden
 FORLANG = 8.0            # brons ändhöjd tas så här långt utanför bron, i vägens förlängning
 FOTAVTRYCK_MARGINAL = 1.0
+# Landfästen (landfasten): marken vid varje däckände höjs till däckets ovansida, plant LANDFASTE_PLANT_M ut
+# från änden, sedan tonat ned till marken till LANDFASTE_M; under däckets sista LANDFASTE_UNDER_M strax under
+# däcket. Förut sjönk marken ofta 0,5-2,5 m precis vid brofästet (åbottnen eller en undergångs schakt nådde
+# in dit) och vagnarna fick ett gupp eller fastnade.
+LANDFASTE_PLANT_M = 3.0
+LANDFASTE_M = 10.0
+LANDFASTE_UNDER_M = 3.0
+LANDFASTE_SIDA_M = 1.5   # utanför däckets bredd på var sida
+# Räckena är smala (stolpar och slanor) och fick trianglar som kollision: en vagn som körde in i dem kunde
+# tryckas igenom och fastna grensle. Nu har de ingen kollision (glb-gruppen `Brorack`) och står i stället
+# framför en osynlig tjock vägg (`Kollision_broar`; spelets mesh_collision.gd döljer den).
+KANT_VAGG_H = 1.4
+KANT_VAGG_TJOCK = 0.6
 RACKE_HOJD = 1.0
 RACKE_HOJD_GC = 0.9
 STOLPE = 0.08            # räckesstolpar (m i fyrkant), var STOLP_AVSTAND m
@@ -58,6 +72,7 @@ PELARE_AVSTAND = 25.0
 PELARE_TJOCKLEK = 1.2
 PARALLELL_AVSTAND = 8.0  # parallella broar närmare än så här (kant till kant) slås ihop
 NOD_TOL = 0.5            # punkter närmare än så här räknas som samma nod
+TAK_GLAPP_M = 6.0        # tunneltak för vägar ovanför med mer luft än så här emellan blir separata
 LADA_FRAN_M = 18.0       # täckt längd av gångvägen: längre = betonglåda, kortare = balkbro
 KANTBALK_H = 1.1         # kantbalken vid mynningen: höjd från däckets ovansida
 KANTBALK_D = 0.5
@@ -141,11 +156,12 @@ class Broar:
     def __init__(self, roads):
         self.roads = roads
         n = len(roads)
-        self.bro = [ar_bro(r['tags']) for r in roads]
+        # rondellernas brobitar (vagnat.rondeller): bara de spannen är bro, inte hela ringen
+        self.bro = [ar_bro(r['tags']) or bool(r.get('bro_spann')) for r in roads]
         tun = [ar_tunnel(r['tags']) for r in roads]
         self.spann = {k: [] for k in range(n)}      # (s0, s1) längs vägens mittlinje
         self.anslut = {k: [] for k in range(n)}     # s där vägen ansluter till en bro
-        self.korsningar = {}                        # (undre j, övre k) -> korsningspunkt
+        self.korsningar = {}                        # (undre j, övre k, n) -> korsningspunkt
         self.murar = []                             # (punkter Nx2, topp N, botten N, tjocklek)
         self.tak = []                               # (punkter Nx2, topp N, halvbredd N, undre vägens taggar, vägriktning)
         self.schakt = 0
@@ -162,8 +178,10 @@ class Broar:
             if not self.bro[k]:
                 continue
             Lk = lines[k]
-            self.spann[k].append((0.0, Lk.length))
-            for c in (Lk.coords[0], Lk.coords[-1]):
+            egna = roads[k].get('bro_spann') or [(0.0, Lk.length)]
+            self.spann[k] += egna
+            andar = [Lk.interpolate(v).coords[0] for s0, s1 in egna for v in (s0, s1)]
+            for c in andar:
                 for j in self.tree.query(Point(c).buffer(NOD_TOL)):
                     if j == k or self.bro[j]:
                         continue
@@ -175,10 +193,13 @@ class Broar:
             for j in self.tree.query(Lk):
                 if j == k or self.bro[j]:
                     continue
-                for p in _punkter(Lk.intersection(lines[j])):
+                for n_, p in enumerate(_punkter(Lk.intersection(lines[j]))):
                     if _nara_ande(Lk, p) or _nara_ande(lines[j], p):
                         continue
-                    self.korsningar.setdefault((int(j), k), (p.x, p.y))
+                    if not any(s0 <= Lk.project(p) <= s1 for s0, s1 in egna):
+                        continue   # en rondell korsar vägen utanför sina brobitar
+                    # en ring kan gå över samma väg två gånger: varje korsning för sig
+                    self.korsningar.setdefault((int(j), k, n_), (p.x, p.y))
 
         for j in range(n):
             if not tun[j]:
@@ -197,7 +218,7 @@ class Broar:
                     halva = (bredd / 2 + SLANT * MAX_DJUP + 1.0) / max(sin, 0.5)
                     if not self.bro[k]:
                         self.spann[k].append((dk - halva, dk + halva))
-                    self.korsningar.setdefault((j, int(k)), (p.x, p.y))
+                    self.korsningar.setdefault((j, int(k), 0), (p.x, p.y))
 
         for k in range(n):
             self.spann[k] = _sla_ihop(self.spann[k])
@@ -246,7 +267,7 @@ class Broar:
         if not mask.any():
             return z
         sa, za = list(s[~mask]), list(z[~mask])
-        if self.bro[k]:
+        if self.bro[k] and not self.roads[k].get('bro_spann'):   # hela vägen är bro: ankare utanför ändarna
             L = self.roads[k]['line']
             c = np.array(L.coords)
             for p, q, s_ankare in ((c[0], c[1], -FORLANG), (c[-1], c[-2], L.length + FORLANG)):
@@ -276,6 +297,57 @@ class Broar:
         if not polys:
             return np.zeros(shape, bool)
         return rasterize([(p, 1) for p in polys], out_shape=shape, transform=transform).astype(bool)
+
+    def landfasten(self, h, shape, transform, OX, OY, RES):
+        """Marken vid varje däckände (riktiga broar) höjs till däckets ovansida: plant LANDFASTE_PLANT_M ut,
+        tonat ned till den vanliga marken vid LANDFASTE_M; under däckets sista LANDFASTE_UNDER_M strax under
+        däcket. Bara höjning, aldrig sänkning (en undergång under däcket rörs inte: den ligger under
+        däcket, inte i dess förlängning)."""
+        antal = 0
+        for k, spann in self.spann.items():
+            if not self.bro[k]:
+                continue
+            r = self.roads[k]
+            L = r['line']
+            halv = r['width'] / 2 + KANTBALK_BRO_B + LANDFASTE_SIDA_M
+            undre = [self.roads[j] for (j, k_, _n) in self.korsningar if k_ == k]   # vägar under: rörs inte
+            for s0, s1 in spann:
+                s0, s1 = max(s0, 0.0), min(s1, L.length)
+                if s1 - s0 < 1.0:
+                    continue
+                for s_e, inat in ((s0, 1.0), (s1, -1.0)):
+                    p = np.array(L.interpolate(s_e).coords[0])
+                    v = _riktning(L, s_e) * -inat              # utåt från däcket
+                    nv = np.array([-v[1], v[0]])
+                    topp = float(np.interp(s_e, r['s'], r['z'])) + lyft(r['tags'])
+                    rad = LANDFASTE_M + halv + 2 * RES
+                    i0, i1 = int((OY - (p[1] + rad)) / RES), int((OY - (p[1] - rad)) / RES) + 1
+                    j0, j1 = int((p[0] - rad - OX) / RES), int((p[0] + rad - OX) / RES) + 1
+                    i0, j0 = max(i0, 0), max(j0, 0)
+                    i1, j1 = min(i1, shape[0]), min(j1, shape[1])
+                    if i0 >= i1 or j0 >= j1:
+                        continue
+                    ii, jj = np.mgrid[i0:i1, j0:j1]
+                    cx, cy = OX + jj * RES, OY - ii * RES
+                    t = (cx - p[0]) * v[0] + (cy - p[1]) * v[1]      # utåt längs vägen
+                    q = (cx - p[0]) * nv[0] + (cy - p[1]) * nv[1]    # tvärs
+                    inne = (np.abs(q) <= halv) & (t >= -LANDFASTE_UNDER_M) & (t <= LANDFASTE_M)
+                    if undre and inne.any():
+                        punkter = shapely.points(cx[inne], cy[inne])
+                        fri = np.zeros(int(inne.sum()), bool)
+                        for ru in undre:
+                            fri |= shapely.distance(punkter, ru['line']) < max(ru['width'], SCHAKT_MIN_BREDD) / 2 + 3.0
+                        inne[inne] = ~fri
+                    if not inne.any():
+                        continue
+                    w = np.clip((t - LANDFASTE_PLANT_M) / (LANDFASTE_M - LANDFASTE_PLANT_M), 0.0, 1.0)
+                    w = np.maximum(w, np.clip((np.abs(q) - (halv - LANDFASTE_SIDA_M)) / LANDFASTE_SIDA_M, 0, 1) * 0.5)
+                    mal = np.where(t < 0, topp - 0.15, topp)
+                    blk = h[i0:i1, j0:j1]
+                    ny = np.maximum(blk, mal * (1 - w) + blk * w)
+                    blk[inne] = ny[inne]
+                    antal += 1
+        print(f'broar: {antal} landfästen')
 
     # ---------- schakt ----------
     def _dack_hojd(self, k, p):
@@ -330,7 +402,7 @@ class Broar:
         self.tak_info = []    # per tunneltak: undre vägens rutt, täckt sträcka, schaktbredd, riktningar
         self.pa_tak = set()   # korta broar över en undergång: de ingår i tunneltaket
         per_undre = {}
-        for (j, k), p in self.korsningar.items():
+        for (j, k, _n), p in self.korsningar.items():
             per_undre.setdefault(j, []).append((k, p))
         # undre vägar som är delar av samma undergång (gångvägen uppdelad i flera OSM-vägar) blir
         # en grupp: ett schakt och ett tak för alla vägar över
@@ -357,7 +429,6 @@ class Broar:
             pts = np.array([rutt.interpolate(d).coords[0] for d in ss])
             z_r = np.full(n, np.inf)
             bottnar, tak_kanter = [], []
-            vag_riktn = []   # vägarna ovanför: taket och räckena följer dem, inte gångvägen under
             for k, p in lista:
                 rk = self.roads[k]
                 topp = self._dack_hojd(k, p)
@@ -375,8 +446,8 @@ class Broar:
                           f"{self.roads[j]['tags'].get('name', self.roads[j]['tags']['highway'])}: "
                           f"golv {krav:.1f} m, mark nu {float(sample(h, [p[0]], [p[1]])[0]):.1f} m")
                 if not self.bro[k] or kort_bro:
-                    tak_kanter.append((s_p - halv, s_p + halv, s_p, topp))
-                    vag_riktn.append(_riktning(rk['line'], rk['line'].project(Point(p))))
+                    tak_kanter.append((s_p - halv, s_p + halv, s_p, topp,
+                                       _riktning(rk['line'], rk['line'].project(Point(p)))))
                     if kort_bro:
                         self.pa_tak.add(k)
             h_nu = sample(h, pts[:, 0], pts[:, 1])
@@ -395,7 +466,18 @@ class Broar:
                 lagre = z_schakt < h[ii, jj]
                 h[ii[lagre], jj[lagre]] = z_schakt[lagre]
                 self.schakt_mask[ii[lagre], jj[lagre]] = True
-            if tak_kanter:
+            # ett tak per grupp vägar ovanför som ligger intill varandra: med luft emellan (en rondell
+            # över Riksvägen: gångbron norr om ringen och den söder om) blir det två tunnlar, inte ett
+            # tak över hela rondellens mitt
+            kluster = []
+            for kant in sorted(tak_kanter):
+                if kluster and kant[0] <= max(b for _, b, *_ in kluster[-1]) + TAK_GLAPP_M:
+                    kluster[-1].append(kant)
+                else:
+                    kluster.append([kant])
+            for tak_kanter in kluster:
+                vag_riktn = [v for *_, v in tak_kanter]
+                tak_kanter = [kant[:4] for kant in tak_kanter]
                 s_lo = max(min(a for a, _, _, _ in tak_kanter), 0.0)
                 s_hi = min(max(b for _, b, _, _ in tak_kanter), rutt.length)
                 ordn = sorted((c, t) for _, _, c, t in tak_kanter)
@@ -442,7 +524,9 @@ class Broar:
             r = self.roads[k]
             L = r['line']
             gc = r['tags']['highway'] in GC
-            bredd = (max(r['width'], GC_BRO_MIN_BREDD) if gc else r['width']) + 2 * KANTBALK_BRO_B - 0.1
+            bredd = max(r['width'], GC_BRO_MIN_BREDD) if gc else r['width']
+            bredd = max(bredd, float(r['tags'].get('_min_bredd', 0.0)))   # broar_justera.json
+            bredd += 2 * KANTBALK_BRO_B - 0.1
             for s0, s1 in spann:
                 a, b = max(s0, 0.0), min(s1, L.length)
                 if b - a < 0.5:
@@ -494,6 +578,7 @@ class Broar:
                         m.mur(np.array([c + nv * halv, c - nv * halv]), np.full(2, z_u), np.full(2, mark),
                               PELARE_TJOCKLEK)
             mr = _Mesh(to_world)
+            mk = _Mesh(to_world)   # osynlig kollisionsvägg längs räckena
             for sida in (1.0, -1.0):
                 if sida in d['inre']:
                     o = d['inre'][sida]
@@ -503,21 +588,26 @@ class Broar:
                 if d['tra']:
                     linje = d['pts'] + d['nrm'] * sida * (d['bredd'] / 2 - STOLPE)
                     mr.racke(linje, d['topp'] - 0.02, RACKE_HOJD_GC if d['gc'] else RACKE_HOJD)
+                    mk.mur(linje, d['topp'] + KANT_VAGG_H, d['topp'] - 0.1, KANT_VAGG_TJOCK)
                     continue
                 # kantbalk: betongen syns bara här (och på sidorna/under), vägbanan är asfalt hela vägen
                 balk = d['pts'] + d['nrm'] * sida * (d['bredd'] / 2 - KANTBALK_BRO_B / 2)
                 m.mur(balk, d['topp'] + KANTBALK_BRO_H, d['topp'] - 0.1, KANTBALK_BRO_B)
                 linje = d['pts'] + d['nrm'] * sida * (d['bredd'] / 2 - KANTBALK_BRO_B / 2)
                 mr.racke(linje, d['topp'] + KANTBALK_BRO_H, RACKE_HOJD_GC if d['gc'] else RACKE_HOJD)
+                mk.mur(linje, d['topp'] + KANT_VAGG_H, d['topp'] - 0.1, KANT_VAGG_TJOCK)
             add_merged('Broar', m.trimesh(), tra if d['tra'] else betong)
             if mr.V:
-                add_merged('Broar', mr.trimesh(), tra if d['tra'] else metall)
+                add_merged('Brorack', mr.trimesh(), tra if d['tra'] else metall)
+            if mk.V:
+                add_merged('Kollision_broar', mk.trimesh(), metall)
             antal += 1
         # tunneltak över undergångarna, med räcken längs mynningarna
         for pts, topp, hw, tj, u in self.tak:
             m = _Mesh(to_world)
             m.platta(pts, topp, hw, TAK_TJOCKLEK, ovan_under=0.0, tvars=u)
             mr = _Mesh(to_world)
+            mk = _Mesh(to_world)
             dv = np.gradient(pts, axis=0) if len(pts) > 2 else np.repeat([pts[-1] - pts[0]], len(pts), 0)
             dv /= np.maximum(np.linalg.norm(dv, axis=1, keepdims=True), 1e-9)
             for i_, inat in ((0, 1.0), (len(pts) - 1, -1.0)):
@@ -525,8 +615,10 @@ class Broar:
                 tvars = np.linspace(-hw[i_] + 0.3, hw[i_] - 0.3, n_)
                 linje = pts[i_] + dv[i_] * inat * STOLPE + np.outer(tvars, u)
                 mr.racke(linje, np.full(n_, topp[i_]), RACKE_HOJD)
+                mk.mur(linje, np.full(n_, topp[i_] + KANT_VAGG_H), np.full(n_, topp[i_] - 0.1), KANT_VAGG_TJOCK)
             add_merged('Broar', m.trimesh(), betong)
-            add_merged('Broar', mr.trimesh(), metall)
+            add_merged('Brorack', mr.trimesh(), metall)
+            add_merged('Kollision_broar', mk.trimesh(), metall)
         if mat is not None:
             self._undergangar(h, sample, to_world, add_merged, betong, mat)
         print(f'broar: {antal} brobanor, {len(self.tak)} tunneltak, '

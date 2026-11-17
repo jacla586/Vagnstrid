@@ -115,6 +115,16 @@ func _on_hit(hit: Dictionary) -> void:
 		_play_hit_sound(collider, point)
 		queue_free()
 		return
+	# A gun round that isn't explosive goes through a trunk (felling it if thin), a little
+	# off its path; the host sends the new path to clients like a ricochet.
+	if _surface_of(collider) == &"wood" and _passes_tree(collider, point):
+		if _cosmetic:
+			queue_free()
+			return
+		if collider.has_method("on_shell_hit"):
+			collider.on_shell_hit(_data, point, normal, _velocity, int(hit["shape"]))
+		_through_tree(point)
+		return
 	# Gun rounds landing near enemy mines destroy them.
 	Mine.shell_landed(get_tree(), point, _data, Tank.team_of(_shooter))
 	var result: HitResult = null
@@ -129,6 +139,7 @@ func _on_hit(hit: Dictionary) -> void:
 	if _data.is_explosive() or result == null or result.outcome != HitResult.Outcome.RICOCHET:
 		_play_hit_sound(collider, point)
 	if _data.is_explosive():
+		TreeField.fell_near(get_tree(), point, _data.tree_fell_radius_m)
 		_rng.randomize()
 		for fragment_result: HitResult in Explosion.detonate(get_world_3d(), get_tree(), point,
 				normal, _data, _rng, Tank.team_of(_shooter), _shooter):
@@ -216,6 +227,37 @@ func _play_hit_sound(collider: Object, point: Vector3) -> void:
 		SoundFx.play_at(self, _data.sound_hit_armour, point, bus_name)
 	else:
 		SoundFx.play_at(self, _data.sound_hit_ground, point)
+
+
+## Gun rounds (>= 20 mm, not explosive) go through any trunk; bullets through thin ones
+## (ShellData.tree_pass_max_diameter_m: MG bullets, still deadly to soldiers beyond).
+func _passes_tree(collider: Object, point: Vector3) -> bool:
+	if _data.is_explosive():
+		return false
+	if _data.caliber_mm >= Tank.THREAT_MIN_CALIBER_MM:
+		return true
+	if _data.tree_pass_max_diameter_m <= 0.0 or not (collider is TreeField):
+		return false
+	var d: float = (collider as TreeField).trunk_diameter_near(point)
+	return d > 0.0 and d <= _data.tree_pass_max_diameter_m
+
+
+## Through the trunk: on from just inside it (rays starting inside a shape don't hit it),
+## turned a random tree_deflection_min..max_deg in a random direction, a little slower.
+func _through_tree(point: Vector3) -> void:
+	_rng.randomize()
+	var speed: float = _velocity.length()
+	var forward: Vector3 = _velocity / maxf(speed, 0.001)
+	var side: Vector3 = forward.cross(Vector3.UP)
+	if side.length_squared() < 0.0001:
+		side = Vector3.RIGHT
+	side = side.normalized().rotated(forward, _rng.randf_range(0.0, TAU))
+	var angle: float = deg_to_rad(_rng.randf_range(_data.tree_deflection_min_deg, _data.tree_deflection_max_deg))
+	var turned: Vector3 = (forward * cos(angle) + side * sin(angle)).normalized()
+	_velocity = turned * speed * _data.tree_speed_keep
+	global_position = point + forward * 0.05
+	_orient()
+	ricocheted.emit(global_position, _velocity)
 
 
 ## Bounces off the plate and keeps flying; never hits the same body again.

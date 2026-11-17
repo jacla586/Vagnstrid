@@ -38,10 +38,14 @@ if DEM_TYPE == 'lm' or 'grid_box' in reg:
     # Lantmäteriets markmodell har havet platt på ~0,4–0,5 m (Copernicus ~0 m). Hav = sammanhängande
     # låga ytor större än 0,2 km². Säkrare än OSM-kustlinjen, vars land/hav-klassning slår fel långt
     # från kusten. Gäller även Copernicus i rutläge, där rutan annars räknas som land rakt igenom.
-    low = h < 0.52
+    # <projekt>/omrade.json kan ändra nivån och minsta ytan: "hav_niva_m", "hav_min_km2" (peking:
+    # Norrköpings hamn ligger platt på 1,0 m i markmodellen och är bara ~0,1 km² inom rutan)
+    _o = WORK.parent / 'omrade.json'
+    _o = json.loads(_o.read_text()) if _o.exists() else {}
+    low = h < float(_o.get('hav_niva_m', 0.52))
     lab, n = ndi.label(low)
     sizes = ndi.sum(low, lab, np.arange(1, n + 1)) * RES * RES
-    sea = np.isin(lab, np.nonzero(sizes > 0.2e6)[0] + 1)
+    sea = np.isin(lab, np.nonzero(sizes > float(_o.get('hav_min_km2', 0.2)) * 1e6)[0] + 1)
     land = ~sea
     print('hav enligt höjdmodellen, km²:', round(sea.sum() * RES * RES / 1e6, 2))
 forest = mask([g for g, c in feat['landcover'] if c in ('forest',)])
@@ -64,7 +68,10 @@ d_sea = ndi.distance_transform_edt(~land) * RES
 d_land = ndi.distance_transform_edt(land) * RES
 if land.all():
     d_land[:] = 1e6   # inget hav i rutan (inlandskarta): edt saknar bakgrund och ger skräp, ingen strandlogik
-sea_floor = -0.6 - np.minimum(d_sea, 300) * 0.02   # ner till ca -6.6 m
+# "hav_lutning" i omrade.json (peking: hamnen är smal, 0,02 gav bara ~1 m djup)
+_ol = WORK.parent / 'omrade.json'
+_hav_lutning = float(json.loads(_ol.read_text()).get('hav_lutning', 0.02)) if _ol.exists() else 0.02
+sea_floor = -0.6 - np.minimum(np.minimum(d_sea, 300) * _hav_lutning, 6.0)   # ner till ca -6.6 m
 # Mjuk strand: dra ner landhöjden mot ~0.5 m de sista 80 m mot vattnet
 shore_t = np.clip(d_land / 80.0, 0, 1); shore_t = shore_t * shore_t * (3 - 2 * shore_t)
 h = np.where(land, 0.5 + (np.maximum(h, 0.5) - 0.5) * shore_t, h)

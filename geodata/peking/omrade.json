@@ -1,0 +1,54 @@
+{
+ "rutt": {
+  "start": [
+   58.595877,
+   16.157361
+  ],
+  "slut": [
+   58.583414,
+   16.193777
+  ],
+  "start_sweref": [
+   567268.4,
+   6495634.0
+  ],
+  "slut_sweref": [
+   569409.6,
+   6494283.6
+  ],
+  "marginal_m": 600.0,
+  "via": []
+ },
+ "namn": "peking",
+ "punkter": [
+  [
+   58.5784233,
+   16.1464932
+  ],
+  [
+   58.6007953,
+   16.2047021
+  ]
+ ],
+ "ruta": [
+  566670,
+  6493680,
+  570010,
+  6496230
+ ],
+ "wgs84": [
+  16.146493,
+  58.577898,
+  16.204702,
+  58.601321
+ ],
+ "uppdaterad": "2026-11-17T00:33:34",
+ "dem": "data/markhojd_peking.tif",
+ "dem_typ": "lm",
+ "objekt": "data/objekthojd_peking.tif",
+ "hav_niva_m": 1.02,
+ "hav_min_km2": 0.05,
+ "vatten_lutning": 0.5,
+ "vatten_djup_m": 3.0,
+ "hav_lutning": 0.25
+}

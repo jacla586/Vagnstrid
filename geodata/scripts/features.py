@@ -41,7 +41,7 @@ def build(osm_path):
 
     out = dict(buildings=[], roads=[], landcover=[], water=[], waterways=[], points=[], hedges=[],
                rails=[], platforms=[], vagpunkter=[], lekplatser=[], lekredskap=[], idrottsbanor=[], byggdelar=[],
-               idrottsplaner=[], bassanger=[])
+               idrottsplaner=[], bassanger=[], kyrkogardar=[])
     used_in_rel = set()
     bana_medlem = set()   # vägar i en löparbanas multipolygon (idrott.py) läggs inte till en gång till
     for rid, r in rels.items():
@@ -61,6 +61,8 @@ def build(osm_path):
             continue
         g = op.difference(ip) if ip is not None and not ip.is_empty else op
         cls = landcover_class(t)
+        if t.get('landuse') == 'cemetery' or t.get('amenity') == 'grave_yard':
+            out['kyrkogardar'].append((g, t, f'r{rid}'))   # gravar.py (ytan blir även marktäcke nedan)
         if t.get('leisure') == 'track':
             out['idrottsbanor'].append((g, t, rid))   # idrott.py: löparbana med hål
             bana_medlem.update(m[1] for m in r['members'] if m[0] == 'way')
@@ -76,15 +78,70 @@ def build(osm_path):
 
     # <projekt>/broar_bort.json: OSM-vägar (id) som inte ska bli broar, t.ex. långa spänger
     # mitt i skogen som stänger vägen för vagnarna. Vägen blir kvar som vanlig väg på marken.
+    # <projekt>/vagar_bort.json: ["<OSM-väg-id>", ...] (eller {"vagar": [...]}): vägarna tas bort helt,
+    # t.ex. broar över en å som inte ska gå att korsa (peking: Motala ström väster om Drottningbron)
+    vbort = WORK.parent / 'vagar_bort.json'
+    if vbort.exists():
+        lista = json.loads(vbort.read_text())
+        for wid in (lista['vagar'] if isinstance(lista, dict) else lista):
+            if ways.pop(wid, None) is None and ways.pop(str(wid), None) is None and \
+                    (not str(wid).isdigit() or ways.pop(int(wid), None) is None):
+                print(f'vagar_bort.json: ingen väg {wid}')
+
+    # <projekt>/broar_sammanfoga.json: {"<namn>": {"vagar": [id, ...], "bredd": 40, "highway": "secondary",
+    # "lanes": 4, "axel": [[E, N], [E, N]] (valfri mittlinje)}}: en bro som OSM ritar som många parallella vägar (körbanor, spårvägs- och busskörfält,
+    # GC-banor) blir ett enda däck: vägarna tas bort och ersätts av en väg längs mittlinjen av deras
+    # minsta omslutande rektangel, `bredd` m bred (fast, `_fast_bredd`: NVDB-stegets tak 14 m gäller inte).
+    # Annars blev det ett smalt däck per väg med vatten emellan (Hamnbron och Drottningbron i peking).
+    sam = WORK.parent / 'broar_sammanfoga.json'
+    if sam.exists():
+        nytt_id = -1
+        for namn, val in json.loads(sam.read_text()).items():
+            if namn.startswith('_'):
+                continue
+            ids = [int(w) for w in val['vagar'] if int(w) in ways]
+            if not ids:
+                print(f'broar_sammanfoga.json: inga vägar kvar för {namn}')
+                continue
+            forsta = ways[ids[0]]['tags']
+            if val.get('axel'):           # handräknad mittlinje [[E, N], [E, N]]
+                mitt = [tuple(map(float, q)) for q in val['axel']]
+            else:
+                linjer = [LineString(coords(ways[w])) for w in ids if len(coords(ways[w])) > 1]
+                hörn = list(unary_union(linjer).minimum_rotated_rectangle.exterior.coords)[:4]
+                kant = lambda i: (hörn[i], hörn[(i + 1) % 4])
+                längd = lambda i: ((kant(i)[1][0] - kant(i)[0][0]) ** 2 + (kant(i)[1][1] - kant(i)[0][1]) ** 2) ** 0.5
+                kort = 0 if längd(0) < längd(1) else 1      # rektangelns korta kanter: 0 och 2 (eller 1 och 3)
+                mitt = [tuple((a + b) / 2 for a, b in zip(*kant(i))) for i in (kort, kort + 2)]
+            nds = []
+            for e, n in mitt:
+                P[nytt_id] = (e, n)
+                nds.append(nytt_id)
+                nytt_id -= 1
+            tags = {'highway': val.get('highway', forsta.get('highway', 'secondary')), 'name': namn,
+                    'bridge': 'yes', 'layer': '1', 'oneway': 'no', 'surface': 'asphalt',
+                    'width': str(val['bredd']), '_fast_bredd': str(float(val['bredd'])),
+                    '_min_bredd': str(float(val['bredd']))}
+            if val.get('lanes'):
+                tags['lanes'] = str(val['lanes'])
+            for w in ids:
+                del ways[w]
+            ways[nytt_id] = {'nds': nds, 'tags': tags}
+            nytt_id -= 1
+            print(f'broar_sammanfoga.json: {namn} = {len(ids)} vägar -> ett däck {val["bredd"]} m')
+
     bort = WORK.parent / 'broar_bort.json'
     if bort.exists():
         for wid in json.loads(bort.read_text()):
             ways.get(wid, ways.get(str(wid), {})).get('tags', {}).pop('bridge', None)
-    # <projekt>/broar_justera.json: {"<OSM-väg-id>": {"utan_pelare": true, "extra_fri_hojd": 1.0}}
-    # Bron får inga pelare, och marken under den sänks så mycket mer än vanligt (broar.py).
+    # <projekt>/broar_justera.json: {"<OSM-väg-id>": {"utan_pelare": true, "extra_fri_hojd": 1.0,
+    # "min_bredd": 5.0}}: bron får inga pelare, marken under den sänks så mycket mer än vanligt, och
+    # körbanan mellan kantbalkarna blir minst så bred (broar.py; t.ex. gångbroar som vagnar ska över).
     justera = WORK.parent / 'broar_justera.json'
     if justera.exists():
         for wid, val in json.loads(justera.read_text()).items():
+            if wid.startswith('_'):
+                continue
             t = ways.get(wid, ways.get(int(wid) if wid.isdigit() else wid, {})).get('tags')
             if t is None:
                 print(f'broar_justera.json: ingen väg {wid}')
@@ -93,6 +150,8 @@ def build(osm_path):
                 t['_utan_pelare'] = 'yes'
             if val.get('extra_fri_hojd'):
                 t['_extra_fri_hojd'] = str(float(val['extra_fri_hojd']))
+            if val.get('min_bredd'):
+                t['_min_bredd'] = str(float(val['min_bredd']))
 
     # <projekt>/vagar_justera.json: {"<OSM-väg-id>": {"width": "9", ...}}: taggar som läggs på vägen
     # (t.ex. en GC-väg som är mycket bredare än OSM-tabellens stig, Märkesbacken på Campus Valla)
@@ -153,4 +212,11 @@ def build(osm_path):
             out['lekredskap'].append((Point(P[nid]), t))   # lekplatser.py: redskap ur OSM
         elif t.get('amenity') == 'shelter' and t.get('shelter_type') == 'public_transport' and nid in P:
             out['vagpunkter'].append((Point(P[nid]), {'highway': 'vaderskydd'}))
+    # kyrkogårdar (gravar.py); ytan är också marktäcke (residential) som förut
+    for wid, w in ways.items():
+        t = w['tags']
+        if (t.get('landuse') == 'cemetery' or t.get('amenity') == 'grave_yard') and w['nds'][0] == w['nds'][-1]:
+            c = coords(w)
+            if len(c) >= 4:
+                out['kyrkogardar'].append((Polygon(c).buffer(0), t, wid))
     return out

@@ -19,6 +19,7 @@ const GROUP_TAGS: Array[String] = ["_koth", "_thunder", "_free"]
 const PLACE_NAMES: Dictionary = {
 	"vidingsjo": "Vidingsjö", "linghem": "Linghem", "campus": "Campus",
 	"road_to_science": "Road to Science", "corson": "Corson",
+	"peking": "Peking (Norrköping)",
 }
 
 var _name: LineEdit

@@ -10,6 +10,7 @@ editor), plus ThunderRoadBots.
 
 --join=M: join road pieces whose points are this close (default 15 m; more across
 roundabouts whose ring has another name).
+--spacing=M: aimed checkpoint spacing (default 330 m; keep checkpoints >= 500 m apart).
 
 Or take a ready route (any roads and paths, e.g. a corridor map's korridor.json with
 "rutt_sweref": [[E, N], ...] from start to end) instead of road names:
@@ -170,11 +171,14 @@ def fmt(v: float) -> str:
 
 
 def main() -> None:
-    global JOIN_M
+    global JOIN_M, SPACING_M
     path_file = ""
     for arg in list(sys.argv[1:]):
         if arg.startswith("--join="):
             JOIN_M = float(arg.split("=", 1)[1])
+            sys.argv.remove(arg)
+        elif arg.startswith("--spacing="):
+            SPACING_M = float(arg.split("=", 1)[1])
             sys.argv.remove(arg)
         elif arg.startswith("--path="):
             path_file = arg.split("=", 1)[1]

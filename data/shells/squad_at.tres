@@ -25,6 +25,7 @@ blast_hp = 14.0
 blast_module_reach_m = 1.5
 optics_dirt_radius_m = 7.0
 fragment_lethal_radius_m = 1.0
+tree_fell_radius_m = 1.0
 fragment_max_radius_m = 6.0
 wear_mm = 15.0
 sound_hit_armour = ExtResource("2_hit")

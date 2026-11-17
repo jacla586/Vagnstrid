@@ -68,10 +68,7 @@ func on_shell_hit(shell_data: ShellData, velocity: Vector3) -> HitResult:
 			or get_trunk_diameter() > data.shell_snap_max_diameter_m:
 		return null
 	fell(velocity)
-	var result := HitResult.new()
-	result.note = "TREE DOWN"
-	result.target = self
-	return result
+	return null   # nothing for the shooter's HUD
 
 
 func _physics_process(delta: float) -> void:

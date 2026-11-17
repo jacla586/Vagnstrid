@@ -1,0 +1,33 @@
+{
+ "_anm": "Broarna över strömmen öster om Centralen ska gå att köra över med stridsvagn (vagnen är 3,2-3,4 m): körbanan mellan kantbalkarna minst min_bredd (broar.py); Tullhusbron och gångbron från Strömsholmen norrut (28044610) 8 m. Hamnbrons och Drottningbrons huvuddäck: broar_sammanfoga.json. Drottningbron (Drottninggatan), Tullhusbron (gång- och cykelbro), Hamnbron (Packhusgatan), Sjötullsgatan, Fleminggatan, Varvsbron (gång- och cykelbro) och Jungfrugatan/Brännerigatan i Inre hamnen. Broarna västerut ska spärras (görs i bygget).",
+ "194613410": {
+  "min_bredd": 8.0
+ },
+ "286445684": {
+  "min_bredd": 5.0
+ },
+ "39446066": {
+  "min_bredd": 5.0
+ },
+ "92416248": {
+  "min_bredd": 5.0
+ },
+ "287185290": {
+  "min_bredd": 5.0
+ },
+ "1199465830": {
+  "min_bredd": 5.0
+ },
+ "1246956886": {
+  "min_bredd": 5.0
+ },
+ "1246956889": {
+  "min_bredd": 5.0
+ },
+ "1246956891": {
+  "min_bredd": 5.0
+ },
+ "28044610": {
+  "min_bredd": 8.0
+ }
+}

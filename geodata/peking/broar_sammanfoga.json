@@ -1,0 +1,39 @@
+{
+ "_anm": "Broar som OSM ritar som många parallella vägar blir ett däck (features.py). Bredden ur avståndet mellan de yttersta OSM-vägarna plus deras halva bredder (Hamnbron: 30 m + vänstra körbanan 5 m på ena sidan, centrerat; Drottningbron: 23 m mellan GC-banorna). Hamnbron har en handräknad mittlinje (axel): västra trottoaren (94815087) svänger av i södra änden och skulle snedvrida rektangeln; däcket täcker 11 m väster om västra körbanan till 32 m öster om den.",
+ "Hamnbron": {
+  "vagar": [
+   "27690828",
+   "501428828",
+   "94566800",
+   "94815087"
+  ],
+  "bredd": 43,
+  "highway": "secondary",
+  "lanes": 4,
+  "axel": [
+   [
+    569386.6,
+    6495539.2
+   ],
+   [
+    569429.3,
+    6495454.4
+   ]
+  ]
+ },
+ "Drottningbron": {
+  "vagar": [
+   "47460598",
+   "501428826",
+   "297690884",
+   "312486748",
+   "312486750",
+   "315777121",
+   "92459658",
+   "501428825"
+  ],
+  "bredd": 28,
+  "highway": "secondary",
+  "lanes": 2
+ }
+}

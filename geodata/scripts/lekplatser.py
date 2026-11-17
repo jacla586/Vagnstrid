@@ -30,10 +30,19 @@ TYPER = {
     'gunga': (2.6, 5, 0), 'rutschkana': (2.4, 3, 0), 'klatter': (3.2, 4, 120), 'snurra': (1.5, 2, 0),
     'linbana': (0, 3, 700), 'sandlada': (2.0, 4, 0), 'basket': (3.0, 2, 300), 'gungbrada': (1.8, 2, 0),
     'bank': (1.2, 2, 0), 'fagelbo': (2.4, 2, 0), 'lekstuga': (1.6, 1, 150),
+    'lektag': (4.2, 2, 900), 'fjader': (0.9, 4, 0), 'rotator': (3.2, 2, 600),
 }
 OSM_TYP = {'swing': 'gunga', 'basketswing': 'fagelbo', 'slide': 'rutschkana', 'sandpit': 'sandlada',
            'climbingframe': 'klatter', 'structure': 'klatter', 'roundabout': 'snurra', 'zipwire': 'linbana',
-           'seesaw': 'gungbrada', 'playhouse': 'lekstuga', 'basketball': 'basket'}
+           'seesaw': 'gungbrada', 'playhouse': 'lekstuga', 'basketball': 'basket',
+           'aerialrotator': 'rotator', 'spinning_disc': 'snurra', 'springy': 'fjader', 'train': 'lektag'}
+MAX_PER_TYP = {'lektag': 1, 'rotator': 2, 'basket': 1, 'lekstuga': 1, 'linbana': 1}
+STOR_PARK_M2 = 1500     # större lekplatser: fler redskap (en per STOR_YTA_PER_REDSKAP m², högst STOR_MAX) och trästaket
+STOR_YTA_PER_REDSKAP = 110.0
+STOR_MAX = 40
+STAKET_BIT_M = 10.0     # staketet runt stora lekplatser i bitar (egna noder, vältbara var för sig)
+STAKET_OPPNING_M = 3.0  # en öppning var STAKET_OPPNING_VAR_M
+STAKET_OPPNING_VAR_M = 28.0
 
 
 def _srgb2lin(c):
@@ -251,9 +260,86 @@ def lekstuga(rng, tema):
     return b, 1.4
 
 
+def lektag(rng, tema):
+    """Lektåg (Folkparken i Norrköping, efter Mapillary): lok med hytt och skorsten, två öppna vagnar."""
+    b = _Bit()
+    farg = 'röd' if rng.random() < 0.6 else tema[0]
+    farg = farg if farg not in ('trä', 'mörkträ', 'metall') else 'röd'
+    z = -2.6
+    # loket
+    b.box([0, 0.55, z + 0.9], [1.2, 0.7, 1.8], farg)                     # panna
+    b.ror([0, 0.95, z + 0.2], [0, 0.95, z + 1.9], 0.42, farg, sek=12)
+    b.box([0, 1.15, z - 0.2], [1.25, 1.6, 1.0], farg)                    # hytt
+    b.box([0, 2.0, z - 0.2], [1.45, 0.1, 1.2], 'svart')                  # tak
+    b.ror([0, 1.3, z + 1.55], [0, 1.85, z + 1.55], 0.14, 'svart')        # skorsten
+    b.box([0, 1.25, z + 0.31], [0.8, 0.5, 0.02], 'vit')                  # hyttfönster
+    for zz in (z - 0.4, z + 0.5, z + 1.4):
+        for x in (-0.62, 0.62):
+            b.skiva([x, 0.32, zz], 0.3, 0.1, 'svart', sek=12)
+    # vagnarna
+    for k in range(2):
+        zz = z + 3.0 + k * 1.9
+        b.box([0, 0.55, zz], [1.2, 0.7, 1.6], farg if k == 0 else tema[1])
+        b.box([0, 0.8, zz], [1.0, 0.25, 1.4], 'svart')                    # öppen ovanifrån
+        b.box([0, 0.75, zz], [0.9, 0.06, 0.25], 'trä')                    # sittbräda
+        b.box([0, 0.35, zz - 0.95], [0.2, 0.12, 0.4], 'svart')            # koppel
+        for zz2 in (zz - 0.5, zz + 0.5):
+            for x in (-0.62, 0.62):
+                b.skiva([x, 0.28, zz2], 0.26, 0.1, 'svart', sek=12)
+    return b, 4.2
+
+
+def fjader(rng, tema):
+    """Fjädergunga: ett djur eller en båt på en kraftig spiralfjäder."""
+    b = _Bit()
+    f = tema[int(rng.integers(0, 3))]
+    f = f if f not in ('trä', 'mörkträ', 'metall') else 'blå'
+    for i in range(6):   # fjädern
+        y = 0.08 + i * 0.07
+        b.ror([-0.1, y, 0], [0.1, y + 0.035, 0], 0.08, 'svart', sek=6)
+    b.box([0, 0.0, 0], [0.4, 0.04, 0.4], 'metall')
+    if rng.random() < 0.5:   # häst/djur: kropp, hals och huvud
+        b.box([0, 0.62, 0], [0.28, 0.32, 0.8], f)
+        b.box([0, 0.9, 0.35], [0.22, 0.4, 0.2], f)
+        b.box([0, 1.05, 0.5], [0.2, 0.18, 0.3], f)
+    else:                    # båt/våg: en skålad sits
+        b.box([0, 0.6, 0], [0.5, 0.25, 0.9], f)
+        b.box([0, 0.85, -0.38], [0.5, 0.3, 0.08], f)
+    b.ror([-0.2, 0.95, 0.15], [0.2, 0.95, 0.15], 0.02, 'gul' if f != 'gul' else 'röd')
+    return b, 0.9
+
+
+def rotator(rng, tema):
+    """Hög snurrställning (OSM playground=aerialrotator): en gul stolpe med en arm som man hänger i."""
+    b = _Bit()
+    h = rng.uniform(3.2, 3.8)
+    stolpe = 'gul' if rng.random() < 0.7 else tema[0]
+    b.ror([0, 0, 0], [0, h, 0], 0.09, stolpe)
+    b.skiva([0, h + 0.05, 0], 0.18, 0.12, 'röd')
+    L = rng.uniform(1.6, 2.2)
+    for a in (0.0, np.pi):
+        x = L * np.cos(a)
+        b.ror([0, h - 0.15, 0], [x, h - 0.5, 0], 0.045, 'röd')
+        b.ror([x, h - 0.5, 0], [x, 0.9, 0], 0.012, 'svart', sek=4)
+        b.box([x, 0.9, 0], [0.45, 0.05, 0.22], 'svart')
+    return b, L + 1.0
+
+
+def staket(langd, rng):
+    """Trästaket med två slanor (Folkparken): stolpar var 2,4 m längs lokala z, 0 .. langd."""
+    b = _Bit()
+    n = max(1, int(np.ceil(langd / 2.4)))
+    for i in range(n + 1):
+        z = langd * i / n
+        b.box([0, 0.5, z], [0.12, 1.0, 0.12], 'trä')
+    for y in (0.45, 0.85):
+        b.box([0, y, langd / 2], [0.06, 0.12, langd], 'trä')
+    return b
+
+
 BYGG = {'gunga': gunga, 'fagelbo': lambda r, t: gunga(r, t, True), 'rutschkana': rutschkana, 'klatter': klatter,
         'snurra': snurra, 'sandlada': sandlada, 'basket': basket, 'gungbrada': gungbrada, 'bank': bank,
-        'lekstuga': lekstuga}
+        'lekstuga': lekstuga, 'lektag': lektag, 'fjader': fjader, 'rotator': rotator}
 
 
 # ---------- parkerna ----------
@@ -272,14 +358,21 @@ def _langdriktning(poly):
 
 def program(rng, yta, lang):
     n = int(np.clip(yta / 55.0, 2, 9))
+    if yta >= STOR_PARK_M2:   # stora lekplatser fylls (Folkparken i Norrköping, 4 200 m²)
+        n = int(np.clip(yta / STOR_YTA_PER_REDSKAP, 9, STOR_MAX))
     typer = [t for t, (_, _, minyta) in TYPER.items() if yta >= minyta and t != 'linbana']
     vikt = np.array([TYPER[t][1] for t in typer], float)
     val = []
     for _ in range(n):
+        if vikt.sum() <= 0:
+            break
         p = vikt / vikt.sum()
         t = typer[rng.choice(len(typer), p=p)]
         val.append(t)
-        vikt[typer.index(t)] *= 0.35   # mindre sannolikt igen: blandning
+        if val.count(t) >= MAX_PER_TYP.get(t, 99):
+            vikt[typer.index(t)] = 0.0
+            continue
+        vikt[typer.index(t)] *= 0.35 if n <= 9 else 0.7   # mindre sannolikt igen: blandning
     if yta >= TYPER['linbana'][2] and lang > 26 and rng.random() < 0.6:
         val.insert(0, 'linbana')
     return val
@@ -305,8 +398,12 @@ def bygg(lekplatser, redskap, sample, h, to_world, scene, add_merged, mat, hinde
         inne = poly.buffer(-0.8) if poly.buffer(-0.8).area > 10 else poly
         lista = [(OSM_TYP[tt.get('playground')], np.array(p.coords[0]), True)
                  for p, tt in redskap if tt.get('playground') in OSM_TYP and poly.buffer(2.0).contains(p)]
-        lista += [(typ, None, False) for typ in program(rng, poly.area, lang)
-                  if typ not in [l[0] for l in lista]]
+        osm_typer = [l[0] for l in lista]
+        for typ in program(rng, poly.area, lang):   # OSM:s redskap räknas av, ett för ett
+            if typ in osm_typer:
+                osm_typer.remove(typ)
+            elif [l[0] for l in lista].count(typ) < MAX_PER_TYP.get(typ, 99):
+                lista.append((typ, None, False))
         lista.sort(key=lambda x: -TYPER[x[0]][0])
         placerade = []   # (punkt, radie)
         nr = 0
@@ -368,6 +465,36 @@ def bygg(lekplatser, redskap, sample, h, to_world, scene, add_merged, mat, hinde
                 disk.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))
                 disk.apply_translation([wx, y0 + 0.02, wz])
                 add_merged('Lekplatsunderlag', disk, underlag[mark])
+        if poly.area >= STOR_PARK_M2:   # trästaket runt om, i bitar med öppningar
+            ring = poly.exterior
+            s_ = 0.0
+            k = 0
+            while s_ < ring.length - 1.0:
+                if (s_ % STAKET_OPPNING_VAR_M) < STAKET_OPPNING_M:
+                    s_ += STAKET_OPPNING_M
+                    continue
+                L = min(STAKET_BIT_M, ring.length - s_, STAKET_OPPNING_VAR_M - (s_ % STAKET_OPPNING_VAR_M))
+                a = np.array(ring.interpolate(s_).coords[0])
+                e = np.array(ring.interpolate(s_ + L).coords[0])
+                mitt = (a + e) / 2
+                if L > 1.0 and not (hinder is not None and hinder(*mitt)):
+                    m = staket(float(np.linalg.norm(e - a)), rng).mesh()
+                    fram = (e - a) / max(np.linalg.norm(e - a), 1e-6)
+                    hoger = np.array([fram[1], -fram[0]])
+                    wx, wz = to_world(a[0], a[1])
+                    y0 = float(min(sample(h, [a[0], e[0]], [a[1], e[1]])))
+                    R = np.eye(4)
+                    R[:3, 0] = [hoger[0], 0, -hoger[1]]
+                    R[:3, 1] = [0, 1, 0]
+                    R[:3, 2] = [fram[0], 0, -fram[1]]
+                    if np.linalg.det(R[:3, :3]) < 0:
+                        R[:3, 0] *= -1
+                    R[:3, 3] = [wx, y0, wz]
+                    m.apply_transform(R)
+                    namn = f'Lek_{osm_id}_staket{k}_staket'
+                    scene.add_geometry(m, node_name=namn, geom_name=namn, parent_node_name='Lekplatser')
+                    k += 1
+                s_ += L
         platser.append((poly, [p for p, _ in placerade]))
     print(f'lekplatser: {len(platser)} parker, {n_redskap} redskap')
     return platser

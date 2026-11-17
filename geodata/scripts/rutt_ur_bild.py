@@ -8,6 +8,11 @@ slut, avlästa för hand) och <namn>/omrade.json ("rutt": start/slut lat,lon). F
 punkten georefereras mot start och slut (Web Mercator, ingen vridning, samma skala åt båda håll),
 de andra blir en ledlinje. Kortaste väg i OSM (alla highway utom trappor) med kostnad
 längd · (1 + (avstånd till ledlinjen / 12 m)²). Skriver <namn>/rutt.json och <namn>/korridor.json.
+
+Valfritt i rutt_bild.json:
+  "kontroll": [{"px": [x, y], "sweref": [E, N]}, ...]  kända punkter (t.ex. korsningar ur OSM); då
+      passas bilden in med en affin avbildning (minsta kvadrat, start och slut ingår) i stället.
+  "gc_faktor": 3.0  kostnadsfaktor för gång-/cykelvägar, stigar och service (bilgator först).
 """
 import argparse, heapq, json, math, sys
 import xml.etree.ElementTree as ET
@@ -34,6 +39,16 @@ def main():
     p0, p1 = d[0], d[-1]
     k = math.hypot(e[0] - s[0], e[1] - s[1]) / math.hypot(p1[0] - p0[0], p1[1] - p0[1])
     guide = np.array([back.transform(s[0] + (x - p0[0]) * k, s[1] - (y - p0[1]) * k) for x, y in d])
+    rb = json.load(open(P / 'rutt_bild.json'))
+    if rb.get('kontroll'):
+        px = [p0, p1] + [c['px'] for c in rb['kontroll']]
+        sw = [guide[0], guide[-1]] + [c['sweref'] for c in rb['kontroll']]
+        A = np.array([[x, y, 1.0] for x, y in px])
+        M, *_ = np.linalg.lstsq(A, np.array(sw, float), rcond=None)
+        print('kontrollpunkter: fel %s m' % np.round(np.hypot(*(A @ M - np.array(sw, float)).T)).astype(int).tolist())
+        guide = np.array([[x, y, 1.0] for x, y in d]) @ M
+    gc_faktor = float(rb.get('gc_faktor', 1.0))
+    GC = {'footway', 'path', 'cycleway', 'pedestrian', 'service', 'track', 'bridleway'}
     print('ledlinje %.0f m' % np.sum(np.hypot(*np.diff(guide, axis=0).T)))
 
     def dist_guide(pt):
@@ -65,6 +80,8 @@ def main():
                 continue
             l = float(np.hypot(*(X(u) - X(v))))
             c = l * (1 + (dist_guide((X(u) + X(v)) / 2) / 12) ** 2)
+            if tags['highway'] in GC:
+                c *= gc_faktor
             G.setdefault(u, []).append((v, c, wid)); G.setdefault(v, []).append((u, c, wid))
     near = lambda p: min(G, key=lambda n: np.hypot(*(X(n) - p)))
     A, B = near(guide[0]), near(guide[-1])

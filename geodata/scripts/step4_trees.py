@@ -220,6 +220,8 @@ HACK_NARA_M, HACK_HOGRE_M = 1.0, 0.8   # laserbuskar så nära en häck och inte
 hack_seg = np.zeros((0, 5))
 if (WORK / 'hackar.pkl').exists():
     hack_seg = np.asarray(pickle.load(open(str(WORK / 'hackar.pkl'), 'rb')).get('segment', hack_seg)).reshape(-1, 5)
+if (WORK / 'gravhackar.pkl').exists():   # kyrkogårdarnas låga häckar bakom gravraderna (gravar.py, step3)
+    hack_seg = np.vstack([hack_seg, np.asarray(pickle.load(open(str(WORK / 'gravhackar.pkl'), 'rb'))['segment']).reshape(-1, 5)])
 osm_hack = []
 for line in feat.get('hedges', []):
     for a_, b_ in zip(line.coords[:-1], line.coords[1:]):

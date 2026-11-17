@@ -25,6 +25,11 @@ extends Resource
 @export var ford_depth_m: float = 1.2
 @export var ford_slow_share: float = 0.55
 @export var too_deep_speed_factor: float = 0.12
+## Deeper than this (m) the water stops the tank like the map edge: it can't drive further
+## in and is pushed back towards shallower water (Tank._hold_out_of_deep_water). Lake and
+## river bottoms go down to 2 m, so wide water can't be crossed but its shallow rim can.
+## 0 = off.
+@export var impassable_depth_m: float = 1.6
 ## Thickest tree trunk this tank can push over (m). Thicker trees stop it.
 @export var tree_push_max_diameter_m: float = 0.7
 ## Hitting a pushable tree at least this fast fells it at once (km/h).

@@ -58,6 +58,18 @@ extends Resource
 ## Bursting within this of a tank (m; a direct hit counts as 0) it throws dirt over the
 ## crew's optics (Tank.add_optics_dirt): full at the plate, none at the edge.
 @export var optics_dirt_radius_m: float = 0.0
+## Bursting fells every tree (with a trunk) within this distance (m; TreeField.fell_near).
+@export var tree_fell_radius_m: float = 0.0
+
+@export_group("Trees")
+## A gun round (>= 20 mm) that isn't explosive goes through a trunk (felling it if thin
+## enough); a bullet only through trunks up to this thick (m; 0 = it stops in every trunk).
+@export var tree_pass_max_diameter_m: float = 0.0
+## Going through, it is turned this many degrees off its path in a random direction...
+@export var tree_deflection_min_deg: float = 5.0
+@export var tree_deflection_max_deg: float = 15.0
+## ...and keeping this share of its speed. Explosive rounds burst on the trunk; bullets stop.
+@export_range(0.0, 1.0) var tree_speed_keep: float = 0.85
 
 @export_group("Infantry")
 ## Never knocks a tank out: no last structure points, no ammo blow-up.

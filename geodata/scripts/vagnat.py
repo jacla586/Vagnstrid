@@ -219,6 +219,14 @@ def _jamna(c, varv):
     return c
 
 
+def _ar_bro(t):
+    return t.get('bridge', 'no') not in ('no', '')
+
+
+def _ar_bro_tunnel(t):
+    return _ar_bro(t) or t.get('tunnel', 'no') not in ('no', '')
+
+
 def rondeller(roads):
     """Cirkulationsplatsens bitar (junction=roundabout) slås ihop till en sluten väg per rondell,
     så att ringen inte får glipor i skarvarna; r['rondell'] = True (fast bredd, harmoniseras inte)."""
@@ -244,9 +252,31 @@ def rondeller(roads):
     for lista in grupper.values():
         m = linemerge([roads[k]['line'] for k in lista])
         for part in getattr(m, 'geoms', [m]):
-            t = dict(roads[lista[0]]['tags'])
+            # taggarna från en bit som inte är bro/tunnel; bro-bitarna blir spann längs ringen
+            # (r['bro_spann'], broar.py), annars blev hela ringen en bro med räcken över infarterna
+            vanlig = [k for k in lista if not _ar_bro_tunnel(roads[k]['tags'])]
+            t = dict(roads[(vanlig or lista)[0]]['tags'])
+            for nyckel in ('bridge', 'tunnel', 'layer', 'bridge:structure', 'covered'):
+                t.pop(nyckel, None)
             r = ny_vag(part, t)
             r['rondell'] = True
+            spann = []
+            for k in lista:
+                if not _ar_bro(roads[k]['tags']):
+                    continue
+                bit = roads[k]['line']
+                if bit.distance(part) > NOD_TOL_M:
+                    continue
+                a = part.project(Point(bit.coords[0]))
+                b = part.project(Point(bit.coords[-1]))
+                mitt = part.project(bit.interpolate(0.5, normalized=True))
+                a, b = min(a, b), max(a, b)
+                if a <= mitt <= b:
+                    spann.append((a, b))
+                else:   # biten går över ringens skarv
+                    spann += [(b, part.length), (0.0, a)]
+            if spann:
+                r['bro_spann'] = sorted(spann)
             nya.append(r)
     borta = set(idx)
     print(f'vägnät: {len(idx)} rondellbitar -> {len(nya)} ringar')
@@ -275,6 +305,10 @@ def forbered(roads, ruta, work, rattningar=True):
             except ValueError:
                 kf = 1
             b = RONDELL_BREDD_M + 3.0 * max(kf - 1, 0)
+            r['hw'] = np.full(len(r['hw']), b / 2)
+            r['width'] = b
+        elif '_fast_bredd' in r['tags']:   # features.py broar_sammanfoga: hela brons bredd
+            b = float(r['tags']['_fast_bredd'])
             r['hw'] = np.full(len(r['hw']), b / 2)
             r['width'] = b
     return NV

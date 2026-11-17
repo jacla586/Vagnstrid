@@ -27,7 +27,7 @@ extends Resource
 ## Small props (kinds starting with one of these: signs, reflector posts, street furniture) are drawn only
 ## this far (m): a sign is a pixel or two beyond it, and the many sign kinds are many draws.
 @export var small_kinds: PackedStringArray = PackedStringArray(["Skylt", "Hallplats", "Kantstolpe",
-		"Ortnamn", "Racke", "Papperskorg", "Bank", "Elskap", "Cykelstall", "Brandpost", "Brevlada"])
+		"Ortnamn", "Racke", "Papperskorg", "Bank", "Elskap", "Cykelstall", "Brandpost", "Brevlada", "Gravsten"])
 @export var small_draw_range_m: float = 450.0
 ## Playground pieces up to this far (m) are drawn.
 @export var playground_draw_range_m: float = 450.0
