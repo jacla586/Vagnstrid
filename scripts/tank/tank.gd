@@ -827,14 +827,16 @@ func needs_repair() -> bool:
 ## NEAR_MISS_M of that stretch go into `near` (Tank -> flight direction), once each.
 ## Shell reports them when it is done (Shell._report_near_misses), except tanks it hit.
 static func collect_near_misses(tree: SceneTree, from: Vector3, to: Vector3,
-		shell_data: ShellData, shooter: Object, near: Dictionary) -> void:
+		shell_data: ShellData, shooter: Object, near: Dictionary, shooter_team: int = -1) -> void:
 	if shell_data.caliber_mm < THREAT_MIN_CALIBER_MM:
 		return
+	if shooter_team < 0:
+		shooter_team = team_of(shooter)
 	var direction: Vector3 = (to - from).normalized()
 	for node: Node in tree.get_nodes_in_group("tanks"):
 		var other := node as Tank
 		if other == null or other == shooter or near.has(other) or other.is_knocked_out() \
-				or Tank.is_friendly(shooter, other):
+				or (shooter_team >= 0 and shooter_team == other.team):
 			continue
 		var closest: Vector3 = Geometry3D.get_closest_point_to_segment(other.global_position, from, to)
 		if closest.distance_to(other.global_position) <= NEAR_MISS_M:

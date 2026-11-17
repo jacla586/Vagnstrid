@@ -29,6 +29,9 @@ var _data: ShellData
 var _velocity: Vector3 = Vector3.ZERO
 var _drag_factor: float = 0.0
 var _shooter: CollisionObject3D
+## The shooter's team at launch: the shooter can be freed while the shell flies (a bot
+## removed by the director, the lobby taking the map's rig out), and the shell keeps its side.
+var _shooter_team: int = -1
 ## Bodies the hit ray ignores: the shooter, and anything already ricocheted off.
 var _exclude: Array[RID] = []
 var _age: float = 0.0
@@ -54,6 +57,7 @@ func launch(data: ShellData, start_position: Vector3, velocity: Vector3,
 	_velocity = velocity
 	_drag_factor = Ballistics.drag_factor(data)
 	_shooter = shooter
+	_shooter_team = Tank.team_of(shooter)
 	if shooter != null:
 		_exclude.append(shooter.get_rid())
 	global_position = start_position
@@ -84,6 +88,8 @@ func _physics_process(delta: float) -> void:
 		_report_near_misses()
 		_finish()
 		return
+	if _shooter != null and not is_instance_valid(_shooter):
+		_shooter = null   # freed mid-flight: a freed Object can't be passed as a typed argument
 	var from: Vector3 = global_position
 	var next: PackedVector3Array = Ballistics.integrate(from, _velocity, _drag_factor, delta)
 	var query := PhysicsRayQueryParameters3D.create(from, next[0])
@@ -95,7 +101,7 @@ func _physics_process(delta: float) -> void:
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
 	if not _cosmetic:
 		var end: Vector3 = next[0] if hit.is_empty() else hit["position"]
-		Tank.collect_near_misses(get_tree(), from, end, _data, _shooter, _near)
+		Tank.collect_near_misses(get_tree(), from, end, _data, _shooter, _near, _shooter_team)
 	if not hit.is_empty():
 		_on_hit(hit)
 		return
@@ -126,10 +132,10 @@ func _on_hit(hit: Dictionary) -> void:
 		_through_tree(point)
 		return
 	# Gun rounds landing near enemy mines destroy them.
-	Mine.shell_landed(get_tree(), point, _data, Tank.team_of(_shooter))
+	Mine.shell_landed(get_tree(), point, _data, _shooter_team)
 	var result: HitResult = null
 	# No friendly fire: a hit on the shooter's own team does nothing (the shell stops).
-	if collider != null and collider.has_method("on_shell_hit") and not Tank.is_friendly(_shooter, collider):
+	if collider != null and collider.has_method("on_shell_hit") and not (_shooter_team >= 0 and _shooter_team == Tank.team_of(collider)):
 		if collider is Tank:
 			(collider as Tank).note_incoming(_origin, _shooter)
 		result = collider.on_shell_hit(_data, point, normal, _velocity, int(hit["shape"]))
@@ -142,7 +148,7 @@ func _on_hit(hit: Dictionary) -> void:
 		TreeField.fell_near(get_tree(), point, _data.tree_fell_radius_m)
 		_rng.randomize()
 		for fragment_result: HitResult in Explosion.detonate(get_world_3d(), get_tree(), point,
-				normal, _data, _rng, Tank.team_of(_shooter), _shooter):
+				normal, _data, _rng, _shooter_team, _shooter):
 			_report(fragment_result)
 		_report_near_misses()
 		_finish()
