@@ -934,6 +934,15 @@
    }
   },
   {
+   "namn": "Galaxen",
+   "osm_id": "r1750707",
+   "_anm": "Användaren: det stora komplexet med innergårdar på Olaus Magnus väg (58.393395, 15.574705) är statligt tegelrött; garagen bakom (egna OSM-hus) som förut.",
+   "taggar": {
+    "building:material": "brick",
+    "building:colour": "#8f4230"
+   }
+  },
+  {
    "namn": "Ortgatan 27",
    "osm_id": "389339763",
    "_anm": "Användaren: huset är blått (Vidingsjö).",
