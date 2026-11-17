@@ -4,3 +4,4 @@
 
 [resource]
 script = ExtResource("1_rules")
+max_structure_hp = 140.0

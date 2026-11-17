@@ -95,6 +95,7 @@ func _map_tank(preset: String, shell: ShellData, path: String) -> void:
 	var cfg: TankConfig = load("res://data/configs/%s.tres" % preset)
 	var data: TankData = TankBuilder.build(cfg)
 	var tank: Tank = (load(TANK_SCENE) as PackedScene).instantiate()
+	tank.config = cfg
 	tank.data = data
 	tank.position = Vector3(0.0, 2.0, 0.0)
 	root.add_child(tank)

@@ -496,7 +496,7 @@ shows on the minimap. This is what we test first.
   medium_h (Pz IV-like), medium_s (Sherman-like), heavy (KV-like); the tank destroyer is gone; each with its
   `GunData` 37-152 mm and `ArmourPackageData`; coefficients in
   `BuilderRules`: speed and acceleration from kW/t, turn rate from mass, traverse from
-  gun mass, hp per tonne capped at `max_structure_hp` 200, camouflage). The chassis' `base` TankData supplies the rest.
+  gun mass, hp per tonne capped at `max_structure_hp` 140 (KV-2 140 hp; `TRAFFTABELL.md`, `tools/hits_to_kill.gd`), camouflage). The chassis' `base` TankData supplies the rest.
   Medium + 75 mm = today's tank. `Tank.apply_geometry()` sizes hull, tracks, turret,
   gun and suspension from `TankData` geometry (scene measures are the reference, consts
   `BASE_*`); `Tank.config` builds the data at start. Camouflage
