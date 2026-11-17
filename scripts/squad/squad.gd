@@ -244,6 +244,11 @@ var _spots_chosen: bool = false
 ## Client: soldiers' offsets from the squad's point, from the host.
 var _net_offsets: Array[Vector3] = []
 var _clock: float = 0.0
+## Enemy Tank -> Vector2(clock time its exposed commander may be fired on
+## (commander_reaction_*), clock time he was last seen up).
+var _head_ready_at: Dictionary = {}
+## A commander unseen this long (s) counts as coming up anew.
+const HEAD_FORGET_S: float = 0.5
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _shell_scene: PackedScene
 # Spotting
@@ -1453,6 +1458,7 @@ func _update_contact_halt(dt: float) -> void:
 func _fight(delta: float) -> void:
 	_at_timer = maxf(_at_timer - delta, 0.0)
 	var targets: Array[Node3D] = _targets_in_sight()
+	_update_head_reaction(targets)
 	if targets.is_empty():
 		return
 	_try_at_round(targets)
@@ -1463,6 +1469,9 @@ func _fight(delta: float) -> void:
 			else data.rifle_range_m
 	for target: Node3D in targets:
 		var aim: Vector3 = _rifle_aim(target)
+		if target is Tank and (not _head_ready_at.has(target)
+				or _clock < (_head_ready_at[target] as Vector2).x):
+			continue   # his head just came up: not noticed yet
 		if aim != Vector3.INF and global_position.distance_to(aim) <= rifle_range:
 			rifle_target = target
 			rifle_aim = aim
@@ -1489,6 +1498,24 @@ func _fight(delta: float) -> void:
 			_burst_left[i] = data.rifle_burst_shots
 			_shot_timer[i] = 0.0
 			_burst_timer[i] = data.rifle_burst_interval_s * _rng.randf_range(0.8, 1.3)
+
+
+## Starts a reaction time for every enemy commander in sight who just came up; forgets
+## those gone back down or out of sight.
+func _update_head_reaction(targets: Array[Node3D]) -> void:
+	for target: Node3D in targets:
+		var other := target as Tank
+		if other == null or not other.is_commander_exposed():
+			continue
+		var entry: Vector2 = _head_ready_at.get(other, Vector2(INF, -INF))
+		if _clock - entry.y > HEAD_FORGET_S:   # new, or back up after a while down
+			entry.x = _clock + _rng.randf_range(data.commander_reaction_min_s,
+					data.commander_reaction_max_s)
+		entry.y = _clock
+		_head_ready_at[other] = entry
+	for other: Variant in _head_ready_at.keys():
+		if not is_instance_valid(other) or _clock - (_head_ready_at[other] as Vector2).y > HEAD_FORGET_S:
+			_head_ready_at.erase(other)
 
 
 ## Where rifles aim at `target`: an exposed commander's head or a soldier; INF if the

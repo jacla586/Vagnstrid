@@ -106,6 +106,8 @@ var _look_wait: Dictionary = {}  # Tank -> scans since it was last looked at (fa
 var _unseen_time: Dictionary = {}  # Tank -> seconds since last seen
 var _hull_visible: Dictionary = {}  # Tank -> hull seen in the last scan
 var _head_visible: Dictionary = {}  # Tank -> exposed commander seen in the last scan
+## Tank -> clock time its commander may be fired on (seen since, plus a reaction time).
+var _head_ready_at: Dictionary = {}
 var _target: Tank = null
 var _scan_timer: float = 0.0
 var _range_error: float = 0.0
@@ -638,6 +640,11 @@ func _look_at(other: Tank, dt: float) -> void:
 				seen_points += 1
 	_hull_visible[other] = seen_points > (1 if head_seen else 0)
 	_head_visible[other] = head_seen
+	if not head_seen:
+		_head_ready_at.erase(other)
+	elif not _head_ready_at.has(other):
+		_head_ready_at[other] = _clock + _rng.randf_range(bot_data.head_reaction_min_s,
+				bot_data.head_reaction_max_s)
 	_cover[other] = cover
 	var shown: float = float(seen_points) / float(points)
 	var aware: float = float(_awareness.get(other, 0.0))
@@ -813,6 +820,7 @@ func _forget(other: Tank) -> void:
 	_unseen_time.erase(other)
 	_look_wait.erase(other)
 	_hull_visible.erase(other)
+	_head_ready_at.erase(other)
 	_head_visible.erase(other)
 	if other == _target:
 		_target = null
@@ -838,6 +846,7 @@ func _forget_all() -> void:
 	_unseen_time.clear()
 	_look_wait.clear()
 	_hull_visible.clear()
+	_head_ready_at.clear()
 	_head_visible.clear()
 	_last_known.clear()
 	_target = null
@@ -872,7 +881,8 @@ func _engage(target: Tank, delta: float) -> void:
 	var hull_seen: bool = bool(_hull_visible.get(target, false))
 	var head_seen: bool = bool(_head_visible.get(target, false))
 	var distance: float = muzzle.origin.distance_to(target.global_position)
-	var use_mg: bool = head_seen and distance <= bot_data.mg_range_m
+	var use_mg: bool = head_seen and distance <= bot_data.mg_range_m \
+			and _clock >= float(_head_ready_at.get(target, INF))
 	var roof: bool = use_mg and tank.can_use_roof_mg()
 	var coax_turn: bool = use_mg and not roof and not tank.is_loaded()
 

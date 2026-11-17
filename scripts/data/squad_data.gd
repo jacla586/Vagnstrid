@@ -181,6 +181,10 @@ extends Resource
 ## ...with this random spread (mrad, radius): low accuracy (about 5-10 % per burst at
 ## a commander 200 m off).
 @export var rifle_dispersion_mrad: float = 9.0
+## An enemy commander who comes up out of his hatch draws rifle fire only after this long
+## (s, random between the two, drawn each time he shows): noticing him and taking aim.
+@export var commander_reaction_min_s: float = 2.4
+@export var commander_reaction_max_s: float = 5.0
 @export var rifle_sound: SoundSetData
 
 @export_group("AT rounds")

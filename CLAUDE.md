@@ -400,7 +400,8 @@ shows on the minimap. This is what we test first.
   scans staggered per bot, tanks beyond `BotData.look_every_2nd/4th_beyond_m` (400/800 m)
   looked at every 2nd/4th scan (not the target), cover cached per target (`Concealment`),
   stops to fire with range/laying errors that shrink per shot, MGs exposed
-  commanders, closes the hatch when hit or an enemy is close. `Tank.team` decides
+  commanders (only after the head has been in sight `BotData.head_reaction_min_s..max_s`, 1.6-3.2 s,
+  easy 2.8-4.8; squads' rifles `SquadData.commander_reaction_*` 2.4-5.0 s), closes the hatch when hit or an enemy is close. `Tank.team` decides
   enemies. `RespawnAtStart` brings a knocked-out tank back (test bench).
 - Concealment (`Concealment`, `data/world/concealment.tres`): sight-blocker shapes
   (layer 5: bushes, tree crowns, laser-tree crowns) around a target, and standing

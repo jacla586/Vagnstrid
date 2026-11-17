@@ -77,6 +77,12 @@ extends Resource
 @export var mg_pause_s: float = 1.0
 ## Fires only when the MG points this close to the aim (degrees).
 @export var mg_aim_tolerance_deg: float = 2.0
+## A commander who comes up out of his hatch is fired on only after his head has been in
+## sight this long (s, random between the two, drawn each time he shows): the crew has to
+## notice him and swing the MG. Without it a spotted tank's commander was hit as the hatch
+## opened.
+@export var head_reaction_min_s: float = 1.6
+@export var head_reaction_max_s: float = 3.2
 
 @export_group("Hatch")
 ## Rides with the hatch open when nothing threatens (sees more, but exposed).
