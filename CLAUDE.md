@@ -518,8 +518,10 @@ shows on the minimap. This is what we test first.
   `data/maps/<map>_tactical.res` (`TacticalGridData`, 8 m cells: height, flags for
   house/stone, water (widened, not across roads), steep (also 2 m-scale banks),
   forest, road, wetland, cover, near-obstacle, thick trees; land cover from geodata).
-  House cells: a box touching walls or a ray from above meeting a roof first (`_under_roof`; the box
-  alone left wide houses' insides open). Open areas under `TacticalMap.POCKET_MAX_CELLS` (150) cells
+  House cells: roofs over 3 of 9 points (rays from above, `_roofed_samples`) or a wall in a 4 m box
+  (stones: 6.8 m box); the old 6.8 m wall box alone left wide houses' insides open and shut 8-10 m
+  streets (Peking's Drottninggatan). Bridge decks over water (`_bridge_deck`: level, >= 1 m over the
+  terrain, ~4 m wide) are road at deck height, never water/steep (Peking's river was a closed line). Open areas under `TacticalMap.POCKET_MAX_CELLS` (150) cells
   that connect to nothing (courtyards walled in by houses, e.g. B-huset on campus) are closed
   (`_close_pockets`): `is_blocked` true, so no spawns, goals or positions there.
   Rerun after map changes. `TacticalMap.for_scene()` builds an `AStarGrid2D` (costs

@@ -19,9 +19,16 @@ const SEA_LEVEL_M: float = 0.5
 ## Cover (bushes, tree crowns) is looked for at these heights above the ground (m):
 ## from hull height up to where crowns hide a tank from a distance.
 const COVER_SAMPLE_HEIGHTS_M: Array[float] = [1.5, 3.0, 5.0, 8.0]
-## Houses and stones are looked for with a box this share of the cell wide, from
-## HOUSE_BOX_BOTTOM_M to HOUSE_BOX_TOP_M above the ground: anything in it blocks.
+## Stones are looked for with a box this share of the cell wide, from HOUSE_BOX_BOTTOM_M
+## to HOUSE_BOX_TOP_M above the ground: anything in it blocks. Houses with a smaller box
+## (walls in the middle of the cell) plus roofs over ROOF_MIN_SAMPLES of the 3 x 3
+## ROOF_SAMPLES_M points: the big box made 8-10 m streets between facades one cell wide
+## or shut (Drottninggatan in Peking), and it never saw a wide house's inside.
 const HOUSE_BOX_SHARE: float = 0.85
+const WALL_BOX_SHARE: float = 0.5
+const ROOF_SAMPLES_M: Array[float] = [-2.7, 0.0, 2.7]
+const ROOF_MIN_SAMPLES: int = 3
+const STONE_PREFIX: String = "Stenar"
 const HOUSE_BOX_BOTTOM_M: float = 0.6
 const HOUSE_BOX_TOP_M: float = 2.5
 ## Trees with a trunk thicker than this can't be pushed over (TankData
@@ -32,6 +39,17 @@ const PUSHABLE_TRUNK_M: float = 0.7
 const ROOF_RAY_FROM_M: float = 120.0
 const ROOF_RAY_TRIES: int = 4
 const BLOCKING_PREFIXES: Array[String] = ["Byggnader", "Stenar"]
+## Bridge decks over water (glb group Broar): a level surface at least DECK_ABOVE_GROUND_M over the
+## terrain (river bottom, road below), found by rays at DECK_SAMPLES offsets in the cell
+## and wide enough (DECK_WIDTH_PROBE_M aside in 3 of 4 directions) not to be a wall top
+## or a footbridge. Such cells are road at the deck's height, never water or steep: the
+## terrain under a bridge is the river bottom, so a river was a closed line (Peking).
+const BRIDGE_PREFIX: String = "Broar"
+const DECK_ABOVE_GROUND_M: float = 1.0
+const DECK_MIN_NORMAL_Y: float = 0.9
+const DECK_SAMPLES_M: Array[float] = [-2.7, 0.0, 2.7]
+const DECK_WIDTH_PROBE_M: float = 2.0
+const DECK_LEVEL_SLACK_M: float = 0.5
 ## Land cover classes (geodata heightmap_info.json "landcover_classes").
 const LC_SEA: int = 0
 const LC_FOREST: int = 2
@@ -89,12 +107,20 @@ func _run() -> void:
 	grid.flags.resize(n)
 	var space: PhysicsDirectSpaceState3D = scene.get_viewport().get_world_3d().direct_space_state
 	var landcover: Image = _load_landcover()
+	var bridges := PackedByteArray()
+	bridges.resize(n)
 	var house_box := BoxShape3D.new()
 	house_box.size = Vector3(_cell * HOUSE_BOX_SHARE, HOUSE_BOX_TOP_M - HOUSE_BOX_BOTTOM_M,
 			_cell * HOUSE_BOX_SHARE)
 	var house_query := PhysicsShapeQueryParameters3D.new()
 	house_query.shape = house_box
 	house_query.collision_mask = 1
+	var wall_box := BoxShape3D.new()
+	wall_box.size = Vector3(_cell * WALL_BOX_SHARE, HOUSE_BOX_TOP_M - HOUSE_BOX_BOTTOM_M,
+			_cell * WALL_BOX_SHARE)
+	var wall_query := PhysicsShapeQueryParameters3D.new()
+	wall_query.shape = wall_box
+	wall_query.collision_mask = 1
 	for cz: int in grid.height:
 		for cx: int in grid.width:
 			var c := Vector2i(cx, cz)
@@ -106,26 +132,41 @@ func _run() -> void:
 			grid.heights[grid.index_of(c)] = h
 			p.y = h
 			var f: int = 0
-			if _fine_slope_deg(terrain_data, p) > MAX_FINE_SLOPE_DEG:
+			var lc: int = _landcover_flags(landcover, p) if landcover != null else 0
+			# Only over water: an underpass' deck would lift its cells above the trench road.
+			var deck: float = NAN
+			if h <= SEA_LEVEL_M or lc & TacticalGridData.WATER:
+				deck = _bridge_deck(space, terrain_data, p)
+			if not is_nan(deck):
+				bridges[grid.index_of(c)] = 1
+				grid.heights[grid.index_of(c)] = deck
+			elif _fine_slope_deg(terrain_data, p) > MAX_FINE_SLOPE_DEG:
 				f |= TacticalGridData.STEEP
-			if h <= SEA_LEVEL_M:
+			if h <= SEA_LEVEL_M and is_nan(deck):
 				f |= TacticalGridData.WATER
 			house_query.transform = Transform3D(Basis(), p + Vector3.UP * (HOUSE_BOX_BOTTOM_M
 					+ HOUSE_BOX_TOP_M) * 0.5)
-			if _hits_blocking(space, house_query) or _under_roof(space, p):
+			wall_query.transform = house_query.transform
+			if _hits_blocking(space, house_query, true) or _hits_blocking(space, wall_query, false) \
+					or _roofed_samples(space, p) >= ROOF_MIN_SAMPLES:
 				f |= TacticalGridData.HOUSE
 			if _has_cover(space, p):
 				f |= TacticalGridData.CONCEALED
-			if landcover != null:
-				f |= _landcover_flags(landcover, p)
+			f |= lc
+			if not is_nan(deck):
+				f = (f & ~(TacticalGridData.WATER | TacticalGridData.WET)) | TacticalGridData.ROAD
 			grid.flags[grid.index_of(c)] = f
 	# Slope from the neighbours' heights (after all heights are known).
 	for cz: int in grid.height:
 		for cx: int in grid.width:
 			var c := Vector2i(cx, cz)
-			if _slope_deg(grid, c) > MAX_SLOPE_DEG:
+			if bridges[grid.index_of(c)] == 0 and _slope_deg(grid, c) > MAX_SLOPE_DEG:
 				grid.flags[grid.index_of(c)] |= TacticalGridData.STEEP
 	_mark_thick_trees(scene, grid)
+	var bridge_cells: int = 0
+	for b: int in bridges:
+		bridge_cells += b
+	print("bridge deck cells: ", bridge_cells)
 	# Streams and lake shores: widen water into its side neighbours (not across roads,
 	# where culverts and bridges are), so a diagonal stream is a closed line.
 	var wet_edge: PackedInt32Array = []
@@ -196,19 +237,31 @@ func _find_area(scene: Node) -> Rect2:
 
 
 ## A house or stone inside the cell's box (above the ground, below roof height).
-func _hits_blocking(space: PhysicsDirectSpaceState3D, query: PhysicsShapeQueryParameters3D) -> bool:
+## (stones: only stones; else anything blocking).
+func _hits_blocking(space: PhysicsDirectSpaceState3D, query: PhysicsShapeQueryParameters3D,
+		stones: bool) -> bool:
 	for r: Dictionary in space.intersect_shape(query, 16):
 		var collider: Object = r["collider"]
 		if collider is Terrain3D or collider is TreeField:
 			continue
-		if _is_blocking_object(collider as Node):
+		if _is_blocking_object(collider as Node) and (not stones or _has_prefix(collider as Node, STONE_PREFIX)):
 			return true
 	return false
 
 
-## A house over the cell's centre: a ray from above meets a roof before the ground. The
-## box above only touches walls, so cells inside a wide house (B-huset's wings) were open
-## and let enclosed courtyards connect to the streets.
+## How many of the cell's 3 x 3 sample points lie under a roof. Wall boxes only touch
+## walls, so cells inside a wide house (B-huset's wings) were open and let enclosed
+## courtyards connect to the streets.
+func _roofed_samples(space: PhysicsDirectSpaceState3D, p: Vector3) -> int:
+	var count: int = 0
+	for dz: float in ROOF_SAMPLES_M:
+		for dx: float in ROOF_SAMPLES_M:
+			if _under_roof(space, p + Vector3(dx, 0.0, dz)):
+				count += 1
+	return count
+
+
+## A ray from above meets a roof before the ground at p.
 func _under_roof(space: PhysicsDirectSpaceState3D, p: Vector3) -> bool:
 	var query := PhysicsRayQueryParameters3D.create(p + Vector3.UP * ROOF_RAY_FROM_M,
 			p + Vector3.UP * HOUSE_BOX_BOTTOM_M, 1)
@@ -222,6 +275,56 @@ func _under_roof(space: PhysicsDirectSpaceState3D, p: Vector3) -> bool:
 		if not (collider is Terrain3D or collider is TreeField) and _is_blocking_object(collider as Node):
 			return true
 		exclude.append(hit["rid"])   # a bridge deck, a tree: look on below it
+	return false
+
+
+## The height of a bridge deck over the cell (the highest found), else NAN.
+func _bridge_deck(space: PhysicsDirectSpaceState3D, terrain_data: Object, p: Vector3) -> float:
+	var best: float = NAN
+	for dz: float in DECK_SAMPLES_M:
+		for dx: float in DECK_SAMPLES_M:
+			var q := Vector3(p.x + dx, 0.0, p.z + dz)
+			var y: float = _deck_hit(space, terrain_data, q)
+			if is_nan(y):
+				continue
+			var wide: int = 0
+			for d: Vector3 in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
+				var y2: float = _deck_hit(space, terrain_data, q + d * DECK_WIDTH_PROBE_M)
+				if not is_nan(y2) and absf(y2 - y) <= DECK_LEVEL_SLACK_M:
+					wide += 1
+			if wide >= 3 and (is_nan(best) or y > best):
+				best = y
+	return best
+
+
+## Where a ray down at (q.x, q.z) first meets a level bridge surface well above the
+## terrain, else NAN.
+func _deck_hit(space: PhysicsDirectSpaceState3D, terrain_data: Object, q: Vector3) -> float:
+	var ground: float = terrain_data.call("get_height", q)
+	if is_nan(ground):
+		return NAN
+	var query := PhysicsRayQueryParameters3D.create(Vector3(q.x, ground + ROOF_RAY_FROM_M, q.z),
+			Vector3(q.x, ground + DECK_ABOVE_GROUND_M, q.z), 1)
+	var exclude: Array[RID] = []
+	for i: int in ROOF_RAY_TRIES:
+		query.exclude = exclude
+		var hit: Dictionary = space.intersect_ray(query)
+		if hit.is_empty():
+			return NAN
+		var node := hit["collider"] as Node
+		if node != null and _has_prefix(node, BRIDGE_PREFIX):
+			return (hit["position"] as Vector3).y if (hit["normal"] as Vector3).y >= DECK_MIN_NORMAL_Y else NAN
+		if node != null and _is_blocking_object(node):
+			return NAN   # a house over it
+		exclude.append(hit["rid"])   # trees, lamps, wires: look on below
+	return NAN
+
+
+static func _has_prefix(node: Node, prefix: String) -> bool:
+	while node != null:
+		if String(node.name).begins_with(prefix):
+			return true
+		node = node.get_parent()
 	return false
 
 
