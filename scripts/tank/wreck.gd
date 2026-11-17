@@ -14,6 +14,9 @@ const SEND_TURN_RAD: float = 0.01
 const MATCH_M: float = 4.0
 ## Clients ease towards the host's pose at this rate (1/s).
 const FOLLOW_RATE: float = 8.0
+## A thrown turret's key lies this far above where it was thrown from, so a client never
+## takes a turret's moves for the hull's wreck made close by.
+const THROWN_KEY_LIFT_M: float = 1000.0
 
 ## Where the wreck was made (world): the key between machines.
 var made_at: Vector3 = Vector3.ZERO
@@ -21,6 +24,11 @@ var made_at: Vector3 = Vector3.ZERO
 var _sent := Transform3D()
 var _target := Transform3D()
 var _following: bool = false
+## A thrown turret still in the air (setup_thrown): flies undamped on every machine; at
+## rest it gets its damping and, on clients, freezes and follows the host's moves.
+var _thrown: bool = false
+var _rest_damp: float = 0.0
+var _has_target: bool = false
 
 
 ## Sets the wreck up at `at`: a rigid body of `body_mass` on the host, a frozen follower
@@ -43,6 +51,37 @@ func setup(at: Transform3D, body_mass: float, friction: float, damp: float) -> v
 	if NetRole.is_client():
 		freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 		freeze = true
+
+
+## A turret thrown off a knocked-out tank (Tank.toss_turret): flies on its own physics on
+## every machine (each throws it from the same rpc_turret_toss), then lies as a wreck that
+## tanks can push like the hull (host), clients following the host from then on.
+func setup_thrown(at: Transform3D, body_mass: float, friction: float, damp: float) -> void:
+	setup(at, body_mass, friction, damp)
+	made_at = at.origin + Vector3.UP * THROWN_KEY_LIFT_M
+	_thrown = true
+	_rest_damp = damp
+	linear_damp = 0.0
+	angular_damp = 0.0
+	freeze = false
+	sleeping_state_changed.connect(_on_sleeping_changed)
+
+
+## The thrown turret has come to rest (or Tank's timeout says so).
+func settle() -> void:
+	if not _thrown:
+		return
+	_thrown = false
+	linear_damp = _rest_damp
+	angular_damp = _rest_damp * 2.0
+	if NetRole.is_client():
+		set_deferred("freeze", true)
+		_following = _has_target
+
+
+func _on_sleeping_changed() -> void:
+	if sleeping:
+		settle()
 
 
 ## The wreck nearest `pos` within MATCH_M (null: none).
@@ -84,7 +123,8 @@ static func apply_move(tree: SceneTree, key: Vector3, pose: Transform3D) -> void
 	var w: Wreck = find_near(tree, key)
 	if w != null:
 		w._target = pose
-		w._following = true
+		w._has_target = true
+		w._following = not w._thrown   # a turret still flying lands by itself first
 
 
 func _physics_process(delta: float) -> void:

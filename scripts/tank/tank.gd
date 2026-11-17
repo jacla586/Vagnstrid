@@ -1213,25 +1213,22 @@ func _toss_turret_random() -> void:
 	turret_tossed.emit(velocity, spin)
 
 
-## Hides the turret and throws a charred copy of it (a rigid body in group "wrecks")
-## with `velocity` and `spin`; it freezes where it comes to rest. Also on clients
+## Hides the turret and throws a charred copy of it (a Wreck, pushable once at rest)
+## with `velocity` and `spin`; it lies where it comes to rest. Also on clients
 ## (cosmetic, from the host's event). repair() puts the turret back.
 func toss_turret(velocity: Vector3, spin: Vector3) -> void:
 	if _turret_tossed or not is_inside_tree():
 		return
 	_turret_tossed = true
 	var root: Node = get_tree().current_scene if get_tree().current_scene != null else get_parent()
-	var body := RigidBody3D.new()
+	var body := Wreck.new()
 	body.name = "TurretWreck"
-	body.collision_layer = 1
-	body.collision_mask = 1
-	body.mass = TURRET_WRECK_MASS_KG
+	var thrown_from := Transform3D(_turret.global_basis.orthonormalized(), _turret.global_position)
+	body.setup_thrown(thrown_from, TURRET_WRECK_MASS_KG, data.wreck_friction, data.wreck_damp)
 	body.continuous_cd = true
-	body.add_to_group(&"wrecks")
 	body.add_collision_exception_with(self)   # it starts sitting on the hull
 	root.add_child(body)
-	body.global_transform = Transform3D(_turret.global_basis.orthonormalized(),
-			_turret.global_position)
+	body.global_transform = thrown_from
 	body.reset_physics_interpolation()
 	var to_body: Transform3D = body.global_transform.affine_inverse()
 	for mi: MeshInstance3D in _turret.find_children("*", "MeshInstance3D", true, false):
@@ -1253,16 +1250,14 @@ func toss_turret(velocity: Vector3, spin: Vector3) -> void:
 	_turret.visible = false
 	body.linear_velocity = velocity
 	body.angular_velocity = spin
-	# Back on the hull it may land on it; at rest it turns static (cheap, stays put).
+	# Back on the hull it may land on it. At rest it is a wreck tanks can push (Wreck:
+	# damped, sleeping when still; clients follow the host from then on).
 	get_tree().create_timer(TURRET_WRECK_EXCEPTION_S).timeout.connect(func() -> void:
 		if is_instance_valid(body) and is_instance_valid(self):
 			body.remove_collision_exception_with(self))
-	body.sleeping_state_changed.connect(func() -> void:
-		if body.sleeping:
-			body.set_deferred("freeze", true))
 	get_tree().create_timer(TURRET_WRECK_FREEZE_S).timeout.connect(func() -> void:
 		if is_instance_valid(body):
-			body.freeze = true)
+			body.settle())
 
 
 ## Leaves a burnt-out copy of the tank where it stands, for the rest of the match: solid
