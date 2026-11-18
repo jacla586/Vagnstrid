@@ -202,6 +202,14 @@ func _ready() -> void:
 	credits.add_theme_font_size_override("font_size", 12)
 	box.add_child(credits)
 
+	# Quit in the bottom right corner, away from the column (overlays added later cover it).
+	var quit: Button = _button("Quit", func() -> void: get_tree().quit())
+	quit.custom_minimum_size.x = 110
+	quit.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
+	quit.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	quit.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	add_child(quit)
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _credits != null and _credits.visible and event.is_action_pressed("ui_cancel"):
@@ -284,6 +292,11 @@ func _button(t: String, cb: Callable) -> Button:
 	return b
 
 
+## Scenarios left out of the map list and the server vote while they're being worked on
+## (file names without .tscn; the scenes stay, `--map` still starts them).
+const HIDDEN_SCENARIOS: PackedStringArray = ["peking_thunder"]
+
+
 static func find_maps() -> PackedStringArray:
 	var out: PackedStringArray = []
 	for dir: String in MAP_DIRS:
@@ -292,7 +305,8 @@ static func find_maps() -> PackedStringArray:
 			continue
 		for f: String in d.get_files():
 			var name_: String = f.trim_suffix(".remap")
-			if name_.ends_with(".tscn") and not name_.get_basename().ends_with(NetSession.TUTORIAL_TAG):
+			if name_.ends_with(".tscn") and not name_.get_basename().ends_with(NetSession.TUTORIAL_TAG) \
+					and not HIDDEN_SCENARIOS.has(name_.get_basename()):
 				out.append(dir + name_)
 	return out
 

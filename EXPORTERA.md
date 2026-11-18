@@ -120,6 +120,12 @@ att se att alla har samma version.
   kan kompisen prova Vulkan. Skapa en genväg till exe-filen och lägg till
   `--rendering-driver vulkan` sist i "Mål".
 
+## Banor som inte följer med
+
+Exportfiltret (`exclude_filter` i `export_presets.cfg`) lämnar bort Peking (`peking_thunder`),
+som är dold i menyn tills den har gjorts om (~115 MB mindre). Ta bort Peking-raderna i filtret
+och namnet i `MainMenu.HIDDEN_SCENARIOS` när den ska tillbaka.
+
 ## Licenser och credits
 
 Spelet delas bara privat, men vissa tillgångar kräver ändå attribution. Lägg med:

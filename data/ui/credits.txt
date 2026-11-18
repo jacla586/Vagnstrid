@@ -17,6 +17,7 @@ MODELS AND ANIMATION
 Soldier model: "Soldier" by KolosStudios, Poly Pizza (CC BY 3.0), repainted
 Soldier animations: Mixamo (Adobe)
 Tanks, houses, trees and props: made in code for this game
+Game icon: generated with Google Gemini
 
 SOUND AND VOICES
 Sound effects: Freesound authors qubodup, ReadeOnly, greatmganga, GaryQ,

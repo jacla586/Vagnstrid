@@ -6,7 +6,7 @@ extends Resource
 @export_group("Briefing")
 ## Shown when a player joins (DeployScreen): the mode's name and its rules in a few
 ## short lines ({score} = score_to_win where the mode has one).
-@export var display_name: String = "ThunderRoad"
+@export var display_name: String = "Thunder Road"
 @export_multiline var briefing: String = ""
 
 ## Command radio calls to the own team (checkpoint taken/lost, ceasefire, clock).
