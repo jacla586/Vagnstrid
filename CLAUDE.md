@@ -47,7 +47,10 @@ shows on the minimap. This is what we test first.
   in trunks thicker than `tree_pass_max_diameter_m` (MG bullets: through trunks up to 0.25 m, 5-20°,
   0.7 of the speed, still deadly to soldiers; rifle bullets 0 = stop; clients' cosmetic bullets just
   stop, nothing is sent). An explosive round fells every tree with a trunk within `ShellData.tree_fell_radius_m`
-  (75 mm 3 m, 152 mm 6 m; `TreeField.fell_near`, group `tree_fields`). No "TREE DOWN" text any more.
+  (75 mm 6 m, 152 mm 12 m, doubled 2026-11-18; `TreeField.fell_near`, group `tree_fields`). Trees a tank
+  pushes over fall off its path, not straight ahead (`TreePush.fall_direction`): towards the side of the hull's
+  centre line they were struck on, `TankData.tree_fall_side_min_deg..max_deg` (20-45°, middle = a random side)
+  ± `tree_fall_jitter_deg` (8), so a forest drive doesn't pile trunks across the view. No "TREE DOWN" text any more.
 - Damage model (`TankDamage`, owned by Tank): structure hp (`TankData.structure_hp`) and
   modules from `TankData.layout` (`ModuleLayoutData`, e.g. `data/tanks/layout_medium.tres`:
   engine, fuel, tracks, turret ring, ammo in the turret rear). A penetration takes
@@ -399,7 +402,7 @@ shows on the minimap. This is what we test first.
   commander's eye (hatch open: all round, far, fast; closed: periscope sector),
   scans staggered per bot, tanks beyond `BotData.look_every_2nd/4th_beyond_m` (400/800 m)
   looked at every 2nd/4th scan (not the target), cover cached per target (`Concealment`),
-  stops to fire with range/laying errors that shrink per shot, MGs exposed
+  stops to fire with range/laying errors that shrink per shot (within `BotData.barrel_ray_range_m` (80 m) the gun is also on target when a ray along the barrel hits the target tank: up close the turret pivot/muzzle parallax and the gun's depression kept the angle check from ever passing, so bots stood beside enemies without firing), MGs exposed
   commanders (only after the head has been in sight `BotData.head_reaction_min_s..max_s`, 1.6-3.2 s,
   easy 2.8-4.8; squads' rifles `SquadData.commander_reaction_*` 2.4-5.0 s), closes the hatch when hit or an enemy is close. `Tank.team` decides
   enemies. `RespawnAtStart` brings a knocked-out tank back (test bench).
@@ -527,7 +530,11 @@ shows on the minimap. This is what we test first.
   (`_close_pockets`): `is_blocked` true, so no spawns, goals or positions there.
   Rerun after map changes. `TacticalMap.for_scene()` builds an `AStarGrid2D` (costs
   in `TacticsData`, `data/bots/tactics_regular.tres`) and `find_path()` straightens
-  the result; tree lines (open cells beside forest/bushes) are cheap and count as
+  the result (`_straighten` tries each shortcut from the far end back and walks rays with inlined
+  grid lookups: 2-3x faster, identical paths; the GDScript straightening, not A*, was the cost; still 10-30 ms for a
+  2 km path, so `TacticalMap.plan_budget_ms` (3 ms) per physics tick: the first plan of a tick always runs, later
+  `BotController.order_path`s wait (`_pending_plan`, standing, counts as orders) for a tick with time left; ~25 %
+  fewer >16 ms ticks in a 10 v 10. Threads (WorkerThreadPool) are the next step); tree lines (open cells beside forest/bushes) are cheap and count as
   cover. `BotController.order_path(goal, throttle, urgent)` drives such paths: replans
   when stuck and remembers where (`avoid` cells), steps aside when stuck twice in a
   place, keeps a gap to tanks ahead, and stops briefly to scout (hatch open) before
@@ -617,7 +624,11 @@ shows on the minimap. This is what we test first.
   Tanks go to their spawn at the start; respawns (`RespawnAtStart`, `KothBots`) use the
   current spawn. `KothBots` orders every BotController into the (next) zone. Runs
   offline/host only. HUD: `ScorePanel`; `MapView` draws zone and own spawn.
-  Scenarios: `vidingsjo_koth`, `linghem_koth`, `campus_koth` (`scenes/scenarios/`, listed in the main menu (`MainMenu`: only `scenes/scenarios/`, grouped under King of the Hill / Thunder Road / Free fight by the name tags `_koth`/`_thunder`/`_free`, place names with å/ä/ö in `PLACE_NAMES`); a map needs a baked tactical grid, a map image, KothZone with spots, KothBots, PlayerRespawn and at least one placed bot; default 4 v 4). Move a zone by moving its Marker3D; keep them ≥ ~400 m plus the zone radius from map edges where possible. Tanks per team (main menu number, `MatchSettings.team_size`,
+  Scenarios: `vidingsjo_koth`, `linghem_koth`, `campus_koth` (`scenes/scenarios/`, listed in the main menu (`MainMenu`: only `scenes/scenarios/`, grouped under King of the Hill / Thunder Road / Free fight by the name tags `_koth`/`_thunder`/`_free`, place names with å/ä/ö in `PLACE_NAMES`); a map needs a baked tactical grid, a map image, KothZone with spots, KothBots, PlayerRespawn and at least one placed bot; default 4 v 4). Start spots (2026-11-18): Vidingsjö, Linghem and campus have 9 markers in a 3x3 grid, the middle one at the map's
+  centre and the outer ones 400 m in from the edges, moved to the nearest acceptable place inside that square when
+  needed (area within the zone radius at most 30 % blocked and 5 % water: Vidingsjö SW 230 m off a lake, campus SE
+  170 m); the roaming zones go on from there. Move a zone by moving its Marker3D (the user chose 400 m from the edges; a team spawning
+  outwards then gets a nearer spawn, `_find_spawn`'s minimum distance). Tanks per team (main menu number, `MatchSettings.team_size`,
   `user://settings.cfg`; offline and hosting with bots): `KothBots._fill_teams` adds copies
   of a placed bot or removes extras; on the host a joining player replaces a bot of his team
   (`KothBots.make_room`, `NetGame.remove_tank`) and a leaving one is replaced
@@ -676,7 +687,8 @@ shows on the minimap. This is what we test first.
   in their area (`_find_in_area`, in sight of the commander's eye when possible), else round the tank (`_find_spot`). Hold `skip_tutorial_step` (Backspace) 3 s to skip a lesson (`TutorialPanel` ring).
   Knocked out or overturned: back where it last stood upright. Voices `assets/audio/radio/tut_*.ogg` via SquadRadio.
 - Map edge (`MapEdge`, `scripts/world/map_edge.gd`, `data/world/map_edge.tres`): the playable area is the map
-  picture's `world_rect` less `margin_m` (50). No physics body (every ray with the default mask would hit
+  picture's `world_rect` less `margin_m` (50). Every map with a map picture has it (checked 2026-11-18: all 13 scenarios; a tank at
+  full throttle stops within 0.4 m of it on every side). No physics body (every ray with the default mask would hit
   it): `Tank._hold_inside_map` takes a tank's speed outwards past it and pushes it back in; `TacticalMap`
   closes cells outside (paths, `find_position`, `is_blocked`); squad orders are clamped (`Tank.SQUAD_EDGE_INSET_M`);
   KotH spawns keep `SPAWN_EDGE_INSET_M` inside; the maps darken outside it and draw a line.
@@ -760,7 +772,8 @@ there and the break is over) and on the match's win/loss. Points
   `--path=geodata/road_to_science/korridor.json` (a ready route of any roads/paths). `corson_thunder` (corridor map
   `corson`, 1.71 × 2.7 km since 2026-11-15, widened east with the NW corner kept): starts east on Malmslättsvägen, through Vallarondellen (CP1), then a straight line north -> south through Campus Valla (2.5 km, 3
   checkpoints; `geodata/corson/korridor.json` written by hand, not from OSM), checkpoints moved along the route
-  off the houses by `tools/thunder_checkpoints_avoid_houses.py`. `peking_thunder` (corridor map `peking`, Norrköping, 3.3 × 2.6 km, 2026-11-16): Finspångsvägen -> Norra Promenaden -> Kaktusparken (Stationsrondellen, CP2) -> Tullhusbron -> Drottninggatan south -> Södra Promenaden, 4.3 km, 4 checkpoints moved by hand along the route (`--spacing=`); Motala ström can't be crossed west of Drottningbron (geodata `vagar_bort.json` removes those bridges, steep deep bottoms), Drottningbron, Tullhusbron, Hamnbron, Sjötullsgatan and Varvsbron are open and at least 5 m wide (`broar_justera.json` `min_bredd`). `linghem_thunder` (whole map, not a corridor):
+  off the houses by `tools/thunder_checkpoints_avoid_houses.py`. `peking_thunder` (corridor map `peking`, Norrköping, 3.3 × 2.6 km, 2026-11-16; hidden from the map list and the
+  server vote since 2026-11-18, `MainMenu.HIDDEN_SCENARIOS`: the user wants to rework it later): Finspångsvägen -> Norra Promenaden -> Kaktusparken (Stationsrondellen, CP2) -> Tullhusbron -> Drottninggatan south -> Södra Promenaden, 4.3 km, 4 checkpoints moved by hand along the route (`--spacing=`); Motala ström can't be crossed west of Drottningbron (geodata `vagar_bort.json` removes those bridges, steep deep bottoms), Drottningbron, Tullhusbron, Hamnbron, Sjötullsgatan and Varvsbron are open and at least 5 m wide (`broar_justera.json` `min_bredd`). `linghem_thunder` (whole map, not a corridor):
   south -> north, forest paths, then along Himnavägen, diagonally through the houses to the station (3.2 km,
   4 checkpoints; the last ~260 m before the end so defender spawns stay on the map). Route from a Google Maps
   screenshot by `rutt_ur_bild.py` run in a scratch folder (it writes a korridor.json, which in
@@ -878,7 +891,9 @@ there and the break is over) and on the match's win/loss. Points
   and the gunner's sight (camera FOV) keep full detail. Fixed distance levels were tried and
   dropped: trunks vanished and crowns turned ugly at fighting range in the binoculars.
   A tree's draw cell/index (`_draw_cell`, `_draw_index`) is separate from its physics chunk;
-  `_set_drawn` hides/restores it. Physics and the rest:
+  `_set_drawn` hides/restores it, writing the cell's CPU copy (`_cell_buffers`) and sending the whole buffer:
+  MultiMesh get/set_instance_transform on a buffer-built MultiMesh reads it back from the GPU (7-9 ms per tree a
+  tank pushed over, 2026-11-18). Physics and the rest:
   tank pushes look up trees in an 8 m grid (`TREE_CELL_M`), never whole chunks;
   `FieldTreePhysics` makes one static body (trunks, layer 1) and one area (crowns,
   layer 5) per chunk in the PhysicsServer3D, with TreeField as collider; `TreePush`
@@ -918,6 +933,11 @@ there and the break is over) and on the match's win/loss. Points
   `assets/ui/raw/` (.gdignore) and graded HDR-like by `geodata/.venv/bin/python
   tools/grade_menu_background.py [strength]` (default 0.6: local shadow lift, detail, vibrance)). Note the canvas
   stretch: UI sizes are in 1152x648 units.
+- Game icon: `assets/ui/icon.png` (project icon = window icon on every OS) and `assets/ui/icon.ico`
+  (16-256 px, embedded in the Windows exe: export preset `application/icon` with `modify_resources` on);
+  generated by Google Gemini (credited in CREDITS.md and `data/ui/credits.txt`), source JPEG in
+  `assets/ui/raw/`. Linux binaries can't carry an icon: a `Vagnstrid.png` goes beside them in the zip.
+  The main menu has Quit bottom right.
 - Deploy (choosing team and tank in the match): nobody has a tank on arrival. `MatchLobby`
   (`scripts/control/`, added by NetGame on every machine, offline by `NetSession.play_offline` from
   the main menu's Single player; F5/F6 on a scenario has none) shows `DeployScreen` over a camera

@@ -55,6 +55,8 @@ längst ned under "Efter tävlingen".
 - [ ] Spela tutorialen som en ny spelare: förstår man vad man ska göra utan att fråga?
 
 ### Bidraget (`sweclockers_bidrag.md`)
+- [ ] "Vad gick fel": underlaget i detalj står i [VAD_SOM_GICK_FEL.md](VAD_SOM_GICK_FEL.md) (fyll på när fler fel hittas);
+      fältet i bidraget är ett urval (max 4 000 tecken).
 - [ ] Läs igenom mot vad spelet är idag: tutorial, Free fight med bot-allierade, reträtt i Thunder Road,
       dedikerad server, inställningar. Stryk det som inte stämmer (t.ex. "Inga flygplan").
 - [ ] Bekräfta grafikkortets modell (datorn säger bara "Navi 10": RX 5600 XT/5700/5700 XT).
