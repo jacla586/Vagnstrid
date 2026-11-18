@@ -46,6 +46,7 @@ const CLIPS: Dictionary = {
 	"death_back": ["Rifle Hit To Back", false, true, 0.0, -1.0],
 	"death_kneel": ["Rifle Kneel Hit To Back", false, true, 0.0, -1.0],
 	"death_run": ["Rifle Run To Dying", false, true, 0.0, -1.0],
+	"death_prone": ["Prone Death", false, true, 0.0, -1.0],
 }
 ## The clip and moment whose hands define the aiming grip.
 const AIM_FILE: String = "Firing Rifle"

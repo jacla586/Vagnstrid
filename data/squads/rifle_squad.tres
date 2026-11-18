@@ -120,7 +120,7 @@ anim_death = &"death"
 anim_deaths_standing = Array[StringName]([&"death", &"death_fall", &"death_back"])
 anim_death_moving = &"death_run"
 anim_death_kneeling = &"death_kneel"
-anim_death_prone = &""
+anim_death_prone = &"death_prone"
 anim_transitions = {
 "aim>kneel_idle": &"stand_to_kneel",
 "crouch_aim>prone": &"kneel_to_prone",
