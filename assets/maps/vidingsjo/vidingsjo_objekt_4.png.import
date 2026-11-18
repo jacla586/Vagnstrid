@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cseojky46a0jq"
-path="res://.godot/imported/vidingsjo_objekt_4.png-bca1db04f1af9953c4386467f0ad4c46.ctex"
+path.s3tc="res://.godot/imported/vidingsjo_objekt_4.png-bca1db04f1af9953c4386467f0ad4c46.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "88ac8474c76ca55f6ef6afa57fba4241"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/maps/vidingsjo/vidingsjo_objekt_4.png"
-dest_files=["res://.godot/imported/vidingsjo_objekt_4.png-bca1db04f1af9953c4386467f0ad4c46.ctex"]
+dest_files=["res://.godot/imported/vidingsjo_objekt_4.png-bca1db04f1af9953c4386467f0ad4c46.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0
