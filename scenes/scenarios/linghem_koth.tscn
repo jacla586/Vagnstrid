@@ -16,23 +16,32 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 980, 60, 1280)
 script = ExtResource("2_koth")
 data = ExtResource("3_koth_data")
 
-[node name="SpotPark" type="Marker3D" parent="KothZone"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+[node name="SpotNW" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -580, 0, -880)
 
-[node name="SpotVillas" type="Marker3D" parent="KothZone"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, -660)
+[node name="SpotN" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -110, 0, -880)
 
-[node name="SpotWestFarm" type="Marker3D" parent="KothZone"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -510, 0, 40)
+[node name="SpotNE" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 360, 0, -880)
 
-[node name="SpotEastFarm" type="Marker3D" parent="KothZone"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 520, 0, 190)
+[node name="SpotW" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -580, 0, 10)
 
-[node name="SpotNorthFarm" type="Marker3D" parent="KothZone"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 220, 0, -1090)
+[node name="SpotCentre" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -110, 0, 10)
 
-[node name="SpotSouthField" type="Marker3D" parent="KothZone"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -360, 0, 1010)
+[node name="SpotE" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 360, 0, 10)
+
+[node name="SpotSW" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -580, 0, 900)
+
+[node name="SpotS" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -110, 0, 900)
+
+[node name="SpotSE" type="Marker3D" parent="KothZone"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 360, 0, 900)
 
 [node name="KothBots" type="Node" parent="." node_paths=PackedStringArray("mode")]
 script = ExtResource("4_koth_bots")
