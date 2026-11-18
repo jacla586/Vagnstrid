@@ -38,6 +38,13 @@ extends Resource
 @export var tree_push_speed_loss: float = 0.25
 ## Slower than the minimum speed, keep pushing this long to fell the tree (s).
 @export var tree_slow_push_time_s: float = 1.5
+## A pushed-over tree falls off to the side of the tank's path, not straight ahead
+## (it would block the view): towards the side of the hull's centre line it was struck
+## on, this many degrees off the push direction, from min (struck in the middle; side
+## by chance) to max (struck at the hull's edge), plus up to ± jitter.
+@export var tree_fall_side_min_deg: float = 20.0
+@export var tree_fall_side_max_deg: float = 45.0
+@export var tree_fall_jitter_deg: float = 8.0
 ## Max yaw rate when steering fully (degrees/s).
 @export var max_turn_rate_deg: float = 30.0
 ## How fast the yaw rate builds up or stops (degrees/s²).

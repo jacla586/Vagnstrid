@@ -28,7 +28,7 @@ static func push_direction(tank: Tank, tree_position: Vector3, trunk_diameter: f
 			and path_hits_trunk(tank, to_tree, velocity.normalized(), trunk_diameter):
 		push_time.erase(key)
 		tank.apply_obstacle_drag(tank.data.tree_push_speed_loss)
-		return velocity
+		return fall_direction(tank, to_tree, velocity.normalized())
 	var forward := -tank.global_basis.z
 	forward.y = 0.0
 	forward = forward.normalized()
@@ -43,8 +43,24 @@ static func push_direction(tank: Tank, tree_position: Vector3, trunk_diameter: f
 	push_time[key] = float(push_time.get(key, 0.0)) + delta
 	if push_time[key] >= tank.data.tree_slow_push_time_s:
 		push_time.erase(key)
-		return push_dir
+		return fall_direction(tank, to_tree, push_dir)
 	return Vector3.ZERO
+
+
+## Where a tree pushed along `direction` (flat, unit) falls: turned off the tank's path
+## towards the side of the hull's centre line the trunk was struck on (TankData
+## tree_fall_*), so felled trees don't lie across the way and block the view ahead.
+static func fall_direction(tank: Tank, to_tree: Vector3, direction: Vector3) -> Vector3:
+	var right: Vector3 = direction.cross(Vector3.UP)
+	var offset: float = to_tree.dot(right) / maxf(tank.get_hull_half_extents().x, 0.1)
+	var side: float = signf(offset)
+	if absf(offset) < 0.05:
+		side = 1.0 if randf() < 0.5 else -1.0
+	var d: TankData = tank.data
+	var angle: float = lerpf(d.tree_fall_side_min_deg, d.tree_fall_side_max_deg,
+			clampf(absf(offset), 0.0, 1.0)) + randf_range(-1.0, 1.0) * d.tree_fall_jitter_deg
+	# Positive rotation about UP turns left; `right` is the positive side of the offset.
+	return direction.rotated(Vector3.UP, -side * deg_to_rad(maxf(angle, 0.0)))
 
 
 ## True if the trunk lies in front of the tank along `direction`, within the hull's

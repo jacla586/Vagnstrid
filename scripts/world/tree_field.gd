@@ -63,6 +63,12 @@ var _lod_meshes: Array[Mesh] = []
 var _type_data: Array[FieldTreeData] = []
 ## Per draw cell: its MultiMeshes (one) and centre.
 var _cell_multimeshes: Array = []
+## Each draw cell's instance buffer, kept on the CPU (Array of PackedFloat32Array): a felled
+## tree is changed here and the whole buffer sent again. Reading or setting one instance
+## of a MultiMesh instead (get/set_instance_transform) reads the buffer back from the
+## GPU first: 7-9 ms stalls per tree a tank pushed over (2026-11-18).
+var _cell_buffers: Array = []
+var _floats_per_tree: int = 12
 var _cell_centre: PackedVector3Array = PackedVector3Array()
 ## Per tree: its draw cell and its index there.
 var _draw_cell: PackedInt32Array = PackedInt32Array()
@@ -221,8 +227,7 @@ func fell_tree(tree: int, direction: Vector3) -> void:
 	var shape_index: int = tree - _chunk_first[chunk]
 	_physics.disable_trunk(chunk, shape_index)
 	var cell: int = _draw_cell[tree]
-	var drawn: Transform3D = (_cell_multimeshes[cell][0] as MultiMesh).get_instance_transform(
-			_draw_index[tree])
+	var drawn: Transform3D = _drawn_of(tree)
 	_felled_drawn[tree] = drawn
 	_set_drawn(tree, Transform3D(Basis().scaled(Vector3.ZERO), drawn.origin))
 	var falling := FallingTree.new()
@@ -244,13 +249,17 @@ func restore_all() -> void:
 	for child: Node in get_children(true):
 		if child is FallingTree:
 			child.free()   # no late "landed" tipping a restored crown
+	var touched: Dictionary = {}
 	for tree: int in _felled_drawn:
 		var chunk: int = _chunk_of[tree]
 		var shape_index: int = tree - _chunk_first[chunk]
-		_set_drawn(tree, _felled_drawn[tree])
+		_write_drawn(tree, _felled_drawn[tree])
+		touched[_draw_cell[tree]] = true
 		if _physics != null:
 			_physics.restore(chunk, shape_index, tree)
 		_felled[tree] = 0
+	for cell: int in touched:
+		_upload_cell(cell)
 	_felled_drawn.clear()
 	_push_time.clear()
 
@@ -261,7 +270,9 @@ func _build_chunks(chunks: Array, floats: PackedFloat32Array, per_tree: int) -> 
 	_chunk_first.clear()
 	_chunk_count.clear()
 	_cell_multimeshes.clear()
+	_cell_buffers.clear()
 	_cell_centre.clear()
+	_floats_per_tree = per_tree
 	var total: int = floats.size() / per_tree
 	_draw_cell.resize(total)
 	_draw_index.resize(total)
@@ -312,6 +323,7 @@ func _build_cell(type: int, chunk_centre: Vector3, trees: PackedInt32Array,
 	var multimeshes: Array[MultiMesh] = [_add_cell_instance(_lod_meshes[type], buffer, per_tree,
 			chunk_centre + offset, shadow)]
 	_cell_multimeshes.append(multimeshes)
+	_cell_buffers.append(buffer)
 	_cell_centre.append(chunk_centre + offset)
 
 
@@ -336,8 +348,45 @@ func _add_cell_instance(mesh: Mesh, buffer: PackedFloat32Array, per_tree: int, a
 
 ## Sets a tree's drawn transform (relative to its draw cell) in every detail level.
 func _set_drawn(tree: int, xform: Transform3D) -> void:
-	for multimesh: MultiMesh in _cell_multimeshes[_draw_cell[tree]]:
-		multimesh.set_instance_transform(_draw_index[tree], xform)
+	_write_drawn(tree, xform)
+	_upload_cell(_draw_cell[tree])
+
+
+## A tree's drawn transform (relative to its draw cell), from the CPU copy.
+func _drawn_of(tree: int) -> Transform3D:
+	var b: PackedFloat32Array = _cell_buffers[_draw_cell[tree]]
+	var o: int = _draw_index[tree] * _floats_per_tree
+	# Row-major 3x4: basis column x = (o, o+4, o+8), y = (o+1, ...), z = (o+2, ...).
+	return Transform3D(Vector3(b[o], b[o + 4], b[o + 8]), Vector3(b[o + 1], b[o + 5], b[o + 9]),
+			Vector3(b[o + 2], b[o + 6], b[o + 10]), Vector3(b[o + 3], b[o + 7], b[o + 11]))
+
+
+## Writes a tree's drawn transform into its cell's CPU copy (send it with _upload_cell).
+func _write_drawn(tree: int, xform: Transform3D) -> void:
+	var cell: int = _draw_cell[tree]
+	var b: PackedFloat32Array = _cell_buffers[cell]
+	var o: int = _draw_index[tree] * _floats_per_tree
+	var x: Basis = xform.basis
+	b[o] = x.x.x
+	b[o + 1] = x.y.x
+	b[o + 2] = x.z.x
+	b[o + 3] = xform.origin.x
+	b[o + 4] = x.x.y
+	b[o + 5] = x.y.y
+	b[o + 6] = x.z.y
+	b[o + 7] = xform.origin.y
+	b[o + 8] = x.x.z
+	b[o + 9] = x.y.z
+	b[o + 10] = x.z.z
+	b[o + 11] = xform.origin.z
+	_cell_buffers[cell] = b   # packed arrays are values: put it back
+
+
+## Sends a draw cell's whole buffer to its MultiMeshes (no read-back from the GPU).
+func _upload_cell(cell: int) -> void:
+	var b: PackedFloat32Array = _cell_buffers[cell]
+	for multimesh: MultiMesh in _cell_multimeshes[cell]:
+		multimesh.buffer = b
 
 
 ## The tree model with detail levels for Godot's mesh LOD (merging the model's parts in
