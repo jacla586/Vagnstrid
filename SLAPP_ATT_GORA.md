@@ -33,7 +33,7 @@ längst ned under "Efter tävlingen".
       (Vidingsjö, Road to Science …); Vikbolandet, hills och Hackerstad borttagna
 - [x] Tutorial på Vidingsjö: nio lektioner med instruktörsröst, knapp i huvudmenyn (`TUTORIAL_PLAN.md`)
 - [x] Dedikerad server med omröstning om nästa karta (`SERVER_PLAN.md`)
-- [x] Exportförinställningar och byggen (`EXPORTERA.md`; senaste: `build/*-2026-11-18-11f38d3.zip`, GitHub-release `v2026-11-18`)
+- [x] Exportförinställningar och byggen (`EXPORTERA.md`; senaste: `build/*-2026-11-18-7d05f59.zip`, GitHub-release `v2026-11-18-2`)
 - [x] Skärmdumpar, tävlingsmaterial och privata anteckningar hålls utanför git
 
 ## Kvar att göra
