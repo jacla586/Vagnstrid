@@ -35,6 +35,12 @@ const HULL_DOWN_BLIND_M: float = 2.5
 const LINE_HALF_WIDTH_CELLS: float = 0.3
 
 static var _cache: Dictionary = {}  # "grid id/tactics id" -> TacticalMap
+## Path planning budget per physics tick (all maps and bots together, ms): the first
+## plan of a tick always runs, later ones wait for a tick with time left
+## (`may_plan`, BotController's pending plans), so plans don't pile up into one tick.
+static var plan_budget_ms: float = 3.0
+static var _plan_tick: int = -1
+static var _plan_used_ms: float = 0.0
 
 var grid: TacticalGridData
 var _astar: AStarGrid2D
@@ -328,7 +334,24 @@ func area_info(center: Vector3, radius: float) -> Dictionary:
 ## Waypoints from `from` to `to` (world, at ground height), or empty if there is no
 ## way (or both ends lie far inside closed areas). `avoid`: extra cells to treat as
 ## closed for this search (where this tank got stuck on something the grid misses).
+## True while this physics tick has planning time left (plan_budget_ms).
+static func may_plan() -> bool:
+	var tick: int = Engine.get_physics_frames()
+	if tick != _plan_tick:
+		_plan_tick = tick
+		_plan_used_ms = 0.0
+	return _plan_used_ms < plan_budget_ms
+
+
 func find_path(from: Vector3, to: Vector3, avoid: Array[Vector2i] = []) -> PackedVector3Array:
+	may_plan()   # starts this tick's count
+	var started: int = Time.get_ticks_usec()
+	var path: PackedVector3Array = _find_path_avoiding(from, to, avoid)
+	_plan_used_ms += (Time.get_ticks_usec() - started) / 1000.0
+	return path
+
+
+func _find_path_avoiding(from: Vector3, to: Vector3, avoid: Array[Vector2i]) -> PackedVector3Array:
 	var closed: Array[Vector2i] = []
 	for c: Vector2i in avoid:
 		if grid.has_cell(c) and not _astar.is_point_solid(c):
@@ -461,16 +484,27 @@ func _snap(cell: Vector2i) -> Vector2i:
 ## and no cell dearer than the stretch of path it replaces (so shortcuts don't leave
 ## cover or cut through forest the path went around).
 func _straighten(cells: Array[Vector2i]) -> Array[Vector2i]:
+	# Jumps from each kept cell to the farthest cell within SMOOTH_LOOKAHEAD that a
+	# straight line reaches. Tried from the far end back, stopping at the first that
+	# works: the same cell as trying them all (2026-11-18: that took 7-28 ms on long paths).
 	var out: Array[Vector2i] = [cells[0]]
+	var dearest := PackedFloat32Array()
+	dearest.resize(SMOOTH_LOOKAHEAD + 1)
+	var w: int = grid.width
 	var i: int = 0
 	while i < cells.size() - 1:
-		var best: int = i + 1
-		var dearest: float = _weights[grid.index_of(cells[i])]
 		var last: int = mini(cells.size() - 1, i + SMOOTH_LOOKAHEAD)
+		# Dearest cell weight on the path from i to each j (a shortcut may cross no cell
+		# dearer than the path it replaces).
+		var d: float = _weights[cells[i].y * w + cells[i].x]
 		for j: int in range(i + 1, last + 1):
-			dearest = maxf(dearest, _weights[grid.index_of(cells[j])])
-			if _line_ok(cells[i], cells[j], dearest):
+			d = maxf(d, _weights[cells[j].y * w + cells[j].x])
+			dearest[j - i] = d
+		var best: int = i + 1
+		for j: int in range(last, i + 1, -1):
+			if _line_ok(cells[i], cells[j], dearest[j - i]):
 				best = j
+				break
 		out.append(cells[best])
 		i = best
 	return out
@@ -493,26 +527,34 @@ func _line_ok(a: Vector2i, b: Vector2i, limit: float) -> bool:
 
 ## Walks every cell a segment (in cell units) passes through (Amanatides-Woo).
 func _ray_ok(from: Vector2, to: Vector2, limit: float) -> bool:
-	var cell := Vector2i(floori(from.x), floori(from.y))
-	var end := Vector2i(floori(to.x), floori(to.y))
+	var cx: int = floori(from.x)
+	var cy: int = floori(from.y)
+	var ex: int = floori(to.x)
+	var ey: int = floori(to.y)
 	var dir: Vector2 = to - from
-	var step := Vector2i(signi(roundi(signf(dir.x))), signi(roundi(signf(dir.y))))
+	var sx: int = signi(roundi(signf(dir.x)))
+	var sy: int = signi(roundi(signf(dir.y)))
+	# Kept in Vector2s (32-bit floats) as before, so ties step the same way.
 	var t_delta := Vector2(INF if dir.x == 0.0 else absf(1.0 / dir.x),
 			INF if dir.y == 0.0 else absf(1.0 / dir.y))
 	var t_max := Vector2(
-			INF if dir.x == 0.0 else ((cell.x + (1 if step.x > 0 else 0)) - from.x) / dir.x,
-			INF if dir.y == 0.0 else ((cell.y + (1 if step.y > 0 else 0)) - from.y) / dir.y)
-	var guard: int = absi(end.x - cell.x) + absi(end.y - cell.y) + 2
+			INF if dir.x == 0.0 else ((cx + (1 if sx > 0 else 0)) - from.x) / dir.x,
+			INF if dir.y == 0.0 else ((cy + (1 if sy > 0 else 0)) - from.y) / dir.y)
+	var w: int = grid.width
+	var h: int = grid.height
+	var bound: float = limit + 0.001
+	# Plain ints and inlined grid lookups: this runs for every cell of every shortcut tried.
+	var guard: int = absi(ex - cx) + absi(ey - cy) + 2
 	while guard > 0:
 		guard -= 1
-		if not grid.has_cell(cell) or _weights[grid.index_of(cell)] > limit + 0.001:
+		if cx < 0 or cy < 0 or cx >= w or cy >= h or _weights[cy * w + cx] > bound:
 			return false
-		if cell == end:
+		if cx == ex and cy == ey:
 			return true
 		if t_max.x < t_max.y:
 			t_max.x += t_delta.x
-			cell.x += step.x
+			cx += sx
 		else:
 			t_max.y += t_delta.y
-			cell.y += step.y
+			cy += sy
 	return true

@@ -52,6 +52,11 @@ extends Resource
 @export var move_aim_tolerance_deg: float = 1.0
 @export var move_aim_settle_s: float = 0.8
 @export var move_lay_error_mrad_per_mps: float = 1.5
+## Within this range (m) the gun also counts as on target when a ray along the barrel
+## hits the target tank, whatever the angle: up close the turret's pivot and the muzzle
+## see the aim from different places (degrees off), and a target below the gun's
+## depression is still hit in the hull. Like a player who sees the sight on the tank.
+@export var barrel_ray_range_m: float = 80.0
 
 @export_group("Repair")
 ## Without a destroyed module or thrown track, the crew only stops to repair below

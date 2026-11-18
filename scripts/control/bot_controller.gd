@@ -186,6 +186,8 @@ var _scoot_time: float = 0.0
 var _hits: Array[float] = []
 ## Pulling back: true from the order until relocate_hold_s after arriving.
 var _relocating: bool = false
+## An order_path waiting for planning time ([goal, throttle, urgent, via]; TacticalMap.may_plan).
+var _pending_plan: Array = []
 # Close fight (TacticsData.close_fight_*): charging round a near enemy's flank.
 var _close_fight: bool = false
 # Ammo choice (_choose_ammo): seconds to the next look.
@@ -251,6 +253,7 @@ func get_role() -> BotRoleData:
 
 
 func order_move(points: Array[Vector3], throttle: float) -> void:
+	_pending_plan = []
 	_orders = points.duplicate()
 	_order_index = 0
 	_order_throttle = throttle
@@ -263,6 +266,11 @@ func order_move(points: Array[Vector3], throttle: float) -> void:
 ## `via` = go by this point first (a flank, so not every bot takes the same way).
 func order_path(goal: Vector3, throttle: float, urgent: bool = false,
 		via: Vector3 = Vector3.INF) -> void:
+	if _tactical_map() != null and not TacticalMap.may_plan():
+		# This tick's planning time is used up (several bots ordered at once): plan in a
+		# later tick, standing meanwhile; counts as orders, so directors don't re-order.
+		_pending_plan = [goal, throttle, urgent, via]
+		return
 	_visit_shots = 0   # a new place: hit and run counts afresh
 	goal = _kept(goal)
 	if via != Vector3.INF:
@@ -405,7 +413,7 @@ func _tactical_map() -> TacticalMap:
 
 
 func has_orders_left() -> bool:
-	return _order_index < _orders.size()
+	return not _pending_plan.is_empty() or _order_index < _orders.size()
 
 
 ## Marks a spotted enemy in sight for the team, through the command like a player's
@@ -463,7 +471,7 @@ func _physics_process(delta: float) -> void:
 		_relocating = false
 		_scoot = Scoot.NONE
 		_close_fight = false
-		if not _orders.is_empty():
+		if not _orders.is_empty() or not _pending_plan.is_empty():
 			var none: Array[Vector3] = []
 			order_move(none, 0.0)
 		_update_respawn(delta)
@@ -499,6 +507,10 @@ func _physics_process(delta: float) -> void:
 			_relocating = false
 	if _target != null and not is_instance_valid(_target):
 		_target = null
+	if not _pending_plan.is_empty() and TacticalMap.may_plan():
+		var p: Array = _pending_plan
+		_pending_plan = []
+		order_path(p[0], p[1], p[2], p[3])
 	_update_close_fight()
 	_choose_ammo(delta)
 	if _target != null:
@@ -529,6 +541,8 @@ func _physics_process(delta: float) -> void:
 		_command.steering = 0.0
 	elif _close_fight:
 		_close_fight_step(delta)
+	elif not _pending_plan.is_empty():
+		pass   # waiting a tick or two for its path: stand
 	elif not _orders.is_empty():
 		if not _halting:
 			_order_step(delta)
@@ -922,8 +936,9 @@ func _engage(target: Tank, delta: float) -> void:
 	var gun_error: float = (-muzzle.basis.z).angle_to(gun_aim - muzzle.origin)
 	var tolerance: float = bot_data.move_aim_tolerance_deg if fire_moving else bot_data.aim_tolerance_deg
 	var settle_needed: float = bot_data.move_aim_settle_s if fire_moving else bot_data.aim_settle_s
-	if not coax_turn and hull_seen and (still or fire_moving) \
-			and gun_error <= deg_to_rad(tolerance):
+	var on_target: bool = gun_error <= deg_to_rad(tolerance) \
+			or (distance <= bot_data.barrel_ray_range_m and _barrel_hits(target, muzzle))
+	if not coax_turn and hull_seen and (still or fire_moving) and on_target:
 		_settle_time += delta
 	else:
 		_settle_time = 0.0
@@ -952,6 +967,17 @@ func _engage(target: Tank, delta: float) -> void:
 	_mg_time += delta
 	_command.fire_mg = fmod(_mg_time, bot_data.mg_burst_s + bot_data.mg_pause_s) \
 			< bot_data.mg_burst_s
+
+
+## True when a ray along the barrel (from the muzzle, a little past the target) hits
+## `target` first: the round would strike it, however far off the aim angle is.
+func _barrel_hits(target: Tank, muzzle: Transform3D) -> bool:
+	var from: Vector3 = muzzle.origin
+	var reach: float = from.distance_to(target.global_position) + 10.0
+	var query := PhysicsRayQueryParameters3D.create(from, from - muzzle.basis.z.normalized() * reach,
+			Vision.SHOT_MASK, [tank.get_rid()])
+	var hit: Dictionary = tank.get_world_3d().direct_space_state.intersect_ray(query)
+	return not hit.is_empty() and hit.collider == target
 
 
 ## Beside cover (bushes, trees, tree line, houses) by the tactical grid: a fair place
