@@ -221,6 +221,11 @@ var fire_blocked: bool = false
 ## Game mode rule (ThunderRoad's countdown between rounds): the tracks don't drive; the
 ## turret, optics and hatch still work.
 var move_blocked: bool = false
+## Stuck detection (_update_unstick): how long, from where and heading, tries so far.
+var _stuck_s: float = 0.0
+var _stuck_from: Vector3 = Vector3.INF
+var _stuck_yaw: float = 0.0
+var _unstick_tries: int = 0
 ## The turret was thrown off by an ammo explosion (hidden here, flying as its own body).
 var _turret_tossed: bool = false
 ## Client's own tank: turret, gun, hatch and roof MG follow the local command at once.
@@ -1570,6 +1575,7 @@ func _physics_process(delta: float) -> void:
 		_knock_out(true)   # the crew bails out: a loss, but nobody's kill
 	_hold_inside_map()
 	_hold_out_of_deep_water()
+	_update_unstick(delta)
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -1593,6 +1599,49 @@ func _physics_process(delta: float) -> void:
 			-data.track_lateral_grip, data.track_lateral_grip)
 	lateral_accel *= float(grounded) / float(ray_count)
 	apply_central_force(right_dir * lateral_accel * mass)
+
+
+## Stuck detection (TankData "unstick_*"): host side, from the command, so bots too.
+func _update_unstick(delta: float) -> void:
+	if data.unstick_after_s <= 0.0:
+		return
+	var trying: bool = absf(_command.throttle) > 0.1 or absf(_command.steering) > 0.1
+	if not trying or _knocked_out or move_blocked or is_immobilised() or get_speed_factor() <= 0.0 \
+			or _deep_over_m > 0.0 or not MapEdge.contains(get_tree(), global_position):
+		_stuck_s = 0.0
+		_stuck_from = Vector3.INF
+		return
+	var yaw: float = global_basis.get_euler().y
+	if _stuck_from == Vector3.INF or global_position.distance_to(_stuck_from) > data.unstick_move_m \
+			or absf(wrapf(yaw - _stuck_yaw, -PI, PI)) > deg_to_rad(data.unstick_turn_deg):
+		_stuck_from = global_position
+		_stuck_yaw = yaw
+		_stuck_s = 0.0
+		return
+	_stuck_s += delta
+	if _stuck_s < data.unstick_after_s:
+		return
+	_stuck_s = 0.0
+	_stuck_from = Vector3.INF
+	if global_basis.y.angle_to(Vector3.UP) > deg_to_rad(data.unstick_flip_deg):
+		# On its side or roof: back on its tracks where it lies.
+		var forward := Vector3(-global_basis.z.x, 0.0, -global_basis.z.z)
+		if forward.length() < 0.1:
+			forward = Vector3(global_basis.y.x, 0.0, global_basis.y.z)   # nose straight up/down
+		global_transform = Transform3D(Basis.looking_at(forward.normalized(), Vector3.UP),
+				global_position + Vector3.UP * data.unstick_flip_lift_m)
+		linear_velocity = Vector3.ZERO
+		angular_velocity = Vector3.ZERO
+		reset_physics_interpolation()
+		return
+	var forward := Vector3(-global_basis.z.x, 0.0, -global_basis.z.z).normalized()
+	var right := Vector3(global_basis.x.x, 0.0, global_basis.x.z).normalized()
+	var wanted: Vector3 = forward * (signf(_command.throttle) if absf(_command.throttle) > 0.1 else 1.0)
+	var dirs: Array[Vector3] = [wanted, -wanted, -right, right]
+	var push: Vector3 = dirs[_unstick_tries % dirs.size()]
+	_unstick_tries += 1
+	linear_velocity = push * data.unstick_push_mps + Vector3.UP * data.unstick_lift_mps
+	angular_velocity = Vector3.ZERO
 
 
 ## The map's invisible edge (MapEdge): past it the speed outwards goes and the tank is

@@ -58,6 +58,9 @@ const HE_SQUAD_RANGE_M: float = 800.0
 const MINE_REPLAN_M: float = 250.0
 ## ...sends it to look about this far ahead / towards a threat (m)...
 const SQUAD_LOOK_AHEAD_M: float = 150.0
+## Enemy squads farther than this (m), other than the one being fought, are looked at
+## every 2nd scan (the time in between counts towards spotting, as for far tanks).
+const SQUAD_LOOK_EVERY_2ND_M: float = 150.0
 ## ...moves it on once the look point has moved this far (m)...
 const SQUAD_MOVE_ON_M: float = 80.0
 ## ...and calls it back when the tank is this far from it (m), or has been driving on
@@ -177,6 +180,10 @@ var _pending_squad_order: int = 0
 var _pending_squad_target: Vector3 = Vector3.ZERO
 ## Enemy squads: seconds looked at, and the one being fired on.
 var _squad_awareness: Dictionary = {}  # Squad -> seconds
+## Squads beyond SQUAD_LOOK_EVERY_2ND_M: scans since the last look, and whether that look
+## found it a target (spotted, in MG range), so it stays one in between.
+var _squad_look_wait: Dictionary = {}  # Squad -> int
+var _squad_ok: Dictionary = {}  # Squad -> bool
 var _squad_target: Squad
 var _scoot: Scoot = Scoot.NONE
 var _scoot_point: Vector3 = Vector3.ZERO
@@ -479,7 +486,11 @@ func _physics_process(delta: float) -> void:
 	_scan_timer -= delta
 	if _scan_timer <= 0.0:
 		_scan_timer += bot_data.scan_interval_s
-		_scan(bot_data.scan_interval_s)
+		_scan_waits = maxi(_scan_waits, 0) + 1   # due: a light frame does it (_process)
+	if _scan_waits > Ticks.LIGHT_FRAME_WAIT_TICKS:
+		_run_scan()   # no light frame came: here, in the tick
+	elif _scan_waits > 0:
+		_scan_waits += 1
 	_command.throttle = 0.0
 	_command.steering = 0.0
 	_command.smoke = _smoke_pending
@@ -590,6 +601,21 @@ func _spot_time_for(other: Tank) -> float:
 ## TankData.optics_dirt_spot_factor times at full dirt.
 func _dirt_factor() -> float:
 	return lerpf(1.0, tank.data.optics_dirt_spot_factor, tank.get_optics_dirt())
+
+
+## A due look round (BotController._physics_process), done on a light frame (Ticks).
+var _scan_waits: int = 0
+
+func _process(_delta: float) -> void:
+	if _scan_waits > 0 and Ticks.light_frame():
+		_run_scan()
+
+
+func _run_scan() -> void:
+	_scan_waits = 0
+	if tank == null or bot_data == null or tank.is_knocked_out():
+		return
+	_scan(bot_data.scan_interval_s)
 
 
 func _scan(dt: float) -> void:
@@ -847,7 +873,8 @@ func _drop_freed() -> void:
 	if _target != null and not is_instance_valid(_target):
 		_target = null
 	for memory: Dictionary in [_awareness, _spotted, _cover, _unseen_time, _look_wait,
-			_hull_visible, _head_visible, _reported, _last_known]:
+			_hull_visible, _head_visible, _reported, _last_known, _squad_awareness,
+			_squad_look_wait, _squad_ok]:
 		for key: Variant in memory.keys():
 			if not is_instance_valid(key):
 				memory.erase(key)
@@ -1061,43 +1088,82 @@ func _scan_squads(dt: float) -> void:
 	var best: Squad = null
 	var best_d: float = INF
 	var mg_range: float = bot_data.mg_range_m
+	var eye: Vector3 = tank.get_commander_eye_position()
+	var full_range: float = _view_range()
 	for node: Node in get_tree().get_nodes_in_group("squads"):
 		var enemy := node as Squad
 		if enemy == null or not enemy.is_out() or enemy.get_team() == tank.team:
-			_squad_awareness.erase(enemy)
+			_forget_squad(enemy)
 			continue
 		var d: float = tank.global_position.distance_to(enemy.global_position)
 		if d > mg_range + VIEW_RANGE_MARGIN_M:
 			# Only squads in MG range become targets: don't trace sight lines to the rest.
-			_squad_awareness.erase(enemy)
+			_forget_squad(enemy)
 			continue
+		var scans: int = int(_squad_look_wait.get(enemy, 0)) + 1
+		if enemy != _squad_target and d > SQUAD_LOOK_EVERY_2ND_M and scans < 2:
+			_squad_look_wait[enemy] = scans
+			if bool(_squad_ok.get(enemy, false)) and d <= mg_range and d < best_d:
+				best = enemy
+				best_d = d
+			continue
+		_squad_look_wait.erase(enemy)
+		var look_dt: float = dt * scans
 		var seen: int = 0
 		var total: int = 0
 		# The easiest of the soldiers in sight decides (cover, stance, distance, firing).
 		var easiest: float = INF
-		var eye: Vector3 = tank.get_commander_eye_position()
 		for hb: SoldierHitbox in enemy.get_hitboxes():
 			if not enemy.is_soldier_exposed(hb.index):
 				continue
 			total += 1
+			var point: Vector3 = hb.get_aim_point()
+			# Cheap tests first (out of range or the periscope's sector whatever his cover:
+			# cover only ever shortens the range), then cover and the sight line.
+			if eye.distance_to(point) > full_range or not _in_sector(eye, point):
+				continue
 			var range_factor: float = enemy.soldier_spot_range_factor(hb.index, bot_data.concealment, eye)
-			if _can_see_point(hb.get_aim_point(), hb, range_factor):
+			if _can_see_point(point, hb, range_factor):
 				seen += 1
 				easiest = minf(easiest,
 						enemy.soldier_spot_time_factor(hb.index, eye, bot_data.concealment))
 		var aware: float = float(_squad_awareness.get(enemy, 0.0))
 		if seen == 0:
-			aware = maxf(aware - dt, 0.0)
+			aware = maxf(aware - look_dt, 0.0)
 		else:
-			aware += dt
+			aware += look_dt
 		_squad_awareness[enemy] = aware
 		var needed: float = _spot_time() * enemy.data.soldier_spot_factor * easiest \
 				/ maxf(float(seen) / maxf(total, 1), MIN_SHOWN_SHARE)
-		if seen > 0 and aware >= needed and d <= mg_range and d < best_d:
+		var ok: bool = seen > 0 and aware >= needed
+		_squad_ok[enemy] = ok
+		if ok and d <= mg_range and d < best_d:
 			best = enemy
 			best_d = d
 	_squad_target = best
 
+
+func _forget_squad(enemy: Squad) -> void:
+	_squad_awareness.erase(enemy)
+	_squad_look_wait.erase(enemy)
+	_squad_ok.erase(enemy)
+
+
+## The commander's view range (m) as _can_see_point takes it: hatch open or periscope,
+## and the weather.
+func _view_range() -> float:
+	var open: bool = tank.get_hatch_progress() >= 1.0
+	return Weather.view_range(bot_data.view_range_open_m if open else bot_data.view_range_closed_m)
+
+
+## With the hatch closed, `point` is within the periscope sector round the turret.
+func _in_sector(eye: Vector3, point: Vector3) -> bool:
+	if tank.get_hatch_progress() >= 1.0:
+		return true
+	var flat := Vector3(point.x - eye.x, 0.0, point.z - eye.z)
+	var turret_forward := Vector3(sin(tank.get_turret_global_yaw()) * -1.0, 0.0,
+			-cos(tank.get_turret_global_yaw()))
+	return flat.angle_to(turret_forward) <= deg_to_rad(bot_data.periscope_half_angle_deg)
 
 ## MG bursts at the nearest exposed soldier of `enemy` (roof MG with the hatch open,
 ## else the coax, which needs the turret on him).
@@ -1196,6 +1262,8 @@ func _update_squad(delta: float) -> void:
 			_squad_look = Vector3.INF
 			_since_squad_recall = 0.0
 			return
+		if squad.is_mine_job():
+			return   # a move towards the fight would cancel the mine (KotH: the fight is at the zone)
 	elif not squad.is_mounted() or squad.get_alive_count() < squad.data.soldier_count:
 		return   # wiped out, or refilling on the tank
 	elif _standing_time < get_role().squad_stand_s \

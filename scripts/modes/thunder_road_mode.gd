@@ -617,7 +617,9 @@ func _physics_process(delta: float) -> void:
 		_check_corridors(CHECK_INTERVAL_S)
 	if _next_cp >= _cp_s.size():
 		_end_round()
-	elif not paused and _time_left <= 0.0 and _overtime_over(delta):
+	# is_paused() again: a capture this tick starts the pause, and the old clock (0 in
+	# overtime) must not switch overtime back on (it stayed on the HUD, 2026-11-19).
+	elif not is_paused() and _time_left <= 0.0 and _overtime_over(delta):
 		_award_hold()
 		_end_round()
 	elif _lives <= 0 and _alive_count(_attack_team) == 0:
@@ -636,6 +638,7 @@ func _update_pause(delta: float) -> bool:
 	_pause_left = -1.0
 	_time_left = data.checkpoint_time_s
 	_wave_left = data.wave_interval_s
+	_overtime = false
 	for tank: Tank in _team_tanks(0) + _team_tanks(1):
 		if not tank.is_knocked_out() and is_inside(tank.global_position, role_of(tank.team)):
 			tank.fire_blocked = false
@@ -796,6 +799,7 @@ func _take_checkpoint() -> void:
 	_progress = 0.0
 	_contested = false
 	_overtime = false
+	_attackers_in = 0
 	_lives += data.lives_per_capture
 	checkpoint_taken.emit(index)
 	if _next_cp < _cp_s.size():
@@ -979,22 +983,36 @@ func _defender_start(tank: Tank) -> Transform3D:
 ## A free, flat slot near the road at `s` (rows going back along `facing`), facing it.
 ## Fallback spawn: rows tried further back along the road when no row had open ground.
 const FALLBACK_STEPS: int = 20
+## Rows tried forward of `s` when none behind it fit (a route starting outside the map edge).
+const FORWARD_ROWS: int = 8
 
 func _free_slot(s: float, facing: Vector3, tank: Tank) -> Transform3D:
 	var back: float = -signf(facing.dot(tangent_at(s)))
 	var first := Transform3D()
 	var found_first: bool = false
+	var first_free: bool = false
+	# Rows back from `s`, then (a start outside the map edge, every row blocked) rows
+	# forward from it.
+	var offsets: Array[float] = []
 	for row: int in SLOT_ROWS:
+		offsets.append(back * row * SLOT_ROW_M)
+	for row: int in range(1, FORWARD_ROWS + 1):
+		offsets.append(-back * row * SLOT_ROW_M)
+	for offset: float in offsets:
 		for across: float in SLOT_ACROSS_M:
-			var p: Vector3 = slot_point(s + back * row * SLOT_ROW_M, across)
+			var p: Vector3 = slot_point(s + offset, across)
 			var hit: Dictionary = KothMode.ground_hit(get_world_3d(), p)
 			if hit.is_empty() or not (hit["collider"] is Terrain3D):
 				continue   # nothing there, or a roof, a bridge, a stone: never spawn on top of it
 			var at: Vector3 = (hit["position"] as Vector3) + Vector3.UP * SPAWN_LIFT_M
 			var xform := Transform3D(Basis.looking_at(facing, Vector3.UP), at)
-			if not found_first and not _wreck_near(at):
-				first = xform   # nothing fit: at least not inside a wreck
+			# Nothing fit: at least not inside a wreck, and never inside another tank
+			# (ten tanks in one spot blew apart at 48 m/s, Orange 2026-11-19).
+			var free: bool = not _tank_near(at, tank)
+			if not _wreck_near(at) and (not found_first or (free and not first_free)):
+				first = xform
 				found_first = true
+				first_free = free
 			if _slot_ok(hit, tank):
 				return xform
 	if not found_first:
@@ -1028,6 +1046,14 @@ func _wreck_near(at: Vector3) -> bool:
 	return false
 
 
+func _tank_near(at: Vector3, tank: Tank) -> bool:
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var other := node as Tank
+		if other != null and other != tank and other.global_position.distance_to(at) < SLOT_CLEAR_M:
+			return true
+	return false
+
+
 func _slot_ok(hit: Dictionary, tank: Tank) -> bool:
 	var at: Vector3 = hit["position"]
 	if (hit["normal"] as Vector3).angle_to(Vector3.UP) > deg_to_rad(KothMode.SPAWN_MAX_SLOPE_DEG):
@@ -1035,10 +1061,8 @@ func _slot_ok(hit: Dictionary, tank: Tank) -> bool:
 	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
 	if map != null and map.is_blocked(at):
 		return false
-	for node: Node in get_tree().get_nodes_in_group("tanks"):
-		var other := node as Tank
-		if other != null and other != tank and other.global_position.distance_to(at) < SLOT_CLEAR_M:
-			return false
+	if _tank_near(at, tank):
+		return false
 	var box := BoxShape3D.new()
 	box.size = KothMode.SPAWN_BOX_M
 	var query := PhysicsShapeQueryParameters3D.new()

@@ -63,6 +63,20 @@ extends Resource
 @export var wreck_mass_share: float = 0.35
 @export var wreck_friction: float = 0.7
 @export var wreck_damp: float = 0.6
+## Stuck (Tank._update_unstick): the driver giving throttle or steering for unstick_after_s
+## without the hull getting unstick_move_m away or turning unstick_turn_deg (hung on a
+## rock, wedged in, on its side) gives a nudge: unstick_lift_mps up and unstick_push_mps
+## sideways along the ground, the direction turning each try (the way it tries to go,
+## back, left, right). Tilted past unstick_flip_deg it is set upright instead (yaw kept,
+## lifted unstick_flip_lift_m). Not when it is meant to stand: knocked out, immobilised,
+## move_blocked, in deep water or outside the map edge. 0 s = off.
+@export var unstick_after_s: float = 10.0
+@export var unstick_move_m: float = 2.0
+@export var unstick_turn_deg: float = 25.0
+@export var unstick_lift_mps: float = 3.0
+@export var unstick_push_mps: float = 3.5
+@export var unstick_flip_deg: float = 60.0
+@export var unstick_flip_lift_m: float = 1.5
 
 @export_group("Suspension")
 ## Length of each suspension ray: how far the road wheels reach below the hull (m).

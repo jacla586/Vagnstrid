@@ -131,6 +131,12 @@ static func _cost(f: int, t: TacticsData) -> float:
 	return w
 
 
+## The cell under `point` is road (OSM/NVDB roads baked into the grid).
+func is_road(point: Vector3) -> bool:
+	var c: Vector2i = grid.cell_of(point)
+	return grid.has_cell(c) and grid.flags[grid.index_of(c)] & TacticalGridData.ROAD != 0
+
+
 ## Something beside the way hides or shields a tank here: bushes or crowns, forest,
 ## a tree line, or houses next to it.
 func is_covered(point: Vector3) -> bool:

@@ -106,7 +106,12 @@ shows on the minimap. This is what we test first.
   `PROBE_TICKS` ticks via `_probed_step`, walking the checked stretch in between), and when holding each his own spot 4-9 m round the squad's point (covered if
   possible), facing out and kneeling once still. The leader is the
   first living soldier; V (`toggle_squad_view`, `SquadCamera`, `PlayerViews` SQUAD
-  mode) looks through his eyes while the squad is off the tank: look and spot only, no
+  mode) looks through his eyes while the squad is off the tank (first person: `SquadCamera` doesn't draw the
+  soldier looked through, `OWN_LEADER_LAYER` 4 via `Squad.set_view_hidden`, and shows `SoldierViewModel`, arms and an
+  AK-like rifle from solids, swaying with his walk and kicking when he fires; kneeling or lying the eye stays
+  `SquadData.view_above_cover_m` over the vegetation; prone eye height 0.55 m for spotting too; when he falls the view
+  follows his head bone down `death_follow_s` (2.5 s), then the next leader; that soldier's animation steps every
+  frame): look and spot only, no
   control, no turret or guns; binoculars on B. Spotting like tank crews (sight lines,
   concealment; all round holding, a cone ahead moving): spotted enemies become team
   marks (`Tank.report_squad_spot`, also signal `squad_contact`). Soldiers have
@@ -153,7 +158,11 @@ shows on the minimap. This is what we test first.
   following, until `assault_close_m`; no ambush lying meanwhile. Spotting soldiers: within
   `soldier_close_range_m` cover and vegetation hide less ((d/range)²), and every other man of the
   same squad in sight adds `group_spot_share` of a look to each (a group shows).
-  Mounted they refill one by one (one a minute);
+  Kit (2026-11-18, `SquadData.loadout`, `Squad._kit`): each soldier carries one AT round or one mine, never
+  both (default mine, AT, mine, AT: 2 + 2); the AT gunner and the mine layer are men who carry one
+  (`_carrier_nearest`), a man who falls loses his, and the counts (`get_at_rounds_left`, `get_mines_carried`,
+  net and HUD) are what the living carry (`_recount_kits`). Mounted, one man missing his kit gets it back every
+  `kit_refill_s` (20 s); men come back one a minute (`refill_time_s`, his kit 20 s after);
   wiped out, a full squad is back after `wipe_cooldown_s`. HUD: `SquadPanel`.
   Radio (`Squad.radio` signal, kinds `RADIO_*`: under attack (withdraw), returning, in
   position, armour/infantry contact, AT round coming, mines): `SquadRadio` in the player rig plays the own
@@ -194,8 +203,7 @@ shows on the minimap. This is what we test first.
   beyond `ambush_rifle_range_m` until it fired or lost a man; moving ends it. Mines
   (`Mine`, `scripts/squad/mine.gd`, data `MineData`/`data/squads/mine.tres`,
   `SquadData.mine*`): Q map right click (`squad_mine`) = `Squad.ORDER_MINE`: the squad walks
-  there, the nearest soldier kneels `mine_lay_time_s` and lays it; one carried
-  (`mines_carried`, refilled `mine_refill_s` on the tank), at most `max_mines_out` (another
+  there, the nearest soldier with a mine kneels `mine_lay_time_s` and lays it; at most `max_mines_out` (another
   removes the oldest; radio "Upprättar minering!" on the order, "Mina armerad!" when laid,
   "Mina utlöst!" when an enemy sets it off, `RADIO_MINE_*`, `Mine.triggered`; on a road it lies on the visible surface, `RoadSurface`: road meshes have no collision). A magnetic fuze: an enemy tank anywhere over it, belly included (host,
   `Mine._track_over`), throws its nearer track
@@ -214,7 +222,8 @@ shows on the minimap. This is what we test first.
   Bots: see and MG enemy squads (no tank target); use their own squad via the command
   only after standing `SQUAD_MIN_STAND_S` near a fight (known enemy within 600 m, alert, or
   `fight_focus`, the zone, within 450 m), not within 45 s of a recall (towards the fight,
-  `find_position` with infantry costs), recall it when hurt, left behind or driving on; squad
+  `find_position` with infantry costs), recall it when hurt, left behind or driving on (a squad on a mine job is left
+  to finish it: a move towards the fight would cancel the mine); squad
   contacts reach the crew and (KothBots) its team. Decided rules: memory
   `squad-rules`.
 - Ground vegetation (`GroundCover`, `scripts/world/ground_cover/`): grass, crops, reed, scrub and
@@ -487,7 +496,7 @@ shows on the minimap. This is what we test first.
   `ThunderRoadData.bot_configs`; default T-34), each with a clear strength and weakness:
   BT-7 flanker (fastest, can't get through fronts), T-34 brawler (48 km/h, sloped armour, best
   terrain: climb 36°, fords; weakest optics 22/15°, 76 mm 100 mm pen, strong HE), Pz IV sniper
-  (145 mm pen at 700 m/s, 34 dmg, 5.5 s, three sight levels 24/12/8°; 36 km/h, slow traverse,
+  (145 mm pen at 630 m/s, 34 dmg, 5.5 s, three sight levels 24/12/8°; 36 km/h, slow traverse,
   50/30 mm turret, 20 mm rear), Sherman all-rounder on the move (39 km/h, gun stabiliser 0.5 up to
   `gun_stabiliser_max_rate_deg` 4°/s of hull pitch: steady driving held, throttle kicks get through;
   traverse ×1.3, 5 s reload, 4 smoke salvos; tall: spotted sooner, `signature_spot_factor` 0.85;
@@ -655,7 +664,11 @@ shows on the minimap. This is what we test first.
   pairs per axis (`_mate`) meet at an assembly point `assembly_distance_m` outside the zone
   (wait <= `assembly_wait_max_s`; respawns don't wait), then bound towards their axis'
   entry point; `support_per_team` bots watch from outside and don't hunt. The gap is not
-  a hurry then.
+  a hurry then. Mines (`KothBots._update_mines`, consts `MINE_*`): a bot standing `MINE_AFTER_S` (6 s) within the
+  zone radius + 300 m sends its squad to mine the ways in on the enemy's side (±70° of its threat direction, half
+  the radius to 120 m outside it, roads first, then near the tank; not within 25 m of the team's mines); with all
+  its mines out for this zone it waits for the next; empty while out, the squad is recalled to refill. In a
+  10 v 10 on Vidingsjö 2-5 mines go out during the first zone, nearly all on roads 115-195 m from its centre.
 - Free fight (`FreeFight`, node in `scenes/scenarios/{vidingsjo,linghem,campus}_free.tscn`; rules
   `data/modes/free_fight.tres`, `FreeFightData`; host/offline, also the bot director): the players (team 0,
   co-op) against waves of bots (`bot_team` 1). Start: a random open spot in a circle round the map's centre
@@ -727,7 +740,7 @@ there and the break is over) and on the match's win/loss. Points
   on straight: `slot_point`, and `project` extrapolates the last segment) (`defender_spawn_checkpoints` 1; at the round start in the first checkpoint's zone,
   `defender_start_in_zone`, to dig in; the route has no checkpoint in its first spacing, a free drive to the fight).
   Waves every `wave_interval_s` (30).
-  Time up with a living attacker in the checkpoint's zone: overtime (`is_overtime`, HUD
+  Time up with a living attacker in the checkpoint's zone: overtime (cleared by a capture: the time check after `_update_capture` asks `is_paused()` again, else the 0 clock turned it back on for the whole next checkpoint) (`is_overtime`, HUD
   "OVERTIME"); the round ends `overtime_grace_s` (3 s) after the last one left or fell.
   Corridors: defenders within `defender_half_width_m` of the road and ahead of the front less
   `defender_behind_front_m` (150; `get_defender_line_s`, so forward defenders fight on when a checkpoint falls),
@@ -761,7 +774,7 @@ there and the break is over) and on the match's win/loss. Points
   on checkpoints/rounds/end; per-tank wave/respawn/outside by net_id, stats rows), emit the
   same signals and run the clocks on; round 2's map reset runs on clients too (1.5 s late, so
   puppets' wrecks go). NetGame starts no respawn timers with ThunderRoad and spawns joiners
-  by `spawn_for_new`; `ThunderRoadBots` has `make_room`/`refill` like KothBots
+  by `spawn_for_new` (`_free_slot`: rows back from the spot, then forward when all are blocked, e.g. Orange's start 45 m outside the map edge; a fallback never inside another tank: ten tanks in one spot blew apart at 48 m/s, 2026-11-19); `ThunderRoadBots` has `make_room`/`refill` like KothBots
   (`NetGame._bots_director`). Both bot directors wait a frame after NetGame so the map's
   own PlayerRig isn't counted when filling teams. Checkpoints at least 500 m apart (2026-11-15: every route had ~320-350 m after the first, and attackers spawning 250 m behind the front took the rest at a run; Vidingsjö Red/Orange 5, Linghem 4, Road to Science 4, Corson 3). Missions: `vidingsjo_thunder_red` (Haningeleden) and
   `vidingsjo_thunder_orange` (Ålerydsvägen + Haningeleden), made by
@@ -788,6 +801,14 @@ there and the break is over) and on the match's win/loss. Points
   `Own`; cannon shots (`SoundSetData.pierces_hull`) go from World to bus `Blast`, only lightly
   muffled (`AudioData.blast_*`). Files in `assets/audio/` (CC0, see `CREDITS.md`; made with `tools/audio/`).
   Headless runs report "leaked at exit" for any playing AudioStreamPlayer: harmless.
+- AP muzzle velocities were cut ~10 % on 2026-11-19 (BT-7 585, T-34 495, Pz IV 630, Sherman 505 m/s; KV-2 kept
+  at 330, its reload 18 -> 15 s): harder hits at range only. Penetration is `penetration_mm × speed / muzzle
+  velocity` and drag is quadratic, so the speed share left at a given range (and so penetration) barely changes.
+- Stuck tanks (`Tank._update_unstick`, host, from the command, so bots too; `TankData` "unstick_*"): giving throttle
+  or steering `unstick_after_s` (10) without getting 2 m away or turning 25° gives a nudge (up 3 m/s and 3.5 m/s
+  along the ground: the way it tries to go, then back, left, right on later tries); tilted past 60° (on its side or
+  roof) it is set upright where it lies. Not when knocked out, immobilised, move_blocked, in deep water or outside
+  the map edge. Bots still abandon after `BotData.abandon_stuck_s` (60).
 - Physics runs at **30 Hz** (`physics/common/physics_ticks_per_second`; a slow tank game needs
   no more, and every `_physics_process`, ray and body costs half; physics interpolation keeps
   it smooth). Never count rates in ticks: use `Ticks.every(hz)` (ticks apart) or
@@ -795,6 +816,17 @@ there and the break is over) and on the match's win/loss. Points
   `NetInput.SEND_HZ` 30, `SQUAD_SEND_HZ` 10). Ballistics is Heun-integrated, so shells land
   where the sight says at any tick rate. `Ballistics.superelevation_for_range` caches angles per shell in 5 m steps
   (bots ask every scan; the bisection cost 3-4 ms a tick in a 10 v 10).
+- Light frames (`Ticks.light_frame()`, 2026-11-19): at 30 ticks and 60 fps every other frame carries a whole
+  physics tick, so the bots' and squads' looks round (`BotController._scan`, `Squad._scan` + contact halt + infantry
+  fight) are only flagged due in the tick and run in `_process` on the next frame without a tick (`_run_scan`); after
+  `Ticks.LIGHT_FRAME_WAIT_TICKS` (2) ticks without one (30 fps, a dedicated server) the tick does it. Cheaper looks,
+  same rules: range and periscope/view-cone tests before cover and vegetation factors, a soldier's spot-time factor
+  only once he is in sight; enemy squads beyond 150 m (not the one fought) looked at by bots every 2nd scan, tanks
+  beyond 250 m by squads every 2nd scan (skipped ones keep their awareness), bots' far-tank steps now 250/600 m
+  (`BotData.look_every_*`), the run-over test skips tanks beyond the squad's spread. 10 v 10 Thunder Orange (RX 5700,
+  far shadows): tick 10.5 -> 7.5 ms, frame 17-19 -> 14-16 ms uncapped; with vsync 59-60 fps, ~1 % of frames over
+  18 ms in the fight. Left in the tick: Jolt with 20 tanks (~2-3 ms), soldiers' steps (~1 ms), tank scripts (~1 ms).
+  Looking at the sun is cheaper, not dearer (fewer draws).
 - Per-frame cost (10 v 10 ThunderRoad, 1920x1080 window: 17.2 ms at 60 Hz before 2026-11-09,
   9.0 ms after 30 Hz and the HUD fixes): HUD code must not call `add_theme_*_override`, set
   bus effects or camera properties, or `queue_redraw` every frame when nothing changed
@@ -1009,8 +1041,12 @@ there and the break is over) and on the match's win/loss. Points
   `data/world/spotting.tres`. Commander view: turret holds its hull-relative
   direction; T lays it on the view. MG: mouse 2 (roof MG in the commander view with the hatch
   open, coaxial otherwise). Binoculars: B. Hatch: H.
-- Scoreboard: Tab (King of the Hill). Big map: M (view only). Squad orders map: Q (`SquadMap`, 1 km round the tank with
-  the 300 m ring; frees the mouse; left click sends the squad, right click lays a mine). Recall squad: G. Squad escorts the tank: F. Squad leader's eyes: V (look and spot only). Statistics (FPS, frame times, draw calls, network): F3.
+- Gunner's sight (`GunnerReticle`): the centre circle shows the reload: dark while loading, filling clockwise from
+  12 o'clock in green (`loaded_color`), all green with a round in the breech.
+- Scoreboard: Tab (King of the Hill). Big map: M (view only; mouse wheel zooms about the cursor, drag moves a zoomed
+  map). Both big maps draw into a clipped `MapPanel` child and take mouse buttons in `_input` while open (the wheel
+  never reaches the sight's zoom, and PlayerViews' recapture-on-click never fires). Squad orders map: Q (`SquadMap`, 1 km round the tank with
+  the 300 m ring; frees the mouse; left click sends the squad, right click lays a mine; the wheel zooms about the cursor to `min_view_range_m` (120 m)). Recall squad: G. Squad escorts the tank: F. Squad leader's eyes: V (look and spot only). Statistics (FPS, frame times, draw calls, network): F3.
 - Smoke: X. Esc: frees the mouse and opens `EscMenu` (resume, change tank, switch team
   (online), answer a swap request, abandon tank, main menu). Change tank (`TankSwitch`) =
   a respawn at the team's spawn in the new type (a fresh tank can't be rebuilt in place:

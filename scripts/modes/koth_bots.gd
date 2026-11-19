@@ -96,6 +96,23 @@ const SCOUT_SWING_DEG: float = 25.0
 const FOLLOW_SPOT_RADIUS_M: float = 50.0
 ## ...and a new one comes once the lead has moved this share of follow_m.
 const FOLLOW_REORDER_SHARE: float = 0.6
+## Mines (the zone's defence): a bot standing this long (s) within the zone radius +
+## MINE_NEAR_ZONE_M sends its squad to lay what it carries, thinking again every
+## MINE_THINK_S; roles that mine first (BotRoleData.mines_first) by MINES_FIRST_SHARE.
+const MINE_AFTER_S: float = 6.0
+const MINE_THINK_S: float = 6.0
+const MINES_FIRST_SHARE: float = 0.5
+const MINE_NEAR_ZONE_M: float = 300.0
+const MINE_STILL_MPS: float = 1.0
+## Where: on the enemy's side of the zone (within MINE_SPREAD_DEG of the threat), from
+## MINE_INNER_SHARE of the radius to MINE_OUTSIDE_M beyond it; roads (the ways in)
+## first; not within MINE_GAP_M of the team's mines; within the squad's reach.
+const MINE_SPREAD_DEG: float = 70.0
+const MINE_INNER_SHARE: float = 0.5
+const MINE_OUTSIDE_M: float = 120.0
+const MINE_GAP_M: float = 25.0
+const MINE_CANDIDATES: int = 60
+const MINE_ROAD_BONUS: float = 2.0
 
 @export var mode: KothMode
 
@@ -145,6 +162,9 @@ var _template_data: TankData
 var _template_xform: Transform3D
 var _bot_parent: Node
 var _bot_serial: int = 0
+var _mine_stand: Dictionary = {}  # BotController -> seconds standing near the zone
+var _mine_think: Dictionary = {}  # BotController -> seconds until it thinks about mines
+var _mined_zone: Dictionary = {}  # BotController -> zone number its mines are out for
 
 
 func _ready() -> void:
@@ -329,7 +349,7 @@ func _forget_bot(bot: BotController) -> void:
 	_order_queue.erase(bot)
 	for d: Dictionary in [_hold, _respawn, _ordered_radius, _depart, _goals, _respawned,
 			_role, _partner, _role_time, _flank, _hunt, _hunt_think, _axis, _support,
-			_assembled, _assembly_wait, _no_wait, _mate]:
+			_assembled, _assembly_wait, _no_wait, _mate, _mine_stand, _mine_think, _mined_zone]:
 		d.erase(bot)
 	for other: Variant in _partner.keys():
 		if _partner[other] == bot:
@@ -385,6 +405,7 @@ func _physics_process(delta: float) -> void:
 		if bot.tank.is_knocked_out():
 			continue
 		bot.fight_focus = mode.get_center()   # the squad looks out near the zone
+		_update_mines(bot, delta)
 		if _depart.has(bot):
 			_depart[bot] = float(_depart[bot]) - delta
 			if float(_depart[bot]) > 0.0:
@@ -420,6 +441,88 @@ func _physics_process(delta: float) -> void:
 		_hold[bot] = float(_hold.get(bot, HOLD_MAX_S)) - delta
 		if float(_hold[bot]) <= 0.0:
 			_queue_order(bot)
+
+
+## The zone's defence: a bot standing near the open zone sends its squad to mine the
+## ways in on the enemy's side (roads first). With all its mines out for this zone it
+## lays no more until the zone moves; out of mines while out, the squad is recalled to
+## refill (SquadData.kit_refill_s a man).
+func _update_mines(bot: BotController, delta: float) -> void:
+	var squad: Squad = bot.tank.squad
+	if squad == null or not is_instance_valid(squad) or squad.data.mine == null \
+			or not mode.is_zone_open() or squad.get_state() == Squad.State.WIPED \
+			or squad.get_state() == Squad.State.RETURNING or squad.is_mine_job():
+		return
+	var flat := Vector2(bot.tank.global_position.x - mode.get_center().x,
+			bot.tank.global_position.z - mode.get_center().z)
+	if flat.length() > mode.get_radius() + MINE_NEAR_ZONE_M \
+			or bot.tank.linear_velocity.length() > MINE_STILL_MPS:
+		_mine_stand[bot] = 0.0
+		return
+	_mine_stand[bot] = float(_mine_stand.get(bot, 0.0)) + delta
+	var eager: float = MINES_FIRST_SHARE if bot.get_role().mines_first else 1.0
+	if float(_mine_stand[bot]) < MINE_AFTER_S * eager:
+		return
+	_mine_think[bot] = float(_mine_think.get(bot, 0.0)) - delta
+	if float(_mine_think[bot]) > 0.0:
+		return
+	_mine_think[bot] = MINE_THINK_S * eager
+	var all_out: bool = squad.get_mines_out() >= squad.data.max_mines_out
+	if squad.get_mines_carried() > 0:
+		if all_out and int(_mined_zone.get(bot, -1)) == mode.get_zone_number():
+			return
+		var spot: Vector3 = _mine_spot(bot, squad)
+		if spot != Vector3.INF:
+			bot.order_squad(Squad.ORDER_MINE, spot)
+			if squad.get_mines_out() + 1 >= squad.data.max_mines_out:
+				_mined_zone[bot] = mode.get_zone_number()
+	elif squad.is_out() and not all_out:
+		bot.order_squad(Squad.ORDER_RECALL, Vector3.ZERO)
+
+
+## A place for the next mine (see _update_mines), or INF if none will do.
+func _mine_spot(bot: BotController, squad: Squad) -> Vector3:
+	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
+	var centre: Vector3 = mode.get_center()
+	var threat: Vector3 = bot.get_threat_direction()
+	if threat == Vector3.ZERO:
+		threat = -mode.get_spawn_direction(bot.tank.team)   # the other team's side
+	threat.y = 0.0
+	threat = threat.normalized() if threat.length() > 0.01 else Vector3.FORWARD
+	var own_mines: Array[Vector3] = []
+	for node: Node in get_tree().get_nodes_in_group(Mine.GROUP):
+		var m := node as Mine
+		if m != null and m.get_team() == bot.tank.team:
+			own_mines.append(m.global_position)
+	var reach: float = squad.data.max_distance_from_tank_m - 30.0
+	var radius: float = mode.get_radius()
+	var best := Vector3.INF
+	var best_score: float = -INF
+	for i: int in MINE_CANDIDATES:
+		var dir: Vector3 = threat.rotated(Vector3.UP,
+				deg_to_rad(_rng.randf_range(-MINE_SPREAD_DEG, MINE_SPREAD_DEG)))
+		var p: Vector3 = centre + dir * _rng.randf_range(radius * MINE_INNER_SHARE,
+				radius + MINE_OUTSIDE_M)
+		if Squad._flat(p - bot.tank.global_position).length() > reach \
+				or not MapEdge.contains(get_tree(), p):
+			continue
+		if map != null and map.is_blocked(p):
+			continue
+		var near_own: bool = false
+		for m: Vector3 in own_mines:
+			if Squad._flat(m - p).length() < MINE_GAP_M:
+				near_own = true
+				break
+		if near_own:
+			continue
+		# Roads first; then near the tank, so the squad gets there before the fight does.
+		var score: float = _rng.randf() - Squad._flat(p - bot.tank.global_position).length() / reach
+		if map != null and map.is_road(p):
+			score += MINE_ROAD_BONUS
+		if score > best_score:
+			best_score = score
+			best = p
+	return best
 
 
 ## The zone moved: every bot gets a new order, in random order so no team goes first.

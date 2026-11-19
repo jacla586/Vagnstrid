@@ -100,3 +100,16 @@ Jacob tyckte att FPS:en var låg i 10 mot 10. Claude mätte, och på vägen gick
 - Claudes egna snedsteg under dagen: ett textutbyte i koden lämnade kvar en halv loop (fångades när
   skriptet kontrollerades), och ett testskript tog bort spelarens vagn men inte dess HUD, så testet
   kraschade.
+
+### Bottarnas minor försvann innan de lades (KotH)
+
+- **Uppgift:** bottarna skulle mina vägarna in mot zonen i King of the Hill, som de redan gör i Thunder Road.
+- **Syntes:** första testmatchen gav noll minor på fyra minuter. Bottarna skickade ut trupperna, men
+  ingen mina lades.
+- **Fel:** botens egen truppstyrning skickar truppen mot striden när den står still. I KotH ligger
+  striden alltid vid zonen, så ordern "gå mot striden" kom några sekunder efter minordern och skrev
+  över den. I Thunder Road syntes det inte, eftersom försvararna där oftast står långt från striden.
+- **Rättning:** en trupp på minuppdrag får jobba klart. Därefter lades 2–5 minor under första zonen,
+  nästan alla på vägar 115–195 m från zonens mitt.
+- **Samtidigt:** trupperna bär nu två pansarvärnsraketer och två minor, en pryl per soldat. Den som
+  stupar tappar sin.

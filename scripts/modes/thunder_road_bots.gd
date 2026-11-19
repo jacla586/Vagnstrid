@@ -971,7 +971,7 @@ func _update_counter(bot: BotController, sit: TeamSituation) -> bool:
 
 ## Defenders mine all they can: a carried mine goes out (unless all are out and the
 ## front hasn't moved since the last one); with none left the squad comes back to the
-## tank to refill (SquadData.mine_refill_s), then goes again.
+## tank to refill (SquadData.kit_refill_s per man), then goes again.
 func _mine_step(bot: BotController, front: float) -> void:
 	var squad: Squad = bot.tank.squad
 	if squad == null or not is_instance_valid(squad) or squad.data.mine == null \

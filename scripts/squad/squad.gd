@@ -215,12 +215,15 @@ var _sprung: bool = false
 var _lying: bool = false
 # Mines: carried, laid (oldest first), where the ordered one goes (INF = none), the
 # soldier laying it (-1) and his time left; refill on the tank; enemy mines looked at.
-var _mines_carried: int = 0
+var _mines_carried: int = 0   # counted from _kit (_recount_kits)
 var _laid: Array[Mine] = []
 var _mine_goal: Vector3 = Vector3.INF
 var _mine_layer: int = -1
 var _lay_left: float = 0.0
-var _mine_refill_timer: float = 0.0
+# Each soldier's kit now (SquadData.Kit; a fallen man's is gone) and the timer that
+# gives one back on the tank.
+var _kit: PackedInt32Array = PackedInt32Array()
+var _kit_refill_timer: float = 0.0
 var _mine_look: Dictionary = {}  # Mine -> seconds
 var _net_mines_carried: int = 0
 var _net_mines_out: int = 0
@@ -337,9 +340,8 @@ func _ready() -> void:
 	_wilhelm = _rng.randi_range(0, data.soldier_count - 1)
 	# Squads look round at different ticks: all at once makes one very slow frame.
 	_scan_timer = _rng.randf() * data.scan_interval_s
-	_at_left = data.at_rounds
 	_smoke_left = data.smoke_grenades
-	_mines_carried = data.mines_carried if data.mine != null else 0
+	_give_all_kits()
 	visible = false
 	_set_hitboxes_active(false)
 	if not net_puppet:
@@ -425,6 +427,48 @@ func get_leader() -> Node3D:
 		if _alive[i]:
 			return _soldiers[i]
 	return null
+
+
+## Index of the leader (the first living soldier), -1 if none.
+func get_leader_index() -> int:
+	return _first_alive()
+
+
+## The soldier the squad camera looks through (-1: none): his body, rifle and launcher go
+## on SquadCamera.OWN_LEADER_LAYER, which that camera doesn't draw; everyone else's
+## views still do. Local, this machine only.
+var _view_hidden: int = -1
+
+func set_view_hidden(index: int) -> void:
+	if index == _view_hidden:
+		return
+	if _view_hidden >= 0 and _view_hidden < _soldiers.size():
+		_set_soldier_layers(_view_hidden, 1)
+	_view_hidden = index
+	if index >= 0 and index < _soldiers.size():
+		_set_soldier_layers(index, 1 << (SquadCamera.OWN_LEADER_LAYER - 1))
+
+
+func _set_soldier_layers(index: int, mask: int) -> void:
+	for node: Node in _soldiers[index].find_children("*", "VisualInstance3D", true, false):
+		(node as VisualInstance3D).layers = mask
+	if index < _launchers.size() and _launchers[index] != null:
+		for node: Node in _launchers[index].find_children("*", "VisualInstance3D", true, false):
+			(node as VisualInstance3D).layers = mask
+
+
+## Soldier `index`'s head (world, the model's "head" bone, facing as the head does), for
+## the squad camera following a fallen leader down. His eye height if there is no bone.
+func get_head_transform(index: int) -> Transform3D:
+	if index < 0 or index >= _soldiers.size():
+		return global_transform
+	var soldier: Node3D = _soldiers[index]
+	for node: Node in _meshes[index].find_children("*", "Skeleton3D", true, false):
+		var skeleton := node as Skeleton3D
+		var bone: int = skeleton.find_bone("head")
+		if bone >= 0:
+			return skeleton.global_transform * skeleton.get_bone_global_pose(bone)
+	return Transform3D(soldier.global_basis, _eye_of(index))
 
 
 ## The leader's eyes (world): lower when kneeling.
@@ -620,9 +664,11 @@ func _physics_process(delta: float) -> void:
 	_scan_timer -= delta
 	if _scan_timer <= 0.0:
 		_scan_timer += data.scan_interval_s
-		_scan(data.scan_interval_s)
-		_update_contact_halt(data.scan_interval_s)
-		_update_engagement()
+		_scan_waits = maxi(_scan_waits, 0) + 1   # due: a light frame does it (_process)
+	if _scan_waits > Ticks.LIGHT_FRAME_WAIT_TICKS:
+		_run_scan()   # no light frame came: here, in the tick
+	elif _scan_waits > 0:
+		_scan_waits += 1
 	_update_at_aim(delta)
 	_update_ambush(delta)
 	if _state == State.HOLDING:
@@ -632,8 +678,23 @@ func _physics_process(delta: float) -> void:
 		_fight(delta)
 
 
+## A due look round (_physics_process), done on a light frame (Ticks.light_frame): the
+## scan and what follows from it (halting for contact, the infantry fight).
+var _scan_waits: int = 0
+
+func _run_scan() -> void:
+	_scan_waits = 0
+	if net_puppet or _state == State.MOUNTED or _state == State.WIPED or not is_instance_valid(tank):
+		return
+	_scan(data.scan_interval_s)
+	_update_contact_halt(data.scan_interval_s)
+	_update_engagement()
+
+
 ## Drawing detail per soldier (see LOD_*): shadows and how often the animation steps.
 func _process(delta: float) -> void:
+	if _scan_waits > 0 and Ticks.light_frame():
+		_run_scan()
 	var cam: Camera3D = get_viewport().get_camera_3d()
 	if cam == null:
 		return
@@ -657,7 +718,9 @@ func _process(delta: float) -> void:
 					mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadow \
 							else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var step: float = 0.0
-		if not cam.is_position_in_frustum(at + Vector3.UP):
+		if i == _view_hidden:
+			pass   # the one looked through (his fall, his head bob): every frame
+		elif not cam.is_position_in_frustum(at + Vector3.UP):
 			step = 1.0 / LOD_HIDDEN_HZ
 		elif seen >= LOD_FAR_M:
 			step = 1.0 / LOD_FAR_HZ
@@ -692,13 +755,9 @@ func _update_mine_laying(delta: float) -> void:
 		return
 	if _mine_layer < 0 or not _alive[_mine_layer]:
 		_mine_layer = -1
-		var best: float = INF
-		for i: int in _soldiers.size():
-			var d: float = _flat(_soldiers[i].global_position - _mine_goal).length()
-			if _alive[i] and i != _at_gunner and d < best:
-				best = d
-				_mine_layer = i
+		_mine_layer = _carrier_nearest(SquadData.Kit.MINE, _mine_goal)
 		if _mine_layer < 0:
+			_cancel_mine()   # the men with mines fell on the way
 			return
 		_lay_left = data.mine_lay_time_s
 	_spot[_mine_layer] = _flat(_mine_goal - global_position)
@@ -710,11 +769,12 @@ func _update_mine_laying(delta: float) -> void:
 	var at: Vector3 = _mine_goal
 	at.y = _ground_height(_soldiers[_mine_layer].global_position, _soldiers[_mine_layer].global_position.y, 2.0)
 	_mine_goal = Vector3.INF
+	var layer: int = _mine_layer
 	_mine_layer = -1
-	_place_mine(at)
+	_place_mine(at, layer)
 
 
-func _place_mine(at: Vector3) -> void:
+func _place_mine(at: Vector3, layer: int) -> void:
 	while _laid.size() >= data.max_mines_out:
 		var oldest: Mine = _laid.pop_front()
 		if is_instance_valid(oldest):
@@ -723,7 +783,8 @@ func _place_mine(at: Vector3) -> void:
 	_laid.append(mine)
 	mine.gone.connect(func(_exploded: bool) -> void: _laid.erase(mine))
 	mine.triggered.connect(_on_mine_triggered)
-	_mines_carried -= 1
+	_kit[layer] = SquadData.Kit.NONE
+	_recount_kits()
 	mine_laid.emit(mine)
 	radio.emit(RADIO_MINE_ARMED, Vector3.ZERO)
 
@@ -1271,19 +1332,33 @@ func _ground_height(p: Vector3, fallback: float, probe_up: float = 30.0) -> floa
 
 ## Enemy tanks and enemy soldiers in range and sight; spotting time as for tank crews
 ## (cover, stillness, how much shows), longer for small soldiers.
+## Enemy tanks farther than this (m) are looked at every 2nd scan (_scan).
+const TANK_LOOK_EVERY_2ND_M: float = 250.0
+var _tank_look_wait: Dictionary = {}  # Tank -> scans since its last look
+
+
 func _scan(dt: float) -> void:
 	var eye: Vector3 = get_leader_eye()
 	var seen_now: Dictionary = {}
+	# Far tanks are looked at every 2nd scan (the time in between counts): fewer sight
+	# lines, same rules. What a skipped tank had stays as it was until the next look.
+	var skipped: Dictionary = {}
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var other := node as Tank
 		if other == null or other.is_knocked_out() or other.team == get_team():
 			continue
+		var scans: int = int(_tank_look_wait.get(other, 0)) + 1
+		if scans < 2 and eye.distance_to(other.global_position) > TANK_LOOK_EVERY_2ND_M:
+			_tank_look_wait[other] = scans
+			skipped[other] = true
+			continue
+		_tank_look_wait.erase(other)
 		var points: Array = []
 		for h: float in TANK_LOOK_HEIGHTS:
 			points.append([other.global_position + Vector3.UP * h, other])
 		if other.is_commander_exposed():
 			points.append([other.get_commander_hitbox_position(), other.get_commander_hitbox()])
-		_look(other, eye, points, 1.0, dt, seen_now)
+		_look(other, eye, points, 1.0, dt * scans, seen_now)
 	for node: Node in get_tree().get_nodes_in_group("squads"):
 		var enemy := node as Squad
 		if enemy == null or enemy == self or not enemy.is_out() or enemy.get_team() == get_team():
@@ -1302,7 +1377,7 @@ func _scan(dt: float) -> void:
 				_awareness[hb] = float(_awareness.get(hb, 0.0)) + extra
 	_look_for_mines(eye, dt)
 	for target: Variant in _awareness.keys():
-		if is_instance_valid(target) and seen_now.has(target):
+		if is_instance_valid(target) and (seen_now.has(target) or skipped.has(target)):
 			continue
 		_in_sight.erase(target)
 		var left: float = float(_awareness[target]) - dt
@@ -1319,11 +1394,21 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 	if eye.distance_to(target.global_position) > Weather.view_range(data.view_range_m) \
 			+ VIEW_RANGE_MARGIN_M:
 		return   # cover only ever shortens the range
+	# Cheap tests first: a point beyond the full range or outside the view cone is out
+	# whatever the cover.
+	var full_range: float = Weather.view_range(data.view_range_m)
+	var any_point: bool = false
+	for pair: Array in points:
+		var p: Vector3 = pair[0]
+		if eye.distance_to(p) <= full_range and _in_view_cone(p):
+			any_point = true
+			break
+	if not any_point:
+		return
 	var time_factor: float = 1.0
 	var range_factor: float = 1.0
 	var soldier := target as SoldierHitbox
 	if soldier != null:
-		time_factor = soldier.squad.soldier_spot_time_factor(soldier.index, eye, data.concealment)
 		range_factor = soldier.squad.soldier_spot_range_factor(soldier.index, data.concealment, eye)
 	elif data.concealment != null:
 		var cover: float
@@ -1348,6 +1433,8 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 			seen += 1
 	if seen == 0:
 		return
+	if soldier != null:   # only needed once he is in sight
+		time_factor = soldier.squad.soldier_spot_time_factor(soldier.index, eye, data.concealment)
 	seen_now[target] = true
 	_in_sight[target] = true
 	var shown: float = float(seen) / float(points.size())
@@ -1387,6 +1474,7 @@ func _forget_all() -> void:
 	_awareness.clear()
 	_spotted.clear()
 	_in_sight.clear()
+	_tank_look_wait.clear()
 	_order_known.clear()
 
 
@@ -1540,7 +1628,7 @@ func _try_at_round(targets: Array[Node3D]) -> void:
 		var other := target as Tank
 		if other == null or global_position.distance_to(other.global_position) > data.at_range_m:
 			continue
-		var gunner: int = 1 if _soldiers.size() > 1 and _alive[1] else _first_alive()
+		var gunner: int = _carrier_nearest(SquadData.Kit.AT, other.global_position)
 		if gunner < 0:
 			return
 		_at_gunner = gunner
@@ -1582,6 +1670,7 @@ func _update_at_aim(delta: float) -> void:
 	_at_aim_left -= delta
 	if _at_aim_left > 0.0 and _state == State.HOLDING:
 		return
+	_kit[i] = SquadData.Kit.NONE   # the round goes: his tube is empty
 	var spread: float = data.at_dispersion_mrad
 	if other.linear_velocity.length() * 3.6 > data.at_fast_target_kmh:
 		spread *= data.at_moving_factor
@@ -1591,7 +1680,7 @@ func _update_at_aim(delta: float) -> void:
 	_at_shell_left = _soldiers[i].global_position.distance_to(_at_aim_point) \
 			/ maxf(data.at_round.muzzle_velocity_mps, 1.0) + AT_RESULT_MARGIN_S
 	shell.finished.connect(_on_at_round_done.bind(shell))
-	_at_left -= 1
+	_recount_kits()
 	_at_timer = data.at_interval_s
 	_at_gunner = -1
 	_at_target = null
@@ -1927,6 +2016,14 @@ func _update_assault(delta: float) -> void:
 ## Host: soldiers under a moving enemy tank's hull are run over.
 func _check_run_over() -> void:
 	var team: int = get_team()
+	# How far the soldiers are from the squad's point: tanks beyond that and their own
+	# reach are skipped without a look at each man.
+	var spread: float = -1.0
+	for i: int in _soldiers.size():
+		if is_soldier_exposed(i):
+			spread = maxf(spread, _soldiers[i].global_position.distance_to(global_position))
+	if spread < 0.0:
+		return
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var other := node as Tank
 		if other == null or other.team == team or other.net_puppet \
@@ -1935,6 +2032,9 @@ func _check_run_over() -> void:
 		var half: Vector3 = other.data.hull_size * 0.5 \
 				+ Vector3(data.run_over_margin_m, data.run_over_margin_m, data.run_over_margin_m)
 		var reach_sq: float = half.length_squared() + 4.0
+		var reach: float = sqrt(reach_sq) + spread
+		if other.global_position.distance_squared_to(global_position) > reach * reach:
+			continue
 		for i: int in _soldiers.size():
 			if not is_soldier_exposed(i) \
 					or _soldiers[i].global_position.distance_squared_to(other.global_position) > reach_sq:
@@ -1971,6 +2071,9 @@ func soldier_hit(index: int) -> HitResult:
 ## Soldier `index` falls (host or, from the host's news, a client).
 func _put_down(index: int, screamed: bool) -> void:
 	_alive[index] = false
+	if index < _kit.size():
+		_kit[index] = SquadData.Kit.NONE   # his round or mine is lost with him
+		_recount_kits()
 	if index == _at_gunner:
 		_cancel_at_aim()
 	_launcher_hold[index] = 0.0
@@ -2079,15 +2182,19 @@ func _update_bodies(delta: float) -> void:
 
 # --- Refilling ---------------------------------------------------------------------
 
-## On the tank: the missing come back one at a time; full again, ammo and smoke too.
+## On the tank: the missing come back one at a time (refill_time_s), each man's kit
+## faster (kit_refill_s, one man at a time); full again, smoke too.
 func _refill(delta: float) -> void:
-	if data.mine != null and _mines_carried < data.mines_carried:
-		_mine_refill_timer += delta
-		if _mine_refill_timer >= data.mine_refill_s:
-			_mine_refill_timer = 0.0
-			_mines_carried += 1
+	var lacking: int = _first_lacking_kit()
+	if lacking >= 0:
+		_kit_refill_timer += delta
+		if _kit_refill_timer >= data.kit_refill_s:
+			_kit_refill_timer = 0.0
+			_kit[lacking] = _loadout_of(lacking)
+			_recount_kits()
+	else:
+		_kit_refill_timer = 0.0
 	if get_alive_count() >= data.soldier_count:
-		_at_left = data.at_rounds
 		_smoke_left = data.smoke_grenades
 		_refill_timer = 0.0
 		return
@@ -2095,6 +2202,59 @@ func _refill(delta: float) -> void:
 	if _refill_timer >= data.refill_time_s:
 		_refill_timer = 0.0
 		_alive[_alive.find(false)] = true
+
+
+## Soldier `index`'s kit by the loadout (NONE when the squad has no such weapon).
+func _loadout_of(index: int) -> int:
+	if index >= data.loadout.size():
+		return SquadData.Kit.NONE
+	var kit: int = data.loadout[index]
+	if kit == SquadData.Kit.AT and data.at_round == null or kit == SquadData.Kit.MINE and data.mine == null:
+		return SquadData.Kit.NONE
+	return kit
+
+
+func _give_all_kits() -> void:
+	_kit.resize(data.soldier_count)
+	for i: int in data.soldier_count:
+		_kit[i] = _loadout_of(i)
+	_kit_refill_timer = 0.0
+	_recount_kits()
+
+
+## AT rounds and mines left: what the living men carry.
+func _recount_kits() -> void:
+	_at_left = 0
+	_mines_carried = 0
+	for i: int in _kit.size():
+		if i >= _alive.size() or not _alive[i]:
+			continue
+		if _kit[i] == SquadData.Kit.AT:
+			_at_left += 1
+		elif _kit[i] == SquadData.Kit.MINE:
+			_mines_carried += 1
+
+
+## A living man without the kit his loadout gives him (-1 = none).
+func _first_lacking_kit() -> int:
+	for i: int in _kit.size():
+		if i < _alive.size() and _alive[i] and _kit[i] != _loadout_of(i):
+			return i
+	return -1
+
+
+## The living man carrying `kit` nearest `to` (not the AT gunner busy aiming), or -1.
+func _carrier_nearest(kit: int, to: Vector3) -> int:
+	var best: int = -1
+	var best_d: float = INF
+	for i: int in _kit.size():
+		if _kit[i] != kit or not _alive[i] or i == _at_gunner:
+			continue
+		var d: float = _flat(_soldiers[i].global_position - to).length()
+		if d < best_d:
+			best_d = d
+			best = i
+	return best
 
 
 ## The tank respawned: the squad is full and on it again, wherever it was.
@@ -2116,10 +2276,8 @@ func _restore_full() -> void:
 		_alive[i] = true
 		_revealed[i] = 0.0
 		_prone[i] = 0.0
-	_at_left = data.at_rounds
 	_smoke_left = data.smoke_grenades
-	_mines_carried = data.mines_carried if data.mine != null else 0
-	_mine_refill_timer = 0.0
+	_give_all_kits()
 	_mount()
 
 

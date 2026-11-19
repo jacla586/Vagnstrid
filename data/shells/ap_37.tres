@@ -9,7 +9,7 @@
 script = ExtResource("1_shell")
 display_name = "AP 37 mm"
 short_name = "AP"
-muzzle_velocity_mps = 650.0
+muzzle_velocity_mps = 585.0
 mass_kg = 0.7
 caliber_mm = 37.0
 penetration_mm = 60.0

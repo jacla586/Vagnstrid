@@ -12,8 +12,8 @@ extends Resource
 ## Tanks farther away than these ranges (m) are looked at only every 2nd / 4th scan (the
 ## time in between still counts towards spotting): fewer sight lines, same rules. The
 ## current target is looked at every scan.
-@export var look_every_2nd_beyond_m: float = 400.0
-@export var look_every_4th_beyond_m: float = 800.0
+@export var look_every_2nd_beyond_m: float = 250.0
+@export var look_every_4th_beyond_m: float = 600.0
 ## Farthest the commander spots a tank with the hatch open / closed (m).
 @export var view_range_open_m: float = 1200.0
 @export var view_range_closed_m: float = 700.0
