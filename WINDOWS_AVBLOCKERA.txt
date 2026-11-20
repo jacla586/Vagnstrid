@@ -1,0 +1,30 @@
+VAGNSTRID PÅ WINDOWS: AVBLOCKERA INNAN DU PACKAR UPP
+=====================================================
+
+Windows märker filer som laddats ner från internet. Spelets egen fil libvagnfast...dll är
+inte signerad, och Windows 11 (Smart App Control) kan då stoppa den med felet
+"Felaktig minnesavbildning ... Felstatus 0xc0e90002".
+
+GÖR SÅ HÄR (Windows 10 och 11)
+------------------------------
+1. Högerklicka på zip-filen du laddade ner (inte den uppackade mappen) och välj Egenskaper.
+2. Under fliken Allmänt, längst ner vid "Säkerhet": bocka i "Avblockera" och tryck OK.
+   (Syns ingen sådan ruta är filen redan avblockerad.)
+3. Packa upp hela zip-filen på nytt (högerklicka, "Extrahera alla...").
+4. Starta Vagnstrid.exe. Säger Windows "Windows skyddade datorn": klicka "Mer info" och
+   "Kör ändå".
+
+HAR DU REDAN PACKAT UPP?
+------------------------
+Öppna mappen med spelet, klicka i adressfältet, skriv powershell och tryck Enter. Kör:
+
+    Get-ChildItem -Recurse | Unblock-File
+
+Starta sedan Vagnstrid.exe igen.
+
+STOPPAS DET ÄNDÅ?
+-----------------
+Ta bort filen libvagnfast.windows.template_release.x86_64.dll ur spelmappen. Spelet går
+då ändå, bara lite långsammare i riktigt stora matcher (20 mot 20).
+
+Stäng INTE av Smart App Control: den går inte att slå på igen utan att installera om Windows.

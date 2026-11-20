@@ -96,6 +96,7 @@ Startar spelet men marken saknas: kontrollera att `.dll`/`.so` ligger bredvid pr
 ```bash
 cd build
 cp ../SPELA_ONLINE.md windows/
+cp ../WINDOWS_AVBLOCKERA.txt windows/   # med C++-biblioteket VagnFast (grenen prestanda-cpp)
 mkdir -p windows/CREDITS
 cp ../assets/models/soldier/CREDITS.md windows/CREDITS/soldat.md
 cp ../assets/audio/CREDITS.md          windows/CREDITS/ljud.md
@@ -111,7 +112,9 @@ att se att alla har samma version.
 
 ## 6. Till kompisarna (klistra in i chatten)
 
-> 1. Ladda ner zippen och **packa upp hela mappen** (starta inte exe-filen inifrån zippen).
+> 1. Ladda ner zippen. **Högerklicka på zippen → Egenskaper → bocka i "Avblockera" → OK**
+>    (se `WINDOWS_AVBLOCKERA.txt`), och **packa sedan upp hela mappen** (starta inte exe-filen
+>    inifrån zippen).
 > 2. Dubbelklicka på `Vagnstrid.exe`.
 > 3. Windows SmartScreen säger "Windows skyddade datorn": klicka **Mer info → Kör ändå**
 >    (spelet är inte signerat, det är normalt för hobbyspel).
@@ -161,5 +164,6 @@ liknande).
 | Marken saknas, vagnar faller | Terrain3D-`.dll`/`.so` saknas bredvid programmet |
 | Inga träd eller buskar | `*.bin` saknas i Filters to include, exportera igen (Linux-bygget får samma fel) |
 | Spelet startar inte alls i Windows | Zippen är inte uppackad, eller så har SmartScreen eller antivirus blockerat filen |
+| "Felaktig minnesavbildning … libvagnfast…dll … 0xc0e90002" | Windows 11 Smart App Control stoppar den osignerade C++-DLL:en: avblockera zippen före uppackning (`WINDOWS_AVBLOCKERA.txt`), annars ta bort DLL:en (spelet kör GDScript-versionerna) |
 | Kompisen kan inte ansluta | Se SPELA_ONLINE.md (Tailscale, port 24680, värden måste ha tryckt Host) |
 | Ansluter men konstigt beteende | Olika versioner av spelet: skicka ny zip till alla |

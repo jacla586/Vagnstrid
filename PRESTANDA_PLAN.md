@@ -101,5 +101,14 @@ godot --headless --dump-extension-api          # extension_api.json (git-ignorer
 .venv/bin/scons platform=windows target=template_debug   custom_api_file=extension_api.json -j12
 ```
 
+**Windows 11 och osignerade DLL:er (20 nov):** på grabbens dator stoppade Smart App Control
+`libvagnfast.windows.template_release.x86_64.dll` med felet "Felaktig minnesavbildning … 0xc0e90002".
+DLL:en är giltig, men den är osignerad och ny, så Windows har inget rykte att gå på. Godot och
+Terrain3D släpps igenom. Beslut: spelarna får avblockera zippen före uppackning.
+`WINDOWS_AVBLOCKERA.txt` följer med i Windows-zippen (`EXPORTERA.md`). Saknas DLL:en går spelet
+ändå, med GDScript-versionerna (kontrollerat: ett exporterat bygge utan biblioteket startar och
+skriver bara tre felrader). Signering med kodsigneringscertifikat kostar flera tusen kronor per år
+och är inte aktuellt. Den inlämnade versionen byggs från `undergangar`, som saknar DLL:en.
+
 Biblioteken hamnar i `bin/`, som är git-ignorerad. En ny klon kör GDScript-versionerna tills någon
 bygger. Första bygget tar cirka 1,5 minuter, mest godot-cpp, och därefter sekunder.
