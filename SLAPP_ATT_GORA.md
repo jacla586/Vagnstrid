@@ -93,3 +93,20 @@ längst ned under "Efter tävlingen".
 
 - Indirekt eld, svagare Thunder Road-bottar, bredare checkpoint-zon (se minnesanteckningarna)
 - Line-ups (tre vagnar inom en budget), lagbefälhavare som byter bot-roller
+- **Lång Thunder Road-bana:** Ullstämma → förbi Vidingsjö västerut → längs Söderleden ner mot
+  "stora Coop" (vilket Coop som avses ska bestämmas med en punkt). Som korridorkarta
+  (`geodata/scripts/hamta_korridor.py`, Vidingsjös laserrutor återanvänds; hämtningen kör Jacob, LM-inloggning).
+  Att tänka på:
+  - Rutan blir rutten plus 600 m runt om, och terräng och vägar byggs i hela rutan: en slingrande rutt
+    ger en stor ruta med hela Linköpings vägnät. Över ~6 × 6 km: begränsa vägarna till korridoren också
+    (ändring i pipelinen, `korridor.py`).
+  - Speltiden: med dagens regler (minst 500 m mellan checkpoints, 6 min per checkpoint) blir 7–8 km
+    10+ checkpoints och en timslång runda. Glesare checkpoints (4–5) och kanske kortare klocka per
+    checkpoint i en egen `ThunderRoadData`.
+  - Föregångare: första Road to Science gick 5,4 km från Vidingsjö (rådata i
+    `geodata/road_to_science_lang/`), kortades till 2,5 km den 11 nov (varför står inte nedskrivet).
+  - Orienteringskartornas beslut (22 nov) gäller den nya banan också.
+- **Spela som gruppchef:** springa med truppen (de andra följer efter), skjuta gevär och pansarvärnsraket
+  i förstapersonsvyn (V). Stort jobb: först offline (rörelse, gevär, följare), sedan raketen och nätet
+  (egen soldat förutsagd lokalt). Öppna frågor: vad gör vagnen under tiden, vad händer om den slås ut,
+  poäng för raketträffar.

@@ -1602,9 +1602,19 @@ func _physics_process(delta: float) -> void:
 
 
 ## Stuck detection (TankData "unstick_*"): host side, from the command, so bots too.
+## Checked UNSTICK_HZ times a second (a 10 s rule needs no more), with the time between.
+const UNSTICK_HZ: float = 5.0
+var _unstick_clock := PackedFloat32Array([0.0])
+var _unstick_dt: float = 0.0
+
 func _update_unstick(delta: float) -> void:
 	if data.unstick_after_s <= 0.0:
 		return
+	_unstick_dt += delta
+	if not Ticks.due(_unstick_clock, delta, UNSTICK_HZ):
+		return
+	delta = _unstick_dt
+	_unstick_dt = 0.0
 	var trying: bool = absf(_command.throttle) > 0.1 or absf(_command.steering) > 0.1
 	if not trying or _knocked_out or move_blocked or is_immobilised() or get_speed_factor() <= 0.0 \
 			or _deep_over_m > 0.0 or not MapEdge.contains(get_tree(), global_position):

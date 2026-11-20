@@ -174,6 +174,10 @@ extends Resource
 @export var mark_interval_s: float = 8.0
 ## How often the squad looks around (s).
 @export var scan_interval_s: float = 0.5
+## Against more enemy tanks than this the interval stretches with their number, up to
+## scan_max_stretch times (each look covers them all). The time in between still counts.
+@export var scan_reference_enemies: int = 10
+@export var scan_max_stretch: float = 2.0
 
 @export_group("Rifles")
 ## HE fragments reach soldiers this much farther than other targets (both the lethal and

@@ -827,6 +827,18 @@ there and the break is over) and on the match's win/loss. Points
   far shadows): tick 10.5 -> 7.5 ms, frame 17-19 -> 14-16 ms uncapped; with vsync 59-60 fps, ~1 % of frames over
   18 ms in the fight. Left in the tick: Jolt with 20 tanks (~2-3 ms), soldiers' steps (~1 ms), tank scripts (~1 ms).
   Looking at the sun is cheaper, not dearer (fewer draws).
+- Big battles (2026-11-20, 20 v 20 Orange went from 9-23 to ~20-35 fps; 10 v 10 still 59-60 with vsync):
+  sight lines of a look round are cast together on worker threads first (`SightRays`, WorkerThreadPool;
+  `BotController._prefetch_sight`, `Squad._prefetch_sight`, the same points the look round picks; `_can_see_point` /
+  `_look` take the answer after their own range tests; checked identical on 550 000 lines). Physics on its own
+  thread (project setting) does not work (scripts get null space states); this does, since the main thread waits
+  while no step runs: 4-5x on 12 threads. Look-round intervals stretch with enemy tanks beyond
+  `BotData`/`SquadData.scan_reference_enemies` (10) up to `scan_max_stretch` (2x), so the cost grows linearly, not
+  squared. `TacticalMap.find_position` counts towards the tick's planning budget, and a bot's squad decision waits
+  for a tick with budget left. Quiet squads (no enemy within 300 m, no camera within 200 m) step their men every
+  2nd tick. `Tank._update_unstick` runs at 5 Hz. Left at 20 v 20 per tick: tank scripts ~5 ms (suspension rays
+  1.7, drive 1.2), squads ~4, bots ~5 (GDScript round the looks, not rays), Jolt ~4: every frame carries a tick,
+  so no light frames. Next steps would be the suspension rays (batched per tick) and the soldiers' steps.
 - Per-frame cost (10 v 10 ThunderRoad, 1920x1080 window: 17.2 ms at 60 Hz before 2026-11-09,
   9.0 ms after 30 Hz and the HUD fixes): HUD code must not call `add_theme_*_override`, set
   bus effects or camera properties, or `queue_redraw` every frame when nothing changed

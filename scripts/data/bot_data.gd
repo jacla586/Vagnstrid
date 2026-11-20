@@ -9,6 +9,11 @@ extends Resource
 @export_group("Spotting")
 ## How often the commander looks around (s).
 @export var scan_interval_s: float = 0.25
+## Against more enemy tanks than this the interval stretches with their number (each
+## look covers them all), up to scan_max_stretch times: 20 v 20 looks round every 0.5 s.
+## The time in between still counts towards spotting.
+@export var scan_reference_enemies: int = 10
+@export var scan_max_stretch: float = 2.0
 ## Tanks farther away than these ranges (m) are looked at only every 2nd / 4th scan (the
 ## time in between still counts towards spotting): fewer sight lines, same rules. The
 ## current target is looked at every scan.

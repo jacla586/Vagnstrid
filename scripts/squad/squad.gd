@@ -655,15 +655,20 @@ func _physics_process(delta: float) -> void:
 	_update_escort(delta)
 	if _state == State.MOVING or _state == State.RETURNING:
 		_walk(delta)
-	_move_soldiers(delta)
-	_check_run_over()
+	# Far from any enemy and any camera the men step every 2nd tick (twice the time).
+	if _is_quiet() and _quiet_delta <= 0.0:
+		_quiet_delta = delta
+	else:
+		_move_soldiers(delta + _quiet_delta)
+		_check_run_over()
+		_quiet_delta = 0.0
 	if _state == State.WIPED:
 		return
 	_update_bodies(delta)
 	_withdraw_timer = maxf(_withdraw_timer - delta, 0.0)
 	_scan_timer -= delta
 	if _scan_timer <= 0.0:
-		_scan_timer += data.scan_interval_s
+		_scan_timer += _scan_interval()
 		_scan_waits = maxi(_scan_waits, 0) + 1   # due: a light frame does it (_process)
 	if _scan_waits > Ticks.LIGHT_FRAME_WAIT_TICKS:
 		_run_scan()   # no light frame came: here, in the tick
@@ -686,8 +691,8 @@ func _run_scan() -> void:
 	_scan_waits = 0
 	if net_puppet or _state == State.MOUNTED or _state == State.WIPED or not is_instance_valid(tank):
 		return
-	_scan(data.scan_interval_s)
-	_update_contact_halt(data.scan_interval_s)
+	_scan(_scan_interval())
+	_update_contact_halt(_scan_interval())
 	_update_engagement()
 
 
@@ -1332,6 +1337,28 @@ func _ground_height(p: Vector3, fallback: float, probe_up: float = 30.0) -> floa
 
 ## Enemy tanks and enemy soldiers in range and sight; spotting time as for tank crews
 ## (cover, stillness, how much shows), longer for small soldiers.
+## Quiet (_is_quiet): no enemy tank or soldier within QUIET_RANGE_M at the last scan and
+## no camera within QUIET_CAMERA_M: the men step every 2nd tick (twice the time), the
+## run-over test with them. Their places and hitboxes move a tick late at worst.
+const QUIET_RANGE_M: float = 300.0
+const QUIET_CAMERA_M: float = 200.0
+var _nearest_enemy_m: float = 0.0
+var _quiet_delta: float = 0.0
+## Enemy tanks at the last scan, for the interval (SquadData.scan_reference_enemies).
+var _enemy_count: int = 0
+
+func _is_quiet() -> bool:
+	if _nearest_enemy_m <= QUIET_RANGE_M or _view_hidden >= 0:
+		return false
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	return cam == null or cam.global_position.distance_to(global_position) > QUIET_CAMERA_M
+
+
+func _scan_interval() -> float:
+	return data.scan_interval_s * clampf(float(_enemy_count)
+			/ maxf(float(data.scan_reference_enemies), 1.0), 1.0, data.scan_max_stretch)
+
+
 ## Enemy tanks farther than this (m) are looked at every 2nd scan (_scan).
 const TANK_LOOK_EVERY_2ND_M: float = 250.0
 var _tank_look_wait: Dictionary = {}  # Tank -> scans since its last look
@@ -1339,16 +1366,22 @@ var _tank_look_wait: Dictionary = {}  # Tank -> scans since its last look
 
 func _scan(dt: float) -> void:
 	var eye: Vector3 = get_leader_eye()
+	_prefetch_sight(eye)
 	var seen_now: Dictionary = {}
 	# Far tanks are looked at every 2nd scan (the time in between counts): fewer sight
 	# lines, same rules. What a skipped tank had stays as it was until the next look.
 	var skipped: Dictionary = {}
+	var nearest: float = INF
+	var enemies: int = 0
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var other := node as Tank
 		if other == null or other.is_knocked_out() or other.team == get_team():
 			continue
+		enemies += 1
+		var away: float = eye.distance_to(other.global_position)
+		nearest = minf(nearest, away)
 		var scans: int = int(_tank_look_wait.get(other, 0)) + 1
-		if scans < 2 and eye.distance_to(other.global_position) > TANK_LOOK_EVERY_2ND_M:
+		if scans < 2 and away > TANK_LOOK_EVERY_2ND_M:
 			_tank_look_wait[other] = scans
 			skipped[other] = true
 			continue
@@ -1363,6 +1396,7 @@ func _scan(dt: float) -> void:
 		var enemy := node as Squad
 		if enemy == null or enemy == self or not enemy.is_out() or enemy.get_team() == get_team():
 			continue
+		nearest = minf(nearest, eye.distance_to(enemy.global_position))
 		var in_view: Array[SoldierHitbox] = []
 		for hb: SoldierHitbox in enemy.get_hitboxes():
 			if enemy.is_soldier_exposed(hb.index):
@@ -1375,6 +1409,9 @@ func _scan(dt: float) -> void:
 			var extra: float = dt * float(in_view.size() - 1) * data.group_spot_share
 			for hb: SoldierHitbox in in_view:
 				_awareness[hb] = float(_awareness.get(hb, 0.0)) + extra
+	_sight.clear()
+	_nearest_enemy_m = nearest
+	_enemy_count = enemies
 	_look_for_mines(eye, dt)
 	for target: Variant in _awareness.keys():
 		if is_instance_valid(target) and (seen_now.has(target) or skipped.has(target)):
@@ -1386,6 +1423,54 @@ func _scan(dt: float) -> void:
 			_spotted.erase(target)
 		else:
 			_awareness[target] = left
+
+
+## Sight lines of this look round, cast together on worker threads (SightRays) before
+## it: point -> in sight (as Vision.has_line_of_sight_through). The same points _scan
+## picks, less those beyond the full range or outside the view cone.
+var _sight: Dictionary = {}
+
+func _prefetch_sight(eye: Vector3) -> void:
+	_sight.clear()
+	var full: float = Weather.view_range(data.view_range_m)
+	var rays := SightRays.new(get_world_3d().direct_space_state)
+	var exclude: Array[RID] = _own_rids()
+	var points: Array[Vector3] = []
+	for node: Node in get_tree().get_nodes_in_group("tanks"):
+		var other := node as Tank
+		if other == null or other.is_knocked_out() or other.team == get_team():
+			continue
+		var away: float = eye.distance_to(other.global_position)
+		if int(_tank_look_wait.get(other, 0)) + 1 < 2 and away > TANK_LOOK_EVERY_2ND_M:
+			continue
+		if away > full + VIEW_RANGE_MARGIN_M:
+			continue
+		for h: float in TANK_LOOK_HEIGHTS:
+			_want_sight(rays, points, eye, full, other.global_position + Vector3.UP * h, other, exclude)
+		if other.is_commander_exposed():
+			_want_sight(rays, points, eye, full, other.get_commander_hitbox_position(),
+					other.get_commander_hitbox(), exclude)
+	for node: Node in get_tree().get_nodes_in_group("squads"):
+		var enemy := node as Squad
+		if enemy == null or enemy == self or not enemy.is_out() or enemy.get_team() == get_team():
+			continue
+		for hb: SoldierHitbox in enemy.get_hitboxes():
+			if enemy.is_soldier_exposed(hb.index) \
+					and eye.distance_to(hb.global_position) <= full + VIEW_RANGE_MARGIN_M:
+				_want_sight(rays, points, eye, full, hb.get_aim_point(), hb, exclude)
+	if points.is_empty():
+		return
+	rays.run()
+	for i: int in points.size():
+		_sight[points[i]] = rays.seen(i)
+
+
+func _want_sight(rays: SightRays, points: Array[Vector3], eye: Vector3, full: float,
+		point: Vector3, collider: Object, exclude: Array[RID]) -> void:
+	if eye.distance_to(point) > full or not _in_view_cone(point):
+		return
+	rays.add(eye, point, collider, exclude, _layers_seen_through(eye.distance_to(point)))
+	points.append(point)
 
 
 ## One look at `target` through its `points` ([world point, collider] pairs).
@@ -1428,7 +1513,10 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 		var p: Vector3 = pair[0]
 		if eye.distance_to(p) > view_range or not _in_view_cone(p):
 			continue
-		if Vision.has_line_of_sight_through(get_world_3d(), eye, p, pair[1],
+		if _sight.has(p):
+			if bool(_sight[p]):   # cast before the look round (_prefetch_sight)
+				seen += 1
+		elif Vision.has_line_of_sight_through(get_world_3d(), eye, p, pair[1],
 				_layers_seen_through(eye.distance_to(p)), _own_rids()):
 			seen += 1
 	if seen == 0:

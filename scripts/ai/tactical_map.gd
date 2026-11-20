@@ -188,10 +188,23 @@ func scout_points(from: Vector3, path: PackedVector3Array, tactics: TacticsData)
 ## `tactics`. Returns `center` (on the ground) if no candidate is drivable.
 ## With `min_progress` > 0 only spots at least that much closer (flat) to `progress_to`
 ## than `from` count (a bound must get somewhere).
+## Its time counts towards the tick's planning budget (may_plan), like find_path's.
 func find_position(world: World3D, center: Vector3, radius: float, threat_dir: Vector3,
 		look_at: Vector3, look_spread: float, from: Vector3, friends: PackedVector3Array,
 		tactics: TacticsData, rng: RandomNumberGenerator, exclude: Array[RID] = [],
 		progress_to: Vector3 = Vector3.ZERO, min_progress: float = 0.0) -> Vector3:
+	may_plan()   # starts this tick's count
+	var started: int = Time.get_ticks_usec()
+	var spot: Vector3 = _find_position(world, center, radius, threat_dir, look_at, look_spread,
+			from, friends, tactics, rng, exclude, progress_to, min_progress)
+	_plan_used_ms += (Time.get_ticks_usec() - started) / 1000.0
+	return spot
+
+
+func _find_position(world: World3D, center: Vector3, radius: float, threat_dir: Vector3,
+		look_at: Vector3, look_spread: float, from: Vector3, friends: PackedVector3Array,
+		tactics: TacticsData, rng: RandomNumberGenerator, exclude: Array[RID],
+		progress_to: Vector3, min_progress: float) -> Vector3:
 	var start_dist: float = Vector2(progress_to.x - from.x, progress_to.z - from.z).length()
 	var threat := Vector3(threat_dir.x, 0.0, threat_dir.z)
 	threat = threat.normalized() if threat.length() > 0.01 else Vector3.FORWARD
