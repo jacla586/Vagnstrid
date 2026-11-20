@@ -51,6 +51,17 @@ filen kan committas, så slipper du göra om steg 2.
 
 ## 3. Exportera
 
+**C++-biblioteket VagnFast** (grenen `prestanda-cpp`) ska byggas för båda plattformarna före
+exporten, annars kör spelet de långsammare GDScript-versionerna. Godot lägger `.so`/`.dll` bredvid
+programmet av sig själv:
+
+```bash
+cd native
+.venv/bin/scons platform=linux   target=template_release custom_api_file=extension_api.json -j12
+.venv/bin/scons platform=windows target=template_release custom_api_file=extension_api.json -j12
+cd ..
+```
+
 I editorn: **Project → Export… → välj förinställning → Export Project…** och bocka **ur**
 "Export With Debug".
 

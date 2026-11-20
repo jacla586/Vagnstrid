@@ -30,7 +30,7 @@ shows on the minimap. This is what we test first.
 - Hot loops may move to C++ in `native/src/` (godot-cpp as a submodule in `native/godot-cpp`, built against
   `extension_api.json` dumped from our Godot: `cd native && godot --headless --dump-extension-api && .venv/bin/scons
   platform=linux target=template_debug custom_api_file=extension_api.json` (template_release for exports;
-  `platform=windows` needs mingw-w64; scons in `native/.venv`, `python3 -m venv native/.venv && native/.venv/bin/pip
+  `platform=windows` with mingw-w64, installed 2026-11-20; scons in `native/.venv`, `python3 -m venv native/.venv && native/.venv/bin/pip
   install scons`). Libraries go to `bin/` (git-ignored), loaded by `bin/vagnfast.gdextension`.
 - One engine singleton `VagnFast`. GDScript never names it: `Engine.get_singleton("VagnFast")` if
   `Engine.has_singleton`, else null (`Tank.FAST`), and the GDScript version stays as the fallback, so the game runs

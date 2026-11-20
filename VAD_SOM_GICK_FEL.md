@@ -113,3 +113,35 @@ Jacob tyckte att FPS:en var låg i 10 mot 10. Claude mätte, och på vägen gick
   nästan alla på vägar 115–195 m från zonens mitt.
 - **Samtidigt:** trupperna bär nu två pansarvärnsraketer och två minor, en pryl per soldat. Den som
   stupar tappar sin.
+
+## 20 november 2026: 20 mot 20 och C++
+
+### För mycket GDScript sätter taket för stora strider
+
+- **Syntes:** 10 mot 10 gick att få upp till 60 FPS (19 nov). 20 mot 20 gick i 9–23 FPS. Ett
+  fysiksteg tog 22–28 ms, och över 33 ms per bildruta tvingas spelet köra flera fysiksteg per
+  bildruta för att hinna ikapp. Då blir det ännu segare: en nedåtspiral.
+- **Fel:** nästan all spellogik är skriven i GDScript, och varje bot frågar varje vagn och soldat
+  om allt. Med dubbelt så många vagnar blir det fyra gånger så mycket spaning: dubbelt så många som
+  tittar och dubbelt så många att titta på. Claude hade uppskattat 35–45 FPS. Det blev 9–23.
+- **Hur det hittades:** tidtagning runt varje del av vagnarnas, botarnas och truppernas fysiksteg,
+  utslaget per tick. Botarnas spaning tog 7,6 ms, vagnarnas egna skript 5,2 och trupperna 5,1.
+- **Vad som provades, och vad det gav:**
+  - **Spaning i takt med antalet fiender**, och dyra platssökningar inom en tidsbudget: botarna
+    halverades. Det gav störst effekt.
+  - **Siktlinjerna på flera kärnor:** Jacob påpekade att trådar avfärdats dagen innan, och ett nytt
+    försök visade att det går. Fysiken flyttas inte till en egen tråd, utan huvudtråden delar ut
+    färdiga strålfrågor medan fysiken står still. Strålarna blev 4–5 gånger snabbare med identiska
+    svar, men de var bara en liten del av kostnaden.
+  - **C++ (en GDExtension):** fjädringen blev bara 3 % snabbare i första försöket. Kostnaden låg i
+    motorns strålar, inte i GDScript. Med alla vagnars strålar på trådar i C++ blev den 30 %
+    snabbare. Bandkrafterna i C++ gav 33 %. Botarnas siktförhämtning gav 20 %, eftersom C++-koden
+    ändå måste fråga GDScript-objekten om lag, punkter och lägen, och varje sådan fråga kostar
+    ungefär lika mycket därifrån.
+  - **Två försök med fjädringen i GDScript** (återanvända strålar, samla dem i en batch) gav ingenting
+    och togs bort. Att lagra och läsa svaren kostade lika mycket som de sparade strålarna.
+- **Var det står:** 20 mot 20 cirka 18–38 FPS, 15 mot 15 47–52 FPS och 10 mot 10 59–60 FPS.
+- **Lärdom:** mät vad tiden faktiskt går till innan något skrivs om: motorns egna anrop, ren
+  GDScript-logik eller frågor mellan objekten. För mycket logik i GDScript sätter taket, men C++
+  hjälper bara om datan också finns i C++. Nästa steg är en "världsbild" i C++ som varje vagn och
+  soldat fyller i en gång per tick och alla botar läser ur (`PRESTANDA_PLAN.md`).
