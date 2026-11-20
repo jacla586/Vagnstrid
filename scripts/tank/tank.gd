@@ -2331,7 +2331,9 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	# Longitudinal: chase the target speed, limited by acceleration / braking.
 	var throttle: float = 0.0 if move_blocked else clampf(_command.throttle, -1.0, 1.0)
 	var top_speed_kmh: float = data.max_forward_speed_kmh if throttle >= 0.0 else data.max_reverse_speed_kmh
-	var target_speed: float = throttle * top_speed_kmh * KMH_TO_MS * _damage.speed_factor() * _ford_factor()
+	var speed_factor: float = _damage.speed_factor()   # asked once: GDScript calls cost
+	var immobilised: bool = _damage.is_immobilised()
+	var target_speed: float = throttle * top_speed_kmh * KMH_TO_MS * speed_factor * _ford_factor()
 	var speed: float = linear_velocity.dot(forward)
 	var speeding_up: bool = target_speed * speed >= 0.0 and absf(target_speed) > absf(speed)
 	var accel_limit: float = data.acceleration if speeding_up else data.brake_deceleration
@@ -2348,7 +2350,7 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	# Speeding up lifts the nose, braking dips it; the hull rocks on its springs, and
 	# the gun with it (no stabiliser), so jerky driving spoils the aim.
 	# The share of the tank's own limit counts, so driving off rocks as much as stopping.
-	var driving: bool = _damage.speed_factor() > 0.0 and not _damage.is_immobilised()
+	var driving: bool = speed_factor > 0.0 and not immobilised
 	var effort: float = clampf(accel / maxf(accel_limit, 0.01), -1.0, 1.0) if driving else 0.0
 	_rock = lerpf(_rock, effort, 1.0 - exp(-ROCK_SMOOTHING * delta))
 	_rock_slow = lerpf(_rock_slow, _rock, 1.0 - exp(-delta / maxf(data.pitch_rock_kick_time_s, 0.01)))
@@ -2363,7 +2365,7 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	var yaw_accel: float = clampf((target_yaw_rate - yaw_rate) / delta, -turn_limit, turn_limit)
 	var yaw_inertia: float = 1.0 / maxf((state.inverse_inertia_tensor * up).dot(up), 1e-9)
 	var yaw_torque: float = yaw_accel * yaw_inertia
-	if _damage.speed_factor() <= 0.0:
+	if speed_factor <= 0.0:
 		yaw_torque = 0.0   # dead engine: no drive at all
 
 	# Skid steer: right track pushing harder turns the tank left, and vice versa.
@@ -2374,13 +2376,17 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	# turning stops turning instead of spinning on.
 	var left_force: float = drive_force * 0.5 - track_split
 	var right_force: float = drive_force * 0.5 + track_split
-	if _damage.track_factor(-1) <= 0.0 or _damage.is_immobilised():
+	if immobilised or _damage.track_factor(-1) <= 0.0:
 		left_force = _track_hold_force(speed - yaw_rate * _track_half_width, delta,
 				gravity_along, traction_limit)
-	if _damage.track_factor(1) <= 0.0 or _damage.is_immobilised():
+	if immobilised or _damage.track_factor(1) <= 0.0:
 		right_force = _track_hold_force(speed + yaw_rate * _track_half_width, delta,
 				gravity_along, traction_limit)
 	var com_global: Vector3 = global_position + state.center_of_mass
+	if FAST != null:
+		FAST.apply_track_forces(self, left_force, right_force, forward, up, com_global,
+				left_points, left_normals, right_points, right_normals)
+		return
 	_apply_track_force(left_force, forward, up, com_global, left_points, left_normals)
 	_apply_track_force(right_force, forward, up, com_global, right_points, right_normals)
 
