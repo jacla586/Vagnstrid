@@ -34,7 +34,28 @@ public:
 			const Array &left_points, const Array &left_normals,
 			const Array &right_points, const Array &right_normals);
 
+	// BotController._prefetch_sight: the sight lines of one look round (the same points
+	// and skipping as the look round: far tanks every 2nd/4th scan, far squads every
+	// 2nd, less those out of range or the periscope's sector), cast together on worker
+	// threads as Vision.has_line_of_sight. Returns point -> in sight. `args` keys: eye,
+	// full_range, open, turret_yaw, half_angle, exclude (RIDs), target, look_wait,
+	// near2_m, far4_m, tank_range, squad_target, squad_look_wait, squad_range, squad_every2_m.
+	Dictionary prefetch_sight(Node3D *tank, const Dictionary &args);
+
 private:
+	struct SightRay {
+		Vector3 from;
+		Vector3 to;
+		uint64_t target = 0;
+		bool seen = false;
+	};
+	std::vector<SightRay> _sight_rays;
+	TypedArray<RID> _sight_exclude;
+	PhysicsDirectSpaceState3D *_sight_space = nullptr;
+	void _cast_sight_ray(int64_t index);
+	static bool _in_sector(const Vector3 &eye, const Vector3 &point, bool open, double turret_yaw,
+			double half_angle);
+
 	static void _track_force(double force, const Vector3 &forward, const Vector3 &up,
 			const Vector3 &com_global, const Vector3 &origin, const Array &points,
 			const Array &normals, Vector3 &total_force, Vector3 &total_torque);

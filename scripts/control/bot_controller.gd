@@ -667,6 +667,24 @@ func _prefetch_sight() -> void:
 	_sight.clear()
 	var eye: Vector3 = tank.get_commander_eye_position()
 	var full: float = _view_range()
+	if Tank.FAST != null:   # the same in C++ (VagnFast.prefetch_sight)
+		var view_range: float = Weather.view_range(bot_data.view_range_open_m
+				if tank.get_hatch_progress() >= 1.0 else bot_data.view_range_closed_m)
+		if tank.is_burning():
+			view_range *= tank.data.fire_view_range_factor
+		_sight = Tank.FAST.prefetch_sight(tank, {
+			"eye": eye, "full_range": full, "open": tank.get_hatch_progress() >= 1.0,
+			"turret_yaw": tank.get_turret_global_yaw(),
+			"half_angle": deg_to_rad(bot_data.periscope_half_angle_deg),
+			"exclude": [tank.get_rid(), tank.get_commander_hitbox().get_rid()],
+			"target": _target, "look_wait": _look_wait,
+			"near2_m": bot_data.look_every_2nd_beyond_m, "far4_m": bot_data.look_every_4th_beyond_m,
+			"tank_range": view_range + VIEW_RANGE_MARGIN_M,
+			"squad_target": _squad_target, "squad_look_wait": _squad_look_wait,
+			"squad_range": bot_data.mg_range_m + VIEW_RANGE_MARGIN_M,
+			"squad_every2_m": SQUAD_LOOK_EVERY_2ND_M,
+		})
+		return
 	var rays := SightRays.new(tank.get_world_3d().direct_space_state)
 	var exclude: Array[RID] = [tank.get_rid(), tank.get_commander_hitbox().get_rid()]
 	var points: Array[Vector3] = []

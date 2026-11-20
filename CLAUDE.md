@@ -35,6 +35,12 @@ shows on the minimap. This is what we test first.
 - One engine singleton `VagnFast`. GDScript never names it: `Engine.get_singleton("VagnFast")` if
   `Engine.has_singleton`, else null (`Tank.FAST`), and the GDScript version stays as the fallback, so the game runs
   without the library. Keep the two in step.
+- In C++ now (2026-11-20, 20 v 20 per tick): suspension of all tanks batched on worker threads (1.72 -> 1.21 ms),
+  track forces summed into one force and torque (drive 1.21 -> 0.81 ms), a bot's sight prefetch (1.19 -> 0.95 ms;
+  checked identical). Orange 20 v 20 ~25-38 fps, 15 v 15 ~47-52, 10 v 10 59-60 (vsync).
+- Why the gains are small: C++ still asks the GDScript objects for everything (is_enemy_of, get_spot_points ...), and
+  such a call costs about as much from C++ as from GDScript; rays cost the same from both. Bigger wins need the data
+  held in C++ (a per-tick snapshot of every tank and soldier, filled once and read by all bots), not more ports.
 - Measure first: the time must be GDScript, not engine calls. `VagnFast.apply_suspension` (Tank) was only 3 %
   faster (1.66 vs 1.72 ms per tick at 20 v 20): the cost is the rays inside the engine (~5 µs each), not the loop.
 

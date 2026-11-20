@@ -19,6 +19,132 @@ void VagnFast::_bind_methods() {
 								 "up", "com_global", "left_points", "left_normals", "right_points",
 								 "right_normals"),
 			&VagnFast::apply_track_forces);
+	ClassDB::bind_method(D_METHOD("prefetch_sight", "tank", "args"), &VagnFast::prefetch_sight);
+}
+
+bool VagnFast::_in_sector(const Vector3 &eye, const Vector3 &point, bool open, double turret_yaw,
+		double half_angle) {
+	if (open) {
+		return true;
+	}
+	const Vector3 flat(point.x - eye.x, 0.0, point.z - eye.z);
+	const Vector3 turret_forward(Math::sin(turret_yaw) * -1.0, 0.0, -Math::cos(turret_yaw));
+	return flat.angle_to(turret_forward) <= half_angle;
+}
+
+Dictionary VagnFast::prefetch_sight(Node3D *tank, const Dictionary &args) {
+	Dictionary out;
+	if (tank == nullptr) {
+		return out;
+	}
+	const Vector3 eye = args["eye"];
+	const double full = args["full_range"];
+	const bool open = args["open"];
+	const double turret_yaw = args["turret_yaw"];
+	const double half_angle = args["half_angle"];
+	const Array exclude = args["exclude"];
+	_sight_exclude.clear();
+	for (int64_t i = 0; i < exclude.size(); i++) {
+		_sight_exclude.append(RID(exclude[i]));
+	}
+	const Variant target = args["target"];
+	const Dictionary look_wait = args["look_wait"];
+	const double near2 = args["near2_m"];
+	const double far4 = args["far4_m"];
+	const double tank_range = args["tank_range"];
+	const Variant squad_target = args["squad_target"];
+	const Dictionary squad_look_wait = args["squad_look_wait"];
+	const double squad_range = args["squad_range"];
+	const double squad_every2 = args["squad_every2_m"];
+	const Vector3 here = tank->get_global_position();
+	const int64_t team = tank->get("team");
+	_sight_rays.clear();
+	_sight_space = tank->get_world_3d()->get_direct_space_state();
+	auto want = [&](const Vector3 &point, Object *collider) {
+		if (collider == nullptr || eye.distance_to(point) > full
+				|| !_in_sector(eye, point, open, turret_yaw, half_angle)) {
+			return;
+		}
+		SightRay r;
+		r.from = eye;
+		r.to = point;
+		r.target = collider->get_instance_id();
+		_sight_rays.push_back(r);
+	};
+	SceneTree *tree = tank->get_tree();
+	const TypedArray<Node> tanks = tree->get_nodes_in_group("tanks");
+	for (int64_t i = 0; i < tanks.size(); i++) {
+		Node3D *other = Object::cast_to<Node3D>(tanks[i]);
+		if (other == nullptr || !bool(tank->call("is_enemy_of", other)) || bool(other->call("is_knocked_out"))) {
+			continue;
+		}
+		const Variant key = other;
+		const double d = here.distance_to(other->get_global_position());
+		const int64_t per_look = d > far4 ? 4 : (d > near2 ? 2 : 1);
+		if (key != target && int64_t(look_wait.get(key, 0)) + 1 < per_look) {
+			continue;
+		}
+		if (eye.distance_to(other->get_global_position()) > tank_range) {
+			continue;
+		}
+		const Array points = other->call("get_spot_points");
+		for (int64_t k = 0; k < points.size(); k++) {
+			want(other->to_global(points[k]), other);
+		}
+		if (bool(other->call("is_commander_exposed"))) {
+			want(other->call("get_commander_hitbox_position"), Object::cast_to<Object>(other->call("get_commander_hitbox")));
+		}
+	}
+	const TypedArray<Node> squads = tree->get_nodes_in_group("squads");
+	for (int64_t i = 0; i < squads.size(); i++) {
+		Node3D *enemy = Object::cast_to<Node3D>(squads[i]);
+		if (enemy == nullptr || !bool(enemy->call("is_out")) || int64_t(enemy->call("get_team")) == team) {
+			continue;
+		}
+		const double d = here.distance_to(enemy->get_global_position());
+		if (d > squad_range) {
+			continue;
+		}
+		const Variant key = enemy;
+		if (key != squad_target && d > squad_every2 && int64_t(squad_look_wait.get(key, 0)) + 1 < 2) {
+			continue;
+		}
+		const Array hitboxes = enemy->call("get_hitboxes");
+		for (int64_t k = 0; k < hitboxes.size(); k++) {
+			Object *hb = hitboxes[k];
+			if (hb != nullptr && bool(enemy->call("is_soldier_exposed", hb->get("index")))) {
+				want(hb->call("get_aim_point"), hb);
+			}
+		}
+	}
+	const int64_t n = int64_t(_sight_rays.size());
+	if (n == 0) {
+		return out;
+	}
+	if (n < 24) {
+		for (int64_t i = 0; i < n; i++) {
+			_cast_sight_ray(i);
+		}
+	} else {
+		WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
+		const int64_t task = pool->add_group_task(callable_mp(this, &VagnFast::_cast_sight_ray), n, -1, true,
+				"sight rays");
+		pool->wait_for_group_task_completion(task);
+	}
+	for (int64_t i = 0; i < n; i++) {
+		out[_sight_rays[i].to] = _sight_rays[i].seen;
+	}
+	return out;
+}
+
+void VagnFast::_cast_sight_ray(int64_t index) {
+	SightRay &r = _sight_rays[index];
+	const Vector3 dir = (r.to - r.from).normalized();
+	Ref<PhysicsRayQueryParameters3D> query = PhysicsRayQueryParameters3D::create(r.from, r.to + dir * 0.5,
+			0xFFFFFFFF, _sight_exclude);
+	query->set_collide_with_areas(true);
+	const Dictionary hit = _sight_space->intersect_ray(query);
+	r.seen = !hit.is_empty() && uint64_t(int64_t(hit["collider_id"])) == r.target;
 }
 
 void VagnFast::apply_track_forces(RigidBody3D *body, double left_force, double right_force,
