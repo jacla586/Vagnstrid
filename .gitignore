@@ -28,3 +28,7 @@
 
 # Mapillary-nyckeln (privat)
 /mapillary.txt
+
+# VagnFast GDExtension builds (cd native && .venv/bin/scons ...)
+bin/*.so
+bin/*.dll

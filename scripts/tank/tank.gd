@@ -2243,13 +2243,22 @@ func _gun_smoke_scale() -> float:
 	return pow(maxf(calibre, 10.0) / 75.0, EffectFx.SET.muzzle_calibre_exponent)
 
 
+## The C++ hot loops (GDExtension in native/, bin/vagnfast.gdextension), null without
+## the library: then the GDScript versions run (the same rules).
+static var FAST: Object = Engine.get_singleton("VagnFast") if Engine.has_singleton("VagnFast") else null
+
+
 func _apply_suspension(state: PhysicsDirectBodyState3D, rays: Array[RayCast3D],
 		ray_count: int, points: Array[Vector3], normals: Array[Vector3]) -> void:
 	var omega: float = TAU * data.suspension_frequency_hz
 	var stiffness: float = mass * omega * omega / ray_count
 	var damping: float = 2.0 * data.suspension_damping_ratio * mass * omega / ray_count
 	var com_global: Vector3 = global_position + state.center_of_mass
-	for ray: RayCast3D in rays:
+	if FAST != null:
+		FAST.apply_suspension(self, rays, com_global, data.suspension_rest_length, stiffness,
+				damping, points, normals)
+		return
+	for ray: RayCast3D in rays:   # the same in GDScript (VagnFast.apply_suspension)
 		ray.force_raycast_update()
 		if not ray.is_colliding():
 			continue

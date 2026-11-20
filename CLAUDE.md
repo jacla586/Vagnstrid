@@ -12,7 +12,7 @@ shows on the minimap. This is what we test first.
 ## Engine and language – IMPORTANT
 
 - **Godot 4.7** (4.7.2-stable), Forward+ renderer, **Jolt Physics** (set in project.godot).
-- **GDScript only, always statically typed** (`var speed: float = 10.0`, typed
+- **GDScript, always statically typed** (C++ only for measured hot loops, see "C++ (VagnFast)" below) (`var speed: float = 10.0`, typed
   function args and return values, `:=` where the type is obvious).
 - **Godot 4 syntax only.** Much code online is Godot 3. Common traps:
   - `Node3D` not `Spatial`, `CharacterBody3D` not `KinematicBody`
@@ -24,6 +24,19 @@ shows on the minimap. This is what we test first.
 - **English throughout:** code, names, comments, commit messages.
 - Naming: `snake_case` files, variables, functions; `PascalCase` for `class_name`
   and nodes; `UPPER_SNAKE_CASE` for constants.
+
+## C++ (VagnFast GDExtension, branch prestanda-cpp, 2026-11-20)
+
+- Hot loops may move to C++ in `native/src/` (godot-cpp as a submodule in `native/godot-cpp`, built against
+  `extension_api.json` dumped from our Godot: `cd native && godot --headless --dump-extension-api && .venv/bin/scons
+  platform=linux target=template_debug custom_api_file=extension_api.json` (template_release for exports;
+  `platform=windows` needs mingw-w64; scons in `native/.venv`, `python3 -m venv native/.venv && native/.venv/bin/pip
+  install scons`). Libraries go to `bin/` (git-ignored), loaded by `bin/vagnfast.gdextension`.
+- One engine singleton `VagnFast`. GDScript never names it: `Engine.get_singleton("VagnFast")` if
+  `Engine.has_singleton`, else null (`Tank.FAST`), and the GDScript version stays as the fallback, so the game runs
+  without the library. Keep the two in step.
+- Measure first: the time must be GDScript, not engine calls. `VagnFast.apply_suspension` (Tank) was only 3 %
+  faster (1.66 vs 1.72 ms per tick at 20 v 20): the cost is the rays inside the engine (~5 µs each), not the loop.
 
 ## Architecture rules
 

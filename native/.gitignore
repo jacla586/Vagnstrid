@@ -1,0 +1,5 @@
+.venv/
+.sconsign.dblite
+*.os
+*.o
+extension_api.json
