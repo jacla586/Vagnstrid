@@ -41,6 +41,11 @@ shows on the minimap. This is what we test first.
 - Why the gains are small: C++ still asks the GDScript objects for everything (is_enemy_of, get_spot_points ...), and
   such a call costs about as much from C++ as from GDScript; rays cost the same from both. Bigger wins need the data
   held in C++ (a per-tick snapshot of every tank and soldier, filled once and read by all bots), not more ports.
+- World picture (2026-11-21, `VagnFast._ensure_world`): every tank and squad is asked once per physics tick (and once
+  more in a frame between ticks) and both `prefetch_sight` (bots) and `prefetch_squad_sight` (`Squad._prefetch_sight`,
+  crowns seen through as `SightRays`) read it. Checked: 0 differing answers on ~310 000 lines; ~7 % of points
+  moved later in the tick (soldiers, a rising hatch) are missing and get the reader's own ray. 20 v 20 headless:
+  bots' prefetch 1.23 (GDScript) -> 0.77 ms per tick, squads' 0.21 -> 0.17 ms. The rest is rays.
 - Measure first: the time must be GDScript, not engine calls. `VagnFast.apply_suspension` (Tank) was only 3 %
   faster (1.66 vs 1.72 ms per tick at 20 v 20): the cost is the rays inside the engine (~5 µs each), not the loop.
 

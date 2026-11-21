@@ -15,7 +15,18 @@ extends SceneTree
 const WARMUP_S: float = 14.0
 const PHASES: Array = [["t14", 8.0], ["wait1", 32.0], ["t54", 10.0], ["wait2", 26.0], ["t90", 10.0]]
 const OFF: Dictionary = {"-shells": ["Shell"], "-bots": ["BotController"], "-squads": ["Squad"], "-looks": ["TankLooks"], "-trees": ["TreeField", "PropBreak"], "-mode": ["ThunderRoadMode", "ThunderRoadBots"], "-tanks": ["Tank"], "-all": ["BotController", "Squad", "TankLooks", "TreeField", "PropBreak", "ThunderRoadMode", "ThunderRoadBots", "Tank", "Shell", "Mine", "Wreck"]}
+## `proc` on the command line runs PROC_PHASES instead: phases starting with "~" switch
+## _process off for those classes ("~ui": every Control), the frame-side marginal cost.
+const PROC_PHASES: Array = [["b1", 6.0], ["~squads", 6.0], ["b2", 6.0], ["~looks", 6.0], ["b3", 6.0],
+		["~grass", 6.0], ["b4", 6.0], ["~ui", 6.0], ["b5", 6.0], ["~audio", 6.0], ["b6", 6.0], ["~fx", 6.0],
+		["b7", 6.0], ["~bots", 6.0], ["b8", 6.0], ["~squads", 6.0], ["b9", 6.0], ["~ui", 6.0], ["b10", 6.0],
+		["~grass", 6.0], ["b11", 6.0]]
+const OFF_PROCESS: Dictionary = {"~squads": ["Squad"], "~bots": ["BotController"], "~looks": ["TankLooks"],
+		"~grass": ["GroundCoverField", "GroundCoverCanopy"], "~audio": ["TankAudio"],
+		"~fx": ["TankExhaust", "TankDust"], "~weather": ["WeatherView", "RainField"], "~ui": []}
+var _phases: Array = PHASES
 var _off: Array[Node] = []
+var _off_proc: Array[Node] = []
 
 var _t: float = 0.0
 var _phase: int = -1
@@ -32,7 +43,9 @@ func _initialize() -> void:
 		_weather = args[0]
 	var scene_path: String = "res://scenes/scenarios/vidingsjo_thunder_orange.tscn"
 	_vsync = args.has("vsync")
-	if args.size() > 1 and args[1] != "vsync" and not args[1].begins_with("size="):
+	if args.has("proc"):
+		_phases = PROC_PHASES
+	if args.size() > 1 and args[1] != "vsync" and args[1] != "proc" and not args[1].begins_with("size="):
 		scene_path = "res://scenes/scenarios/%s.tscn" % args[1]
 	Weather.set_current(Weather.load_preset(_weather))
 	MatchSettings.load_settings()
@@ -76,19 +89,19 @@ func _tick() -> void:
 			_sun = lights[0]
 	if _t < WARMUP_S:
 		return
-	if _phase < 0 or _phase_t >= float(PHASES[_phase][1]):
+	if _phase < 0 or _phase_t >= float(_phases[_phase][1]):
 		_phase += 1
 		_phase_t = 0.0
-		if _phase >= PHASES.size():
+		if _phase >= _phases.size():
 			_report()
 			quit()
 			return
-		_switch(String(PHASES[_phase][0]))
+		_switch(String(_phases[_phase][0]))
 	_phase_t += dt
 	if _phase_t < 0.5:
 		return   # let the view settle
 	var vp: RID = get_root().get_viewport_rid()
-	var name: String = PHASES[_phase][0]
+	var name: String = _phases[_phase][0]
 	if not _samples.has(name):
 		_samples[name] = []
 	(_samples[name] as Array).append([dt * 1000.0,
@@ -106,6 +119,22 @@ func _switch(phase: String) -> void:
 		if is_instance_valid(n):
 			n.set_physics_process(true)
 	_off.clear()
+	for n: Node in _off_proc:
+		if is_instance_valid(n):
+			n.set_process(true)
+	_off_proc.clear()
+	if OFF_PROCESS.has(phase):
+		var proc_classes: Array = OFF_PROCESS[phase]
+		for n: Node in get_root().find_children("*", "", true, false):
+			var hit: bool = phase == "~ui" and n is Control
+			var sc: Script = n.get_script()
+			while not hit and sc != null:
+				hit = proc_classes.has(String(sc.get_global_name()))
+				sc = sc.get_base_script()
+			if hit and n.is_processing():
+				n.set_process(false)
+				_off_proc.append(n)
+		print("phase %s: _process off on %d nodes" % [phase, _off_proc.size()])
 	for n: Node in current_scene.find_children("*", "BotController", true, false):
 		pass
 	_scan_scale(2.0 if phase == "scan/2" else 1.0)

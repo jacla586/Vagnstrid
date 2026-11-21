@@ -423,7 +423,18 @@ func _on_tank_placed(tank: Tank) -> void:
 			return
 
 
+## The bots' orders are thought over THINK_HZ times a second, with the time between
+## (orders and posts change over seconds; every bot each tick cost ~0.7 ms at 20 v 20).
+const THINK_HZ: float = 10.0
+var _think_clock := PackedFloat32Array([0.0])
+var _think_dt: float = 0.0
+
 func _physics_process(delta: float) -> void:
+	_think_dt += delta
+	if not Ticks.due(_think_clock, delta, THINK_HZ):
+		return
+	delta = _think_dt
+	_think_dt = 0.0
 	if not mode.has_started() or mode.is_in_break() or mode.is_over():
 		return
 	for i: int in range(_bots.size() - 1, -1, -1):

@@ -567,7 +567,17 @@ func _physics_process(delta: float) -> void:
 ## Trying to drive (orders, nothing broken; a target in sight too, when not halting to
 ## fire) but getting nowhere for
 ## BotData.abandon_stuck_s: hung on a rock or wedged in, so the crew abandons the tank.
+## Checked ABANDON_HZ times a second (a 60 s rule), with the time between.
+const ABANDON_HZ: float = 5.0
+var _abandon_clock := PackedFloat32Array([0.0])
+var _abandon_dt: float = 0.0
+
 func _update_abandon(delta: float, repairing: bool) -> void:
+	_abandon_dt += delta
+	if not Ticks.due(_abandon_clock, delta, ABANDON_HZ):
+		return
+	delta = _abandon_dt
+	_abandon_dt = 0.0
 	var here: Vector3 = tank.global_position
 	if _progress_at == Vector3.INF or here.distance_to(_progress_at) > bot_data.abandon_stuck_m:
 		_progress_at = here
@@ -1772,7 +1782,31 @@ func _update_scouting(delta: float) -> bool:
 
 ## Slows down behind a tank ahead on the way (no ramming teammates on a shared path);
 ## stopped behind it too long, steps round it.
+## The nearest tank ahead is looked for GAP_LOOK_HZ times a second (every bot against every
+## tank each tick cost ~0.8 ms at 20 v 20); the throttle follows the last answer every tick.
+const GAP_LOOK_HZ: float = 10.0
+var _gap_clock := PackedFloat32Array([0.0])
+var _gap_nearest: float = INF
+
 func _keep_gap(delta: float) -> void:
+	if Ticks.due(_gap_clock, delta, GAP_LOOK_HZ):
+		_gap_nearest = _nearest_ahead()
+	var nearest: float = _gap_nearest
+	if nearest == INF:
+		_yield_time = 0.0
+		return
+	_command.throttle *= clampf((nearest - FOLLOW_STOP_M) / (FOLLOW_GAP_M - FOLLOW_STOP_M), 0.0, 1.0)
+	if _command.throttle > 0.05:
+		_yield_time = 0.0
+		return
+	_yield_time += delta
+	if _yield_time >= FOLLOW_PASS_S:
+		_yield_time = 0.0
+		_orders.insert(_order_index, _detour_point(_orders[_order_index]))
+
+
+## Distance (m) to the nearest tank within FOLLOW_GAP_M in the cone ahead, INF if none.
+func _nearest_ahead() -> float:
 	var forward: Vector3 = -tank.global_basis.z
 	forward.y = 0.0
 	var nearest: float = INF
@@ -1786,17 +1820,7 @@ func _keep_gap(delta: float) -> void:
 		if d < FOLLOW_GAP_M and d > 0.1 \
 				and forward.angle_to(to_other) < deg_to_rad(FOLLOW_CONE_DEG):
 			nearest = minf(nearest, d)
-	if nearest == INF:
-		_yield_time = 0.0
-		return
-	_command.throttle *= clampf((nearest - FOLLOW_STOP_M) / (FOLLOW_GAP_M - FOLLOW_STOP_M), 0.0, 1.0)
-	if _command.throttle > 0.05:
-		_yield_time = 0.0
-		return
-	_yield_time += delta
-	if _yield_time >= FOLLOW_PASS_S:
-		_yield_time = 0.0
-		_orders.insert(_order_index, _detour_point(_orders[_order_index]))
+	return nearest
 
 
 func _update_hatch(delta: float) -> void:

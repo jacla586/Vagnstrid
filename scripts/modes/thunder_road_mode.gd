@@ -86,6 +86,12 @@ var _def_respawn: Dictionary = {}        # Tank -> seconds to its respawn
 var _outside: Dictionary = {}            # Tank -> seconds outside its corridor
 var _mark_left: Dictionary = {}          # Tank -> seconds to its next map mark
 var _check_left: float = 0.0
+## New tanks and the capture are checked RULES_HZ times a second, with the time between
+## (every tank against the zone each tick cost ~0.7 ms at 20 v 20; captures take seconds).
+const RULES_HZ: float = 10.0
+var _connect_clock := PackedFloat32Array([0.0])
+var _capture_clock := PackedFloat32Array([0.0])
+var _capture_dt: float = 0.0
 ## Seconds of ceasefire left after a capture (< 0: none).
 var _pause_left: float = -1.0
 var _connected: Dictionary = {}          # tank instance id -> true
@@ -588,7 +594,8 @@ func release_start() -> void:
 func _physics_process(delta: float) -> void:
 	if _route.size() < 2:
 		return
-	_connect_new_tanks()
+	if Ticks.due(_connect_clock, delta, RULES_HZ) or not _started:
+		_connect_new_tanks()
 	if not _started:
 		if _start_holds > 0:
 			return
@@ -608,7 +615,10 @@ func _physics_process(delta: float) -> void:
 	var paused: bool = _update_pause(delta)
 	if not paused:
 		_time_left = maxf(_time_left - delta, 0.0)
-		_update_capture(delta)
+		_capture_dt += delta
+		if Ticks.due(_capture_clock, delta, RULES_HZ):
+			_update_capture(_capture_dt)
+			_capture_dt = 0.0
 		_update_waves(delta)
 	_update_defender_respawns(delta)
 	_check_left -= delta

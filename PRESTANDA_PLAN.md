@@ -41,6 +41,26 @@ Per tick i 20 mot 20:
 
   Alla tre är kontrollerat identiska, och GDScript-versionerna finns kvar som reserv.
 
+- **Världsbilden i C++ (21 nov):** `VagnFast._ensure_world` frågar varje vagn och trupp en gång per tick.
+  Både botarnas och truppernas förhämtning (`prefetch_squad_sight`, ny) läser den. 0 avvikande svar på
+  cirka 310 000 linjer. Headless 20 mot 20: botarnas förhämtning 1,23 → 0,77 ms per tick, truppernas
+  0,21 → 0,17 ms. Ungefär 7 % av punkterna flyttas senare i ticket (soldater, lucka som öppnas) och
+  får läsarens egen stråle. Slutsats: resten är strålarna, inte frågorna. Nästa vinst kräver färre
+  strålar (t.ex. återanvända svar mellan botar med samma öga), inte mer C++.
+
+- **Bildrutans `_process` mätt (21 nov,** `perf_match.gd -- clear size=20 proc`**):** faser som stänger av
+  `_process` för Squad, BotController, TankLooks, GroundCover, TankAudio, avgaser/damm, all UI och vädret,
+  varvade med basfaser. Ingen av dem sänker bildrutan mätbart: skillnaderna ligger inom matchens egen drift
+  (26 → 49 ms under körningen). Bildrutan är fysiktick: 14–20 ms per tick, och över 33 ms blir det två tick
+  per bildruta. GPU 14–15 ms och render-CPU 5–6 ms går bredvid. Allt att vinna ligger alltså i ticket.
+
+- **Tidtagning per funktion (21 nov, headless 20 mot 20, Thunder Orange, 1 800 tick).** I ms per tick:
+  - Botar 4,5: spaning 2,3, `_order_step` 0,8, `_update_squad` 0,4, `_update_abandon` 0,15, planering ~0,5.
+  - Vagnar 4,5: fjädring 1,1, drivning 0,8, `_sync_turret_shapes` 0,34, `_update_damage` 0,34,
+    `_update_turret` 0,29, `_update_commander_hitbox` 0,14.
+  - Trupper 3,2: `_move_soldiers` 1,1, `_walk` 0,46, spaning 0,43, `_check_run_over` 0,38, minor 0,11.
+  - ThunderRoadBots 0,72 och ThunderRoadMode 0,70 (lägesregler varje tick), TankLooks 0,45, TreeField 0,2.
+
 ## Provat utan effekt och borttaget
 
 - **Återanvända fjädringsstrålar för stillastående vagnar, i GDScript:** 37 % färre strålar, men
@@ -56,7 +76,7 @@ lika mycket från C++ som från GDScript. C++ lönar sig bara när datan också 
 
 ## Nästa steg, i ordning
 
-1. **Profilera det som inte är fysik i en bildruta i 20 mot 20.** Det är billigt och omätt.
+1. ~~**Profilera det som inte är fysik i en bildruta i 20 mot 20.**~~ Gjort 21 nov: inget att hämta där.
    Kandidater:
    - `Squad._process` (animationsdetaljer för 160 soldater)
    - HUD och kartor

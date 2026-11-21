@@ -2,6 +2,7 @@
 
 #include <godot_cpp/classes/object.hpp>
 #include <godot_cpp/classes/rigid_body3d.hpp>
+#include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/templates/hash_map.hpp>
 #include <godot_cpp/classes/physics_direct_space_state3d.hpp>
@@ -42,13 +43,60 @@ public:
 	// near2_m, far4_m, tank_range, squad_target, squad_look_wait, squad_range, squad_every2_m.
 	Dictionary prefetch_sight(Node3D *tank, const Dictionary &args);
 
+	// Squad._prefetch_sight: the squad leader's sight lines of one look round (tanks at
+	// TANK_LOOK_HEIGHTS, far ones every 2nd scan; exposed enemy soldiers), with the
+	// vegetation layers seen through by distance (Vision.has_line_of_sight_through).
+	// `args` keys: eye, full_range, margin, moving, origin, heading, cone_half, exclude,
+	// look_wait, every2_m, heights, see_through (Arrays of floats), shot_mask, crown_mask.
+	Dictionary prefetch_squad_sight(Node3D *squad, const Dictionary &args);
+
+	// The world picture both read: every tank and squad asked once per physics tick (and
+	// once more in a frame between ticks, as bodies moved in the step), not once per
+	// reader. A state change later in the same tick only costs a ray: the readers'
+	// GDScript still decides and casts its own ray for a point that isn't here.
+	int64_t world_version() const { return _world_key; }
+
 private:
+	struct WorldTank {
+		Object *node = nullptr;
+		uint64_t id = 0;
+		int64_t team = -1;
+		bool knocked_out = false;
+		Vector3 position;
+		std::vector<Vector3> spot_points; // world space
+		bool commander_exposed = false;
+		Vector3 head;
+		Object *head_box = nullptr;
+	};
+	struct WorldSoldier {
+		Object *hitbox = nullptr;
+		Vector3 position;
+		Vector3 aim;
+		bool exposed = false;
+	};
+	struct WorldSquad {
+		Object *node = nullptr;
+		uint64_t id = 0;
+		int64_t team = -1;
+		bool out = false;
+		Vector3 position;
+		std::vector<WorldSoldier> soldiers;
+	};
+	int64_t _world_key = -1;
+	std::vector<WorldTank> _world_tanks;
+	std::vector<WorldSquad> _world_squads;
+	void _ensure_world(SceneTree *tree);
+
 	struct SightRay {
 		Vector3 from;
 		Vector3 to;
 		uint64_t target = 0;
 		bool seen = false;
+		int32_t blockers = -2; // -2 every layer; >= -1 solid things + that many crowns
 	};
+	uint32_t _sight_shot_mask = 0xFFFFFFFF;
+	uint32_t _sight_crown_mask = 0;
+	void _run_sight_rays();
 	std::vector<SightRay> _sight_rays;
 	TypedArray<RID> _sight_exclude;
 	PhysicsDirectSpaceState3D *_sight_space = nullptr;

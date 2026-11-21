@@ -653,12 +653,12 @@ func _physics_process(delta: float) -> void:
 			_replan_timer = RETURN_REPLAN_S
 			_path = _plan(tank.global_position)
 	_update_escort(delta)
-	if _state == State.MOVING or _state == State.RETURNING:
-		_walk(delta)
-	# Far from any enemy and any camera the men step every 2nd tick (twice the time).
+	# Far from any camera the squad walks and the men step every 2nd tick (twice the time).
 	if _is_quiet() and _quiet_delta <= 0.0:
 		_quiet_delta = delta
 	else:
+		if _state == State.MOVING or _state == State.RETURNING:
+			_walk(delta + _quiet_delta)
 		_move_soldiers(delta + _quiet_delta)
 		_check_run_over()
 		_quiet_delta = 0.0
@@ -1337,18 +1337,18 @@ func _ground_height(p: Vector3, fallback: float, probe_up: float = 30.0) -> floa
 
 ## Enemy tanks and enemy soldiers in range and sight; spotting time as for tank crews
 ## (cover, stillness, how much shows), longer for small soldiers.
-## Quiet (_is_quiet): no enemy tank or soldier within QUIET_RANGE_M at the last scan and
-## no camera within QUIET_CAMERA_M: the men step every 2nd tick (twice the time), the
-## run-over test with them. Their places and hitboxes move a tick late at worst.
-const QUIET_RANGE_M: float = 300.0
-const QUIET_CAMERA_M: float = 200.0
+## Quiet (_is_quiet): no camera within QUIET_CAMERA_M and nobody looking through the
+## leader's eyes: the squad walks and the men step every 2nd tick (twice the time), the
+## run-over test with them, in a fight too (2026-11-21: 10 cm a step at a run, a tank 0.9 m;
+## ~0.7 ms a tick at 20 v 20). Their places and hitboxes move a tick late at worst.
+const QUIET_CAMERA_M: float = 150.0
 var _nearest_enemy_m: float = 0.0
 var _quiet_delta: float = 0.0
 ## Enemy tanks at the last scan, for the interval (SquadData.scan_reference_enemies).
 var _enemy_count: int = 0
 
 func _is_quiet() -> bool:
-	if _nearest_enemy_m <= QUIET_RANGE_M or _view_hidden >= 0:
+	if _view_hidden >= 0:
 		return false
 	var cam: Camera3D = get_viewport().get_camera_3d()
 	return cam == null or cam.global_position.distance_to(global_position) > QUIET_CAMERA_M
@@ -1433,8 +1433,19 @@ var _sight: Dictionary = {}
 func _prefetch_sight(eye: Vector3) -> void:
 	_sight.clear()
 	var full: float = Weather.view_range(data.view_range_m)
-	var rays := SightRays.new(get_world_3d().direct_space_state)
 	var exclude: Array[RID] = _own_rids()
+	if Tank.FAST != null:   # the same in C++ (VagnFast.prefetch_squad_sight), from its world picture
+		_sight = Tank.FAST.prefetch_squad_sight(self, {
+			"eye": eye, "full_range": full, "margin": VIEW_RANGE_MARGIN_M, "moving": _is_moving(),
+			"origin": global_position, "heading": _heading,
+			"cone_half": deg_to_rad(data.moving_view_cone_deg * 0.5), "exclude": exclude,
+			"look_wait": _tank_look_wait, "every2_m": TANK_LOOK_EVERY_2ND_M,
+			"heights": TANK_LOOK_HEIGHTS,
+			"see_through": Array(data.see_through_ranges_m),
+			"shot_mask": Vision.SHOT_MASK, "crown_mask": Vision.LAYER_VISION_BLOCKER,
+		})
+		return
+	var rays := SightRays.new(get_world_3d().direct_space_state)
 	var points: Array[Vector3] = []
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var other := node as Tank
