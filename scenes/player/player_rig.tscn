@@ -2,7 +2,6 @@
 
 [ext_resource type="PackedScene" path="res://scenes/tank/tank.tscn" id="1_tank"]
 [ext_resource type="Script" path="res://scripts/control/player_controller.gd" id="2_player"]
-[ext_resource type="Script" path="res://scripts/camera/orbit_camera.gd" id="3_camera"]
 [ext_resource type="Script" path="res://scripts/ui/crosshair.gd" id="5_crosshair"]
 [ext_resource type="Script" path="res://scripts/camera/commander_camera.gd" id="6_commander"]
 [ext_resource type="Script" path="res://scripts/control/player_views.gd" id="7_views"]
@@ -82,15 +81,10 @@ tank = NodePath("../Tank")
 script = ExtResource("26_squad_camera")
 tank = NodePath("../Tank")
 
-[node name="OrbitCamera" type="Camera3D" parent="." node_paths=PackedStringArray("target")]
-script = ExtResource("3_camera")
-target = NodePath("../Tank")
-
-[node name="PlayerViews" type="Node" parent="." node_paths=PackedStringArray("commander_camera", "gunner_camera", "debug_camera", "squad_camera")]
+[node name="PlayerViews" type="Node" parent="." node_paths=PackedStringArray("commander_camera", "gunner_camera", "squad_camera")]
 script = ExtResource("7_views")
 commander_camera = NodePath("../CommanderCamera")
 gunner_camera = NodePath("../GunnerCamera")
-debug_camera = NodePath("../OrbitCamera")
 squad_camera = NodePath("../SquadCamera")
 
 [node name="HUD" type="CanvasLayer" parent="."]

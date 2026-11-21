@@ -30,6 +30,5 @@ toggle_map | The big map. The mouse wheel zooms, drag to move a zoomed map.
 scoreboard | The scoreboard.
 release_mouse | Menu: change tank, switch team, settings, abandon the tank, leave.
 show_help | This list of controls, in the match.
-toggle_debug_view | Free camera round your tank (for looking around; aiming follows it).
 net_stats | Statistics: FPS and network.
 skip_tutorial_step | Tutorial: hold for 3 seconds to skip the current step.

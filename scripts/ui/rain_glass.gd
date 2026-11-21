@@ -25,7 +25,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	visible = views != null and not views.is_debug_view() \
+	visible = views != null \
 			and views.get_overlay_mode() != PlayerViews.OverlayMode.NONE
 	if visible:
 		_material.set_shader_parameter(&"aspect", size.x / maxf(size.y, 1.0))

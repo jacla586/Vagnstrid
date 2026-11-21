@@ -48,7 +48,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
-	visible = views != null and not views.is_debug_view() and views.get_tank() != null
+	visible = views != null and views.get_tank() != null
 	# Redrawn REDRAW_HZ times a second, not every frame.
 	if visible and Ticks.due(_redraw_clock, delta, REDRAW_HZ):
 		queue_redraw()

@@ -24,7 +24,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	var tank: Tank = views.get_tank() if views != null else null
 	var squad: Squad = tank.squad if tank != null else null
-	visible = squad != null and is_instance_valid(squad) and not views.is_debug_view()
+	visible = squad != null and is_instance_valid(squad)
 	if not visible:
 		return
 	var count: int = squad.data.soldier_count

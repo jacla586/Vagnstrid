@@ -133,6 +133,11 @@ att se att alla har samma version.
 - **Grafikkort:** Windows använder D3D12. Om spelet kraschar direkt eller visar svart skärm
   kan kompisen prova Vulkan. Skapa en genväg till exe-filen och lägg till
   `--rendering-driver vulkan` sist i "Mål".
+- **Krascher utan felmeddelande:** `Vagnstrid.console.exe` (följer med även i release,
+  `debug/export_console_wrapper=2`) startar spelet med ett terminalfönster som visar all
+  utskrift och står kvar efter en krasch. Loggfilen
+  (`%APPDATA%\Godot\app_userdata\Vagnstrid\logs\godot.log`) kan bli tom vid en tidig
+  krasch, eftersom den skrivs med buffert. Lägg till `--verbose` för mer.
 
 ## Banor som inte följer med
 

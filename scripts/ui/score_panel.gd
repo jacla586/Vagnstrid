@@ -30,7 +30,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	var mode: KothMode = KothMode.instance
-	visible = mode != null and views != null and not views.is_debug_view()
+	visible = mode != null and views != null
 	if mode != null and mode != _hooked:
 		_hooked = mode
 		mode.kill_bonus.connect(_on_kill_bonus)

@@ -768,7 +768,9 @@ there and the break is over) and on the match's win/loss. Points
   a spot mark for the other team every `outside_mark_s`, knocked out after `outside_knockout_s` (30;
   `Tank.knock_out_by_rule`, a loss nobody scores). Bots never aim to go outside: `BotController.keep_goal` (set by ThunderRoadBots,
   `_keep_inside`) moves every goal they drive to, ordered or their own (dash, relocation, hiding), `INSIDE_MARGIN_M`
-  (40) inside the corridor. Corridors 400 m (attackers) / 350 m (defenders) half width since 2026-11-12; attackers
+  (40) inside the corridor. Corridors 400 m (attackers) / 350 m (defenders) half width since 2026-11-12 (`thunder_road.tres`); the grown maps
+  (2026-11-20, so far road_to_science) use `thunder_road_large.tres`: 500 / 440 m, zone 192 × 72 m half sizes (20 % more
+  each way), `retreat_line_past_m` 72; attackers
   start with `start_lives_per_tank` × tanks + `start_lives_extra` (5) lives. Round 1 team 0 attacks, round 2 sides swap; more checkpoints wins,
   then more time left. Taking every checkpoint should be rare: the match is meant to be
   won on the count. The `round_break_s` (10 s) pause blocks all fire; after round 1 the
@@ -798,8 +800,12 @@ there and the break is over) and on the match's win/loss. Points
   own PlayerRig isn't counted when filling teams. Checkpoints at least 500 m apart (2026-11-15: every route had ~320-350 m after the first, and attackers spawning 250 m behind the front took the rest at a run; Vidingsjö Red/Orange 5, Linghem 4, Road to Science 4, Corson 3). Missions: `vidingsjo_thunder_red` (Haningeleden) and
   `vidingsjo_thunder_orange` (Ålerydsvägen + Haningeleden), made by
   `tools/thunder_route_from_osm.py` (named OSM roads between two points -> scene; rerun
-  overwrites checkpoint moves; `--join=M` across roundabouts), and `road_to_science_thunder` (Åsmestadsrondellen at
-  Lambohovsleden -> Vallastaden past Isovalen -> Campus Valla -> Mjärdevi and up Datalinjen to the north edge, 3.1 km, 4 checkpoints (the corridor and route extended along Datalinjen 2026-11-15 by hand, so rerunning thunder_route_from_osm.py would lose it); the 5.4 km
+  overwrites checkpoint moves; `--join=M` across roundabouts), and `road_to_science_thunder` (grown 2026-11-20: attackers start on
+  Åsmestadsgatan 300 m south of Åsmestadsrondellen (58.385194, 15.592336) -> CP1 as before (Vallastaden) -> CP2 Universitetsparken ->
+  CP3 (58.394126, 15.560558) -> CP4 Mjärdevi (58.400677, 15.551213) -> 0.5 km on west towards Malmen, 4.55 km; checkpoints at the user's GPS
+  points by `--checkpoints=E,N;...`, mode data `--data=res://data/modes/thunder_road_large.tres`; the box also takes in Ryd
+  (58.408608, 15.563920) and Malmen (58.408194, 15.537552) for a fifth zone; the 3.1 km version's raw data is in
+  `geodata/road_to_science_kort/`); the 5.4 km
   Vidingsjö version was dropped 2026-11-11, raw data in `geodata/road_to_science_lang/`) on the corridor map `road_to_science` (see below), made with
   `--path=geodata/road_to_science/korridor.json` (a ready route of any roads/paths). `corson_thunder` (corridor map
   `corson`, 1.71 × 2.7 km since 2026-11-15, widened east with the NW corner kept): starts east on Malmslättsvägen, through Vallarondellen (CP1), then a straight line north -> south through Campus Valla (2.5 km, 3
@@ -907,14 +913,16 @@ there and the break is over) and on the match's win/loss. Points
   fetches the box round both ends plus 600 m, reusing laser tiles of other areas): with
   `geodata/<name>/korridor.json` (route in SWEREF, `bredd_m`, `kant_m`) the build puts houses,
   trees, bushes and stones only near the route (`geodata/scripts/korridor.py`, ragged edge);
-  terrain and roads cover the whole box. `road_to_science`: route from OSM along a Google Maps
-  measurement (`rutt_bild.json`, `rutt_google.png`, git-ignored), 500 m + 120 m edge (box 3.0 × 1.9 km, so
-  nearly all of it has houses). Steps for a new one:
+  terrain and roads cover the whole box. `road_to_science` (2026-11-20): 4.44 × 3.81 km, route from OSM along a guide line
+  of GPS points (`rutt_bild.json` `ledlinje_sweref`: spawn, the old route to CP1, the zones), 620 m + 120 m edge, plus
+  `grenar_sweref` (houses and trees, no route) from CP4 to Ryd and to Malmen. Steps for a new one:
   `hamta_korridor.py` (`--via` for bends wider than the ends; the user runs it, LM login) ->
-  points read off the screenshot into `<name>/rutt_bild.json` -> `geodata/scripts/rutt_ur_bild.py
+  points read off the screenshot (or `ledlinje_sweref` in SWEREF) into `<name>/rutt_bild.json` -> `geodata/scripts/rutt_ur_bild.py
   <name>` (route + korridor.json) -> `nytt_omrade.py` with the stored corners (build, import,
   scene) -> `tools/corridor_map_scene.py <map> <EnemyName>` (bot, respawn, start) ->
-  `bake_tactical_grid` -> `thunder_route_from_osm.py --path=` -> `render_map_image`.
+  `tools/terrain_control.py geodata/<map>/out` + `import_geodata_map.gd ... --textures` (without them the ground is
+  all rock: the kept material has the auto shader off) -> `render_map_image` (the bake reads the map size from it) ->
+  `bake_tactical_grid` -> `thunder_route_from_osm.py --path=`.
 - Terrain textures (`tools/terrain_textures.json`: 8 ambientCG CC0 1K textures, land cover
   class -> texture, blend/slope/shoulder rules, material settings): `geodata/.venv/bin/python
   tools/pack_terrain_texture.py` fetches and packs them into `assets/terrain/`;
@@ -922,7 +930,8 @@ there and the break is over) and on the match's win/loss. Points
   bits per pixel: class textures, soft borders, rock on steep slopes, gravel road shoulders);
   `tools/import_geodata_map.gd -- <map> res://geodata/<map>/out --textures` puts list, material
   (auto shader off, macro variation) and control/colour maps on an imported map without
-  touching heights (nor the object glb: run the plain import first). Then rerun `render_map_image`. Done: vidingsjo (others still auto shader).
+  touching heights (nor the object glb: run the plain import first). Then rerun `render_map_image`. Done: every map but peking (auto shader)
+  (a plain re-import of a map with textures leaves an empty control map = all rock: always run `--textures` after it).
   Orthophoto (Lantmäteriet, `geodata/scripts/hamta_ortofoto.py`, 0.5 m from the 16 cm 2025 flight): with
   `<out>/ortofoto_tint.png` (`ortofoto_tint.py`: the land cover tint times the photo's variation within each class;
   trees, houses, shadows and forest neutral) and `ortho_tint.enabled` the `--textures` import uses it as the colour
@@ -1101,8 +1110,8 @@ there and the break is over) and on the match's win/loss. Points
   `GameSettings.version` changes. Nothing in it may let a player see more than bots (fog, trees and the far
   vegetation are never offered).
 - Help: F1 (`show_help`) shows `ControlsPanel` in the match (`HelpOverlay`, player rig HUD); the first match
-  shows a card of tips once (`data/ui/intro.txt`, `user://settings.cfg` help/intro_seen). The free debug camera
-  is F2 (`toggle_debug_view`).
+  shows a card of tips once (`data/ui/intro.txt`, `user://settings.cfg` help/intro_seen).
+  There is no free third-person camera (removed 2026-11-20): it defeated the commander idea.
 - Further bindings are defined in the Input Map (project settings), never hardcoded keys.
 
 ## Checking for errors (run these yourself)

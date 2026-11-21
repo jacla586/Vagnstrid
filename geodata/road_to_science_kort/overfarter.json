@@ -1,0 +1,13 @@
+{
+ "anm": "Diken som stridsvagnar ska kunna köra över (scripts/overfarter.py, step3). Bäcken från gångbron vid Vallastaden till trumman under Lambohovsleden: vagnarna fastnade i den djupa V-fåran.",
+ "diken": [
+  {
+   "namn": "bäcken gångbron-Lambohovsleden",
+   "linje_sweref": [[534338.0, 6472529.5], [534506.5, 6472466.7], [534708.0, 6472363.7], [534792.0, 6472321.0]],
+   "botten_halv_m": 5.0,
+   "lyft_m": 2.0,
+   "slant_grader": 10.0,
+   "avsmalning_m": 20.0
+  }
+ ]
+}

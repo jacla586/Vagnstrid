@@ -63,12 +63,12 @@ data_prefix = "field_bush_"
 visibility_end_m = 800.0
 
 [node name="PlayerRig" type="Node3D" parent="." unique_id=635785410 instance=ExtResource("6_q7nom")]
-transform = Transform3D(0.966154, 0, 0.257966, 0, 1, 0, -0.257966, 0, 0.966154, 2414.90, 77.18, 1289.90)
+transform = Transform3D(0.996773, 0, -0.080277, 0, 1, 0, 0.080277, 0, 0.996773, 3823.20, 74.70, 3195.60)
 
 [node name="Enemies" type="Node3D" parent="." unique_id=1402552001]
 
 [node name="EnemyMjardevi" parent="Enemies" unique_id=1402552002 instance=ExtResource("7_tank")]
-transform = Transform3D(0.048581, 0, 0.998819, 0, 1, 0, -0.998819, 0, 0.048581, 610.30, 73.85, 600.80)
+transform = Transform3D(0.441641, 0, 0.897192, 0, 1, 0, -0.897192, 0, 0.441641, 947.20, 81.90, 1490.90)
 team = 1
 
 [node name="EnemyMjardeviController" type="Node" parent="Enemies" unique_id=1402552003 node_paths=PackedStringArray("tank")]

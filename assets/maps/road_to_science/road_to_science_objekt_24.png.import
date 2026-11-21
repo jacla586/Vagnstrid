@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dj2k8cu1dl6bk"
+uid="uid://cjg77bddjmbmj"
 path.s3tc="res://.godot/imported/road_to_science_objekt_24.png-d06bcbb8c70fa9f48b9141d3203c178c.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "34591cb6bbebdfbbbbe1b3eef79add7e"
+"md5": "c3a2098a773a3d34acbbac87d4e0a950"
 }
 
 [deps]
