@@ -61,6 +61,17 @@ Per tick i 20 mot 20:
   - Trupper 3,2: `_move_soldiers` 1,1, `_walk` 0,46, spaning 0,43, `_check_run_over` 0,38, minor 0,11.
   - ThunderRoadBots 0,72 och ThunderRoadMode 0,70 (lägesregler varje tick), TankLooks 0,45, TreeField 0,2.
 
+- **Vad som växer under matchen (22 nov,** `tools/perf/growth_probe.gd`**, headless 20 mot 20, Thunder Red):**
+  fällda träd. Varje `FallingTree` låg kvar som en egen nod med trädets odelade mesh (inga detaljnivåer,
+  ingen räckviddsgräns, skugga): 462 efter 200 s, +780 `MeshInstance3D`. Nu läggs ett liggande träd tillbaka i
+  cellens MultiMesh och noden tas bort. Med fönster efter 90 s: 18 → 23 fps, bildruta 57 → 43 ms, draw calls
+  7 278 → 6 369, GPU 19,2 → 16,1 ms, tick 18,5 → 16,9 ms. Headless växer ticket inte (12–14 ms hela vägen),
+  med fönster gör det fortfarande (13,8 → 16,9 ms på 90 s), och draw calls växer +700 (vrak, minor, decals,
+  rök). `GunSmoke` når ~50–100 samtidigt headless (partiklarnas `finished` kanske inte kommer utan renderare).
+- **Spaningens takt (22 nov,** `perf_match.gd -- clear <scen> size=20 scan`**, faserna varvade):** halv takt
+  för alla botar och trupper sparar ~1 ms per tick, en fjärdedel ~1,6 ms (av ~15). Det är taket för att dela
+  strålarna i buntar, så det är inte värt mycket.
+
 ## Provat utan effekt och borttaget
 
 - **Återanvända fjädringsstrålar för stillastående vagnar, i GDScript:** 37 % färre strålar, men

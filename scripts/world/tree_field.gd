@@ -238,7 +238,12 @@ func fell_tree(tree: int, direction: Vector3) -> void:
 	var foot: Vector3 = _position[tree]
 	falling.landed.connect(func(tilt: Basis) -> void:
 		if _physics != null:
-			_physics.tip_canopy(chunk, shape_index, tree, foot, tilt))
+			_physics.tip_canopy(chunk, shape_index, tree, foot, tilt)
+		# Lying, it goes back into its cell's MultiMesh (detail levels, draw range, one draw
+		# call for the cell) and the node goes: a node per felled tree drew every one at full
+		# detail at any range, and a 20 v 20 fells hundreds (+700 draw calls in 3 minutes).
+		_set_drawn(tree, Transform3D(tilt * drawn.basis, drawn.origin))
+		falling.queue_free())
 	tree_felled.emit(get_tree_position(tree), direction)
 	tree_index_felled.emit(tree, direction)
 

@@ -21,6 +21,11 @@ const PROC_PHASES: Array = [["b1", 6.0], ["~squads", 6.0], ["b2", 6.0], ["~looks
 		["~grass", 6.0], ["b4", 6.0], ["~ui", 6.0], ["b5", 6.0], ["~audio", 6.0], ["b6", 6.0], ["~fx", 6.0],
 		["b7", 6.0], ["~bots", 6.0], ["b8", 6.0], ["~squads", 6.0], ["b9", 6.0], ["~ui", 6.0], ["b10", 6.0],
 		["~grass", 6.0], ["b11", 6.0]]
+## `scan` on the command line runs SCAN_PHASES: base ("b"), every bot's and squad's look round at half
+## the rate ("x2") and a quarter ("x4"), interleaved so the match's drift falls on all alike: the most
+## that casting a half or a quarter of the sight rays per round could save.
+const SCAN_PHASES: Array = [["b1", 8.0], ["x2a", 8.0], ["x4a", 8.0], ["b2", 8.0], ["x2b", 8.0], ["x4b", 8.0],
+		["b3", 8.0], ["x2c", 8.0], ["x4c", 8.0], ["b4", 8.0], ["x2d", 8.0], ["x4d", 8.0]]
 const OFF_PROCESS: Dictionary = {"~squads": ["Squad"], "~bots": ["BotController"], "~looks": ["TankLooks"],
 		"~grass": ["GroundCoverField", "GroundCoverCanopy"], "~audio": ["TankAudio"],
 		"~fx": ["TankExhaust", "TankDust"], "~weather": ["WeatherView", "RainField"], "~ui": []}
@@ -45,7 +50,10 @@ func _initialize() -> void:
 	_vsync = args.has("vsync")
 	if args.has("proc"):
 		_phases = PROC_PHASES
-	if args.size() > 1 and args[1] != "vsync" and args[1] != "proc" and not args[1].begins_with("size="):
+	if args.has("scan"):
+		_phases = SCAN_PHASES
+	if args.size() > 1 and args[1] != "vsync" and args[1] != "proc" and args[1] != "scan" \
+			and not args[1].begins_with("size="):
 		scene_path = "res://scenes/scenarios/%s.tscn" % args[1]
 	Weather.set_current(Weather.load_preset(_weather))
 	MatchSettings.load_settings()
@@ -137,8 +145,9 @@ func _switch(phase: String) -> void:
 		print("phase %s: _process off on %d nodes" % [phase, _off_proc.size()])
 	for n: Node in current_scene.find_children("*", "BotController", true, false):
 		pass
-	_scan_scale(2.0 if phase == "scan/2" else 1.0)
-	_sq_scale(4.0 if phase == "sqscan/4" else 1.0)
+	var k: float = 4.0 if phase.begins_with("x4") else 2.0 if phase.begins_with("x2") else 1.0
+	_scan_scale(2.0 if phase == "scan/2" else k)
+	_sq_scale(4.0 if phase == "sqscan/4" else k)
 	var classes: Array = OFF.get(phase, [])
 	if classes.is_empty():
 		return

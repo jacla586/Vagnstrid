@@ -975,7 +975,8 @@ there and the break is over) and on the match's win/loss. Points
   `FieldTreePhysics` makes one static body (trunks, layer 1) and one area (crowns,
   layer 5) per chunk in the PhysicsServer3D, with TreeField as collider; `TreePush`
   is a copy of BreakableTree's push rule (keep them in step); felled trees animate
-  with `FallingTree`. Sizes per species in `data/world/field_tree_*.tres`
+  with `FallingTree`, and once lying go back into their cell's MultiMesh (the node is freed: a node per felled
+  tree drew each at full detail at any range, +700 draw calls in 3 min of 20 v 20, 2026-11-22). Sizes per species in `data/world/field_tree_*.tres`
   (`FieldTreeData`). Bushes are a second TreeField (`Bushes`, data `field_bush_*.tres`,
   `has_trunk = false`): crowns block sight (and count as cover), tanks and shells pass.
   `tree.tscn`/`BreakableTree` are no longer used by any map.
