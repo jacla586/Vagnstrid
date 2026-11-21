@@ -432,8 +432,10 @@ func _update_team_spot() -> void:
 	var best: Tank = null
 	var best_age: float = bot_data.spot_remark_s
 	for key: Variant in _spotted.keys():
+		if not is_instance_valid(key):   # a tank removed from the match (casting a freed object is an error)
+			continue
 		var other := key as Tank
-		if other == null or not is_instance_valid(other) or other.is_knocked_out() \
+		if other == null or other.is_knocked_out() \
 				or float(_unseen_time.get(other, 0.0)) > 0.0:
 			continue
 		var age: float = _clock - float(_marked_at.get(other, -INF))

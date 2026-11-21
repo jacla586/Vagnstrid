@@ -1970,8 +1970,10 @@ func _nearest_enemy_soldier(of: Squad = null) -> SoldierHitbox:
 	var best: SoldierHitbox = null
 	var best_d: float = data.engage_range_m
 	for target: Variant in _in_sight.keys():
+		if not is_instance_valid(target):   # casting a freed object is an error
+			continue
 		var hb := target as SoldierHitbox
-		if hb == null or not is_instance_valid(hb) or not _spotted.has(hb) or hb.squad == null \
+		if hb == null or not _spotted.has(hb) or hb.squad == null \
 				or (of != null and hb.squad != of) or not hb.squad.is_soldier_exposed(hb.index):
 			continue
 		var d: float = global_position.distance_to(hb.global_position)
