@@ -93,6 +93,12 @@ längst ned under "Efter tävlingen".
 
 - Indirekt eld, svagare Thunder Road-bottar, bredare checkpoint-zon (se minnesanteckningarna)
 - Line-ups (tre vagnar inom en budget), lagbefälhavare som byter bot-roller
+- **Kanske: snyggare träd med [ez-tree](https://github.com/dgreenheck/ez-tree)** (MIT, procedurella träd, GLB-export,
+  egna detaljnivåer). Bedömt 22 nov: inte rakt av. Dagens träd har 300–1 700 trianglar och inga alfalöv, och
+  Vidingsjö har ~71 000 laserträd. ez-trees alfa-utskurna lövkort med skuggor till 450 m och kikarvyerna är för
+  dyra. Möjligt bara som närmodeller (~60–100 m runt kameran, 3 000–6 000 trianglar, få stora löv, ett kort per
+  löv), med dagens modeller längre bort. Kronornas siktblockerare måste då följa de nya formerna. Mät först
+  med `tools/render_views.gd` (forest_edge, binoculars_edge) på en art.
 - **Lång Thunder Road-bana:** Ullstämma → förbi Vidingsjö västerut → längs Söderleden ner mot
   "stora Coop" (vilket Coop som avses ska bestämmas med en punkt). Som korridorkarta
   (`geodata/scripts/hamta_korridor.py`, Vidingsjös laserrutor återanvänds; hämtningen kör Jacob, LM-inloggning).
@@ -106,7 +112,3 @@ längst ned under "Efter tävlingen".
   - Föregångare: första Road to Science gick 5,4 km från Vidingsjö (rådata i
     `geodata/road_to_science_lang/`), kortades till 2,5 km den 11 nov (varför står inte nedskrivet).
   - Orienteringskartornas beslut (22 nov) gäller den nya banan också.
-- **Spela som gruppchef:** springa med truppen (de andra följer efter), skjuta gevär och pansarvärnsraket
-  i förstapersonsvyn (V). Stort jobb: först offline (rörelse, gevär, följare), sedan raketen och nätet
-  (egen soldat förutsagd lokalt). Öppna frågor: vad gör vagnen under tiden, vad händer om den slås ut,
-  poäng för raketträffar.
