@@ -148,8 +148,10 @@ extends Resource
 ## Pitch limits through the periscope (degrees).
 @export var periscope_pitch_min_deg: float = -10.0
 @export var periscope_pitch_max_deg: float = 15.0
-## Gunner's sight zoom levels as vertical field of view (degrees), widest first.
-@export var gunner_sight_fov_deg: PackedFloat32Array = PackedFloat32Array([24.0, 12.0])
+## Gunner's sight zoom as vertical field of view (degrees): the widest and the narrowest
+## of these are the range the mouse wheel zooms through smoothly (GunnerCamera.zoom_step);
+## levels between them don't matter any more (2026-11-22: was a step between fixed levels).
+@export var gunner_sight_fov_deg: PackedFloat32Array = PackedFloat32Array([30.0, 12.0])
 ## Gunner's sight range ladder: a mark every step, out to max, labels every label step (m).
 @export var sight_range_step_m: float = 100.0
 @export var sight_range_max_m: float = 2000.0

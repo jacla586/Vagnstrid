@@ -44,5 +44,5 @@ guns = Array[ExtResource("4_gun_script")]([ExtResource("g0"), ExtResource("g1"),
 armour_packages = Array[ExtResource("5_pack_script")]([ExtResource("p0"), ExtResource("p1"), ExtResource("p2")])
 cost = 170
 traverse_factor = 0.85
-gunner_sight_fov_deg = PackedFloat32Array(24, 12, 8)
+gunner_sight_fov_deg = PackedFloat32Array(30, 12, 8)
 bot_role = ExtResource("role_sniper")

@@ -104,8 +104,8 @@ static func _specials(cfg: TankConfig, d: TankData) -> Array:
 			out.append(["fords water well", 1])
 		if d.smoke_salvos > base.smoke_salvos:
 			out.append(["%d smoke salvos" % d.smoke_salvos, 1])
-		if d.gunner_sight_fov_deg.size() > base.gunner_sight_fov_deg.size():
-			out.append(["%d sight zoom levels" % d.gunner_sight_fov_deg.size(), 1])
+		if _narrowest(d.gunner_sight_fov_deg) < _narrowest(base.gunner_sight_fov_deg):
+			out.append(["strong gun sight", 1])
 		elif _narrowest(d.gunner_sight_fov_deg) > _narrowest(base.gunner_sight_fov_deg):
 			out.append(["weak gun sight", -1])
 	if chassis != null and chassis.signature_spot_factor < 1.0:

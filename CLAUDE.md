@@ -534,8 +534,8 @@ shows on the minimap. This is what we test first.
 - Five presets, `data/configs/1_bt7 .. 5_sherman.tres` (main menu, `KothData.bot_configs`,
   `ThunderRoadData.bot_configs`; default T-34), each with a clear strength and weakness:
   BT-7 flanker (fastest, can't get through fronts), T-34 brawler (48 km/h, sloped armour, best
-  terrain: climb 36°, fords; weakest optics 22/15°, 76 mm 100 mm pen, strong HE), Pz IV sniper
-  (145 mm pen at 630 m/s, 34 dmg, 5.5 s, three sight levels 24/12/8°; 36 km/h, slow traverse,
+  terrain: climb 36°, fords; weakest optics 28-15°, 76 mm 100 mm pen, strong HE), Pz IV sniper
+  (145 mm pen at 630 m/s, 34 dmg, 5.5 s, strongest sight 30-8°; 36 km/h, slow traverse,
   50/30 mm turret, 20 mm rear), Sherman all-rounder on the move (39 km/h, gun stabiliser 0.5 up to
   `gun_stabiliser_max_rate_deg` 4°/s of hull pitch: steady driving held, throttle kicks get through;
   traverse ×1.3, 5 s reload, 4 smoke salvos; tall: spotted sooner, `signature_spot_factor` 0.85;
@@ -1102,6 +1102,10 @@ there and the break is over) and on the match's win/loss. Points
   `data/world/spotting.tres`. Commander view: turret holds its hull-relative
   direction; T lays it on the view. MG: mouse 2 (roof MG in the commander view with the hatch
   open, coaxial otherwise). Binoculars: B. Hatch: H.
+- Gunner's sight zoom (2026-11-22): the mouse wheel zooms smoothly (`GunnerCamera.zoom_step` 0.88 a notch) between
+  the widest and narrowest of `TankData.gunner_sight_fov_deg` (30° wide on all but the T-34's 28°, so close targets
+  and driving from the sight work; the narrowest kept). The damage panel's look arrow always shows the commander's
+  view, also from the sight (the turret icon shows the gun). A soldier hit gives the shooter no text.
 - Gunner's sight (`GunnerReticle`): the centre circle shows the reload: dark while loading, filling clockwise from
   12 o'clock in green (`loaded_color`), all green with a round in the breech.
 - Scoreboard: Tab (King of the Hill). Big map: M (view only; mouse wheel zooms about the cursor, drag moves a zoomed
