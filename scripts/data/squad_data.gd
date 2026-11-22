@@ -147,6 +147,13 @@ extends Resource
 @export var soldier_spot_factor: float = 2.5
 @export var concealment: ConcealmentData
 
+@export_group("Far from players")
+## Beyond this distance (m) from every human player's tank and the camera (Relevance), the
+## squad looks round far_scan_factor times as seldom (same rules, slower). Near again within far_m.
+@export var far_m: float = 400.0
+@export var far_margin_m: float = 100.0
+@export var far_scan_factor: float = 2.0
+
 @export_group("Being spotted")
 ## How these soldiers are seen by others (bots and squads; the player only by eye).
 ## On top of soldier_spot_factor and cover (the viewer's ConcealmentData): the uniform...

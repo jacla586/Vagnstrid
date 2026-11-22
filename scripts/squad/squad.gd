@@ -756,6 +756,8 @@ func _physics_process(delta: float) -> void:
 		return
 	_update_bodies(delta)
 	_withdraw_timer = maxf(_withdraw_timer - delta, 0.0)
+	if Ticks.due(_far_clock, delta, FAR_CHECK_HZ):
+		_far = Relevance.is_far(self, global_position, _far, data.far_m, data.far_margin_m)
 	_scan_timer -= delta
 	if _scan_timer <= 0.0:
 		_scan_timer += _scan_interval()
@@ -1445,8 +1447,15 @@ func _is_quiet() -> bool:
 
 func _scan_interval() -> float:
 	return data.scan_interval_s * clampf(float(_enemy_count)
-			/ maxf(float(data.scan_reference_enemies), 1.0), 1.0, data.scan_max_stretch)
+			/ maxf(float(data.scan_reference_enemies), 1.0), 1.0, data.scan_max_stretch) \
+			* (data.far_scan_factor if _far else 1.0)
 
+
+## Far from every human player and the camera (Relevance, SquadData "Far from players"):
+## looks round more seldom. Checked in _physics_process FAR_CHECK_HZ times a second.
+const FAR_CHECK_HZ: float = 2.0
+var _far: bool = false
+var _far_clock := PackedFloat32Array([0.0])
 
 
 ## Enemy tanks farther than this (m) are looked at every 2nd scan (_scan).

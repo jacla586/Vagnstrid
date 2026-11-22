@@ -21,7 +21,8 @@ var _ab_us: Array[int] = [0, 0]
 var _ab_ticks: Array[int] = [0, 0]
 var _bunch_default: Dictionary = {}
 ## What `ab` switches: "soldiers" (soldier_look_rounds 1 <-> default), "threads" (ScanBatch
-## looks on threads <-> all on the main thread), "contacts" (the
+## looks on threads <-> all on the main thread), "think" (BotController.think_hz 30 <-> 15),
+## "relevance" (Relevance.enabled: far bots and squads slower <-> all at full pace), "contacts" (the
 ## tanks' contact_monitor off <-> on). The split (SPLIT line) is summed per side too.
 var _ab_kind: String = "soldiers"
 var _ab_split: Array[int] = [0, 0]
@@ -143,6 +144,10 @@ func _set_bunching(on: bool) -> void:
 func _set_ab(on: bool) -> void:
 	if _ab_kind == "threads":
 		ScanBatch.threaded = on
+	elif _ab_kind == "relevance":
+		Relevance.enabled = on
+	elif _ab_kind == "think":
+		BotController.think_hz = 15.0 if on else 30.0
 	elif _ab_kind == "contacts":
 		for t: Node in get_nodes_in_group("tanks"):
 			(t as RigidBody3D).contact_monitor = on

@@ -41,6 +41,15 @@ extends Resource
 ## Cover and movement rules for the tanks this crew looks for. Null = ignored.
 @export var concealment: ConcealmentData
 
+@export_group("Far from players")
+## Beyond this distance (m) from every human player's tank and the camera (Relevance), the
+## crew thinks far_think_hz times a second and looks round far_scan_factor times as seldom:
+## the same rules at a slower pace (a fight nobody watches). Near again within far_m.
+@export var far_m: float = 400.0
+@export var far_margin_m: float = 100.0
+@export var far_think_hz: float = 7.5
+@export var far_scan_factor: float = 2.0
+
 @export_group("Gunnery")
 ## Range estimation error for the first shot, as a share of the true range (±).
 @export var range_error_start: float = 0.3

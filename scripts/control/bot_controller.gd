@@ -227,6 +227,7 @@ func _ready() -> void:
 		# Bots look round at different ticks: all at once makes one very slow frame.
 		_scan_timer = _rng.randf() * bot_data.scan_interval_s
 	ScanBatch.register(self)
+	_think_slot = _rng.randi_range(0, 63)
 	if tank != null:
 		tank.hit_taken.connect(_on_hit_taken)
 		tank.fired.connect(_on_fired)
@@ -496,6 +497,22 @@ func _physics_process(delta: float) -> void:
 		_scan_waits = maxi(_scan_waits, 0) + 1   # due: ScanBatch does it (scan_due)
 	elif _scan_waits > 0:
 		_scan_waits += 1
+	# The crew thinks think_hz times a second (bots in turn, ticks between); in between the
+	# tank goes on with the last command, less its one-off parts (a shot, smoke, an order).
+	_think_dt += delta
+	if Ticks.due(_far_clock, delta, FAR_CHECK_HZ):
+		_far = Relevance.is_far(tank, tank.global_position, _far, bot_data.far_m, bot_data.far_margin_m)
+	var every: int = Ticks.every(minf(think_hz, bot_data.far_think_hz) if _far else think_hz)
+	if every > 1 and (Engine.get_physics_frames() + _think_slot) % every != 0:
+		_command.fire = false
+		_command.spot = false
+		_command.smoke = false
+		_command.abandon = false
+		_command.squad_order = Squad.ORDER_NONE
+		tank.set_command(_command)
+		return
+	delta = _think_dt
+	_think_dt = 0.0
 	_command.throttle = 0.0
 	_command.steering = 0.0
 	_command.smoke = _smoke_pending
@@ -618,6 +635,18 @@ func _dirt_factor() -> float:
 	return lerpf(1.0, tank.data.optics_dirt_spot_factor, tank.get_optics_dirt())
 
 
+## How often a crew thinks (Hz): orders, aim, fire, its squad; 15 at 30 ticks (2026-11-22:
+## ~0.9 ms a tick at 20 v 20). The look rounds keep their own pace (scan_interval_s).
+static var think_hz: float = 15.0
+var _think_dt: float = 0.0
+var _think_slot: int = 0
+## Far from every human player and the camera (Relevance, BotData "Far from players"):
+## thinks and looks round more seldom. Checked FAR_CHECK_HZ times a second.
+const FAR_CHECK_HZ: float = 2.0
+var _far: bool = false
+var _far_clock := PackedFloat32Array([0.0])
+
+
 ## A due look round (flagged in _physics_process) runs in ScanBatch, on a light frame
 ## (Ticks), or after Ticks.LIGHT_FRAME_WAIT_TICKS ticks without one in the next frame.
 var _scan_waits: int = 0
@@ -639,7 +668,7 @@ var _enemy_count: int = 0
 func _scan_interval() -> float:
 	var stretch: float = clampf(float(_enemy_count) / maxf(float(bot_data.scan_reference_enemies), 1.0),
 			1.0, bot_data.scan_max_stretch)
-	return bot_data.scan_interval_s * stretch
+	return bot_data.scan_interval_s * stretch * (bot_data.far_scan_factor if _far else 1.0)
 
 
 ## A look round in three parts (ScanBatch): scan_begin on the main thread (which tanks and

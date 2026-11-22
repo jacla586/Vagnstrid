@@ -56,6 +56,11 @@ shows on the minimap. This is what we test first.
   −0.9 ms per frame at 20 v 20: GDScript object access scales ~3.5x at best on threads (ObjectDB's global lock,
   shared refcounts; release builds too), so the next step for looks is C++. `ScanBatch.threaded = false` runs
   everything on the main thread with the prefetch (A/B: `growth_probe.gd -- ab=threads`).
+- Bots think at `BotController.think_hz` (15; in between the tank keeps the last command less its one-off parts:
+  fire, spot, smoke, abandon, squad order) and, with squads, slower still far from people (`Relevance`: beyond
+  `BotData`/`SquadData.far_m` (400 m) from every human tank (group `human_controllers`: PlayerController,
+  RemoteController) and the camera: `far_think_hz` 7.5, look rounds `far_scan_factor` 2x apart). Same rules, slower:
+  bots far away still fight each other. A/B: `growth_probe.gd -- ab=think` / `ab=relevance`.
 - Measure first: the time must be GDScript, not engine calls. `VagnFast.apply_suspension` (Tank) was only 3 %
   faster (1.66 vs 1.72 ms per tick at 20 v 20): the cost is the rays inside the engine (~5 µs each), not the loop.
 

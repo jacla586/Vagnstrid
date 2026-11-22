@@ -119,6 +119,22 @@ Per tick i 20 mot 20:
   release-bygge. Rena beräkningar skalar fint (0,9 → 1,4 ms). Trådarnas sammanlagda arbetstid blir 4–7 ms för det
   som tar ~2,5 ms på en tråd. `PhysicsRayQueryParameters3D.new()` per stråle registrerar dessutom ett objekt varje gång.
 
+- **Botarnas tänkande i 15 Hz (22 nov,** `BotController.think_hz`**):** order, sikte, eld och trupp varannan tick
+  (botarna turas om). Däremellan går vagnen på det senaste kommandot, utan engångsdelarna (skott, rök, order,
+  spotting). A/B (`ab=think`, 240 s): tick 12,50 → 11,89 ms, alltså −0,6 ms. Spaningen behåller sin egen takt.
+- **AI-detalj efter relevans (22 nov,** `Relevance`**, `scripts/ai/relevance.gd`):** botar och trupper längre än
+  `far_m` (400 m, marginal 100 m) från varje mänsklig spelares vagn (PlayerController/RemoteController, gruppen
+  `human_controllers`) och kameran tänker i `far_think_hz` (7,5) och spanar `far_scan_factor` (2) gånger så sällan,
+  med samma regler (`BotData`/`SquadData` "Far from players"). A/B (`ab=relevance`, testspelaren stilla vid
+  anfallarnas start): 600 m −0,27 ms, 300 m −0,44 ms (tick + bildruta). Litet, eftersom båda lagen samlas kring
+  zonen, och spelaren är där.
+- **Mönstret från sökningen (22 nov):** billiga test först, glesare koll på avstånd (World of Tanks 9.16), och
+  AI-LOD efter relevans för spelaren. Vi gör alla tre nu. Återstår: förberäknad synlighet mellan rutor (minne och
+  3D-höjder gör den svår) och delad spaning (bryter regeln om egna ögon).
+- **Läget efter 22 nov:** kostnaden är utspridd. Vagnarna ~3,7–4 ms, truppernas gång ~2,1, botarnas tänkande ~1,8,
+  spaningen ~1,5–1,9 (trådad), lägena ~1,1, motorns köer ~1,7, Jolt ~1,7 och bildrutans `_process` ~2. Ingen enskild
+  del ger mer än någon ms.
+
 ## Provat utan effekt och borttaget
 
 - **Återanvända fjädringsstrålar för stillastående vagnar, i GDScript:** 37 % färre strålar, men

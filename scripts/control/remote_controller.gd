@@ -21,6 +21,10 @@ var _smoke_pending: bool = false
 var _abandon_pending: bool = false
 
 
+func _ready() -> void:
+	add_to_group(Relevance.GROUP)
+
+
 func request_action(kind: int) -> void:
 	match kind:
 		ACTION_SMOKE: _smoke_pending = true
