@@ -649,6 +649,24 @@ shows on the minimap. This is what we test first.
   breakers follow their lead's side, near-road posts keep `POST_CENTRE_GAP` off the road; BEHIND_ZONE moves to the zone's
   front when `pushed_back`; FLANK_RESERVE counterattacks the attackers in the zone from the side,
   `_update_counter`); `ThunderRoadData.defender_post_*_share` no longer used.
+- Bot commander (`TeamCommander`, `scripts/ai/team_commander.gd`, 2026-11-22; plan in the chat of that day): one per
+  team, bots only (never orders or shows anything to players), on/off and level from the main menu's "Bot
+  commander" (`MatchSettings.bot_commander`: Off / Normal / Sharp -> `CommanderData`, `data/bots/commander_*.tres`).
+  Every `think_interval_s` it reads the fight round the objective by three lanes across the front (own tanks, known
+  enemies, own losses lately: `TeamSituation.KnockoutLog` entries now carry the victim's position and the killer's if
+  the team knew of him) and decides a main effort lane (least known enemies and losses, held `main_hold_s` unless
+  that lane bled `switch_after_losses`), snipers (knock-outs from `long_range_m`+) and flankers (known enemies
+  `flank_behind_m` behind the team's middle). ThunderRoadBots feeds it (`_update_commanders`) and acts on it:
+  `main_share` of the developing attackers take lanes in the main effort's lane (`_lane_shares`), the rest spread
+  over the width; `hunters` bots (flankers, scouts, harassers first) go round each sniper to a spot `hunt_range_m`
+  off its side for `hunt_s` (`_order_hunt`); `guards` bots nearest a flanker hold against it `guard_s`
+  (`_order_guard`). `ThunderRoadBots.commander_teams` (bit per team) gives only some teams one (tests).
+  Logged with `growth_probe.gd -- cmd=N`. Measure: `tools/ai/commander_match.gd -- [scenario] size=6 level=N team=T`
+  plays a whole bots-only match (PlayerRig removed), the commander on for team T only; both teams attack once on
+  the same route; prints a MATCH line (~4 min a 6 v 6 match). Measured 2026-11-22 (Sharp, 6 v 6 Thunder Red, 32
+  matches both ways round): commander teams won 19, lost 12, 1 draw, checkpoints 98 v 74 (one-sided p 0.14: likely
+  better, not proven; outcomes swing 0 or 5; only the main effort acts in 6 v 6). Next: a gathered push (wait for the
+  wave), reserve and counterattack timing, squads and smoke, then KotH.
 - `BotGroup` moves bots together: column along a route, on the first contact
   (shared to all members) line abreast towards an objective, short halts to fire.
   Bots on an ordered route that get stuck reverse and detour sideways.

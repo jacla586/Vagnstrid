@@ -8,6 +8,7 @@ extends SceneTree
 ## `ab` / `ab=<kind>`: an A/B switch (_set_ab: "soldiers" = soldier_look_rounds, "contacts" = the tanks'
 ## contact_monitor) off and on every AB_S (A = off, B = on); the tick time of each is summed
 ## (with --fixed-fps 30: one tick a frame, as in a slow windowed match).
+## `cmd=N`: the bots' commander at level N (MatchSettings.bot_commander), its decisions logged.
 ## `classes`: _physics_process time per class (CLASS_BANDS), each run in its own priority band.
 ## (default vidingsjo_thunder_red, 20 a side, 240 s). Headless: no draw calls, the tick only.
 
@@ -66,6 +67,9 @@ class Stamp extends Node:
 var _last: Dictionary = {}
 
 
+var _commander_data: CommanderData
+
+
 func _initialize() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
 	var scene_path: String = "res://scenes/scenarios/vidingsjo_thunder_red.tscn"
@@ -76,6 +80,11 @@ func _initialize() -> void:
 			MatchSettings.team_size = int(a.substr(5))
 		elif a.begins_with("secs="):
 			_end_s = float(a.substr(5))
+		elif a.begins_with("cmd="):   # bot commander level, decisions logged
+			MatchSettings.bot_commander = int(a.substr(4))
+			_commander_data = TeamCommander.data_for_setting()   # kept: the cached copy is the one used
+			if _commander_data != null:
+				_commander_data.log_decisions = true
 		elif a == "classes":
 			_by_class = true
 		elif a == "ab":

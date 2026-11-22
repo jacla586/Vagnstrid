@@ -156,9 +156,12 @@ func in_contact() -> bool:
 
 
 ## The kill feed as bot directors keep it: every knock-out of a tank in the scene with
-## when, the victim's team and the killer's (-1: nobody), and each killer's last one.
+## when, the victim's team and the killer's (-1: nobody), where the victim stood and where
+## the killer was if the victim's team knew of him (`known_check`(team, killer) -> bool;
+## else Vector3.INF), and each killer's last one.
 class KnockoutLog:
-	var entries: Array = []  # [clock, victim team, killer team]
+	var entries: Array = []  # [clock, victim team, killer team, victim position, killer position]
+	var known_check: Callable = Callable()
 	var last_kill_of: Dictionary = {}  # Tank -> clock
 	var clock: float = 0.0
 	var _hooked: Dictionary = {}
@@ -173,7 +176,10 @@ class KnockoutLog:
 			_hooked[tank.get_instance_id()] = true
 			tank.eliminated.connect(func(killer: Tank, _assists: Array[Tank]) -> void:
 				var valid: bool = killer != null and is_instance_valid(killer)
-				entries.append([clock, tank.team, killer.team if valid else -1])
+				var by: Vector3 = Vector3.INF
+				if valid and known_check.is_valid() and bool(known_check.call(tank.team, killer)):
+					by = killer.global_position
+				entries.append([clock, tank.team, killer.team if valid else -1, tank.global_position, by])
 				if valid:
 					last_kill_of[killer] = clock)
 		while not entries.is_empty() and clock - float(entries[0][0]) > keep_s:

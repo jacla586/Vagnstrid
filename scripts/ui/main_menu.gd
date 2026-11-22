@@ -143,12 +143,22 @@ func _ready() -> void:
 	_allies.tooltip_text = "Bot tanks fighting on your side"
 	var allies_field: Control = _field("Bot allies", _allies)
 	var weather_field: Control = _field("Weather", _weather)
+	# The bots' team commander (TeamCommander): how well the bot teams work together.
+	var commander := OptionButton.new()
+	for i: int in MatchSettings.COMMANDER_NAMES.size():
+		commander.add_item(MatchSettings.COMMANDER_NAMES[i], i)
+	commander.select(MatchSettings.bot_commander)
+	commander.item_selected.connect(func(i: int) -> void: MatchSettings.set_bot_commander(i))
+	commander.tooltip_text = "How well bot teams work together (a commander for the bots only)"
+	var commander_field: Control = _field("Bot commander", commander)
+	commander_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	size_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	allies_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	weather_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	match_row.add_child(size_field)
 	match_row.add_child(allies_field)
 	match_row.add_child(weather_field)
+	match_row.add_child(commander_field)
 	box.add_child(match_row)
 	var free_group: int = GROUP_TAGS.find("_free")
 	var show_group: Callable = func(i: int) -> void:
