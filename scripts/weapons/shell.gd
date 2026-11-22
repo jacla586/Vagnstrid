@@ -88,8 +88,8 @@ func _physics_process(delta: float) -> void:
 		_report_near_misses()
 		_finish()
 		return
-	if _shooter != null and not is_instance_valid(_shooter):
-		_shooter = null   # freed mid-flight: a freed Object can't be passed as a typed argument
+	if not is_instance_valid(_shooter):
+		_shooter = null   # freed mid-flight (a freed Object == null, so test validity, not null): it can't be passed as a typed argument
 	var from: Vector3 = global_position
 	var next: PackedVector3Array = Ballistics.integrate(from, _velocity, _drag_factor, delta)
 	var query := PhysicsRayQueryParameters3D.create(from, next[0])

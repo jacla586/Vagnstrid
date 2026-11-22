@@ -16,3 +16,4 @@ gather_after_wave_s = 35.0
 commit_reserve_margin = 1
 counter_min_ratio = 0.8
 deny_time_s = 45.0
+threat_shift_share = 0.6

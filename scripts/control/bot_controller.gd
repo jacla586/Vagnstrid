@@ -538,7 +538,7 @@ func _physics_process(delta: float) -> void:
 		_relocate_hold -= delta
 		if _relocate_hold <= 0.0:
 			_relocating = false
-	if _target != null and not is_instance_valid(_target):
+	if not is_instance_valid(_target):   # a freed Object == null, so never test null first
 		_target = null
 	if not _pending_plan.is_empty() and TacticalMap.may_plan():
 		var p: Array = _pending_plan
@@ -1089,7 +1089,7 @@ func _forget(other: Tank) -> void:
 ## player tank when a network game spawns the players). Keys are checked untyped:
 ## a freed tank can't even be assigned to a Tank variable.
 func _drop_freed() -> void:
-	if _target != null and not is_instance_valid(_target):
+	if not is_instance_valid(_target):   # a freed Object == null, so never test null first
 		_target = null
 	for memory: Dictionary in [_awareness, _spotted, _cover, _unseen_time, _look_wait,
 			_hull_visible, _head_visible, _reported, _last_known, _squad_awareness,
