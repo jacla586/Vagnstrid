@@ -2354,7 +2354,8 @@ func _check_run_over() -> void:
 				if _state == State.WIPED:
 					return
 
-## A shell, bullet or fragment hit soldier `index`: he goes down.
+## A shell, bullet or fragment hit soldier `index`: he goes down. Returns null: the shooter
+## gets no hit text (no "SOLDIER DOWN"; he sees the man fall), and nothing else reads it.
 func soldier_hit(index: int) -> HitResult:
 	if net_puppet or not is_soldier_exposed(index):
 		return null
@@ -2365,15 +2366,13 @@ func soldier_hit(index: int) -> HitResult:
 		_fight_losses += 1
 		if _clock - _fired_on_at < FOE_CREDIT_S:
 			_foe.on_foe_soldier_down(self)
-	var result := HitResult.new()
-	result.note = "SOLDIER DOWN"
 	if get_alive_count() == 0:
 		_end_engagement(false)
 		_wipe()
 	elif _soldiers.size() - get_alive_count() >= data.withdraw_after_losses:
 		_end_engagement(false)
 		_withdraw()
-	return result
+	return null
 
 
 ## Soldier `index` falls (host or, from the host's news, a client).
