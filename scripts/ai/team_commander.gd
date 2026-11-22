@@ -7,7 +7,7 @@ extends RefCounted
 ## or shows anything to players. Level and on/off: MatchSettings.bot_commander ->
 ## CommanderData (for_setting).
 ##
-## Step 1: the picture and the decisions, logged; the directors don't act on them yet.
+## The directors act on it: lanes, hunts and guards, the push and the defence (CommanderData).
 
 const LANES: int = 3
 const LANE_NAMES: PackedStringArray = ["left", "centre", "right"]
@@ -18,6 +18,9 @@ var data: CommanderData
 ## The decided main effort: lane 0 left, 1 centre, 2 right (along the attack direction);
 ## -1 none yet.
 var main_lane: int = -1
+## Defending: the lane with the most known enemies (CommanderData.threat_min_enemies), held
+## main_hold_s; -1 none yet.
+var threat_lane: int = -1
 ## Known enemies that knocked own tanks out from far (CommanderData.long_range_m).
 var snipers: PackedVector3Array = PackedVector3Array()
 ## Known enemies on the team's flank or behind it.
@@ -31,6 +34,7 @@ var losses: PackedInt32Array = PackedInt32Array([0, 0, 0])
 var _think_wait: float = 0.0
 var _main_since: float = -INF
 var _main_losses_at_pick: int = 0
+var _threat_since: float = -INF
 
 
 func _init(team_: int, data_: CommanderData) -> void:
@@ -49,6 +53,8 @@ static func data_for_setting() -> CommanderData:
 func reset() -> void:
 	main_lane = -1
 	_main_since = -INF
+	threat_lane = -1
+	_threat_since = -INF
 	_think_wait = 0.0
 	snipers.clear()
 	flankers.clear()
@@ -90,6 +96,7 @@ func think(delta: float, clock: float, own_tanks: PackedVector3Array, known: Pac
 			if float(along.call(p)) < own_along - data.flank_behind_m:
 				flankers.append(p)
 	_choose_main(clock)
+	_choose_threat(clock)
 	if data.log_decisions:
 		print("CMD team %d t=%.0f %s" % [team, clock, describe()])
 	return true
@@ -114,6 +121,20 @@ func _choose_main(clock: float) -> void:
 		_pick(best, clock)
 
 
+func _choose_threat(clock: float) -> void:
+	var best: int = -1
+	var most: int = data.threat_min_enemies - 1
+	for lane: int in LANES:
+		if enemies[lane] > most:
+			most = enemies[lane]
+			best = lane
+	if best < 0 or best == threat_lane:
+		return   # nobody known enough: the last threat stands
+	if threat_lane < 0 or clock - _threat_since >= data.main_hold_s:
+		threat_lane = best
+		_threat_since = clock
+
+
 func _pick(lane: int, clock: float) -> void:
 	main_lane = lane
 	_main_since = clock
@@ -121,6 +142,7 @@ func _pick(lane: int, clock: float) -> void:
 
 
 func describe() -> String:
-	return "main %s | own %s enemies %s losses %s | snipers %d flankers %d" % [
-		LANE_NAMES[main_lane] if main_lane >= 0 else "-", own, enemies, losses,
+	return "main %s threat %s | own %s enemies %s losses %s | snipers %d flankers %d" % [
+		LANE_NAMES[main_lane] if main_lane >= 0 else "-",
+		LANE_NAMES[threat_lane] if threat_lane >= 0 else "-", own, enemies, losses,
 		snipers.size(), flankers.size()]

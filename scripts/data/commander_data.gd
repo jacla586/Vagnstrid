@@ -43,6 +43,33 @@ extends Resource
 @export var guards: int = 1
 @export var guard_s: float = 30.0
 
+@export_group("Push")
+## Gathered push (attackers): with at least gather_waiting tanks waiting for a wave due within
+## gather_wave_s, the assault waits for it, and after such a wave lands it waits
+## gather_after_wave_s more while they drive up (not when time is short). 0 = off.
+@export var gather_waiting: int = 0
+@export var gather_wave_s: float = 20.0
+@export var gather_after_wave_s: float = 35.0
+## The reserve joins an assault that starts with less than ASSAULT_MARGIN + this over the
+## known defenders (-1 = never).
+@export var commit_reserve_margin: int = 1
+## Concentrated storm: this share of the assault (tanks not following a lead) goes into
+## the zone on the main effort's side (centre: astride the road) instead of its own side.
+@export_range(0.0, 1.0) var storm_main_share: float = 0.0
+
+@export_group("Defence")
+## The flank reserve counterattacks only while the defenders in the zone plus the flank
+## reserves are at least this share of the attackers known in it (else it holds its post).
+@export var counter_min_ratio: float = 0.8
+## With this little time left on the checkpoint (s) and attackers in the zone, every
+## defender drives into the zone to keep it from being taken (0 = off).
+@export var deny_time_s: float = 45.0
+## Threatened side: the lane with the most known attackers (at least threat_min_enemies,
+## held main_hold_s) draws this share of the defenders' posts to its side of the road,
+## posts renewed when it changes. 0 = off.
+@export_range(0.0, 1.0) var threat_shift_share: float = 0.0
+@export var threat_min_enemies: int = 2
+
 @export_group("Debug")
 ## Prints one line per decision round (headless tests).
 @export var log_decisions: bool = false

@@ -660,7 +660,17 @@ shows on the minimap. This is what we test first.
   `main_share` of the developing attackers take lanes in the main effort's lane (`_lane_shares`), the rest spread
   over the width; `hunters` bots (flankers, scouts, harassers first) go round each sniper to a spot `hunt_range_m`
   off its side for `hunt_s` (`_order_hunt`); `guards` bots nearest a flanker hold against it `guard_s`
-  (`_order_guard`). `ThunderRoadBots.commander_teams` (bit per team) gives only some teams one (tests).
+  (`_order_guard`). Push and defence (CommanderData "Push"/"Defence"): the assault waits while `gather_waiting`+
+  attackers wait for a wave due within `gather_wave_s`, and `gather_after_wave_s` after such a wave lands
+  (`_gathering`; not when time is short; off in both levels: measured no help); `storm_main_share` of the assault
+  goes into the zone on the main effort's side (`_order_assault`); defending, the lane with the most known attackers
+  (`TeamCommander.threat_lane`, at least `threat_min_enemies`, held `main_hold_s`) draws `threat_shift_share` of the
+  posts to its side of the road (down the middle: wide posts pull in), posts renewed when it changes
+  (`_give_post`, `_ordered_threat`); an assault starting with less than ASSAULT_MARGIN + `commit_reserve_margin`
+  over the known defenders takes the reserve along (`_reserve_in`); the flank reserve counterattacks only while
+  defenders in the zone plus flank reserves are `counter_min_ratio` of the attackers in it; with under `deny_time_s`
+  left and attackers in the zone every defender drives in (`_deny_step`). `ThunderRoadBots.commander_teams` (bit per
+  team) gives only some teams one (tests).
   Logged with `growth_probe.gd -- cmd=N`. Measure: `tools/ai/commander_match.gd -- [scenario] size=6 level=N team=T`
   plays a whole bots-only match (PlayerRig removed), the commander on for team T only; both teams attack once on
   the same route; prints a MATCH line (~4 min a 6 v 6 match). Measured 2026-11-22 (Sharp, 6 v 6 Thunder Red, 32
