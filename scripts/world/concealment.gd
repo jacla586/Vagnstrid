@@ -13,23 +13,33 @@ const CACHE_FRAMES: int = 12
 const CACHE_MAX_ENTRIES: int = 1024
 
 static var _cache: Dictionary = {}  # target instance id -> [physics frame, data, cover]
+## Looks run on threads (ScanBatch) share the cache.
+static var _cache_lock: Mutex = Mutex.new()
 
 
-## 0 = in the open, 1 = full cover.
-static func cover(world: World3D, target: Node3D, data: ConcealmentData) -> float:
+## 0 = in the open, 1 = full cover. `space`: the physics space to ask (needed on a thread,
+## where World3D gives none), else the world's.
+static func cover(world: World3D, target: Node3D, data: ConcealmentData,
+		space: PhysicsDirectSpaceState3D = null) -> float:
 	var id: int = target.get_instance_id()
 	var frame: int = Engine.get_physics_frames()
+	_cache_lock.lock()
 	var cached: Array = _cache.get(id, [])
+	_cache_lock.unlock()
 	if not cached.is_empty() and cached[1] == data and frame - int(cached[0]) < CACHE_FRAMES:
 		return float(cached[2])
+	var value: float = _query_cover(space if space != null else world.direct_space_state,
+			target, data)
+	_cache_lock.lock()
 	if _cache.size() > CACHE_MAX_ENTRIES:
 		_cache.clear()
-	var value: float = _query_cover(world, target, data)
 	_cache[id] = [frame, data, value]
+	_cache_lock.unlock()
 	return value
 
 
-static func _query_cover(world: World3D, target: Node3D, data: ConcealmentData) -> float:
+static func _query_cover(space: PhysicsDirectSpaceState3D, target: Node3D,
+		data: ConcealmentData) -> float:
 	var box := BoxShape3D.new()
 	box.size = data.cover_box_size
 	var query := PhysicsShapeQueryParameters3D.new()
@@ -39,7 +49,7 @@ static func _query_cover(world: World3D, target: Node3D, data: ConcealmentData) 
 	query.collide_with_areas = true
 	query.collide_with_bodies = false
 	query.collision_mask = Vision.LAYER_VISION_BLOCKER
-	var hits: Array[Dictionary] = world.direct_space_state.intersect_shape(query,
+	var hits: Array[Dictionary] = space.intersect_shape(query,
 			maxi(data.full_cover_blockers, 1))
 	return clampf(float(hits.size()) / maxf(float(data.full_cover_blockers), 1.0), 0.0, 1.0)
 
@@ -63,12 +73,13 @@ static func range_factor(cover_amount: float, data: ConcealmentData) -> float:
 
 ## Cover of a tank, made smaller by its own signature (just fired the gun or an MG,
 ## heavy exhaust).
-static func tank_cover(world: World3D, target: Tank, data: ConcealmentData) -> float:
+static func tank_cover(world: World3D, target: Tank, data: ConcealmentData,
+		space: PhysicsDirectSpaceState3D = null) -> float:
 	var fired: float = target.get_fire_reveal(data.fire_reveal_s)
 	var share: float = lerpf(1.0, data.exhaust_cover_share, target.get_exhaust_load()) \
 			* lerpf(1.0, data.fire_reveal_cover_share, fired) \
 			* lerpf(1.0, data.mg_reveal_cover_share, target.get_mg_reveal(data.mg_reveal_s))
-	return cover(world, target, data) * share
+	return cover(world, target, data, space) * share
 
 
 ## spot_time_factor for a tank: also quicker while it smokes hard or has just fired.

@@ -72,6 +72,53 @@ Per tick i 20 mot 20:
   för alla botar och trupper sparar ~1 ms per tick, en fjärdedel ~1,6 ms (av ~15). Det är taket för att dela
   strålarna i buntar, så det är inte värt mycket.
 
+- **Soldaternas blickar spridda (22 nov, A/B med** `growth_probe.gd -- ab`**):** en tittares cache för det som inte
+  beror på tittaren (`Squad._seen_*`, identiska svar utom vid Concealments 12-ticksgräns) sänkte kostnaden per anrop
+  (bot 7,5 → 6,3 µs, trupp 10 → 6,6 µs). Varje fiendesoldat tittas på igen var 4:e runda (`soldier_look_rounds`),
+  men alltid inom 100 m, nyss avlossad, MG:ns trupp och truppens fiende. Ostört: 15,08 → 14,93 ms per tick (−1 %).
+  Undantagen gör att de flesta blickarna blir färska ändå. Ligger kvar (avstängt med `soldier_look_rounds = 1`).
+- **Var ticket går (22 nov,** `growth_probe.gd -- classes`**, headless 20 mot 20, Thunder Red, `--fixed-fps 30`):**
+
+  | Del | ms per tick |
+  |---|---|
+  | Före skripten (motorns synk och köer) | 1,7 |
+  | Skripten | 13,3–13,9 |
+  | Jolts steg | 1,7–1,8 |
+  | Bildrutans `_process` | 2,0 |
+
+  Skripten per klass:
+
+  | Klass | ms per tick |
+  |---|---|
+  | BotController | 3,7–4,3 (spaning ~2,5) |
+  | Tank | 3,7 |
+  | Squad | 2,8–2,9 (spaning ~0,8) |
+  | ThunderRoadMode | 0,65 |
+  | ThunderRoadBots | 0,5 |
+  | TankLooks | 0,3 |
+  | Övrigt | 0,9 |
+
+  Jolt är alltså inte problemet. Vagnarnas `contact_monitor` av eller på gav ingen skillnad (A/B `ab=contacts`).
+
+- **Spaningen på trådar (22 nov,** `ScanBatch`**, `scripts/ai/scan_batch.gd`):** botarnas och truppernas blickrundor
+  körs tillsammans en gång per bildruta, först i `_process`.
+  - **BEGIN** (huvudtråden): vilka mål som ska tittas på, och alla vagnars och soldaters globala transformer räknas
+    ut. Node3D räknar dem lat, och två trådar samtidigt läste fel i 5 av 2 400 fall i ett test.
+  - **JOBB**: en blick per mål, på 11 `Worker`-noder i undertrådsgrupper. Varje jobb skjuter sina egna strålar, så
+    ingen förhämtning behövs.
+  - **END** (huvudtråden): bokföring, signaler och målval.
+
+  `WorkerThreadPool` kan inte användas, eftersom bara trådgrupper får läsa noder. Delade cacher har lås:
+  `Concealment._cache_lock` och `Squad._seen_lock`. Kontrollerat: 281 461 jobb körda om på huvudtråden, 0 avvikelser.
+  A/B (`growth_probe.gd -- ab=threads`, 240 s, tick + bildrutans `_process`): 17,47 → 16,85 och 17,29 → 16,39 ms,
+  alltså −0,6 till −0,9 ms.
+
+  **Taket:** GDScript som läser objekt skalar dåligt på trådar. Varje objektreferens valideras mot ObjectDB, som
+  har ett globalt spinnlås, och referensräknarna delas. Mikrotest med 20 000 nodläsningar per tråd: 2,1 ms på en
+  tråd, 6,7 ms per tråd med 11 trådar, alltså ~3,5 gånger genomströmningen. Det gäller även ett exporterat
+  release-bygge. Rena beräkningar skalar fint (0,9 → 1,4 ms). Trådarnas sammanlagda arbetstid blir 4–7 ms för det
+  som tar ~2,5 ms på en tråd. `PhysicsRayQueryParameters3D.new()` per stråle registrerar dessutom ett objekt varje gång.
+
 ## Provat utan effekt och borttaget
 
 - **Återanvända fjädringsstrålar för stillastående vagnar, i GDScript:** 37 % färre strålar, men
@@ -85,30 +132,22 @@ Det dyra är inte matematiken utan att **fråga GDScript-objekten**: `is_enemy_o
 `get_spot_points`, `is_soldier_exposed` och så vidare, och **motorns strålar**. Båda kostar ungefär
 lika mycket från C++ som från GDScript. C++ lönar sig bara när datan också finns i C++.
 
-## Nästa steg, i ordning
+## Nästa steg, i ordning (ny strategi 22 nov)
 
-1. ~~**Profilera det som inte är fysik i en bildruta i 20 mot 20.**~~ Gjort 21 nov: inget att hämta där.
-   Kandidater:
-   - `Squad._process` (animationsdetaljer för 160 soldater)
-   - HUD och kartor
-   - `TankLooks` (hjul, band och strålar mot marken)
-   - `GroundCoverField`
-   - `TankAudio`
+Gallring av spaningen ger högst några procent, eftersom undantagen behövs för spelets skull. Kostnaden är
+GDScript per mål, och den kan inte göras mycket billigare. Den kan däremot köras **parallellt**.
 
-   Gör det med `tools/perf/perf_match.gd` och en fas som stänger av `_process` per klass. En sådan
-   finns inte än, bara `_physics_process` (`OFF`), så lägg till den.
-2. **Världsbilden i C++.** Varje tick fyller varje vagn och trupp i sitt läge en gång i VagnFast.
-   Alla botar och trupper läser sedan därifrån, istället för att fråga 40 vagnar var.
-   - Per vagn: id, lag, utslagen, position, de synliga punkterna i världen, vagnchef utsatt och
-     hjässans position, hjässans id samt vagnens id.
-   - Per soldat: trupp-id, lag, utsatt, siktpunkt, hitbox-id, och kanske växtlighetens
-     dold-andel per tittare. Den senare är svårare, eftersom den beror på tittaren.
-   - Läsare: `BotController._prefetch_sight` (nu C++, men den frågar GDScript), `_look_at`,
-     `_scan_squads` och `Squad._prefetch_sight` / `_scan`.
-   - Uppskattning: 3–5 ms per tick i 20 mot 20, inte mätt. Kontrollera identiska svar med samma
-     teknik som förut: räkna avvikelser mot den gamla koden under en headless-match.
-3. **Därefter** soldaternas steg (`Squad._move_soldiers` med väggkontroller) och vagnens
-   småfunktioner (`_sync_turret_shapes`, `_update_turret`, `_update_damage`).
+1. ~~**Spaningen på trådar.**~~ Gjort 22 nov (se ovan): −0,6 till −0,9 ms. Taket är GDScripts objektåtkomst.
+   **Nästa steg för spaningen är C++:** jobbens blick (`BotController._look_compute`, `_squad_look_compute`,
+   `Squad._look_compute`) i VagnFast från världsbilden. Den behöver då också skyddet (Concealment: en
+   formfråga per mål och 12 tick), soldaternas ställning, rörelse, avslöjande och växtlighet (`GroundCover`-rutnätet
+   kopierat till C++), och en parallell loop i C++ utan ObjectDB. Uppskattat: jobben ~2,5 ms CPU → ~0,3 ms vägg.
+2. **Botarnas tänkande i 15 Hz,** halva botarna varje tick: `_order_step`, `_update_squad`, `pick_target` och
+   `_update_abandon`. Uppskattat ~0,9 ms. Styrningen räcker: 13 m/s är 0,9 m på två tick.
+3. **ThunderRoad-lägena** (1,1 ms) i 10 Hz där reglerna tål det, t.ex. korridorkontroller och skyltar.
+4. **Vagnens småfunktioner** (`_sync_turret_shapes`, `_update_damage`, `_update_turret`) och soldaternas steg
+   (`Squad._move_soldiers`), som förut.
+5. Uppskjutet: täckning cachad längre för stillastående mål, och hela vagnsblicken i C++.
 
 ## Mäta
 

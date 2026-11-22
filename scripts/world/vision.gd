@@ -22,11 +22,17 @@ const SHOT_MASK: int = 0xFFFFFFFF & ~LAYER_VISION_BLOCKER
 ## (usually the looker itself).
 static func has_line_of_sight(world: World3D, from: Vector3, to: Vector3,
 		target: CollisionObject3D, exclude: Array[RID] = []) -> bool:
+	return has_line_of_sight_in(world.direct_space_state, from, to, target, exclude)
+
+
+## has_line_of_sight in a given physics space (a thread can't get one from World3D).
+static func has_line_of_sight_in(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3,
+		target: CollisionObject3D, exclude: Array[RID] = []) -> bool:
 	var query := PhysicsRayQueryParameters3D.create(from, to + (to - from).normalized() * 0.5)
 	query.collide_with_areas = true
 	query.exclude = exclude
-	var hit: Dictionary = world.direct_space_state.intersect_ray(query)
-	return not hit.is_empty() and hit["collider"] == target
+	var hit: Dictionary = space.intersect_ray(query)
+	return not hit.is_empty() and int(hit["collider_id"]) == target.get_instance_id()
 
 
 ## Like has_line_of_sight, but the ray may pass through up to `max_blockers` vision
@@ -34,7 +40,14 @@ static func has_line_of_sight(world: World3D, from: Vector3, to: Vector3,
 ## trunks still block. Used by infantry, who see through a little vegetation.
 static func has_line_of_sight_through(world: World3D, from: Vector3, to: Vector3,
 		target: CollisionObject3D, max_blockers: int, exclude: Array[RID] = []) -> bool:
-	var space: PhysicsDirectSpaceState3D = world.direct_space_state
+	return has_line_of_sight_through_in(world.direct_space_state, from, to, target,
+			max_blockers, exclude)
+
+
+## has_line_of_sight_through in a given physics space (a thread can't get one from World3D).
+static func has_line_of_sight_through_in(space: PhysicsDirectSpaceState3D, from: Vector3,
+		to: Vector3, target: CollisionObject3D, max_blockers: int,
+		exclude: Array[RID] = []) -> bool:
 	var dir: Vector3 = (to - from).normalized()
 	var end: Vector3 = to + dir * 0.5
 	# Solid things (and other hitboxes) first: the target must be the first of them.
@@ -42,7 +55,7 @@ static func has_line_of_sight_through(world: World3D, from: Vector3, to: Vector3
 	query.collide_with_areas = true
 	query.exclude = exclude
 	var hit: Dictionary = space.intersect_ray(query)
-	if hit.is_empty() or hit["collider"] != target:
+	if hit.is_empty() or int(hit["collider_id"]) != target.get_instance_id():
 		return false
 	if max_blockers < 0:
 		return true

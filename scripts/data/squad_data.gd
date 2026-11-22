@@ -178,6 +178,13 @@ extends Resource
 ## scan_max_stretch times (each look covers them all). The time in between still counts.
 @export var scan_reference_enemies: int = 10
 @export var scan_max_stretch: float = 2.0
+## Enemy soldiers are each looked at afresh every this many look rounds (by index, in turn);
+## between, his last answer stands (seen or not, how hard to make out) while the spotting
+## time runs on: each look at a man costs, and a dense fight has many. 1 = every round.
+## Always afresh: the squad being fought, men within soldier_look_full_m, a man who just
+## fired, and answers older than this many rounds.
+@export var soldier_look_rounds: int = 4
+@export var soldier_look_full_m: float = 100.0
 
 @export_group("Rifles")
 ## HE fragments reach soldiers this much farther than other targets (both the lethal and

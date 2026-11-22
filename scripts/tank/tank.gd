@@ -1500,6 +1500,17 @@ func get_hatch_progress() -> float:
 	return _hatch_progress
 
 
+## Works out the global transforms a look at or from this tank reads (ScanBatch: on the
+## main thread, before the threads read them).
+func resolve_sight_transforms() -> void:
+	var _t: Transform3D = global_transform
+	_t = _head_closed.global_transform
+	_t = _head_open.global_transform
+	_t = _turret.global_transform
+	if _commander_hitbox != null:
+		_t = _commander_hitbox.global_transform
+
+
 ## True whenever the hatch isn't fully closed.
 func is_commander_exposed() -> bool:
 	return _hatch_progress > 0.0

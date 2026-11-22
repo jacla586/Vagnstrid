@@ -333,6 +333,7 @@ var _net_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("squads")
+	ScanBatch.register(self)
 	_rng.randomize()
 	_shell_scene = load(SHELL_SCENE_PATH)
 	for i: int in data.soldier_count:
@@ -382,6 +383,38 @@ func is_soldier_alive(index: int) -> bool:
 ## A soldier that can be hit: alive and off the tank.
 func is_soldier_exposed(index: int) -> bool:
 	return is_out() and _alive[index]
+
+
+## Soldier `index` fired lately and shows for it (reveal_rifle_s / reveal_at_s).
+func is_soldier_revealed(index: int) -> bool:
+	return _revealed[index] > 0.0
+
+
+## Whether a viewer looks at soldier `hb` of this squad afresh this round (soldier_look_rounds):
+## `last` is the viewer's [round, ...] answer for him, `round` its look-round count.
+static func soldier_look_due(hb: SoldierHitbox, last: Array, round: int, rounds: int,
+		full_m: float, eye: Vector3, always: bool) -> bool:
+	if rounds <= 1 or always or last.is_empty() or round - int(last[0]) >= rounds:
+		return true
+	var enemy: Squad = hb.squad
+	if enemy.is_soldier_revealed(hb.index) or eye.distance_to(hb.global_position) < full_m:
+		return true
+	return (hb.index + round + posmod(enemy.get_instance_id(), rounds)) % rounds == 0
+
+
+## Works out the global transforms a look at these soldiers reads (ScanBatch: on the main
+## thread, before the threads read them).
+func resolve_sight_transforms() -> void:
+	var _t: Transform3D = global_transform
+	for hb: SoldierHitbox in _hitboxes:
+		_t = hb.global_transform
+	for soldier: Node3D in _soldiers:
+		_t = soldier.global_transform
+	# What _fill_seen looks up in the tree, which threads can't.
+	if not _seen_gc_looked and is_inside_tree():
+		_seen_gc_looked = true
+		_seen_gc = GroundCover.of(self)
+	_seen_space = get_world_3d().direct_space_state
 
 
 func get_hitboxes() -> Array[SoldierHitbox]:
@@ -492,16 +525,17 @@ func get_leader_eye() -> Vector3:
 func soldier_spot_time_factor(index: int, viewer: Vector3, conceal: ConcealmentData) -> float:
 	if _revealed[index] > 0.0:
 		return data.reveal_spot_factor
+	_seen_lock.lock()
+	_fill_seen(index, conceal)
 	var factor: float = data.camo_spot_factor * Weather.current().spot_time_factor
-	var distance: float = viewer.distance_to(_soldiers[index].global_position)
+	var distance: float = viewer.distance_to(_seen_pos[index])
 	# Close by, cover and vegetation hide less (soldier_close_range_m).
 	var hide_share: float = clampf(distance / maxf(data.soldier_close_range_m, 1.0), 0.0, 1.0)
 	hide_share *= hide_share
 	var hiding: float = 1.0
 	if conceal != null:
 		# Cover as for tanks; still as for tanks, but a running man is no tank at speed.
-		var cover: float = Concealment.cover(get_world_3d(), _hitboxes[index], conceal)
-		hiding *= 1.0 + cover * conceal.cover_spot_time_factor
+		hiding *= 1.0 + _seen_cover[index] * conceal.cover_spot_time_factor
 		factor *= conceal.stationary_spot_time_factor if _speed[index] <= conceal.stationary_speed_mps \
 				else data.moving_spot_factor
 	if _prone[index] >= 0.5:
@@ -509,14 +543,13 @@ func soldier_spot_time_factor(index: int, viewer: Vector3, conceal: ConcealmentD
 	elif _kneel[index] >= 0.5:
 		factor *= data.kneel_spot_factor
 	# Grass, crops and reed hide the body by its height (GroundCover; less seen from above).
-	var gc: GroundCover = GroundCover.of(self)
-	if gc != null:
-		hiding *= gc.spot_time_factor(gc.hidden_share(_soldiers[index].global_position,
-				gc.body_height(_prone[index], _kneel[index]), viewer))
+	if _seen_gc != null:
+		hiding *= _seen_gc.spot_time_factor(_seen_hidden(index, viewer))
 	factor *= 1.0 + (hiding - 1.0) * hide_share
 	var beyond: float = distance - data.soldier_easy_range_m
 	if beyond > 0.0:
 		factor *= 1.0 + beyond / 100.0 * data.soldier_spot_per_100m
+	_seen_lock.unlock()
 	return factor
 
 
@@ -525,15 +558,71 @@ func soldier_spot_time_factor(index: int, viewer: Vector3, conceal: ConcealmentD
 func soldier_spot_range_factor(index: int, conceal: ConcealmentData, viewer: Vector3 = Vector3.INF) -> float:
 	if _revealed[index] > 0.0:
 		return 1.0
+	_seen_lock.lock()
+	_fill_seen(index, conceal)
 	var factor: float = 1.0
 	if conceal != null:
-		factor = Concealment.range_factor(Concealment.cover(get_world_3d(), _hitboxes[index], conceal),
-				conceal)
-	var gc: GroundCover = GroundCover.of(self)
-	if gc != null and viewer.is_finite():
-		factor *= gc.range_factor(gc.hidden_share(_soldiers[index].global_position,
-				gc.body_height(_prone[index], _kneel[index]), viewer))
+		factor = Concealment.range_factor(_seen_cover[index], conceal)
+	if _seen_gc != null and viewer.is_finite():
+		factor *= _seen_gc.range_factor(_seen_hidden(index, viewer))
+	_seen_lock.unlock()
 	return factor
+
+
+## What being seen takes from soldier `index` whoever looks (position, stance height, how
+## much of him the vegetation covers, cover round him), kept for the physics frame: in a
+## dense fight many bots and squads look at the same men in a tick (it cost ~0.6 ms a tick
+## at 20 v 20 asked anew each time). Only the grazing angle is the viewer's. Kept until
+## this squad's next _physics_process (_seen_epoch), where its men move: viewers later in
+## the same tick ask again, so the answers are exactly the ones asked fresh.
+var _seen_epoch: int = 0
+var _seen_frame: PackedInt64Array = []
+var _seen_pos: PackedVector3Array = []
+var _seen_body: PackedFloat64Array = []
+var _seen_share: PackedFloat64Array = []
+var _seen_cover: PackedFloat64Array = []
+var _seen_conceal: Array[ConcealmentData] = []
+var _seen_gc: GroundCover = null
+var _seen_gc_looked: bool = false
+## Bots and squads look on threads (ScanBatch): one at a time through the kept parts.
+var _seen_lock: Mutex = Mutex.new()
+## The physics space for the cover query, fetched on the main thread (resolve_sight_transforms).
+var _seen_space: PhysicsDirectSpaceState3D = null
+
+func _fill_seen(index: int, conceal: ConcealmentData) -> void:
+	if not _seen_gc_looked and is_inside_tree():
+		_seen_gc_looked = true
+		_seen_gc = GroundCover.of(self)
+	var n: int = _soldiers.size()
+	if _seen_frame.size() != n:
+		_seen_frame.resize(n)
+		_seen_frame.fill(-1)
+		_seen_pos.resize(n)
+		_seen_body.resize(n)
+		_seen_share.resize(n)
+		_seen_cover.resize(n)
+		_seen_conceal.resize(n)
+	var frame: int = _seen_epoch
+	if _seen_frame[index] != frame:
+		_seen_frame[index] = frame
+		var pos: Vector3 = _soldiers[index].global_position
+		_seen_pos[index] = pos
+		_seen_conceal[index] = null
+		if _seen_gc != null:
+			var body: float = _seen_gc.body_height(_prone[index], _kneel[index])
+			_seen_body[index] = body
+			_seen_share[index] = _seen_gc.body_share(pos, body)
+	if conceal != null and _seen_conceal[index] != conceal:
+		_seen_conceal[index] = conceal
+		if _seen_space == null:
+			_seen_space = get_world_3d().direct_space_state
+		_seen_cover[index] = Concealment.cover(null, _hitboxes[index], conceal, _seen_space)
+
+
+## GroundCover.hidden_share from the kept parts.
+func _seen_hidden(index: int, viewer: Vector3) -> float:
+	var share: float = _seen_share[index]
+	return share * _seen_gc.grazing(_seen_pos[index], _seen_body[index], viewer) if share > 0.0 else 0.0
 
 
 ## The leader kneels or lies (lower eyes).
@@ -611,6 +700,7 @@ func order(kind: int, target: Vector3) -> void:
 # --- Frame -------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
+	_seen_epoch += 1   # the men may move or change stance below: _fill_seen asks again
 	if not is_instance_valid(tank):
 		queue_free()
 		return
@@ -669,9 +759,7 @@ func _physics_process(delta: float) -> void:
 	_scan_timer -= delta
 	if _scan_timer <= 0.0:
 		_scan_timer += _scan_interval()
-		_scan_waits = maxi(_scan_waits, 0) + 1   # due: a light frame does it (_process)
-	if _scan_waits > Ticks.LIGHT_FRAME_WAIT_TICKS:
-		_run_scan()   # no light frame came: here, in the tick
+		_scan_waits = maxi(_scan_waits, 0) + 1   # due: ScanBatch does it (scan_due)
 	elif _scan_waits > 0:
 		_scan_waits += 1
 	_update_at_aim(delta)
@@ -683,23 +771,24 @@ func _physics_process(delta: float) -> void:
 		_fight(delta)
 
 
-## A due look round (_physics_process), done on a light frame (Ticks.light_frame): the
-## scan and what follows from it (halting for contact, the infantry fight).
+## A due look round (flagged in _physics_process) runs in ScanBatch, on a light frame
+## (Ticks.light_frame) or after Ticks.LIGHT_FRAME_WAIT_TICKS ticks without one: the scan
+## and what follows from it (halting for contact, the infantry fight).
 var _scan_waits: int = 0
 
-func _run_scan() -> void:
+
+func scan_due() -> bool:
+	if _scan_waits <= 0:
+		return false
+	if not Ticks.light_frame() and _scan_waits <= Ticks.LIGHT_FRAME_WAIT_TICKS:
+		return false
 	_scan_waits = 0
-	if net_puppet or _state == State.MOUNTED or _state == State.WIPED or not is_instance_valid(tank):
-		return
-	_scan(_scan_interval())
-	_update_contact_halt(_scan_interval())
-	_update_engagement()
+	return not (net_puppet or _state == State.MOUNTED or _state == State.WIPED
+			or not is_instance_valid(tank))
 
 
 ## Drawing detail per soldier (see LOD_*): shadows and how often the animation steps.
 func _process(delta: float) -> void:
-	if _scan_waits > 0 and Ticks.light_frame():
-		_run_scan()
 	var cam: Camera3D = get_viewport().get_camera_3d()
 	if cam == null:
 		return
@@ -1359,18 +1448,57 @@ func _scan_interval() -> float:
 			/ maxf(float(data.scan_reference_enemies), 1.0), 1.0, data.scan_max_stretch)
 
 
+
 ## Enemy tanks farther than this (m) are looked at every 2nd scan (_scan).
 const TANK_LOOK_EVERY_2ND_M: float = 250.0
 var _tank_look_wait: Dictionary = {}  # Tank -> scans since its last look
 
 
-func _scan(dt: float) -> void:
+## Soldier looks spread over rounds (SquadData.soldier_look_rounds): SoldierHitbox ->
+## [look round, time factor of his last fresh look or -1 when not in sight].
+var _soldier_last: Dictionary = {}
+var _look_round: int = 0
+
+## A look round in three parts (ScanBatch): scan_begin on the main thread (what to look
+## at), scan_job on threads (one look: cover, factors, sight lines; writes only its result
+## slot), scan_end on the main thread (spotting progress, radio, the rest, then the
+## contact halt and the infantry fight).
+var _batch_on: bool = false
+var _batch_dt: float = 0.0
+var _batch_eye: Vector3 = Vector3.ZERO
+var _batch_rids: Array[RID] = []
+var _batch_space: PhysicsDirectSpaceState3D = null
+## Jobs: [target, points, dt] per tank looked at, [hitbox, points, dt] per soldier looked at
+## afresh; the order of everything for the end: [kind, ...] (see scan_end).
+var _batch_jobs: Array = []
+var _batch_results: Array = []
+var _batch_order: Array = []
+var _batch_skipped: Dictionary = {}
+var _batch_nearest: float = INF
+
+
+## `batched`: looks run as ScanBatch jobs, each casting its own sight lines (no prefetch).
+func scan_begin(batched: bool = true) -> void:
+	_batch_dt = _scan_interval()
+	var dt: float = _batch_dt
+	_look_round += 1
+	if _soldier_last.size() > 64:
+		for key: Variant in _soldier_last.keys():
+			if not is_instance_valid(key):
+				_soldier_last.erase(key)
 	var eye: Vector3 = get_leader_eye()
-	_prefetch_sight(eye)
-	var seen_now: Dictionary = {}
+	_batch_eye = eye
+	_batch_rids = _own_rids()
+	_batch_space = get_world_3d().direct_space_state
+	if batched:
+		_sight.clear()
+	else:
+		_prefetch_sight(eye)
+	_batch_jobs.clear()
+	_batch_order.clear()
 	# Far tanks are looked at every 2nd scan (the time in between counts): fewer sight
 	# lines, same rules. What a skipped tank had stays as it was until the next look.
-	var skipped: Dictionary = {}
+	_batch_skipped = {}
 	var nearest: float = INF
 	var enemies: int = 0
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
@@ -1383,7 +1511,7 @@ func _scan(dt: float) -> void:
 		var scans: int = int(_tank_look_wait.get(other, 0)) + 1
 		if scans < 2 and away > TANK_LOOK_EVERY_2ND_M:
 			_tank_look_wait[other] = scans
-			skipped[other] = true
+			_batch_skipped[other] = true
 			continue
 		_tank_look_wait.erase(other)
 		var points: Array = []
@@ -1391,30 +1519,78 @@ func _scan(dt: float) -> void:
 			points.append([other.global_position + Vector3.UP * h, other])
 		if other.is_commander_exposed():
 			points.append([other.get_commander_hitbox_position(), other.get_commander_hitbox()])
-		_look(other, eye, points, 1.0, dt * scans, seen_now)
+		_batch_order.append([0, _batch_jobs.size(), 1.0])
+		_batch_jobs.append([other, points, dt * scans])
 	for node: Node in get_tree().get_nodes_in_group("squads"):
 		var enemy := node as Squad
 		if enemy == null or enemy == self or not enemy.is_out() or enemy.get_team() == get_team():
 			continue
 		nearest = minf(nearest, eye.distance_to(enemy.global_position))
-		var in_view: Array[SoldierHitbox] = []
+		var men: Array = []
 		for hb: SoldierHitbox in enemy.get_hitboxes():
-			if enemy.is_soldier_exposed(hb.index):
-				_look(hb, eye, [[hb.get_aim_point(), hb]], enemy.data.soldier_spot_factor, dt,
-						seen_now)
-				if seen_now.has(hb):
-					in_view.append(hb)
+			if not enemy.is_soldier_exposed(hb.index):
+				continue
+			# Each man afresh only every soldier_look_rounds rounds; between, his last answer.
+			var last: Array = _soldier_last.get(hb, [])
+			if Squad.soldier_look_due(hb, last, _look_round, data.soldier_look_rounds,
+					data.soldier_look_full_m, eye, enemy == _foe):
+				men.append([hb, _batch_jobs.size()])
+				_batch_jobs.append([hb, [[hb.get_aim_point(), hb]], dt])
+			else:
+				men.append([hb, -1, float(last[1])])
+		_batch_order.append([1, enemy.data.soldier_spot_factor, men])
+	_batch_nearest = nearest
+	_enemy_count = enemies
+	_batch_results.resize(_batch_jobs.size())
+	_batch_on = true
+
+
+func scan_job_count() -> int:
+	return _batch_jobs.size()
+
+
+## One look (on a thread): [time factor or -1 when not in sight, share of points seen].
+func scan_job(i: int) -> void:
+	var job: Array = _batch_jobs[i]
+	_batch_results[i] = _look_compute(job[0], _batch_eye, job[1])
+
+
+func scan_end() -> void:
+	if not _batch_on:
+		return
+	var dt: float = _batch_dt
+	var seen_now: Dictionary = {}
+	for entry: Array in _batch_order:
+		if int(entry[0]) == 0:   # a tank
+			var j: int = entry[1]
+			var r: PackedFloat64Array = _batch_results[j]
+			if r[0] >= 0.0:
+				_note_seen(_batch_jobs[j][0], r[1], 1.0, r[0], float(_batch_jobs[j][2]), seen_now)
+			continue
+		var size_factor: float = entry[1]
+		var in_view: Array[SoldierHitbox] = []
+		for man: Array in entry[2]:
+			var hb: SoldierHitbox = man[0]
+			var j: int = man[1]
+			if j >= 0:
+				var r: PackedFloat64Array = _batch_results[j]
+				if r[0] >= 0.0:
+					_note_seen(hb, r[1], size_factor, r[0], dt, seen_now)
+				_soldier_last[hb] = [_look_round, r[0]]
+			elif float(man[2]) >= 0.0:
+				_note_seen(hb, 1.0, size_factor, float(man[2]), dt, seen_now)
+			if seen_now.has(hb):
+				in_view.append(hb)
 		# A group shows: the others in sight help spot each one (group_spot_share).
 		if in_view.size() > 1:
 			var extra: float = dt * float(in_view.size() - 1) * data.group_spot_share
 			for hb: SoldierHitbox in in_view:
 				_awareness[hb] = float(_awareness.get(hb, 0.0)) + extra
 	_sight.clear()
-	_nearest_enemy_m = nearest
-	_enemy_count = enemies
-	_look_for_mines(eye, dt)
+	_nearest_enemy_m = _batch_nearest
+	_look_for_mines(_batch_eye, dt)
 	for target: Variant in _awareness.keys():
-		if is_instance_valid(target) and (seen_now.has(target) or skipped.has(target)):
+		if is_instance_valid(target) and (seen_now.has(target) or _batch_skipped.has(target)):
 			continue
 		_in_sight.erase(target)
 		var left: float = float(_awareness[target]) - dt
@@ -1423,6 +1599,20 @@ func _scan(dt: float) -> void:
 			_spotted.erase(target)
 		else:
 			_awareness[target] = left
+	_batch_on = false
+	_batch_jobs.clear()
+	_batch_results.clear()
+	_batch_order.clear()
+	_update_contact_halt(dt)
+	_update_engagement()
+
+
+## A whole look round at once, on the main thread.
+func _scan(_dt: float) -> void:
+	scan_begin(false)
+	for i: int in scan_job_count():
+		scan_job(i)
+	scan_end()
 
 
 ## Sight lines of this look round, cast together on worker threads (SightRays) before
@@ -1484,12 +1674,14 @@ func _want_sight(rays: SightRays, points: Array[Vector3], eye: Vector3, full: fl
 	points.append(point)
 
 
-## One look at `target` through its `points` ([world point, collider] pairs).
-func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: float,
-		seen_now: Dictionary) -> void:
+## One look at `target` through its `points` ([world point, collider] pairs), the seeing
+## part (thread-safe: reads nodes, writes nothing of this squad's): [time factor, or -1
+## when not in sight; share of the points seen]. scan_end does the spotting progress.
+func _look_compute(target: Node3D, eye: Vector3, points: Array) -> PackedFloat64Array:
+	var none := PackedFloat64Array([-1.0, 0.0])
 	if eye.distance_to(target.global_position) > Weather.view_range(data.view_range_m) \
 			+ VIEW_RANGE_MARGIN_M:
-		return   # cover only ever shortens the range
+		return none   # cover only ever shortens the range
 	# Cheap tests first: a point beyond the full range or outside the view cone is out
 	# whatever the cover.
 	var full_range: float = Weather.view_range(data.view_range_m)
@@ -1500,7 +1692,7 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 			any_point = true
 			break
 	if not any_point:
-		return
+		return none
 	var time_factor: float = 1.0
 	var range_factor: float = 1.0
 	var soldier := target as SoldierHitbox
@@ -1509,11 +1701,11 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 	elif data.concealment != null:
 		var cover: float
 		if target is Tank:
-			cover = Concealment.tank_cover(get_world_3d(), target as Tank, data.concealment)
+			cover = Concealment.tank_cover(null, target as Tank, data.concealment, _batch_space)
 			time_factor = Concealment.tank_spot_time_factor(target as Tank, cover,
 					data.concealment)
 		else:
-			cover = Concealment.cover(get_world_3d(), target, data.concealment)
+			cover = Concealment.cover(null, target, data.concealment, _batch_space)
 			time_factor = Concealment.spot_time_factor(cover, 0.0, data.concealment)
 		range_factor = Concealment.range_factor(cover, data.concealment)
 	if target is Tank:
@@ -1527,16 +1719,22 @@ func _look(target: Node3D, eye: Vector3, points: Array, size_factor: float, dt: 
 		if _sight.has(p):
 			if bool(_sight[p]):   # cast before the look round (_prefetch_sight)
 				seen += 1
-		elif Vision.has_line_of_sight_through(get_world_3d(), eye, p, pair[1],
-				_layers_seen_through(eye.distance_to(p)), _own_rids()):
+		elif Vision.has_line_of_sight_through_in(_batch_space, eye, p, pair[1],
+				_layers_seen_through(eye.distance_to(p)), _batch_rids):
 			seen += 1
 	if seen == 0:
-		return
+		return none
 	if soldier != null:   # only needed once he is in sight
 		time_factor = soldier.squad.soldier_spot_time_factor(soldier.index, eye, data.concealment)
+	return PackedFloat64Array([time_factor, float(seen) / float(points.size())])
+
+
+## The spotting progress of a look that found `target` in sight (`shown`: share of its
+## points seen), from _look or a kept answer (soldier_look_rounds).
+func _note_seen(target: Node3D, shown: float, size_factor: float, time_factor: float, dt: float,
+		seen_now: Dictionary) -> void:
 	seen_now[target] = true
 	_in_sight[target] = true
-	var shown: float = float(seen) / float(points.size())
 	var needed: float = data.spot_time_s * size_factor * time_factor / maxf(shown, 0.2)
 	var aware: float = float(_awareness.get(target, 0.0)) + dt
 	_awareness[target] = aware

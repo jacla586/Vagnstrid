@@ -46,6 +46,16 @@ shows on the minimap. This is what we test first.
   crowns seen through as `SightRays`) read it. Checked: 0 differing answers on ~310 000 lines; ~7 % of points
   moved later in the tick (soldiers, a rising hatch) are missing and get the reader's own ray. 20 v 20 headless:
   bots' prefetch 1.23 (GDScript) -> 0.77 ms per tick, squads' 0.21 -> 0.17 ms. The rest is rays.
+- Looks on threads (2026-11-22, `ScanBatch`, `scripts/ai/scan_batch.gd`): every due look round of bots and squads
+  runs once a frame, first in `_process`: BEGIN on the main thread (`scan_begin`: what to look at; every tank's and
+  soldier's global transforms resolved, `resolve_sight_transforms`: Node3D works them out lazily and two threads at
+  once read wrong values), JOBS on 11 `Worker` nodes in sub-thread process groups (`scan_job`: one target's look,
+  its own rays in a space fetched on the main thread; only thread groups may read nodes, a WorkerThreadPool task may
+  not), END on the main thread (`scan_end`: bookkeeping, signals, target choice). Shared caches are locked
+  (`Concealment._cache_lock`, `Squad._seen_lock`). Checked identical (281 461 jobs rerun on the main thread). −0.6 to
+  −0.9 ms per frame at 20 v 20: GDScript object access scales ~3.5x at best on threads (ObjectDB's global lock,
+  shared refcounts; release builds too), so the next step for looks is C++. `ScanBatch.threaded = false` runs
+  everything on the main thread with the prefetch (A/B: `growth_probe.gd -- ab=threads`).
 - Measure first: the time must be GDScript, not engine calls. `VagnFast.apply_suspension` (Tank) was only 3 %
   faster (1.66 vs 1.72 ms per tick at 20 v 20): the cost is the rays inside the engine (~5 µs each), not the loop.
 
@@ -848,8 +858,8 @@ there and the break is over) and on the match's win/loss. Points
   (bots ask every scan; the bisection cost 3-4 ms a tick in a 10 v 10).
 - Light frames (`Ticks.light_frame()`, 2026-11-19): at 30 ticks and 60 fps every other frame carries a whole
   physics tick, so the bots' and squads' looks round (`BotController._scan`, `Squad._scan` + contact halt + infantry
-  fight) are only flagged due in the tick and run in `_process` on the next frame without a tick (`_run_scan`); after
-  `Ticks.LIGHT_FRAME_WAIT_TICKS` (2) ticks without one (30 fps, a dedicated server) the tick does it. Cheaper looks,
+  fight) are only flagged due in the tick and run in `_process` on the next frame without a tick (`ScanBatch`); after
+  `Ticks.LIGHT_FRAME_WAIT_TICKS` (2) ticks without one (30 fps, a dedicated server) the next frame does it anyway. Cheaper looks,
   same rules: range and periscope/view-cone tests before cover and vegetation factors, a soldier's spot-time factor
   only once he is in sight; enemy squads beyond 150 m (not the one fought) looked at by bots every 2nd scan, tanks
   beyond 250 m by squads every 2nd scan (skipped ones keep their awareness), bots' far-tank steps now 250/600 m

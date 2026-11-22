@@ -19,6 +19,12 @@ extends Resource
 ## current target is looked at every scan.
 @export var look_every_2nd_beyond_m: float = 250.0
 @export var look_every_4th_beyond_m: float = 600.0
+## Enemy soldiers are each looked at afresh every this many look rounds (by index, in turn);
+## between, his last answer stands while the spotting time runs on (SquadData has the same).
+## Always afresh: the squad in the MG's sights, men within soldier_look_full_m, a man who
+## just fired, and answers older than this many rounds. 1 = every round.
+@export var soldier_look_rounds: int = 4
+@export var soldier_look_full_m: float = 100.0
 ## Farthest the commander spots a tank with the hatch open / closed (m).
 @export var view_range_open_m: float = 1200.0
 @export var view_range_closed_m: float = 700.0
