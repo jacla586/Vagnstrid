@@ -602,7 +602,7 @@ shows on the minimap. This is what we test first.
   `hunt_*`): bots radio spots to the team and go after known enemies, those in the open
   zone first (any range, no time limit, pressing closer), others near the zone for
   `hunt_max_s`; firing spots for an enemy in the zone are inside it. Needs a baked grid. Without a baked grid bots drive
-  straight. Baked so far: vidingsjo, linghem, campus, road_to_science, corson, peking. Spawns avoid blocked cells.
+  straight. Baked so far: vidingsjo, linghem, campus, road_to_science, corson, peking, vidingsjo_xl. Spawns avoid blocked cells.
 - Bot roles (`BotRoleData`, `data/bots/roles/*.tres`; the chassis' favourite `ChassisData.bot_role`
   -> `TankData.bot_role`; `BotController.get_role()` = `role_override` (a role given for now) or the
   favourite, none = brawler): BT-7 scout (-> harasser in contact: `contact_role`, set by
@@ -816,7 +816,7 @@ there and the break is over) and on the match's win/loss. Points
   `corson`, 1.71 × 2.7 km since 2026-11-15, widened east with the NW corner kept): starts east on Malmslättsvägen, through Vallarondellen (CP1), then a straight line north -> south through Campus Valla (2.5 km, 3
   checkpoints; `geodata/corson/korridor.json` written by hand, not from OSM), checkpoints moved along the route
   off the houses by `tools/thunder_checkpoints_avoid_houses.py`. `peking_thunder` (corridor map `peking`, Norrköping, 3.3 × 2.6 km, 2026-11-16; hidden from the map list and the
-  server vote since 2026-11-18, `MainMenu.HIDDEN_SCENARIOS`: the user wants to rework it later): Finspångsvägen -> Norra Promenaden -> Kaktusparken (Stationsrondellen, CP2) -> Tullhusbron -> Drottninggatan south -> Södra Promenaden, 4.3 km, 4 checkpoints moved by hand along the route (`--spacing=`); Motala ström can't be crossed west of Drottningbron (geodata `vagar_bort.json` removes those bridges, steep deep bottoms), Drottningbron, Tullhusbron, Hamnbron, Sjötullsgatan and Varvsbron are open and at least 5 m wide (`broar_justera.json` `min_bredd`). `linghem_thunder` (whole map, not a corridor):
+  server vote since 2026-11-18, `MainMenu.HIDDEN_SCENARIOS`: the user wants to rework it later): Finspångsvägen -> Norra Promenaden -> Kaktusparken (Stationsrondellen, CP2) -> Tullhusbron -> Drottninggatan south -> Södra Promenaden, 4.3 km, 4 checkpoints moved by hand along the route (`--spacing=`); Motala ström can't be crossed west of Drottningbron (geodata `vagar_bort.json` removes those bridges, steep deep bottoms), Drottningbron, Tullhusbron, Hamnbron, Sjötullsgatan and Varvsbron are open and at least 5 m wide (`broar_justera.json` `min_bredd`). `vidingsjo_xl_thunder` (corridor map `vidingsjo_xl`, 5.17 × 4.73 km, 2026-11-22): attackers start east of Blästad, CP1 Blästad -> CP2 Ålerydsrondellen -> CP3 Vistvägen by Berga -> CP4 by Nötabacken -> up through Garnisonen (Kompanigatan) to CP5, defenders' spawn north of it; 7.1 km, the user's five zone points by `--checkpoints=` (CP1 121 m and CP3 242 m off theirs: those points lie on side roads; move the Marker3Ds if wanted), `thunder_road_large.tres`, route from car roads only. `linghem_thunder` (whole map, not a corridor):
   south -> north, forest paths, then along Himnavägen, diagonally through the houses to the station (3.2 km,
   4 checkpoints; the last ~260 m before the end so defender spawns stay on the map). Route from a Google Maps
   screenshot by `rutt_ur_bild.py` run in a scratch folder (it writes a korridor.json, which in
