@@ -534,8 +534,8 @@ shows on the minimap. This is what we test first.
 - Five presets, `data/configs/1_bt7 .. 5_sherman.tres` (main menu, `KothData.bot_configs`,
   `ThunderRoadData.bot_configs`; default T-34), each with a clear strength and weakness:
   BT-7 flanker (fastest, can't get through fronts), T-34 brawler (48 km/h, sloped armour, best
-  terrain: climb 36°, fords; weakest optics 28-15°, 76 mm 100 mm pen, strong HE), Pz IV sniper
-  (145 mm pen at 630 m/s, 34 dmg, 5.5 s, strongest sight 30-8°; 36 km/h, slow traverse,
+  terrain: climb 36°, fords; weakest optics 28-15°, 76 mm 100 mm pen, 5.5 s reload, strong HE; reload swapped with the Pz IV 2026-11-23), Pz IV sniper
+  (145 mm pen at 630 m/s, 34 dmg, 6.5 s reload, strongest sight 30-8°; 36 km/h, slow traverse,
   50/30 mm turret, 20 mm rear), Sherman all-rounder on the move (39 km/h, gun stabiliser 0.5 up to
   `gun_stabiliser_max_rate_deg` 4°/s of hull pitch: steady driving held, throttle kicks get through;
   traverse ×1.3, 5 s reload, 4 smoke salvos; tall: spotted sooner, `signature_spot_factor` 0.85;
