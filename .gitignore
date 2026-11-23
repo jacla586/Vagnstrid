@@ -28,3 +28,13 @@
 
 # Mapillary-nyckeln (privat)
 /mapillary.txt
+
+# Planer och anteckningar: bara lokalt, inte på GitHub (2026-11-24)
+/SERVER_PLAN.md
+/SLAPP_ATT_GORA.md
+/SPELA_ONLINE.md
+/Stridsvagnsspel – specifikation (utkast).md
+/TESTLISTA.md
+/TRAFFTABELL.md
+/TUTORIAL_PLAN.md
+/VAD_SOM_GICK_FEL.md
