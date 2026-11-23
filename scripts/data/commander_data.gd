@@ -1,9 +1,10 @@
 class_name CommanderData
 extends Resource
 ## How a team's bot commander (TeamCommander) reads the fight and decides. One file per
-## level, picked by MatchSettings.bot_commander (main menu "Bot commander"): Off, Normal
-## (data/bots/commander_normal.tres), Sharp (commander_sharp.tres). Bots only: the
-## commander never orders or shows anything to players.
+## level, picked by MatchSettings.bot_commander: Off, Normal (data/bots/commander_normal.tres),
+## Sharp (commander_sharp.tres). The game always runs Sharp (no menu choice); the other
+## levels are for the test tools. Bots only: the commander never orders or shows anything
+## to players.
 
 @export var display_name: String = "Normal"
 ## How often it thinks the fight over (s).
@@ -69,6 +70,27 @@ extends Resource
 ## posts renewed when it changes. 0 = off.
 @export_range(0.0, 1.0) var threat_shift_share: float = 0.0
 @export var threat_min_enemies: int = 2
+
+@export_group("Squads and smoke")
+## AT ambush (defending): this many squads of defenders go out to covered spots on the
+## threatened side (TeamCommander.threat_lane), ambush_ahead_m short of the zone, instead of
+## mining; 0 = off.
+@export var ambush_squads: int = 0
+@export var ambush_ahead_m: float = 60.0
+## Scouting (attacking): this many squads of attackers that reached their line in the main
+## effort's lane go forward to scout_short_m short of the zone's near edge; 0 = off.
+@export var scout_squads: int = 0
+@export var scout_short_m: float = 40.0
+## The assault's smoke comes from tanks in the main effort's lane first, laid towards the
+## known defenders nearest that lane.
+@export var screen_main: bool = false
+
+@export_group("King of the Hill")
+## KotH uses its own shares for these two (KothBots): measured 2026-11-23 (Vidingsjö 6 v 6,
+## 40 matches each) the main effort (17-23) and ambushes (17-23) didn't help there, the
+## threatened-side shift (threat_shift_share, shared with ThunderRoad) did (25-15). 0 = off.
+@export_range(0.0, 1.0) var koth_main_share: float = 0.0
+@export var koth_ambush_squads: int = 0
 
 @export_group("Debug")
 ## Prints one line per decision round (headless tests).

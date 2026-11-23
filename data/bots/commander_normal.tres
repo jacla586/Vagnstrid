@@ -17,3 +17,5 @@ commit_reserve_margin = 0
 counter_min_ratio = 0.6
 deny_time_s = 30.0
 threat_shift_share = 0.4
+ambush_squads = 1
+scout_squads = 1

@@ -187,6 +187,7 @@ var _guard: Dictionary = {}          # bot -> [enemy point, clock it ends]: hold
 var _wave_landed: Dictionary = {}    # team -> clock a wave of gather_waiting+ tanks came
 var _was_waiting: Dictionary = {}    # team -> attackers waiting for the wave at the last update
 var _reserve_in: Dictionary = {}     # team -> true: the commander sent the reserve into this assault
+var _squad_task: Dictionary = {}     # bot -> [point, clock]: its squad out on a commander task (ambush, scouting)
 var _denying: Dictionary = {}        # defenders driving into the zone at the last minute
 ## Only these teams get a commander when it is on (bit per team; tests: one side with, one without).
 static var commander_teams: int = 3
@@ -388,6 +389,7 @@ func _reset_all() -> void:
 		c.reset()
 	_hunt.clear()
 	_guard.clear()
+	_release_squads(-1)
 	_wave_landed.clear()
 	_was_waiting.clear()
 	_reserve_in.clear()
@@ -435,8 +437,9 @@ func _forget(bot: BotController) -> void:
 	for d: Dictionary in [_ordered_cp, _ordered_front, _post_s, _repost, _standing, _mine_think, _mine_front,
 			_depart, _urgent, _back_in, _ordered_out, _hold, _countering, _ordered_pushed, _entering,
 			_post_across, _reserve, _lane, _lane_partner, _line_goal, _bound, _bound_time, _sniper_aim,
-			_screeners, _hunt, _guard, _denying, _ordered_threat]:
+			_screeners, _hunt, _guard, _denying, _ordered_threat, _squad_task]:
 		d.erase(bot)
+	bot.squad_held = false
 
 
 func _on_tank_placed(tank: Tank) -> void:
@@ -589,6 +592,98 @@ func _update_commanders(delta: float, next: int) -> void:
 					return 0 if across < -1.0 / 3.0 else (2 if across > 1.0 / 3.0 else 1),
 				func(p: Vector3) -> float: return ahead * mode.project(p).x):
 			_give_commander_tasks(team, c)
+			_give_squad_tasks(team, c, next)
+
+
+## Squads on commander tasks (CommanderData "Squads and smoke"): defending, AT ambushes on
+## the threatened side short of the zone; attacking, scouts forward from the main effort's
+## lane while it develops. A task ends when it is no longer wanted or its place moved, the
+## squad lost half its men or is back on the tank; then the bot runs its squad again.
+func _give_squad_tasks(team: int, c: TeamCommander, next: int) -> void:
+	var defending: bool = mode.role_of(team) == ThunderRoadMode.Role.DEFEND
+	var lane: int = c.threat_lane if defending else c.main_lane
+	var want: int = c.data.ambush_squads if defending else c.data.scout_squads
+	if lane < 0 or (not defending and _assault.has(team)):
+		want = 0
+	var point := Vector3.INF
+	if want > 0:
+		var cp_s: float = mode.get_checkpoint_s(next)
+		var short: float = c.data.ambush_ahead_m if defending else c.data.scout_short_m
+		var s: float = maxf(cp_s - mode.data.capture_half_length_m - short, 0.0)
+		var role := ThunderRoadMode.Role.DEFEND if defending else ThunderRoadMode.Role.ATTACK
+		point = mode.point_at(s, _lane_side(team, lane) * MAIN_LANE_SHARE * mode.half_width(role))
+	var have: int = 0
+	for bot: BotController in _squad_task.keys():
+		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
+			_squad_task.erase(bot)
+			continue
+		if bot.tank.team != team:
+			continue
+		var squad: Squad = bot.tank.squad
+		var task: Array = _squad_task[bot]
+		var done: bool = want <= 0 or bot.tank.is_knocked_out() or squad == null or not is_instance_valid(squad) \
+				or squad.get_alive_count() * 2 <= squad.data.soldier_count \
+				or (task[0] as Vector3).distance_to(point) > SQUAD_TASK_MOVED_M \
+				or (squad.is_mounted() and _kos.clock - float(task[1]) > SQUAD_TASK_BACK_S)
+		if done:
+			_squad_task.erase(bot)
+			bot.squad_held = false
+		else:
+			have += 1
+	if have >= want or not TacticalMap.may_plan():
+		return
+	var reach: float = SQUAD_TASK_REACH_SHARE
+	var candidates: Array[BotController] = []
+	for bot: BotController in _bots:
+		if not is_instance_valid(bot.tank) or bot.tank.team != team or bot.tank.is_knocked_out() \
+				or _squad_task.has(bot) or _commander_task(bot):
+			continue
+		var squad: Squad = bot.tank.squad
+		if squad == null or not is_instance_valid(squad) or squad.get_state() == Squad.State.WIPED \
+				or squad.get_state() == Squad.State.RETURNING \
+				or squad.get_alive_count() < squad.data.soldier_count \
+				or Squad._flat(bot.tank.global_position - point).length() > squad.data.max_distance_from_tank_m * reach:
+			continue
+		if not defending and (_job_of(bot) != Job.DEVELOP or int(_bound.get(bot, -1)) != Bound.HOLD):
+			continue   # scouts come from tanks standing on their line
+		candidates.append(bot)
+	candidates.sort_custom(func(a: BotController, b: BotController) -> bool:
+		return a.tank.global_position.distance_to(point) < b.tank.global_position.distance_to(point))
+	var facing: Vector3 = mode.tangent_at(mode.project(point).x) * (-1.0 if defending else 1.0)
+	for i: int in mini(want - have, candidates.size()):
+		var bot: BotController = candidates[i]
+		var squad: Squad = bot.tank.squad
+		var spot: Vector3 = point
+		var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene, squad.data.tactics)
+		if map != null:
+			spot = map.find_position(mode.get_world_3d(), point, SQUAD_TASK_RADIUS_M, facing,
+					point + facing * 200.0, 200.0, bot.tank.global_position, PackedVector3Array(),
+					squad.data.tactics, _rng, [bot.tank.get_rid()])
+		_squad_task[bot] = [point, _kos.clock]
+		bot.squad_held = true
+		bot.order_squad(Squad.ORDER_MOVE, _keep_inside(spot, bot))
+		if c.data.log_decisions:
+			print("CMD team %d t=%.0f squad %s %s" % [team, _kos.clock, "ambush" if defending else "scouts",
+					TeamCommander.LANE_NAMES[lane]])
+
+
+## Ends the squad tasks of `team` (-1: every team).
+func _release_squads(team: int) -> void:
+	for bot: BotController in _squad_task.keys():
+		if is_instance_valid(bot) and (team < 0 or (is_instance_valid(bot.tank) and bot.tank.team == team)):
+			bot.squad_held = false
+			_squad_task.erase(bot)
+		elif not is_instance_valid(bot):
+			_squad_task.erase(bot)
+
+
+## Squad tasks: the tank within this share of the squad's reach of the place; the place
+## moved this far = a new task; back on the tank this long after the order = done; a
+## covered spot within this of the place.
+const SQUAD_TASK_REACH_SHARE: float = 0.9
+const SQUAD_TASK_MOVED_M: float = 80.0
+const SQUAD_TASK_BACK_S: float = 20.0
+const SQUAD_TASK_RADIUS_M: float = 50.0
 
 
 ## The commander's answers to threats: hunters round each sniper, a guard against each
@@ -781,6 +876,7 @@ func _update_assault(next: int, short: bool, t: TacticsData) -> void:
 		_phase_cp = next
 		for c: TeamCommander in _commanders.values():
 			c.reset()
+		_release_squads(-1)
 		_assault.clear()
 		_reserve_in.clear()
 		_developing_since = _kos.clock
@@ -1008,10 +1104,26 @@ func _pick_screeners(team: int, next: int, defenders: int) -> void:
 				and _job_of(bot) == Job.ASSAULT \
 				and bot.tank.get_smoke_left() > BotController.SCREEN_KEEP_SALVOS:
 			group.append(bot)
+	# The commander's main effort: its lane's tanks smoke first (CommanderData.screen_main).
+	var c: TeamCommander = _commanders.get(team)
+	var main_side: float = _lane_side(team, c.main_lane) if c != null and c.data.screen_main and c.main_lane >= 0 \
+			else INF
 	group.sort_custom(func(a: BotController, b: BotController) -> bool:
+		if main_side != INF:
+			var am: bool = _on_lane_side(a.tank.global_position, main_side)
+			var bm: bool = _on_lane_side(b.tank.global_position, main_side)
+			if am != bm:
+				return am
 		return a.tank.global_position.distance_to(cp) < b.tank.global_position.distance_to(cp))
 	for i: int in mini(want, group.size()):
 		_screeners[group[i]] = true
+
+
+## Is `p` in the attack corridor's lane on `side` (-1 left, 0 the middle third, 1 right)?
+func _on_lane_side(p: Vector3, side: float) -> bool:
+	var across: float = _signed_across(p) / maxf(mode.half_width(ThunderRoadMode.Role.ATTACK), 1.0)
+	var lane_side: float = -1.0 if across < -1.0 / 3.0 else (1.0 if across > 1.0 / 3.0 else 0.0)
+	return lane_side == side
 
 
 ## A screener lays its screen once near enough: within SCREEN_RANGE_M of the known
@@ -1256,6 +1368,8 @@ func _deny_step(bot: BotController, sit: TeamSituation) -> bool:
 ## front hasn't moved since the last one); with none left the squad comes back to the
 ## tank to refill (SquadData.kit_refill_s per man), then goes again.
 func _mine_step(bot: BotController, front: float) -> void:
+	if _squad_task.has(bot):
+		return   # out in an ambush (TeamCommander)
 	var squad: Squad = bot.tank.squad
 	if squad == null or not is_instance_valid(squad) or squad.data.mine == null \
 			or squad.get_state() == Squad.State.WIPED or squad.get_state() == Squad.State.RETURNING \

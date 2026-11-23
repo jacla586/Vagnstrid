@@ -650,8 +650,9 @@ shows on the minimap. This is what we test first.
   front when `pushed_back`; FLANK_RESERVE counterattacks the attackers in the zone from the side,
   `_update_counter`); `ThunderRoadData.defender_post_*_share` no longer used.
 - Bot commander (`TeamCommander`, `scripts/ai/team_commander.gd`, 2026-11-22; plan in the chat of that day): one per
-  team, bots only (never orders or shows anything to players), on/off and level from the main menu's "Bot
-  commander" (`MatchSettings.bot_commander`: Off / Normal / Sharp -> `CommanderData`, `data/bots/commander_*.tres`).
+  team, bots only (never orders or shows anything to players), always Sharp in the game (the user's call
+  2026-11-23: it runs the bots' tactics, players don't tune it; no menu choice); `MatchSettings.bot_commander`
+  (Off / Normal / Sharp -> `CommanderData`, `data/bots/commander_*.tres`) is set only by the test tools.
   Every `think_interval_s` it reads the fight round the objective by three lanes across the front (own tanks, known
   enemies, own losses lately: `TeamSituation.KnockoutLog` entries now carry the victim's position and the killer's if
   the team knew of him) and decides a main effort lane (least known enemies and losses, held `main_hold_s` unless
@@ -675,8 +676,29 @@ shows on the minimap. This is what we test first.
   plays a whole bots-only match (PlayerRig removed), the commander on for team T only; both teams attack once on
   the same route; prints a MATCH line (~4 min a 6 v 6 match). Measured 2026-11-22 (Sharp, 6 v 6 Thunder Red, 32
   matches both ways round): commander teams won 19, lost 12, 1 draw, checkpoints 98 v 74 (one-sided p 0.14: likely
-  better, not proven; outcomes swing 0 or 5; only the main effort acts in 6 v 6). Next: a gathered push (wait for the
-  wave), reserve and counterattack timing, squads and smoke, then KotH.
+  better, not proven; outcomes swing 0 or 5; only the main effort acts in 6 v 6). Measured 2026-11-22 (Sharp, 6 v 6 Thunder
+  Red, 40 matches each, both levers off vs one on): threatened-side shift (0.6) won 23, lost 8, 9 drawn, checkpoints
+  +1.57 ± 0.54 a match against +0.12 ± 0.53 without (on in both levels: Sharp 0.6, Normal 0.4); concentrated storm
+  (0.8) +0.35 ± 0.50, no clear effect (off). Squads and smoke (CommanderData "Squads and smoke",
+  `_give_squad_tasks`): `ambush_squads` defenders' squads go to covered spots on the threatened side `ambush_ahead_m`
+  short of the zone instead of mining; `scout_squads` squads of attackers standing on their line in the main
+  effort's lane go to `scout_short_m` short of the zone; such a squad is `BotController.squad_held` (no own moves,
+  recalled only after losing half), released when the task moves or ends. `screen_main`: the assault's smoke comes
+  from the main effort's lane first. Measured 2026-11-23 against today's commander (threat shift on): Vidingsjö
+  Red 6 v 6, 40 matches each: base 23-10-7 (+1.20 ± 0.49 checkpoints), ambush 25-7-8 (+1.77 ± 0.47), scout 26-8-6
+  (+1.50 ± 0.48), smoke 19-15-6 (+1.18 ± 0.52); Road to Science 10 v 10, 6 each (7 of 24 ended 0-0): base 2-2,
+  scout 3-0, ambush 3-1, smoke 4-0. So ambush and scouts on (Sharp 2/2, Normal 1/1; better on both maps, not
+  proven alone), smoke off. KotH (`KothBots`, 2026-11-23; `KothBots.commander_teams` for tests): the same
+  commander reads the fight within `picture_reach_m` of the zone centre, lanes across the team's way in (lateral off
+  the centre, the middle within half the radius; `_update_commanders`, also once when a zone is announced, before the
+  axes); `koth_main_share` of the bots going in take axes on the main effort's side (`_set_main_angle`); holders take
+  `threat_shift_share` of their hold spots towards the threatened lane (`_hold_point`, re-ordered when it changes);
+  `koth_ambush_squads` squads go `ambush_ahead_m` outside the zone's edge on the threatened side instead of mining
+  (`_give_squad_tasks`). Measured 2026-11-23 (Sharp's values, Vidingsjö KotH 6 v 6, 40 matches each, each lever alone):
+  none 20-20, main effort 17-23 (−146 ± 148 points a match), threat shift 25-15 (+115 ± 170), ambush 17-23, all 20-20.
+  So in KotH only the threat shift is on (CommanderData "King of the Hill": koth_main_share and koth_ambush_squads 0;
+  piling on one side loses where the most tanks in the zone win). Hunters, guards and the push/defence parts are ThunderRoad only. Measure:
+  `tools/ai/koth_match.gd -- [scenario] size=6 level=N team=T` (prints a KOTH line, ~3.5 min a 6 v 6 match).
 - `BotGroup` moves bots together: column along a route, on the first contact
   (shared to all members) line abreast towards an objective, short halts to fire.
   Bots on an ordered route that get stuck reverse and detour sideways.

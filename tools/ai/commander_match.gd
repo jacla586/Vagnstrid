@@ -46,7 +46,10 @@ func _initialize() -> void:
 		for o: String in overrides:
 			var kv: PackedStringArray = o.split(":")
 			var old: Variant = _data.get(kv[0])
-			_data.set(kv[0], int(kv[1]) if old is int else float(kv[1]))
+			if old is bool:
+				_data.set(kv[0], kv[1] == "true" or kv[1] == "1")
+			else:
+				_data.set(kv[0], int(kv[1]) if old is int else float(kv[1]))
 	var root: Node = (load(scene_path) as PackedScene).instantiate()
 	var rig: Node = root.get_node_or_null("PlayerRig")
 	if rig != null:   # bots only: no idle player tank on team 0

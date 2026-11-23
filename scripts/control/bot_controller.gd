@@ -165,6 +165,9 @@ var _screen_at: Vector3 = Vector3.INF
 var _screen_wait: float = 0.0
 ## Where the fighting is for this bot's squad (KothBots sets the zone); INF = none.
 var fight_focus: Vector3 = Vector3.INF
+## A director (ThunderRoadBots' commander) has the squad on a task: the bot gives it no
+## moves of its own and calls it back only when it has lost half its men.
+var squad_held: bool = false
 ## A role given for now instead of the tank's favourite (null: the favourite).
 var role_override: BotRoleData
 ## The mode's limit on where the bot may go (Vector3 -> Vector3, e.g. ThunderRoad's
@@ -1521,7 +1524,7 @@ func _update_squad(delta: float) -> void:
 		var driving_on: bool = _driving_time >= SQUAD_RECALL_DRIVE_S
 		# Sent to lay a mine, it finishes the job (Squad keeps it within its reach of
 		# the tank) even if the tank drives off to its post meanwhile.
-		if squad.is_mine_job():
+		if squad.is_mine_job() or squad_held:
 			left_behind = false
 			driving_on = false
 		if lost_half or left_behind or driving_on:
@@ -1529,8 +1532,10 @@ func _update_squad(delta: float) -> void:
 			_squad_look = Vector3.INF
 			_since_squad_recall = 0.0
 			return
-		if squad.is_mine_job():
+		if squad.is_mine_job() or squad_held:
 			return   # a move towards the fight would cancel the mine (KotH: the fight is at the zone)
+	elif squad_held:
+		return   # the director sends it
 	elif not squad.is_mounted() or squad.get_alive_count() < squad.data.soldier_count:
 		return   # wiped out, or refilling on the tank
 	elif _standing_time < get_role().squad_stand_s \

@@ -14,8 +14,9 @@ static var weather: String = "random"
 static var free_allies: int = 0
 const MAX_FREE_ALLIES: int = 8
 ## The bots' team commander (TeamCommander): 0 off, 1 normal, 2 sharp (COMMANDER_PATHS).
-static var bot_commander: int = 1
-const COMMANDER_NAMES: PackedStringArray = ["Off", "Normal", "Sharp"]
+## Always sharp in the game (the commander runs the bots' tactics; players never choose it);
+## only the test tools set it.
+static var bot_commander: int = 2
 const COMMANDER_PATHS: PackedStringArray = ["", "res://data/bots/commander_normal.tres",
 		"res://data/bots/commander_sharp.tres"]
 ## The player's name as last typed in the main menu ("" = none yet).
@@ -33,8 +34,6 @@ static func load_settings() -> void:
 		weather = str(cfg.get_value("match", "weather", "random"))
 		free_allies = clampi(int(cfg.get_value("match", "free_allies", 0)), 0, MAX_FREE_ALLIES)
 		player_name = str(cfg.get_value("player", "name", ""))
-		bot_commander = clampi(int(cfg.get_value("match", "bot_commander", 1)), 0,
-				COMMANDER_PATHS.size() - 1)
 
 
 static func set_team_size(n: int) -> void:
@@ -61,15 +60,6 @@ static func set_free_allies(n: int) -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SETTINGS_PATH)
 	cfg.set_value("match", "free_allies", free_allies)
-	cfg.save(SETTINGS_PATH)
-
-
-static func set_bot_commander(level: int) -> void:
-	load_settings()
-	bot_commander = clampi(level, 0, COMMANDER_PATHS.size() - 1)
-	var cfg := ConfigFile.new()
-	cfg.load(SETTINGS_PATH)
-	cfg.set_value("match", "bot_commander", bot_commander)
 	cfg.save(SETTINGS_PATH)
 
 
