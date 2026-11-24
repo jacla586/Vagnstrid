@@ -125,16 +125,29 @@ def tail_log(limit):
 
 # --- HTTP ----------------------------------------------------------------------------
 
+# The game's menu look (MenuTheme): dark see-through field, warm text, orange button.
 LOGIN_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Vagnstrid panel</title>
-<style>:root{color-scheme:light dark}body{font:15px system-ui,sans-serif;display:grid;place-items:center;
-min-height:100vh;margin:0;background:Canvas;color:CanvasText}form{display:grid;gap:10px;width:min(320px,90vw)}
-input,button{font:inherit;padding:8px 10px;border-radius:6px;border:1px solid GrayText}
-button{cursor:pointer}p{color:#c33;margin:0}</style></head><body><form method="post" action="/login">
-<h1 style="margin:0 0 6px;font-size:20px">Vagnstrid server panel</h1>
-<label>Token<br><input name="token" type="password" autofocus required style="width:100%;box-sizing:border-box"></label>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Vagnstrid server</title>
+<style>:root{color-scheme:dark}*{box-sizing:border-box}html{background:#141214}
+body{font:15px system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;color:#ede8db;
+background:linear-gradient(90deg,rgba(5,5,8,.92),rgba(5,5,8,.7)),url("/bg.jpg") center/cover fixed no-repeat,#141214}
+form{display:grid;gap:12px;width:min(340px,90vw);padding:24px;background:rgba(15,15,18,.72);
+border:1px solid rgba(255,255,255,.14);border-radius:4px;backdrop-filter:blur(6px)}
+h1{margin:0 0 4px;font-size:18px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;padding-bottom:6px;
+position:relative}h1::after{content:"";position:absolute;left:0;bottom:0;width:44px;height:3px;background:#db8c38}
+label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#b3ad9e;display:grid;gap:4px}
+input{font:inherit;font-size:15px;padding:8px 10px;border-radius:3px;border:1px solid rgba(255,255,255,.14);
+background:rgba(15,15,18,.72);color:#ede8db}input:focus{outline:1px solid #db8c38}
+button{font:inherit;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:9px;border:0;border-radius:3px;
+background:#db8c38;color:#140f0a;cursor:pointer}button:hover{background:#f2a34d}
+p{color:#ef6a64;margin:0}small{color:#b3ad9e}</style></head><body><form method="post" action="/login">
+<h1>Vagnstrid server</h1>
+<label>Token<input name="token" type="password" autofocus required></label>
 %ERR%<button>Sign in</button><small>The token is in panel_token.txt in the server's log folder.</small>
 </form></body></html>"""
+
+# The main menu's picture as the page backdrop, when the game's files are beside the panel.
+BACKGROUND = os.path.normpath(os.path.join(HERE, "..", "..", "..", "assets", "ui", "menu_background.jpg"))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -217,6 +230,14 @@ class Handler(BaseHTTPRequestHandler):
             if not self._allowed_ip():
                 return self._send(HTTPStatus.FORBIDDEN, b"not from the LAN\n", "text/plain")
             return self._send(HTTPStatus.OK, LOGIN_PAGE.replace("%ERR%", "").encode(), "text/html; charset=utf-8")
+        if url.path == "/bg.jpg":   # no token needed: the login page shows it too
+            if not self._allowed_ip():
+                return self._send(HTTPStatus.FORBIDDEN, b"not from the LAN\n", "text/plain")
+            try:
+                with open(BACKGROUND, "rb") as f:
+                    return self._send(HTTPStatus.OK, f.read(), "image/jpeg", {"Cache-Control": "max-age=86400"})
+            except OSError:
+                return self._send(HTTPStatus.NOT_FOUND, b"", "image/jpeg")
         if url.path in ("/", "/index.html"):
             if not self._gate(page=True):
                 return
