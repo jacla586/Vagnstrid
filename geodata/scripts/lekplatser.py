@@ -399,7 +399,7 @@ def bygg(lekplatser, redskap, sample, h, to_world, scene, add_merged, mat, hinde
         lista = [(OSM_TYP[tt.get('playground')], np.array(p.coords[0]), True)
                  for p, tt in redskap if tt.get('playground') in OSM_TYP and poly.buffer(2.0).contains(p)]
         osm_typer = [l[0] for l in lista]
-        for typ in program(rng, poly.area, lang):   # OSM:s redskap räknas av, ett för ett
+        for typ in [] if t.get('_bara_redskap') else program(rng, poly.area, lang):   # OSM:s redskap räknas av, ett för ett
             if typ in osm_typer:
                 osm_typer.remove(typ)
             elif [l[0] for l in lista].count(typ) < MAX_PER_TYP.get(typ, 99):
@@ -465,7 +465,7 @@ def bygg(lekplatser, redskap, sample, h, to_world, scene, add_merged, mat, hinde
                 disk.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))
                 disk.apply_translation([wx, y0 + 0.02, wz])
                 add_merged('Lekplatsunderlag', disk, underlag[mark])
-        if poly.area >= STOR_PARK_M2:   # trästaket runt om, i bitar med öppningar
+        if poly.area >= STOR_PARK_M2 and not t.get('_bara_redskap'):   # trästaket runt om, i bitar med öppningar
             ring = poly.exterior
             s_ = 0.0
             k = 0

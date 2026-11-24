@@ -111,6 +111,15 @@ class Objekthojd:
                 andrade += 1
         print(f'laserhus: träd bort ur {andrade} hus, {schablon} helt under träd (schablon)')
 
+    def tackning(self, poly, shrink=0.8):
+        """Andelen av fotavtrycket (krympt) med laserträffar över 1,5 m: låg = huset fanns inte (helt) vid skanningen."""
+        f = self._fonster(poly, shrink)
+        if f is None:
+            return 0.0
+        sl, m = f
+        v = self.h[sl][m]
+        return float((v > 1.5).mean()) if v.size else 0.0
+
     def heights_in(self, poly, shrink=0.8):
         """(takfot, nock) i meter över mark inom fotavtrycket, eller None om data saknas."""
         inner = poly.buffer(-shrink)

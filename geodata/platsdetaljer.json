@@ -1137,5 +1137,52 @@
     ]
    }
   ]
- }
+ },
+ "lekplatser": [
+  {
+   "id": "garnisonen_aktivitetspark",
+   "_anm": "Aktivitetsparken vid Garnisonen (58.394294, 15.620437; vidingsjo_xl), ur ortofotot 2025: sandytan med en repklätterpyramid i väster, blå gummiyta i öster. Användaren bad om klätterställning och gungor (2026-11-23).",
+   "yta": [
+    [
+     536237,
+     6472742
+    ],
+    [
+     536288,
+     6472742
+    ],
+    [
+     536288,
+     6472769
+    ],
+    [
+     536237,
+     6472769
+    ]
+   ],
+   "bara_redskap": true,
+   "redskap": [
+    [
+     "climbingframe",
+     536245.5,
+     6472766.0
+    ],
+    [
+     "climbingframe",
+     536275.0,
+     6472763.0
+    ],
+    [
+     "swing",
+     536278.0,
+     6472754.5
+    ],
+    [
+     "basketswing",
+     536274.0,
+     6472747.5
+    ]
+   ]
+  }
+ ]
 }

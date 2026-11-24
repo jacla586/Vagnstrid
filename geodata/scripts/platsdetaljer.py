@@ -141,6 +141,7 @@ class Platsdetaljer:
         fil = ROOT / 'platsdetaljer.json'
         conf = json.loads(fil.read_text()) if fil.exists() else {'objekt': []}
         self.conf = conf
+        self.box = box
         x0, y0, x1, y1 = box.bounds
 
         def inne(o):
@@ -159,6 +160,19 @@ class Platsdetaljer:
         self.hus_justera = [j for j in conf.get('hus_justera', [])
                             if 'osm_id' in j or x0 < j['punkt'][0] < x1 and y0 < j['punkt'][1] < y1]
         self.punkter = []   # (E, N, radie m): träd och buskar hålls borta (step4)
+
+    def lekplatser(self):
+        """Handritade lekplatser (platsdetaljer.json 'lekplatser') inom rutan: ([(Polygon, taggar, id)],
+        [(Point, taggar)]) i samma form som features.py:s lekplatser och lekredskap."""
+        from shapely.geometry import Point, Polygon
+        ytor, redskap = [], []
+        for o in self.conf.get('lekplatser', []):
+            poly = Polygon(o['yta'])
+            if not poly.intersects(self.box):
+                continue
+            ytor.append((poly, {'leisure': 'playground', '_bara_redskap': bool(o.get('bara_redskap'))}, o['id']))
+            redskap += [(Point(E, N), {'playground': typ}) for typ, E, N in o.get('redskap', [])]
+        return ytor, redskap
 
     def fotavtryck(self):
         """Ytor som byggs här: inga laserhus där (step3)."""

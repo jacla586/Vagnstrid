@@ -398,7 +398,9 @@ def _lek_hinder(E, N):
     c, r_ = to_px(E, N)
     i_, j_ = int(round(r_)), int(round(c))
     return not (0 <= i_ < H and 0 <= j_ < W) or bool(_lek_stopp[i_, j_])
-_lek = lekplatser.bygg([x for x in feat.get('lekplatser', []) if x[0].intersects(BOX)], feat.get('lekredskap', []),
+_lek_extra, _lek_extra_redskap = PLATS.lekplatser()   # handritade (platsdetaljer.json), ingen gräsmatta
+_lek = lekplatser.bygg([x for x in feat.get('lekplatser', []) if x[0].intersects(BOX)] + _lek_extra,
+                       feat.get('lekredskap', []) + _lek_extra_redskap,
                        sample, h, to_world, scene, add_merged, mat, _lek_hinder)
 _lek_mask = np.zeros((H, W), bool)   # step4: inga träd eller buskar på redskapen
 for _poly, _pts in _lek:
@@ -540,9 +542,30 @@ def add_takunder(group, V, faces, ctr):
     used, inv = np.unique(F, return_inverse=True)
     add_merged(group, trimesh.Trimesh(V[used], inv.reshape(F.shape), process=False), MAT_TAKUNDER)
 
-def schablontak(delar, hustyp, heights):
-    """Tak utan laserträffar: schablon per hustyp, eller laserhöjderna (takfot, nock) om de finns."""
+EFTER_LASERN_TACKNING = 0.4    # laserträffar på mindre av fotavtrycket än så: huset fanns inte (helt) vid skanningen
+EFTER_LASERN_MIN_VANINGAR = 2  # ... om OSM säger minst så många våningar (då vet vi höjden ändå)
+VANING_SCHABLON_M = 3.0        # våningshöjd när höjden tas ur OSM building:levels
+TAKVANING_M = 2.8              # roof:levels: takets höjd per våning
+
+def _vaningar(t):
+    try:
+        return float(t.get('building:levels', 0))
+    except ValueError:
+        return 0.0
+
+def schablontak(delar, hustyp, heights, taggar=None):
+    """Tak utan laserträffar: schablon per hustyp, eller laserhöjderna (takfot, nock) om de finns, eller
+    OSM:s våningar (building:levels, roof:levels, roof:shape) för hus byggda efter skanningen."""
     takfot, vinkel = SCHABLON[hustyp]
+    takhojd = None
+    if heights is None and taggar and taggar.get('_efter_lasern'):
+        takfot = _vaningar(taggar) * VANING_SCHABLON_M + 0.3
+        form = taggar.get('roof:shape', '')
+        vinkel = 0 if form == 'flat' else (vinkel or 27)
+        try:
+            takhojd = float(taggar.get('roof:levels', 0)) * TAKVANING_M or None
+        except ValueError:
+            pass
     if heights is not None:
         takfot = float(np.clip(heights[0], 2.0, 40.0))
         vinkel = vinkel if heights[1] - takfot > 0.8 else 0
@@ -550,7 +573,7 @@ def schablontak(delar, hustyp, heights):
     for d in delar:
         mitt, u, v, a, b = takform.ram(d)
         if vinkel and b <= 8.0:
-            topp = takfot + math.tan(math.radians(vinkel)) * b
+            topp = takfot + (min(takhojd, b * 1.2) if takhojd else math.tan(math.radians(vinkel)) * b)
             if heights is not None:
                 topp = max(float(heights[1]), takfot + 1.0)
             ut.append(takform.Tak('sadel', mitt, u, v, a, b, takfot, topp))
@@ -605,7 +628,7 @@ def bygg_alla_hus():
         gz = np.r_[sample(h, ring[:, 0], ring[:, 1]), sample(h, [poly.centroid.x], [poly.centroid.y])]
         delar = takform.dela_i_rektanglar(poly)
         tak = []
-        if laser is not None:
+        if laser is not None and not taggar.get('_efter_lasern'):
             tolkade = [takform.tolka_delar(d, laser) for d in delar]
             giltiga = [t for ts in tolkade for t in ts]
             if giltiga:
@@ -618,7 +641,7 @@ def bygg_alla_hus():
         hojd = max((t.topp for t in tak), default=float(heights[1]) if heights is not None else 0.0)
         hustyp = husstil.klassa(taggar, poly.area, hojd, landsbygd)
         if not tak:
-            tak = schablontak(delar, hustyp, heights)
+            tak = schablontak(delar, hustyp, heights, taggar)
         stil = husstil.valj_stil(hustyp, taggar, (round(poly.centroid.x), round(poly.centroid.y)))
         semi = semi_ytor is not None and semi_ytor.contains(poly.centroid)
         planer.append((poly, group, gz, tak, stil, semi, tak_fam))
@@ -666,14 +689,20 @@ if laser:
     laser.rensa_trad(osm_b)   # trädkronor över taken räknas inte som tak
 bpolys = []
 n_h = 0
+n_efter = 0
 for k, (gm, t) in enumerate(osm_b):
     hh = laser.heights_in(gm) if laser else None
+    if laser and _vaningar(t) >= EFTER_LASERN_MIN_VANINGAR and laser.tackning(gm) < EFTER_LASERN_TACKNING:
+        # byggt (färdigt) efter laserskanningen (Garnisonen: bara byggställningar i lasern): våningarna ur OSM
+        t = dict(t, _efter_lasern=True)
+        hh = None
+        n_efter += 1
     n_h += hh is not None
     bpolys.append(gm)
     if LANDMARKEN.ar(t) or PLATS.ar(t):
         continue   # byggs av landmarken.py / platsdetaljer.py
     add_building(gm, t, 'Byggnader_OSM', hh)
-print('OSM-byggnader', len(osm_b), 'varav med laserhöjd', n_h)
+print('OSM-byggnader', len(osm_b), 'varav med laserhöjd', n_h, f'(byggda efter skanningen, höjd ur våningarna: {n_efter})')
 
 if laser:
     # Hus ur laserdatan: bara på land, inte på vägar, i vatten eller där OSM redan har hus

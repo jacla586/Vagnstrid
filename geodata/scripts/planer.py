@@ -51,7 +51,7 @@ def _justera():
         return {}
 
 
-JUSTERA = _justera()   # OSM-id -> {'utan_linjer': bool, 'sma_mal': bool}
+JUSTERA = _justera()   # OSM-id -> {'utan_linjer': bool, 'sma_mal': bool, 'tvinga': bool (även under FOTBOLL_MIN_M2)}
 
 
 def _rect(poly):
@@ -188,7 +188,7 @@ class Planer:
         for g, t, wid in feat.get('idrottsplaner', []):
             if not g.intersects(box) or g.geom_type != 'Polygon':
                 continue
-            if _ar_fotboll(t) and g.area >= FOTBOLL_MIN_M2:
+            if _ar_fotboll(t) and (g.area >= FOTBOLL_MIN_M2 or JUSTERA.get(str(wid), {}).get('tvinga')):
                 namn = t.get('name') or wid
                 if self.foto is not None and self.foto.trad_andel(g) > TRAD_MAX_ANDEL:
                     print(f'planer: {namn}: träd på {self.foto.trad_andel(g):.0%} av OSM-ytan (fel läge i OSM), hoppar över')
