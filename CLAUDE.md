@@ -1219,6 +1219,11 @@ there and the break is over) and on the match's win/loss. Points
   Claude writes logic and may create scene files.
 - Prefer editing `.tscn`/`.tres` files carefully; keep them valid (unique ids, correct
   `ext_resource` paths). Don't edit `project.godot` by hand unless needed.
+- GitHub: `assets/maps/vidingsjo_xl/vidingsjo_xl_objekt.glb` is ~150 MB (roads 67, houses 60), over
+  GitHub's 100 MB file limit, so no branch with it in its history (from 07e9e80, 2026-11-22) can be pushed;
+  they stay local, the user's choice (2026-11-24). Releases (zips) may be bigger. Don't try to push those
+  branches or rewrite history to get round it. If it is ever needed: 16-bit indices (−27 MB, lossless) plus
+  the roads in their own glb would bring both files under 100 MB, then the old commits need a rebase.
 
 ## Done: Prototype 1
 
