@@ -20,6 +20,9 @@ The maps are built from open data by the pipeline in `geodata/`.
   (mapillary.com); the photos themselves are not part of the game.
 - **Copernicus DEM**: produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus
   Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA.
+- **Orienteering maps**, used with permission (boulders, thickets, marsh and open land):
+  Linghem map by **IFK Linköpings orienteringssällskap**; Linköping map by **Linköpings Orienteringsklubb**.
+  The map files are not part of the repository.
 
 ## Models and animation
 - Soldier: "Soldier" by **KolosStudios** ([Poly Pizza](https://poly.pizza/m/XT8jgwSesV),

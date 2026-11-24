@@ -13,6 +13,10 @@ Copernicus DEM: produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and
 © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the
 European Union and ESA
 
+ORIENTEERING MAPS (used with permission)
+Linghem: IFK Linköpings orienteringssällskap
+Linköping: Linköpings Orienteringsklubb
+
 MODELS AND ANIMATION
 Soldier model: "Soldier" by KolosStudios, Poly Pizza (CC BY 3.0), repainted
 Soldier animations: Mixamo (Adobe)
