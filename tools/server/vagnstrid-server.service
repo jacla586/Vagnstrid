@@ -4,6 +4,8 @@
 #   systemctl --user daemon-reload && systemctl --user enable --now vagnstrid-server
 #   loginctl enable-linger $USER     # keeps it running when you're logged out
 #   journalctl --user -u vagnstrid-server -f     # follow its output
+# Settings: server.cfg beside the log (user:// unless --log-dir), read before every match.
+# Admin socket on 127.0.0.1:24681 (--admin-port N, 0 = off): tools/server/admin_cli.py status|watch|...
 [Unit]
 Description=Vagnstrid dedicated server
 After=network-online.target

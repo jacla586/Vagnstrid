@@ -1275,6 +1275,12 @@ Host-authoritative, Godot ENet, all in `scripts/net/`:
   `known_peers` (names, tank keys) for the next NetGame. Log: one JSON line per match/vote/join/leave in
   `server_log.jsonl`; `tools/server/vote_stats.py` sums it up; `tools/server/vagnstrid-server.service`
   (systemd). Testing: `--max-match-s 40` shortens matches and the vote.
+  Settings (2026-11-24): `server.cfg` beside the log (`--config <file>`; `ServerConfig`, written with every key on first
+  start, server.tres = defaults) is read when a match ends and before every load, so edits apply from the next match.
+  Admin socket `AdminLink` (child of DedicatedServer): TCP on 127.0.0.1 only, `--admin-port N` (24681, 0 = off), one
+  JSON object per line (status, subscribe = status every 1 s + every log line, config_get/config_set, change_map,
+  end_match, close_vote, kick, say, quit); no authentication, so it never listens elsewhere: the planned web panel
+  beside it faces the LAN. Shell: `tools/server/admin_cli.py status|watch|config|set k=v|map|end|vote|kick|say|quit`.
 - Player guide (Swedish): `SPELA_ONLINE.md` (hosting, joining, Tailscale, F3).
 - Measured: ~0.8 kB/s per tank per recipient. Test with two (or three) headless
   instances running scratch scripts (`--script`, the autoload is there), or two windows.

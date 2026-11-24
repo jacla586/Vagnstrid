@@ -1,7 +1,8 @@
 class_name ServerData
 extends Resource
 ## The dedicated server (`DedicatedServer`, `--dedicated`; data/server/server.tres): the
-## match it runs, the vote between matches and the log.
+## match it runs, the vote between matches and the log. These are the defaults: the
+## server's `server.cfg` (ServerConfig, written on first start) overrides them per machine.
 
 ## Tanks per team (bots fill what players don't).
 @export var team_size: int = 10
