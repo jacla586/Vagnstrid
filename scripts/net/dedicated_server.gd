@@ -257,7 +257,13 @@ func _close_vote() -> void:
 	for i: int in counts.size():
 		if int(counts[i]) > 0:
 			by_name[scenarios[i].get_file().get_basename()] = counts[i]
-	log_event({"ev": "vote", "votes": by_name, "voters": _votes.size(), "players": _peer_count(),
+	var ballots: Dictionary = {}   # player name -> the map they voted for (their last choice)
+	for peer: Variant in _votes:
+		var i: int = int(_votes[peer])
+		if i >= 0 and i < scenarios.size():
+			ballots[_name_of(int(peer))] = scenarios[i].get_file().get_basename()
+	log_event({"ev": "vote", "votes": by_name, "ballots": ballots, "voters": _votes.size(),
+			"players": _peer_count(), "offered": scenarios.size(),
 			"winner": path.get_file().get_basename(), "tie": tie, "no_votes": best == 0})
 	NetSession.instance.rpc("rpc_vote_close", MainMenu.scenario_label(path))
 	_load(path)

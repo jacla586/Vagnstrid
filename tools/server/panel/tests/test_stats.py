@@ -22,7 +22,11 @@ LOG = [
      "humans": [["Anna", 0, 2, 0, 100, 0], ["Bertil", 1, 0, 2, 10, 0]],
      "gunnery": {"Anna": {"shots": 12, "hits": 6, "pens": 4, "ricochets": 1},
                  "Bertil": {"shots": 3, "hits": 0, "pens": 0, "ricochets": 0}}, "t": "2026-11-28T10:18:00Z"},
-    {"ev": "vote", "votes": {"linghem_free": 2}, "t": "2026-11-28T10:18:30Z"},
+    {"ev": "vote", "votes": {"linghem_free": 2}, "ballots": {"Anna": "linghem_free", "Bertil": "linghem_free"},
+     "voters": 2, "players": 2, "winner": "linghem_free", "tie": False, "no_votes": False, "t": "2026-11-28T10:18:30Z"},
+    {"ev": "vote", "votes": {"campus_koth": 1, "vidingsjo_thunder_red": 1},
+     "ballots": {"Anna": "campus_koth", "Bertil": "vidingsjo_thunder_red"}, "voters": 2, "players": 3,
+     "winner": "campus_koth", "tie": True, "no_votes": False, "t": "2026-11-28T10:19:30Z"},
     {"ev": "leave", "peer": 1, "name": "Anna", "t": "2026-11-28T10:20:00Z"},
     {"ev": "leave", "peer": 2, "name": "Bertil", "t": "2026-11-28T10:30:00Z"},
     {"ev": "hello", "peer": 3, "name": "Cecilia", "t": "2026-11-28T11:00:00Z"},
@@ -74,6 +78,20 @@ class StatsTest(unittest.TestCase):
         self.assertEqual(f["nemesis"], {"killer": "Anna", "victim": "Bertil", "kills": 1})
         self.assertEqual(f["deadliest_bot_tank"]["tank"], "Pz IV")
         self.assertEqual(s["weapons"], {"gun": 2})
+
+    def test_votes(self):
+        s = stats.compute(events())
+        mv = s["map_votes"]
+        self.assertEqual((mv["rounds"], mv["votes"]), (2, 4))
+        self.assertAlmostEqual(mv["turnout"], 4 / 5)
+        maps = {m["scenario"]: m for m in mv["maps"]}
+        self.assertEqual(mv["maps"][0]["scenario"], "linghem_free")
+        self.assertEqual((maps["linghem_free"]["votes"], maps["linghem_free"]["won"], maps["linghem_free"]["fans"]), (2, 1, 2))
+        self.assertEqual((maps["campus_koth"]["won"], maps["campus_koth"]["won_by_lot"]), (0, 1))
+        self.assertEqual({m["mode"]: m["votes"] for m in mv["modes"]},
+                         {"Free fight": 2, "King of the Hill": 1, "Thunder Road": 1})
+        rows = {r["name"]: r for r in s["players"]}
+        self.assertEqual((rows["Anna"]["favourite_map"], rows["Anna"]["votes"]), ("linghem_free", 2))
 
     def test_range(self):
         s = stats.compute(events(), since=stats.parse_time("2026-11-28T10:15:00Z"),

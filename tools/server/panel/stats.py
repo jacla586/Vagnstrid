@@ -164,6 +164,18 @@ def minutes_by_day(sessions):
     return [{"day": d, "minutes": round(days[d], 1), "players": len(players[d])} for d in sorted(days)]
 
 
+def mode_of(scenario):
+    """The game mode from a scenario's name tag (as the main menu groups them)."""
+    s = scenario or ""
+    if "_koth" in s:
+        return "King of the Hill"
+    if "_thunder" in s:
+        return "Thunder Road"
+    if "_free" in s:
+        return "Free fight"
+    return "Other"
+
+
 def compute(events, since=None, until=None, now=None):
     now = now or datetime.now(timezone.utc)
     sessions = clip(sessions_of(events), since, until)
@@ -264,6 +276,12 @@ def compute(events, since=None, until=None, now=None):
     matches = Counter()
     match_minutes = Counter()
     votes = Counter()
+    votes_by_mode = Counter()
+    vote_wins = Counter()          # won outright (most votes, no draw)
+    vote_ties = Counter()          # won a draw by lot
+    fav_map = defaultdict(Counter)  # player key -> map -> times voted for it
+    voters_of = defaultdict(set)    # map -> players who ever voted for it
+    vote_rounds = voters_total = players_at_votes = 0
     human_matches = 0
     for e in in_range:
         ev = e.get("ev")
@@ -277,9 +295,24 @@ def compute(events, since=None, until=None, now=None):
         elif ev == "vote":
             for s, n in (e.get("votes") or {}).items():
                 votes[s] += int(n)
+                votes_by_mode[mode_of(s)] += int(n)
+            if e.get("voters"):
+                vote_rounds += 1
+                voters_total += int(e.get("voters") or 0)
+                players_at_votes += int(e.get("players") or 0)
+                if not e.get("tie") and not e.get("no_votes"):
+                    vote_wins[e.get("winner")] += 1
+                elif e.get("tie"):
+                    vote_ties[e.get("winner")] += 1
+            for name, s in (e.get("ballots") or {}).items():
+                fav_map[key_of(name)][s] += 1
+                voters_of[s].add(key_of(name))
     for r in players:
         f = fav.get(key_of(r["name"]))
         r["favourite_tank"] = f.most_common(1)[0][0] if f else None
+        m = fav_map.get(key_of(r["name"]))
+        r["favourite_map"] = m.most_common(1)[0][0] if m else None
+        r["votes"] = sum(m.values()) if m else 0
 
     # --- Fun facts ---
     def best(field, min_field=None, minimum=0, reverse=True):
@@ -336,6 +369,15 @@ def compute(events, since=None, until=None, now=None):
         "scenarios": [{"scenario": s, "matches": matches.get(s, 0), "minutes": round(match_minutes.get(s, 0), 1),
                        "votes": votes.get(s, 0)} for s in sorted(set(matches) | set(votes),
                                                                   key=lambda s: (-matches.get(s, 0), -votes.get(s, 0)))],
+        "map_votes": {
+            "rounds": vote_rounds,
+            "votes": sum(votes.values()),
+            "turnout": round(voters_total / players_at_votes, 3) if players_at_votes else None,
+            "maps": [{"scenario": s, "votes": n, "share": round(n / max(1, sum(votes.values())), 3),
+                      "won": vote_wins.get(s, 0), "won_by_lot": vote_ties.get(s, 0),
+                      "fans": len(voters_of.get(s, ()))} for s, n in votes.most_common()],
+            "modes": [{"mode": m, "votes": n} for m, n in votes_by_mode.most_common()],
+        },
         "weapons": dict(weapons),
         "facts": facts,
     }

@@ -53,6 +53,7 @@ section[hidden] { display: none; }
 .card h2 { font-size: 14px; margin: 0 0 10px; }
 .card h2 small { font-weight: 400; color: var(--text-muted); }
 .wide { grid-column: 1 / -1; }
+@media (min-width: 900px) { .span2 { grid-column: span 2; } }
 .tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); margin-bottom: 12px; }
 .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
 .tile .label { color: var(--text-secondary); font-size: 12px; }
@@ -191,9 +192,17 @@ form.settings .checks label { display: flex; gap: 6px; align-items: center; colo
       <h2>Tanks <small>times picked</small></h2>
       <div id="tanks"></div>
     </div>
-    <div class="card">
+    <div class="card span2">
       <h2>Maps <small>matches played with players</small></h2>
       <div id="maps"></div>
+    </div>
+    <div class="card span2">
+      <h2>Map votes <small id="votes-note"></small></h2>
+      <div id="map-votes"></div>
+    </div>
+    <div class="card span2">
+      <h2>Votes by game mode <small>which kind of match people ask for</small></h2>
+      <div id="mode-votes"></div>
     </div>
     <div class="card wide">
       <h2>Fun facts</h2>
@@ -525,7 +534,10 @@ function describe(e) {
     case "kill": return `${e.killer || "–"}${e.killer_tank ? " (" + e.killer_tank + ")" : ""} → ${e.victim} (${e.victim_tank})${e.weapon && e.weapon !== "gun" ? " · " + e.weapon : ""}${e.assists && e.assists.length ? " · assist " + e.assists.join(", ") : ""}`;
     case "match_start": return `match started: ${e.scenario}, ${e.weather}, ${e.players} players`;
     case "match_end": return `match ended: ${e.scenario} after ${fmtDur(e.length_s / 60)} (${e.reason || (e.timed_out ? "timeout" : "mode")})${e.winner >= 0 ? ", " + TEAM(e.winner) + " won" : ""}`;
-    case "vote": return `vote: ${e.winner}${e.tie ? " (drawn by lot)" : ""}${e.no_votes ? " (no votes)" : ""}`;
+    case "vote": {
+      const who = Object.entries(e.ballots || {}).map(([n, m]) => `${n}: ${m}`).join(", ");
+      return `vote: ${e.winner}${e.tie ? " (drawn by lot)" : ""}${e.no_votes ? " (no votes)" : ""}${who ? " · " + who : ""}`;
+    }
     case "server_start": return `server started (port ${e.port})`;
     case "online": return `online: ${(e.names || []).join(", ")}`;
     case "say": return `said: ${e.text}`;
@@ -650,6 +662,12 @@ function renderStats() {
   const labels = {};
   for (const sc of (config && config.scenarios_available) || []) labels[sc.name] = sc.label;
   hbars($("#maps"), r.scenarios.map((x) => ({ label: labels[x.scenario] || x.scenario, value: x.matches, text: `${x.matches} · ${fmtDur(x.minutes)} · ${x.votes} votes`, title: `${x.scenario}: ${x.matches} matches, ${x.votes} votes` })));
+  const mv = r.map_votes || { maps: [], modes: [] };
+  $("#votes-note").textContent = mv.rounds ? `${mv.votes} votes in ${mv.rounds} rounds${mv.turnout != null ? ` · ${Math.round(mv.turnout * 100)} % of players vote` : ""}` : "";
+  hbars($("#map-votes"), mv.maps.map((x) => ({ label: labels[x.scenario] || x.scenario, value: x.votes,
+    text: `${x.votes} · ${Math.round(x.share * 100)} % · won ${x.won}${x.won_by_lot ? " (+" + x.won_by_lot + " by lot)" : ""} · ${x.fans} fans`,
+    title: `${x.scenario}: ${x.votes} votes from ${x.fans} different players, won ${x.won} votes outright, ${x.won_by_lot} by lot` })));
+  hbars($("#mode-votes"), mv.modes.map((x) => ({ label: x.mode, value: x.votes, text: `${x.votes}` })));
   $("#days-card").hidden = r.by_day.length < 2;
   table($("#days"), ["Day", { label: "Players", num: true }, { label: "Person-minutes", num: true }], r.by_day.map((d) => [d.day, d.players, fmtInt(d.minutes)]));
 }
@@ -678,7 +696,9 @@ const LB = [
   { key: "minutes", label: "Time", num: true, f: fmtDur },
   { key: "kills_per_hour", label: "KO/h", num: true, f: (v) => v == null ? "–" : v },
   { key: "favourite_tank", label: "Favourite tank", f: (v) => v || "–" },
+  { key: "favourite_map", label: "Votes for", f: (v) => v ? (mapLabels()[v] || v) : "–" },
 ];
+function mapLabels() { const o = {}; for (const sc of (config && config.scenarios_available) || []) o[sc.name] = sc.label; return o; }
 function renderLeaderboard() {
   const rows = statsData.players.slice();
   const k = lbSort.key;

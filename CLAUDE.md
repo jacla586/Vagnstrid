@@ -1284,7 +1284,8 @@ Host-authoritative, Godot ENet, all in `scripts/net/`:
   Popularity log lines (2026-11-25, players told apart by name): server_start, hello (name; a session runs hello ->
   leave), online (every 120 s while anyone is in), deploy (tank), kill (only when a player is killer, victim or
   assist; NetGame `_register` -> `DedicatedServer.on_knockout`), match_end gains `gunnery` (per player shots, hits,
-  pens, ricochets: main gun) and `bot_kills` (bot by bot, counted only). Web panel `tools/server/panel/` (Python
+  pens, ricochets: main gun) and `bot_kills` (bot by bot, counted only); vote gains `ballots` (player name -> map,
+  their last choice) and `offered`. Web panel `tools/server/panel/` (Python
   stdlib, README there, `vagnstrid-panel.service`, port 8080, LAN addresses + token in `<log dir>/panel_token.txt`):
   live status and commands, systemd start/stop/restart, console (journalctl) and events, settings, and statistics
   from the log (`stats.py`: unique players, peak, person-minutes, leaderboard, fun facts; tests in `panel/tests`).
