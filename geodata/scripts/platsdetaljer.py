@@ -849,6 +849,50 @@ class Platsdetaljer:
         self._del(p, lada((0, u0 + Hs / 2, 0.06), (B, Hs, 0.12)), self._m('Skylt_lada', (230, 196, 20) if stil == 'pressbyran' else (220, 220, 216), 0.5), LOS)
         self._skylt_yta(p, B, Hs, u0, 0.125, self._tex('Skylt_' + stil, bild, 0.5))
 
+    def _tex_alfa(self, namn, bild, rough=0.5):
+        """Textur med genomskinlig bakgrund (alfa, MASK): fristående bokstäver."""
+        if namn not in self._mats:
+            self._mats[namn] = trimesh.visual.material.PBRMaterial(
+                name=namn, baseColorTexture=bild, alphaMode='MASK', alphaCutoff=0.5,
+                metallicFactor=0.0, roughnessFactor=rough)
+        return self._mats[namn]
+
+    def _bokstavsskylt(self, o):
+        """Fristående bokstäver (Berga centrum, Stora Coop): `rader` = [[text, [r, g, b], andel av höjden,
+        kursiv?], ...] uppifrån, bredd_m × hojd_m från over_mark_m; baksidan visar bokstävernas mörka
+        baksidor. `stolpar_fran_m`: två stolpar från den höjden upp till skylten (står på ett tak)."""
+        E, N = o['lage']
+        p = Plats(E, N, self._mark(E, N), o['riktning_grad'], self.to_world)
+        B, Hs, u0 = o['bredd_m'], o['hojd_m'], o['over_mark_m']
+        namn = 'Skylt_' + o['stil']
+        px = 1600
+        fram, bak = _bokstaver(o['rader'], px, int(px * Hs / B))
+        self._skylt_yta(p, B, Hs, u0, 0.10, self._tex_alfa(namn, fram))
+        ps = Plats(E, N, p.y0, o['riktning_grad'] + 180, self.to_world)
+        self._skylt_yta(ps, B, Hs, u0, -0.10, self._tex_alfa(namn + '_bak', bak.transpose(Image.FLIP_LEFT_RIGHT)))
+        if 'stolpar_fran_m' in o:
+            m = self._m('Skylt_stolpe', (60, 62, 64), 0.6)
+            for r_ in (-B * 0.3, B * 0.3):
+                self._del(p, lada((r_, (o['stolpar_fran_m'] + u0 + Hs * 0.3) / 2, 0.0),
+                                  (0.08, u0 + Hs * 0.3 - o['stolpar_fran_m'], 0.08)), m, LOS)
+
+    def _skyltpylon(self, o):
+        """Fristående skyltpylon (Stora Coops vid parkeringen): mörk låda på en betongfot, skyltfältet
+        (rader som i bokstavsskylt, på pylonens färg) överst på båda sidor."""
+        E, N = o['lage']
+        p = Plats(E, N, self._mark(E, N, 0.6) - 0.05, o['riktning_grad'], self.to_world)
+        H, B, D = o.get('hojd_m', 5.0), o.get('bredd_m', 1.6), o.get('djup_m', 0.35)
+        farg = tuple(o.get('farg', (44, 46, 48)))
+        self._del(p, lada((0, 0.2, 0), (B + 0.2, 0.4, D + 0.2)), self._m('Betong', (156, 154, 148), 0.95), LOS)
+        self._del(p, lada((0, 0.4 + H / 2, 0), (B, H, D)), self._m('Pylon_' + o['stil'], farg, 0.6), LOS)
+        Hf = o.get('falt_m', 2.6)
+        px = 800
+        bild, _ = _bokstaver(o['rader'], px, int(px * Hf / B), bakgrund=farg)
+        mat_ = self._tex('Skylt_' + o['stil'], bild, 0.5)
+        for s in (0, 180):
+            ps = Plats(E, N, p.y0, o['riktning_grad'] + s, self.to_world)
+            self._skylt_yta(ps, B * 0.94, Hf, 0.4 + H - Hf - 0.15, D / 2 + 0.005, mat_)
+
     def _markiser(self, o):
         (Ea, Na), (Eb, Nb) = o['fran'], o['till']
         n = o['antal']
@@ -1148,6 +1192,38 @@ def _textskylt(text, bak, fram, B, H):
     bb = d.textbbox((0, 0), text, font=f)
     d.text(((B - (bb[2] - bb[0])) / 2 - bb[0], (H - (bb[3] - bb[1])) / 2 - bb[1]), text, font=f, fill=fram)
     return im
+
+
+def _bokstaver(rader, B, H, bakgrund=None):
+    """Textrader uppifrån (text, färg, andel av höjden, kursiv?), centrerade. Utan bakgrund: RGBA med
+    genomskinlig bakgrund, plus en andra bild med samma bokstäver i mörkgrått (baksidorna)."""
+    from PIL import ImageFont
+    fram = Image.new('RGBA', (B, H), (0, 0, 0, 0) if bakgrund is None else tuple(bakgrund) + (255,))
+    mask = Image.new('L', (B, H), 0)
+    d, dm = ImageDraw.Draw(fram), ImageDraw.Draw(mask)
+    andelar = sum(r[2] for r in rader)
+    y = 0.0
+    for text, farg, andel, *kursiv in rader:
+        h = H * andel / andelar
+        try:
+            f = ImageFont.truetype('DejaVuSans-BoldOblique.ttf' if kursiv and kursiv[0] else 'DejaVuSans-Bold.ttf',
+                                   int(h * 0.8))
+        except OSError:
+            f = _font(int(h * 0.8))
+        bb = d.textbbox((0, 0), text, font=f)
+        skala = min(1.0, B * 0.96 / (bb[2] - bb[0]))
+        if skala < 1.0:   # för bred: mindre stil
+            f = ImageFont.truetype(f.path, int(h * 0.8 * skala)) if hasattr(f, 'path') else f
+            bb = d.textbbox((0, 0), text, font=f)
+        xy = ((B - (bb[2] - bb[0])) / 2 - bb[0], y + (h - (bb[3] - bb[1])) / 2 - bb[1])
+        d.text(xy, text, font=f, fill=tuple(farg) + (255,))
+        dm.text(xy, text, font=f, fill=255)
+        y += h
+    if bakgrund is not None:
+        return fram.convert('RGB'), None
+    bak = Image.new('RGBA', (B, H), (58, 60, 62, 0))
+    bak.putalpha(mask)
+    return fram, bak
 
 
 def _perforerad(text, staende=True):

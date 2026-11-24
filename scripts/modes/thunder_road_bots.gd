@@ -191,6 +191,13 @@ var _squad_task: Dictionary = {}     # bot -> [point, clock]: its squad out on a
 var _denying: Dictionary = {}        # defenders driving into the zone at the last minute
 ## Only these teams get a commander when it is on (bit per team; tests: one side with, one without).
 static var commander_teams: int = 3
+## Developing attackers far from their line drive up in one go (`_travelling`); false = bound
+## all the way, as before 2026-11-24 (A/B: tools/ai/thunder_pace_probe.gd -- nodrive).
+static var drive_up: bool = true
+## The drive up keeps at most this far from the road (m).
+const TRAVEL_ACROSS_M: float = 60.0
+## A bot farther than 2 × TRAVEL_ACROSS_M from the road joins it this far ahead of itself first (m).
+const TRAVEL_JOIN_AHEAD_M: float = 60.0
 
 
 func _enter_tree() -> void:
@@ -1061,8 +1068,23 @@ func _develop_step(bot: BotController, next: int, delta: float, fresh: bool) -> 
 			var partner_still: bool = alone or int(_bound[partner]) != Bound.MOVE
 			var waited: float = float(_bound_time[bot])
 			var my_turn: bool = alone or waited >= float(_bound_time.get(partner, 0.0))
-			if (partner_still and my_turn and waited >= t.solo_halt_s) or waited >= t.overwatch_max_s:
+			if _travelling(bot, t) or (partner_still and my_turn and waited >= t.solo_halt_s) \
+					or waited >= t.overwatch_max_s:
 				_start_leg(bot, cp, t)
+
+
+## Far from its line spot (more than TacticsData.bound_start_m), no contact lately and no known
+## enemy near: no bounding yet, it drives up in one go (as KotH bots do). Bounding all the way
+## from a spawn 1-1.5 km back (Vidingsjö XL) took most of a checkpoint's clock.
+func _travelling(bot: BotController, t: TacticsData) -> bool:
+	if not drive_up or not _line_goal.has(bot) or bot.get_time_since_contact() < t.bound_after_contact_s:
+		return false
+	var p: Vector3 = bot.tank.global_position
+	var sit: TeamSituation = _situation.get(bot.tank.team)
+	if sit != null and sit.enemies_near > 0 and sit.enemy_centre != Vector3.INF \
+			and Squad._flat(sit.enemy_centre - p).length() < BOUND_SCREEN_RANGE_M:
+		return false
+	return Squad._flat((_line_goal[bot] as Vector3) - p).length() > t.bound_start_m + DEVELOP_ARRIVED_M
 
 
 ## One bound: a leg of bound_length_m towards the line spot (to a covered spot that
@@ -1071,6 +1093,26 @@ func _develop_step(bot: BotController, next: int, delta: float, fresh: bool) -> 
 func _start_leg(bot: BotController, cp: Vector3, t: TacticsData) -> void:
 	var goal: Vector3 = _line_goal[bot]
 	var p: Vector3 = bot.tank.global_position
+	if _travelling(bot, t):
+		# The drive up: along the road (at most TRAVEL_ACROSS_M off it) to bound_start_m short of
+		# the line spot, then bound out into the lane (the sideways first leg below). Driving up
+		# in the lane itself sent paths along the corridor's edge and stuck them at a creek.
+		var s_goal: float = mode.project(goal).x
+		var s_to: float = maxf(s_goal - t.bound_start_m * 0.75, mode.project(p).x)
+		var drive: Vector3 = mode.point_at(s_to, clampf(_signed_across(goal), -TRAVEL_ACROSS_M, TRAVEL_ACROSS_M))
+		if Squad._flat(drive - p).length() < t.bound_length_m:
+			drive = goal.lerp(p, t.bound_start_m * 0.75 / maxf(Squad._flat(goal - p).length(), 1.0))
+		_bound[bot] = Bound.MOVE
+		_bound_time[bot] = 0.0
+		# Far out in the field (where the last assault left it): join the road first, just ahead,
+		# instead of cutting across country (three bots jammed on a footpath over a creek).
+		var here: Vector2 = mode.project(p)
+		var via: Vector3 = Vector3.INF
+		if absf(here.y) > TRAVEL_ACROSS_M * 2.0 and s_to - here.x > TRAVEL_JOIN_AHEAD_M * 2.0:
+			via = mode.point_at(here.x + TRAVEL_JOIN_AHEAD_M, 0.0)
+		bot.order_path(drive, _travel_throttle(bot), true, via)
+		_urgent.erase(bot)
+		return
 	var lane_across: float = _signed_across(goal)
 	var here: Vector2 = mode.project(p)
 	if absf(_signed_across(p) - lane_across) > LANE_SPREAD_FIRST_M and here.x < mode.project(goal).x:

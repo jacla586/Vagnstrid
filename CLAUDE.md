@@ -2,7 +2,7 @@
 
 Semi-realistic tank game in the spirit of War Thunder, vs bots (multiplayer later).
 Few tanks, lots of feel. Not for publication. Full spec (Swedish):
-`Stridsvagnsspel – specifikation (utkast).md` – read it when working on a new area.
+`Stridsvagnsspel – specifikation (utkast).md` – read it when working on a new area (in the main checkout only: it and the other plan/notes .md files are git-ignored since 2026-11-24).
 
 **Core idea (USP):** the player is the commander in the cupola. Hatch open = full
 360° view and binoculars, but exposed to shrapnel/HE/snipers. Hatch closed = safe,
@@ -299,7 +299,7 @@ shows on the minimap. This is what we test first.
   roads): pipe ends in hollows at the road banks (geodata `trummor.py`, glb group `Trummor`).
 - Sports grounds (geodata `idrott.py`): OSM running tracks get a flat tartan oval with lane lines and a lawn infield (glb group `Idrott`, no collision); a long building beside one (or `building=grandstand`) becomes a roofed grandstand (`Byggnader_laktare`, collision). So far Isovalen on campus.
 - Landmarks (geodata `landmarken.py`, `geodata/landmarken.json` by OSM way id): built from their OSM building parts; one part can be a glass tower (taller, V-shaped, floor bands and mullions). Group `Byggnader_landmarken` (collision). So far Mjärdevi Center (campus, road_to_science).
-- Place details (geodata `platsdetaljer.py` + `stenlaggning.py`, data `geodata/platsdetaljer.json`, hand-placed from the user's photos and GPS points): the park opposite Campushallen (rusty H-beams, statues, allotment cottage ...), Corson's lamp groups (toppleable `Corsonlampa`), Studenthuset's red panel facade, its bike shelter, the district-heating tank, Kårallen's gangway and the Blå havet stage with painted waves, Campushallen's entrance and ramp, KEY/I-HUSET pylons, Ångströmhuset as a ring with a sloped roof; the artwork in Märkesbacken (four posts with red cylinders) with a purple roundabout dog; paved areas from the orienteering map (plates; Campus Valla only), land cover class `hårdgjord` (no grass); on every map OSM parkings become asphalt with bay lines and villa driveways (`uppfarter.py`: garage to street where the orthophoto shows a hard strip) asphalt or pavers. Glb groups `Byggnader_konst` (collision), `Konst`, `Stenlaggning` (none).
+- Place details (geodata `platsdetaljer.py` + `stenlaggning.py`, data `geodata/platsdetaljer.json`, hand-placed from the user's photos and GPS points): the park opposite Campushallen (rusty H-beams, statues, allotment cottage ...), Corson's lamp groups (toppleable `Corsonlampa`), Studenthuset's red panel facade, its bike shelter, the district-heating tank, Kårallen's gangway and the Blå havet stage with painted waves, Campushallen's entrance and ramp, KEY/I-HUSET pylons, shop signs (`bokstavsskylt`: cut-out letters with an alpha texture and dark backs, optional posts down to a roof; `skyltpylon`: a freestanding pylon; after Mapillary photos fetched with `hamta_mapillary.py bilder --punkt`: "BERGA centrum" and Stora Coop in vidingsjo_xl), Ångströmhuset as a ring with a sloped roof; the artwork in Märkesbacken (four posts with red cylinders) with a purple roundabout dog; paved areas from the orienteering map (plates; Campus Valla only), land cover class `hårdgjord` (no grass); on every map OSM parkings become asphalt with bay lines and villa driveways (`uppfarter.py`: garage to street where the orthophoto shows a hard strip) asphalt or pavers. Glb groups `Byggnader_konst` (collision), `Konst`, `Stenlaggning` (none).
 - Roadside (geodata `vagkant.py`, glb group `Vagkant`, no collision; where Mapillary has street photos its detected street lights and road signs replace the rules, `mapillary_objekt.py`): reflector posts on rural roads
   from 70 km/h, street lamps every 32 m in built-up areas, guard rails on high banks, speed signs where
   NVDB's limit changes, give-way/stop signs and bus stop signs from OSM nodes, pedestrian-crossing
@@ -307,7 +307,10 @@ shows on the minimap. This is what we test first.
   OSM `highway=crossing` uncontrolled/marked/traffic_signals) (the stop's OSM name on a
   plate below, own atlas), bus shelters from OSM
   (shelter nodes and platforms with shelter=yes); sign faces from a generated atlas (alpha), the face
-  6 cm in front of and the grey back 6 cm behind the post, which ends at the sign's middle. Rural
+  6 cm in front of and the grey back 6 cm behind the post, which ends at the sign's middle. Single-sided signs within
+  `STAPLA_M` (4 m) facing the same way (40°) share one post, stacked (stop/give way/priority road above, speed below,
+  at most 3; `VagKant._stapla`, template `Skylt_<top>_och_<next>`: PropBreak splits names at `__`): close ones hid
+  each other (2026-11-24). Rural
   roads get 0.6 m ditches in the carving.
 - Toppling props (`PropBreak`, player rig, moves itself to the map scene; data `PropBreakData`,
   `data/world/prop_break.tres`; cosmetic, local, nothing sent): glb group `Valtbart` (geodata
@@ -573,7 +576,14 @@ shows on the minimap. This is what we test first.
   House cells: roofs over 3 of 9 points (rays from above, `_roofed_samples`) or a wall in a 4 m box
   (stones: 6.8 m box); the old 6.8 m wall box alone left wide houses' insides open and shut 8-10 m
   streets (Peking's Drottninggatan). Bridge decks over water (`_bridge_deck`: level, >= 1 m over the
-  terrain, ~4 m wide) are road at deck height, never water/steep (Peking's river was a closed line). Open areas under `TacticalMap.POCKET_MAX_CELLS` (150) cells
+  terrain, ~4 m wide) are road at deck height, never water/steep (Peking's river was a closed line). Decks are also looked for
+  where lake/river water lies in the cell or a road cell is steep, and grown along the bridge from every deck cell
+  found (road neighbours tried in turn): Söderleden's bridge over Tinnerbäcken (Vidingsjö XL) had one deck cell of
+  five, the main road was cut there and bots jammed on footpath crossings (2026-11-24). Road cells (land cover,
+  not decks) in water deeper than `ROAD_FORD_MAX_M` (0.8 m) are water, and road cells with water on two opposite
+  sides whose flat top across is narrower than `CROSSING_MIN_WIDTH_M` (5 m, a footpath embankment) too. Rebaked
+  with these so far: vidingsjo_xl only (`tools/ai/grid_probe.gd -- <map> x,z ... [line=x0,z0:x1,z1:n]` prints a
+  point's grid flags, ground, water depth and what a ray down hits). Open areas under `TacticalMap.POCKET_MAX_CELLS` (150) cells
   that connect to nothing (courtyards walled in by houses, e.g. B-huset on campus) are closed
   (`_close_pockets`): `is_blocked` true, so no spawns, goals or positions there.
   Rerun after map changes. `TacticalMap.for_scene()` builds an `AStarGrid2D` (costs
@@ -642,7 +652,10 @@ shows on the minimap. This is what we test first.
   (`ThunderRoadBots`): attackers by job (`ThunderRoadBots.Job`, `_job_of`; phase per
   checkpoint in `_update_assault`): DEVELOP first (scouts/harassers on the flanks, snipers to firing spots
   `SNIPER_RANGE_*` from the known defenders, the rest bound in pairs, `_develop_step`/`_start_leg`, to their lane
-  on a line `DEVELOP_STANDOFF_M` short of the zone), ASSAULT with the upper hand (near the checkpoint >= known
+  on a line `DEVELOP_STANDOFF_M` short of the zone; farther than `TacticsData.bound_start_m` from their line spot, with no
+  contact for `bound_after_contact_s` and no known enemy within 500 m, they drive up in one go first, `_travelling`, as KotH bots
+  do: bounding all the way from a spawn 1-1.5 km back took most of a checkpoint's clock on Vidingsjö XL, 2026-11-24;
+  `tools/ai/thunder_pace_probe.gd` logs how fast attackers close on each checkpoint), ASSAULT with the upper hand (near the checkpoint >= known
   defenders + `ASSAULT_MARGIN` after `DEVELOP_MIN_S`, a kill run, or time short / overtime; into the zone,
   breakers behind a brawler, snipers closer; back to DEVELOP when the upper hand is lost), and a RESERVE
   (`RESERVE_SHARE`, at least one) `RESERVE_BACK_M` back until time is short), defender posts by `post` (every other ZONE_FRONT brawler posts out on its flank for crossfire,
@@ -881,7 +894,7 @@ there and the break is over) and on the match's win/loss. Points
   `corson`, 1.71 × 2.7 km since 2026-11-15, widened east with the NW corner kept): starts east on Malmslättsvägen, through Vallarondellen (CP1), then a straight line north -> south through Campus Valla (2.5 km, 3
   checkpoints; `geodata/corson/korridor.json` written by hand, not from OSM), checkpoints moved along the route
   off the houses by `tools/thunder_checkpoints_avoid_houses.py`. `peking_thunder` (corridor map `peking`, Norrköping, 3.3 × 2.6 km, 2026-11-16; hidden from the map list and the
-  server vote since 2026-11-18, `MainMenu.HIDDEN_SCENARIOS`: the user wants to rework it later): Finspångsvägen -> Norra Promenaden -> Kaktusparken (Stationsrondellen, CP2) -> Tullhusbron -> Drottninggatan south -> Södra Promenaden, 4.3 km, 4 checkpoints moved by hand along the route (`--spacing=`); Motala ström can't be crossed west of Drottningbron (geodata `vagar_bort.json` removes those bridges, steep deep bottoms), Drottningbron, Tullhusbron, Hamnbron, Sjötullsgatan and Varvsbron are open and at least 5 m wide (`broar_justera.json` `min_bredd`). `vidingsjo_xl_thunder` (corridor map `vidingsjo_xl`, 5.17 × 4.73 km, 2026-11-22): attackers start east of Blästad, CP1 Blästad -> CP2 Ålerydsrondellen -> CP3 Vistvägen by Berga -> CP4 by Nötabacken -> up through Garnisonen (Kompanigatan) to CP5, defenders' spawn north of it; 7.1 km, the user's five zone points by `--checkpoints=` (CP1 121 m and CP3 242 m off theirs: those points lie on side roads; move the Marker3Ds if wanted), `thunder_road_large.tres`, route from car roads only. `linghem_thunder` (whole map, not a corridor):
+  server vote since 2026-11-18, `MainMenu.HIDDEN_SCENARIOS`: the user wants to rework it later): Finspångsvägen -> Norra Promenaden -> Kaktusparken (Stationsrondellen, CP2) -> Tullhusbron -> Drottninggatan south -> Södra Promenaden, 4.3 km, 4 checkpoints moved by hand along the route (`--spacing=`); Motala ström can't be crossed west of Drottningbron (geodata `vagar_bort.json` removes those bridges, steep deep bottoms), Drottningbron, Tullhusbron, Hamnbron, Sjötullsgatan and Varvsbron are open and at least 5 m wide (`broar_justera.json` `min_bredd`). `vidingsjo_xl_thunder` (corridor map `vidingsjo_xl`, 5.17 × 4.73 km, 2026-11-22): attackers start east of Blästad, CP1 Blästad -> CP2 Ålerydsrondellen -> CP3 Vistvägen by Berga -> CP4 Stora Coop (Garnisonsvägen, added 2026-11-24: the leg to Garnisonen was 2.2 km) -> CP5 in Garnisonen (2026-11-24, urban fight: the Brigadgatan crossing at 58.396452, 15.615612; the route goes from Infanterivägen up Artillerigatan and along Brigadgatan through the blocks, `geodata/vidingsjo_xl/rutt_spel.json`, written from korridor.json's route with that detour; korridor.json itself, which places houses and trees, is unchanged) -> CP6 north-west of Garnisonen, defenders' spawn north of it; 7.1 km, `--path=geodata/vidingsjo_xl/rutt_spel.json --checkpoints=` (CP1 121 m and CP3 242 m off the user's first points: those lie on side roads). Rules `thunder_road_xl.tres` (2026-11-24): `thunder_road_large.tres` with corridors 75 m narrower a side (425 / 365 m) and attackers allowed `attacker_ahead_of_checkpoint_m` 200 m past the next checkpoint (drive past the zone without the return call), and `checkpoint_time_s` 540 (9 min, as the README says: legs of 0.5-1.3 km; bots needed 3-6 min a leg with no defenders at all). Route from car roads only. `linghem_thunder` (whole map, not a corridor):
   south -> north, forest paths, then along Himnavägen, diagonally through the houses to the station (3.2 km,
   4 checkpoints; the last ~260 m before the end so defender spawns stay on the map). Route from a Google Maps
   screenshot by `rutt_ur_bild.py` run in a scratch folder (it writes a korridor.json, which in

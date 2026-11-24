@@ -58,6 +58,16 @@ const LC_LAKE: int = 11
 const LC_ROAD_PAVED: int = 12
 const LC_ROAD_GRAVEL: int = 13
 const LC_RES_M: float = 2.0
+## A road or path cell (land cover) whose ground lies this deep in a lake or river (GroundCoverData
+## water levels) at any of the deck sample points is water, not road: a footpath across a creek gave a
+## passable cell 1.4 m deep in Tinnerbäcken (Vidingsjö XL) and bots drove into it and stuck.
+const ROAD_FORD_MAX_M: float = 0.8
+## A road cell (not a bridge deck) with water on two opposite sides is a crossing: its flat top across
+## (within CROSSING_TOP_SLACK_M of the highest point, heights every 0.5 m) narrower than this is a
+## footpath embankment a tank slides off (Tinnerbäcken, Vidingsjö XL), so it is water; car roads over
+## culverts are wider and stay open.
+const CROSSING_MIN_WIDTH_M: float = 5.0
+const CROSSING_TOP_SLACK_M: float = 0.5
 const LANDCOVER_PATHS: Array[String] = ["res://geodata/%s/out/landcover_index.png",
 		"res://geodata/out/landcover_index.png"]
 const MAIN_GEODATA_MAP: String = "vikbolandet"
@@ -76,6 +86,39 @@ func _initialize() -> void:
 	if args.size() >= 2:
 		_cell = maxf(float(args[1]), 2.0)
 	_run.call_deferred()
+
+
+## Width (m) of the flat top across a crossing cell: heights every 0.5 m along `axis` (towards the
+## water on both sides) through the cell's centre, the run round the highest point within
+## CROSSING_TOP_SLACK_M of it.
+func _crossing_width(terrain_data: Object, centre: Vector3, axis: Vector3) -> float:
+	var hs: PackedFloat32Array = []
+	var top: int = 0
+	for k: int in range(-int(_cell), int(_cell) + 1):
+		var h: float = terrain_data.call("get_height", centre + axis * (k * 0.5))
+		hs.append(-INF if is_nan(h) else h)
+		if hs[hs.size() - 1] > hs[top]:
+			top = hs.size() - 1
+	var lo: int = top
+	var hi: int = top
+	while lo > 0 and hs[lo - 1] >= hs[top] - CROSSING_TOP_SLACK_M:
+		lo -= 1
+	while hi < hs.size() - 1 and hs[hi + 1] >= hs[top] - CROSSING_TOP_SLACK_M:
+		hi += 1
+	return (hi - lo) * 0.5
+
+
+## Deepest lake/river water over the ground at the cell's deck sample points (0 on land).
+func _deepest_water(water: GroundCoverData, terrain_data: Object, p: Vector3) -> float:
+	var deepest: float = 0.0
+	for dx: float in DECK_SAMPLES_M:
+		for dz: float in DECK_SAMPLES_M:
+			var q := Vector3(p.x + dx, 0.0, p.z + dz)
+			var level: float = water.water_level_at(q)
+			var g: float = terrain_data.call("get_height", q)
+			if not is_nan(level) and not is_nan(g):
+				deepest = maxf(deepest, level - g)
+	return deepest
 
 
 func _run() -> void:
@@ -107,6 +150,8 @@ func _run() -> void:
 	grid.flags.resize(n)
 	var space: PhysicsDirectSpaceState3D = scene.get_viewport().get_world_3d().direct_space_state
 	var landcover: Image = _load_landcover()
+	var water_data: GroundCoverData = GroundCoverData.find_for_scene(scene)
+	var fords: int = 0
 	var bridges := PackedByteArray()
 	bridges.resize(n)
 	var house_box := BoxShape3D.new()
@@ -134,8 +179,13 @@ func _run() -> void:
 			var f: int = 0
 			var lc: int = _landcover_flags(landcover, p) if landcover != null else 0
 			# Only over water: an underpass' deck would lift its cells above the trench road.
+			# Water also from the lake/river levels (a stream under a road bridge is road in the
+			# land cover), and a steep road cell (a bridge over a dry bank): Söderleden's bridge
+			# over Tinnerbäcken (Vidingsjö XL) was steep, the main road cut, bots jammed on footpaths.
 			var deck: float = NAN
-			if h <= SEA_LEVEL_M or lc & TacticalGridData.WATER:
+			if h <= SEA_LEVEL_M or lc & TacticalGridData.WATER \
+					or (water_data != null and _deepest_water(water_data, terrain_data, p) > 0.0) \
+					or (lc & TacticalGridData.ROAD and _fine_slope_deg(terrain_data, p) > MAX_FINE_SLOPE_DEG):
 				deck = _bridge_deck(space, terrain_data, p)
 			if not is_nan(deck):
 				bridges[grid.index_of(c)] = 1
@@ -153,9 +203,43 @@ func _run() -> void:
 			if _has_cover(space, p):
 				f |= TacticalGridData.CONCEALED
 			f |= lc
+			if is_nan(deck) and f & TacticalGridData.ROAD and water_data != null \
+					and _deepest_water(water_data, terrain_data, p) > ROAD_FORD_MAX_M:
+				f = (f & ~TacticalGridData.ROAD) | TacticalGridData.WATER
+				fords += 1
 			if not is_nan(deck):
 				f = (f & ~(TacticalGridData.WATER | TacticalGridData.WET)) | TacticalGridData.ROAD
 			grid.flags[grid.index_of(c)] = f
+	# A deck found over water continues along the bridge: road cells next to a deck cell are
+	# tried too (the bridge's ends over dry banks or a stream the water test missed), over and
+	# over, so the whole deck is found (Söderleden over Tinnerbäcken: one cell of five).
+	var grown: int = 0
+	var queue: Array[Vector2i] = []
+	for cz: int in grid.height:
+		for cx: int in grid.width:
+			if bridges[cz * grid.width + cx] == 1:
+				queue.append(Vector2i(cx, cz))
+	while not queue.is_empty():
+		var c: Vector2i = queue.pop_back()
+		for dz: int in [-1, 0, 1]:
+			for dx: int in [-1, 0, 1]:
+				var nb := Vector2i(c.x + dx, c.y + dz)
+				if not grid.has_cell(nb):
+					continue
+				var ni: int = grid.index_of(nb)
+				if bridges[ni] == 1 or not grid.flags[ni] & TacticalGridData.ROAD:
+					continue
+				var np := Vector3(grid.origin.x + (nb.x + 0.5) * _cell, 0.0, grid.origin.y + (nb.y + 0.5) * _cell)
+				var d: float = _bridge_deck(space, terrain_data, np)
+				if is_nan(d):
+					continue
+				bridges[ni] = 1
+				grid.heights[ni] = d
+				grid.flags[ni] = (grid.flags[ni] & ~(TacticalGridData.WATER | TacticalGridData.WET
+						| TacticalGridData.STEEP)) | TacticalGridData.ROAD
+				grown += 1
+				queue.append(nb)
+	print("bridge deck cells grown along bridges: ", grown)
 	# Slope from the neighbours' heights (after all heights are known).
 	for cz: int in grid.height:
 		for cx: int in grid.width:
@@ -166,7 +250,7 @@ func _run() -> void:
 	var bridge_cells: int = 0
 	for b: int in bridges:
 		bridge_cells += b
-	print("bridge deck cells: ", bridge_cells)
+	print("bridge deck cells: ", bridge_cells, ", road cells in deep water (fords) closed: ", fords)
 	# Streams and lake shores: widen water into its side neighbours (not across roads,
 	# where culverts and bridges are), so a diagonal stream is a closed line.
 	var wet_edge: PackedInt32Array = []
@@ -184,6 +268,27 @@ func _run() -> void:
 					break
 	for i: int in wet_edge:
 		grid.flags[i] |= TacticalGridData.WATER
+	var narrow: PackedInt32Array = []
+	for cz: int in grid.height:
+		for cx: int in grid.width:
+			var c := Vector2i(cx, cz)
+			var i: int = grid.index_of(c)
+			if not grid.flags[i] & TacticalGridData.ROAD or grid.flags[i] & TacticalGridData.WATER \
+					or bridges[i] == 1:
+				continue
+			for axis: Vector2i in [Vector2i(1, 0), Vector2i(0, 1)]:
+				var a: Vector2i = c + axis
+				var b: Vector2i = c - axis
+				if grid.has_cell(a) and grid.has_cell(b) \
+						and grid.flags[grid.index_of(a)] & TacticalGridData.WATER \
+						and grid.flags[grid.index_of(b)] & TacticalGridData.WATER \
+						and _crossing_width(terrain_data, grid.center_of(c), Vector3(axis.x, 0.0, axis.y)) \
+						< CROSSING_MIN_WIDTH_M:
+					narrow.append(i)
+					break
+	for i: int in narrow:
+		grid.flags[i] = (grid.flags[i] & ~TacticalGridData.ROAD) | TacticalGridData.WATER
+	print("narrow crossings over water closed: ", narrow.size())
 	# Cells beside a house or stone: dearer, so paths keep off the walls.
 	var near: PackedInt32Array = []
 	for cz: int in grid.height:
