@@ -444,7 +444,7 @@ Välj lag och vagn i matchen. Bottar fyller ut lagen och lämnar plats när spel
 
 - **VagnFast**, en C++-GDExtension för heta loopar: fjädring för alla vagnar på arbetstrådar, bandkrafter, och en gemensam världsbild per fysiksteg som alla bottar läser. GDScript-versionen finns kvar som reserv.
 
-- Bottarnas och gruppernas spaningsvarv körs på 11 trådar (`ScanBatch`), kontrollerade identiska mot huvudtråden över 281 461 jobb.
+- Bottarnas och gruppernas spaningsvarv, när de ser sig om efter fiender, delas upp på alla processorns trådar utom en (`ScanBatch`). Varje kontroll av ett mål är ett eget jobb. Resultaten har jämförts med samma jobb körda på huvudtråden under hela testmatcher, och de var identiska. Trådarna ändrar alltså inte vad bottarna ser.
 
 - Lätta bildrutor: dyrt arbete läggs i rutor utan fysiksteg. Bottar långt från spelare tänker i halv takt men följer samma regler.
 
