@@ -10,6 +10,7 @@
 [ext_resource type="Script" uid="uid://t1duuxcrtose" path="res://scripts/control/bot_controller.gd" id="8_botctrl"]
 [ext_resource type="Resource" uid="uid://xul8ehta6d3o" path="res://data/bots/bot_regular.tres" id="9_botdata"]
 [ext_resource type="Script" uid="uid://bc1odctfft7i4" path="res://scripts/control/respawn_at_start.gd" id="10_respawn"]
+[ext_resource type="PackedScene" path="res://assets/maps/vidingsjo_xl/vidingsjo_xl_vagar.glb" id="11_roads"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_qseep"]
 
@@ -50,6 +51,8 @@ directional_shadow_max_distance = 300.0
 script = ExtResource("4_ird7s")
 collision_prefixes = PackedStringArray("Byggnader", "Broar", "Stenar", "Banhinder", "Kollision")
 hidden_prefixes = PackedStringArray("Kollision")
+
+[node name="Roads" type="Node3D" parent="." unique_id=657585946 instance=ExtResource("11_roads")]
 
 [node name="Trees" type="Node3D" parent="." unique_id=1917325310]
 script = ExtResource("5_tjjyg")

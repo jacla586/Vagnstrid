@@ -1219,11 +1219,12 @@ there and the break is over) and on the match's win/loss. Points
   Claude writes logic and may create scene files.
 - Prefer editing `.tscn`/`.tres` files carefully; keep them valid (unique ids, correct
   `ext_resource` paths). Don't edit `project.godot` by hand unless needed.
-- GitHub: `assets/maps/vidingsjo_xl/vidingsjo_xl_objekt.glb` is ~150 MB (roads 67, houses 60), over
-  GitHub's 100 MB file limit, so no branch with it in its history (from 07e9e80, 2026-11-22) can be pushed;
-  they stay local, the user's choice (2026-11-24). Releases (zips) may be bigger. Don't try to push those
-  branches or rewrite history to get round it. If it is ever needed: 16-bit indices (−27 MB, lossless) plus
-  the roads in their own glb would bring both files under 100 MB, then the old commits need a rebase.
+- GitHub takes no file over 100 MB. An object glb over `dela_glb.DELA_OVER_MB` (95 MB) has its roads split off
+  by step3 (geodata `scripts/dela_glb.py`, lossless: nodes, meshes and buffers copied as they are) into
+  `<map>_vagar.glb`, which the map scene instances as node "Roads" beside "Objects" (no collision; RoadLook and
+  RoadSurface find `Vagar*` anywhere in the scene; `import_geodata_map.gd` copies it and warns if the scene lacks
+  it). So far only Vidingsjö XL (objekt 86.7 MB, vagar 68.7 MB; was 155 MB, 2026-11-24). Check a split map with
+  `tools/check_map_groups.gd -- <map>` (headless: road meshes and triangles, glb groups, static bodies).
 
 ## Done: Prototype 1
 

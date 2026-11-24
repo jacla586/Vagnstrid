@@ -13,7 +13,7 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, Polygon, Point, MultiPolygon, box
 from shapely.ops import unary_union, triangulate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, vagyta, vagdetaljer, trummor, vagkant, lekplatser, gravar, valtbart, idrott, landmarken, overfarter, mapillary_objekt, platsdetaljer, stenlaggning
+import takform, husgeometri, broar, stenar, okarta, korridor, jarnvag, nvdb, vagmarkering, vagnat, vagyta, vagdetaljer, trummor, vagkant, lekplatser, gravar, valtbart, idrott, landmarken, overfarter, mapillary_objekt, platsdetaljer, stenlaggning, dela_glb
 from shapely import affinity
 import trimesh
 from PIL import Image
@@ -845,6 +845,12 @@ VALT.skriv(scene)
 markvegetation.lager_glb(MV, h, RES, f'{OUT}/{NAMN}_markvegetation.glb')   # växtlagret på avstånd
 # Först utan terrängrutor, för Godot där Terrain3D står för marken, sedan hela scenen
 scene.export(f'{OUT}/{NAMN}_objekt.glb')
+# GitHub tar inte filer över 100 MB: en stor objekt-glb lämnar vägarna i <namn>_vagar.glb (dela_glb.py)
+_vagar_glb = Path(f'{OUT}/{NAMN}_vagar.glb')
+if Path(f'{OUT}/{NAMN}_objekt.glb').stat().st_size > dela_glb.DELA_OVER_MB * 1e6:
+    print('dela_glb: vägarna till', _vagar_glb.name, dela_glb.dela(f'{OUT}/{NAMN}_objekt.glb', str(_vagar_glb), ['Vagar']))
+elif _vagar_glb.exists():
+    _vagar_glb.unlink()   # en gammal delning: allt ligger i objekt-glb:n nu
 for name, mesh in terrain_tiles:
     scene.add_geometry(mesh, node_name=name, geom_name=name)
 scene.export(f'{OUT}/{NAMN}.glb')

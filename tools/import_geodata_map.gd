@@ -302,6 +302,14 @@ func _copy_files() -> void:
 	for file: String in DirAccess.get_files_at(_geo_out):
 		if file.ends_with("_objekt.glb"):
 			pairs[file] = "%s_objekt.glb" % _name
+		elif file.ends_with("_vagar.glb"):
+			# The roads split off a big object glb (geodata dela_glb.py, GitHub's 100 MB limit):
+			# the map scene instances it beside the object glb (node "Roads").
+			pairs[file] = "%s_vagar.glb" % _name
+			var scene_text: String = FileAccess.get_file_as_string("res://scenes/maps/%s.tscn" % _name)
+			if not scene_text.contains("%s_vagar.glb" % _name):
+				push_warning("scenes/maps/%s.tscn does not instance %s_vagar.glb: add a node \"Roads\" "
+						% [_name, _name] + "instancing it, or the map has no roads")
 		elif file.ends_with("_markvegetation.glb"):
 			pairs[file] = "%s_markvegetation.glb" % _name   # far ground vegetation (GroundCoverCanopy)
 		elif file.begins_with("veg_") and file.ends_with(".glb"):
