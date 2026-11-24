@@ -1278,7 +1278,8 @@ Host-authoritative, Godot ENet, all in `scripts/net/`:
   Settings (2026-11-24): `server.cfg` beside the log (`--config <file>`; `ServerConfig`, written with every key on first
   start, server.tres = defaults) is read when a match ends and before every load, so edits apply from the next match.
   Admin socket `AdminLink` (child of DedicatedServer): TCP on 127.0.0.1 only, `--admin-port N` (24681, 0 = off), one
-  JSON object per line (status, subscribe = status every 1 s + every log line, config_get/config_set, change_map,
+  JSON object per line (status, subscribe = status every 1 s + every log line (the first reply carries the last 5 min
+  of tick times, `history`), config_get/config_set, change_map,
   end_match, close_vote, kick, say, quit); no authentication, so it never listens elsewhere: the planned web panel
   beside it faces the LAN. Shell: `tools/server/admin_cli.py status|watch|config|set k=v|map|end|vote|kick|say|quit`.
   Popularity log lines (2026-11-25, players told apart by name): server_start, hello (name; a session runs hello ->

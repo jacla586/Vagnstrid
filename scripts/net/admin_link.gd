@@ -30,6 +30,10 @@ var _started_ms: int = 0
 # worst frame/physics times since the last status push
 var _worst_process_ms: float = 0.0
 var _worst_physics_ms: float = 0.0
+## The last HISTORY_S of [unix time, physics ms, players], one per STATUS_S, sent with a
+## subscribe so the panel's chart is full at once.
+var _history: Array = []
+const HISTORY_S: float = 300.0
 
 
 class Client:
@@ -92,6 +96,11 @@ func _process(delta: float) -> void:
 	_status_clock += delta
 	if _status_clock >= STATUS_S:
 		_status_clock = 0.0
+		_history.append([Time.get_unix_time_from_system(),
+				snappedf(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0, 0.01),
+				NetSession.instance.multiplayer.get_peers().size()])
+		while _history.size() > int(HISTORY_S / STATUS_S):
+			_history.pop_front()
 		var subs: Array[Client] = _clients.filter(func(c: Client) -> bool: return c.subscribed)
 		if not subs.is_empty():
 			var msg: Dictionary = status()
@@ -142,7 +151,9 @@ func _handle(c: Client, req: Dictionary) -> Dictionary:
 			return _ok(status())
 		"subscribe":
 			c.subscribed = true
-			return _ok(status())
+			var first: Dictionary = status()
+			first["history"] = _history   # [unix time, physics ms, players]
+			return _ok(first)
 		"unsubscribe":
 			c.subscribed = false
 			return _ok({})

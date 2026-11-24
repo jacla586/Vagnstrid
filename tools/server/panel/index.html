@@ -493,8 +493,12 @@ function renderStatus(st) {
     const cols = m.columns;
     const ix = (c) => cols.indexOf(c);
     table($("#scores"), ["Name", "Team", { label: "KO", num: true }, { label: "Lost", num: true }, { label: "Assists", num: true }].concat(ix("points") >= 0 ? [{ label: "Points", num: true }] : []),
-      m.stats.map((r) => [r[0], TEAM(r[1]), r[ix("ko")], r[ix("lost")], r[ix("assists")]].concat(ix("points") >= 0 ? [r[ix("points")]] : [])));
+      m.stats.map((r) => [String(r[0]).startsWith("Bot (") ? el("span", { class: "muted", title: r[0] }, "Bot") : r[0], TEAM(r[1]), r[ix("ko")], r[ix("lost")], r[ix("assists")]].concat(ix("points") >= 0 ? [r[ix("points")]] : [])));
   } else $("#scores").replaceChildren();
+  if (st.history) {   // first status after (re)connecting: the server's last minutes
+    perf.length = 0;
+    for (const h of st.history) perf.push({ x: new Date(h[0] * 1000), y: h[1] });
+  }
   perf.push({ x: new Date(), y: st.perf.physics_ms });
   while (perf.length > 300) perf.shift();
   $("#perf-line").textContent = `process ${st.perf.process_ms.toFixed(1)} ms · ${fmtInt(st.perf.fps)} fps · net out ${fmtInt(st.perf.net_out_bps / 1024)} kB/s`;
@@ -537,12 +541,12 @@ function startStream() {
 // ---------- events log ----------
 function describe(e) {
   switch (e.ev) {
-    case "hello": return `${e.name} joined (${e.players} online)`;
-    case "leave": return `${e.name || "peer " + e.peer} left (${e.players} online)`;
+    case "hello": return `${e.name} joined${e.players != null ? ` (${e.players} online)` : ""}`;
+    case "leave": return `${e.name || "peer " + e.peer} left${e.players != null ? ` (${e.players} online)` : ""}`;
     case "join": return `connection from peer ${e.peer}`;
     case "deploy": return `${e.name} took a ${e.tank} (${TEAM(e.team)})`;
     case "kill": return `${e.killer || "–"}${e.killer_tank ? " (" + e.killer_tank + ")" : ""} → ${e.victim} (${e.victim_tank})${e.weapon && e.weapon !== "gun" ? " · " + e.weapon : ""}${e.assists && e.assists.length ? " · assist " + e.assists.join(", ") : ""}`;
-    case "match_start": return `match started: ${e.scenario}, ${e.weather}, ${e.players} players`;
+    case "match_start": return `match started: ${e.scenario}${e.weather ? ", " + e.weather : ""}${e.players != null ? `, ${e.players} players` : ""}`;
     case "match_end": return `match ended: ${e.scenario} after ${fmtDur(e.length_s / 60)} (${e.reason || (e.timed_out ? "timeout" : "mode")})${e.winner >= 0 ? ", " + TEAM(e.winner) + " won" : ""}`;
     case "vote": {
       const who = Object.entries(e.ballots || {}).map(([n, m]) => `${n}: ${m}`).join(", ");
