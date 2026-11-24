@@ -43,3 +43,6 @@ bin/*.dll
 /TUTORIAL_PLAN.md
 /VAD_SOM_GICK_FEL.md
 /PRESTANDA_PLAN.md
+
+# ez-tree test (2026-11-22): local clone, Node and outputs, not used by the game
+/tools/trees/
