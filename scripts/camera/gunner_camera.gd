@@ -19,10 +19,14 @@ const SIGHT_CIRCLE_RADIUS: float = 0.46
 ## outside the black edge). Keeps the aim mark on screen on wide monitors and stops
 ## the aim from wrapping round to the other side of the turret.
 @export var aim_lead_limit: float = 1.25
+## Each mouse wheel step multiplies the field of view by this (in) or divides by it (out),
+## between the widest and the narrowest of TankData.gunner_sight_fov_deg.
+@export var zoom_step: float = 0.88
 
 var _target_yaw: float = 0.0
 var _target_pitch: float = 0.0
-var _zoom_index: int = 0
+## The field of view the wheel has set (degrees); <= 0: not set yet (the widest).
+var _zoom_fov: float = -1.0
 ## The tank whose gun is moved to OWN_GUN_LAYER (only this camera's own tank).
 var _hidden_gun_tank: Tank
 ## Extra pitch, yaw and roll (radians) while the view shakes from a hit (HitReaction).
@@ -43,11 +47,10 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not current or tank == null:
 		return
-	var levels: PackedFloat32Array = tank.data.gunner_sight_fov_deg
 	if event.is_action_pressed("sight_zoom_in"):
-		_zoom_index = mini(_zoom_index + 1, levels.size() - 1)
+		_zoom_fov = _clamp_zoom(_current_zoom() * zoom_step)
 	elif event.is_action_pressed("sight_zoom_out"):
-		_zoom_index = maxi(_zoom_index - 1, 0)
+		_zoom_fov = _clamp_zoom(_current_zoom() / zoom_step)
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var motion := event as InputEventMouseMotion
 		# Slower mouse when zoomed in, so aim feels the same on screen.
@@ -85,8 +88,26 @@ func set_target_view(yaw: float, pitch: float) -> void:
 			deg_to_rad(tank.data.gun_max_elevation_deg))
 
 
-func get_zoom_index() -> int:
-	return _zoom_index
+## The sight's zoom range (degrees): [widest, narrowest] of TankData.gunner_sight_fov_deg.
+func _zoom_range() -> Vector2:
+	var levels: PackedFloat32Array = tank.data.gunner_sight_fov_deg
+	if levels.is_empty():
+		return Vector2(fov, fov)
+	var wide: float = levels[0]
+	var narrow: float = levels[0]
+	for f: float in levels:
+		wide = maxf(wide, f)
+		narrow = minf(narrow, f)
+	return Vector2(wide, narrow)
+
+
+func _current_zoom() -> float:
+	return _zoom_fov if _zoom_fov > 0.0 else _zoom_range().x
+
+
+func _clamp_zoom(f: float) -> float:
+	var r: Vector2 = _zoom_range()
+	return clampf(f, r.y, r.x)
 
 
 func get_desired_direction() -> Vector3:
@@ -135,9 +156,7 @@ func _limit_lead() -> void:
 
 
 func _apply() -> void:
-	var levels: PackedFloat32Array = tank.data.gunner_sight_fov_deg
-	if not levels.is_empty():
-		_zoom_index = clampi(_zoom_index, 0, levels.size() - 1)
-		fov = levels[_zoom_index]
+	if not tank.data.gunner_sight_fov_deg.is_empty():
+		fov = _clamp_zoom(_current_zoom())   # a new tank: within its own range
 	var sight: Transform3D = tank.get_gunner_sight_transform_interpolated()
 	global_transform = Transform3D(sight.basis * Basis.from_euler(shake), sight.origin)

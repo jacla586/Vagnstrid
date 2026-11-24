@@ -57,6 +57,11 @@ MLY_LYKTA_M = 12.0      # Mapillary-lykta: närmaste väg inom så här långt
 MLY_SKYLT_M = 15.0
 MLY_DUBBEL_M = 5.0      # lyktor närmare än så är samma lykta
 MLY_SKYLT_DUBBEL_M = 10.0
+STAPLA_M = 4.0          # enkla skyltar närmare än så, vända åt samma håll, delar stolpe (_stapla)
+STAPLA_VINKEL = 40.0    # högst så här olika riktning
+STAPLA_GLAPP_M = 0.08   # mellan skyltarna på stolpen
+STAPLA_MAX = 3
+STAPLA_ORDNING = ['stopp', 'vajning', 'huvudled']   # överst först; hastighet och övriga under
 SKYLT_AVST_M = 0.06    # skyltytan framför (och baksidan bakom) stolpens mitt; stolpen är 0,06 m
 NAMN_H_M = 0.16        # hållplatsnamnets skylt: höjd, bredd efter texten (minst H-skyltens)
 NAMN_HOJD_M = 2.2 - 0.25 - NAMN_H_M / 2 - 0.03   # namnskyltens mitt över marken, under H-skylten
@@ -1125,6 +1130,42 @@ class Vagkant:
             if V:
                 self._mesh(V, F, UV, material)
 
+    def _stapla(self):
+        """Enkla skyltar (inte dubbla, inga hållplatser) inom STAPLA_M från varandra och vända åt samma håll
+        (STAPLA_VINKEL) sätts på en stolpe: den första skyltens läge, olika namn, högst STAPLA_MAX, i
+        STAPLA_ORDNING uppifrån. Förut stod t.ex. huvudled och hastighet en meter isär och skymde varandra.
+        -> (övriga skyltar som förut, [(p, mot, [(namn, storlek), ...] uppifrån)])."""
+        grupper, enkla = [], []
+        cos_max = float(np.cos(np.radians(STAPLA_VINKEL)))
+        for s in self.valt_skyltar:
+            p, mot, namn, hojd, st, dubbel, text = s
+            if dubbel or text:
+                enkla.append(s)
+                continue
+            u = np.asarray(mot, float) / max(np.linalg.norm(mot), 1e-9)
+            for g in grupper:
+                if (len(g['delar']) < STAPLA_MAX and np.hypot(*(np.asarray(p) - g['p'])) < STAPLA_M
+                        and float(np.dot(u, g['u'])) > cos_max and all(n != namn for n, _ in g['delar'])):
+                    g['delar'].append((namn, st))
+                    break
+            else:
+                grupper.append({'p': np.asarray(p, float), 'mot': mot, 'u': u, 'delar': [(namn, st)], 's': s})
+
+        def rang(d):
+            n = d[0]
+            return (STAPLA_ORDNING.index(n) if n in STAPLA_ORDNING else len(STAPLA_ORDNING) + (0 if n.isdigit() else 1))
+
+        staplar = []
+        for g in grupper:
+            if len(g['delar']) == 1:
+                enkla.append(g['s'])
+            else:
+                staplar.append((g['p'], g['mot'], sorted(g['delar'], key=rang)))
+        if staplar:
+            print(f'skyltar: {len(staplar)} stolpar med flera skyltar '
+                  f'({sum(len(d) for *_, d in staplar)} skyltar)')
+        return enkla, staplar
+
     def _skriv_valtbara(self):
         """Vältbara skyltar: en mall per skylttyp (stolpe, framsida, baksida eller andra framsidan)
         och per hållplatsnamn (H-skylten med namnskylten under). Mallens x pekar mot trafiken."""
@@ -1149,7 +1190,33 @@ class Vagkant:
             return _plana_ytor(lista, bak=True)
 
         a = SKYLT_AVST_M
-        for p, mot, namn, hojd, st, dubbel, text in self.valt_skyltar:
+
+        def atlas_uv(namn):
+            i = ATLAS.index(namn if namn in ATLAS else int(namn))
+            c, rr = i % cols, i // cols
+            return (c / cols, (c + 1) / cols, 1 - (rr + 1) / rows, 1 - rr / rows)
+
+        enkla, staplar = self._stapla()
+        for p, mot, lista in staplar:
+            typ = 'Skylt_' + '_och_'.join(n for n, _ in lista)   # inte '__': PropBreak delar typ__nyckel där
+            if not self.valt.har_mall(typ):
+                # nedersta skylten på vanlig höjd (2 m mitt), de andra ovanför; stolpen till översta mitten
+                hojder, y = [], 2.0
+                for k, (n, st) in enumerate(reversed(lista)):
+                    if k:
+                        y += lista[len(lista) - k][1] / 2 + STAPLA_GLAPP_M + st / 2
+                    hojder.append(y)
+                hojder.reverse()
+                fr = [(a, h, st, st, atlas_uv(n), True) for (n, st), h in zip(lista, hojder)]
+                bk = [(-a, h, st, st, atlas_uv(n), False) for (n, st), h in zip(lista, hojder)]
+                m, u = ytor(fr)
+                mb, ub = bak_ytor(bk)
+                self.valt.mall(typ, [(lador_mesh(ladar([[0, 0]], [[1, 0]], 0.03, 0.03, -0.3, hojder[0])), stolpe),
+                                     (m, fram, u), (mb, bak, ub)])
+            w = np.array(self.to_world(p[0], p[1]))
+            wm = np.array(self.to_world(p[0] + mot[0], p[1] + mot[1])) - w
+            self.valt.placera(typ, [w[0], self._mark(*p), w[1]], wm)
+        for p, mot, namn, hojd, st, dubbel, text in enkla:
             typ = f'Hallplats_{namnlista.index(text)}' if text else f'Skylt_{namn}'
             if not self.valt.har_mall(typ):
                 i = ATLAS.index(namn if namn in ATLAS else int(namn))

@@ -13,6 +13,10 @@ Valfritt i rutt_bild.json:
   "kontroll": [{"px": [x, y], "sweref": [E, N]}, ...]  kända punkter (t.ex. korsningar ur OSM); då
       passas bilden in med en affin avbildning (minsta kvadrat, start och slut ingår) i stället.
   "gc_faktor": 3.0  kostnadsfaktor för gång-/cykelvägar, stigar och service (bilgator först).
+  "ledlinje_sweref": [[E, N], ...]  ledlinjen direkt i SWEREF (t.ex. zonernas GPS-punkter omräknade);
+      då behövs varken "px" eller skärmbilden.
+  "grenar_sweref": [[[E, N], ...], ...]  linjer som bara följer med till korridor.json (hus och träd
+      även där, t.ex. mot en möjlig extra zon), inte i rutten.
 """
 import argparse, heapq, json, math, sys
 import xml.etree.ElementTree as ET
@@ -24,14 +28,9 @@ from pyproj import Transformer
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('namn')
-    ap.add_argument('--bredd', type=float, default=500.0)
-    ap.add_argument('--kant', type=float, default=120.0)
-    a = ap.parse_args()
-    P = ROOT / a.namn
-    d = json.load(open(P / 'rutt_bild.json'))['px']
+def _guide_ur_bild(P, rb):
+    """Ledlinjen ur mätpunkterna i skärmbilden (px), georefererad mot omrade.json:s start och slut."""
+    d = rb['px']
     o = json.load(open(P / 'omrade.json'))['rutt']
     m = Transformer.from_crs(4326, 3857, always_xy=True)
     back = Transformer.from_crs(3857, 3006, always_xy=True)
@@ -39,7 +38,6 @@ def main():
     p0, p1 = d[0], d[-1]
     k = math.hypot(e[0] - s[0], e[1] - s[1]) / math.hypot(p1[0] - p0[0], p1[1] - p0[1])
     guide = np.array([back.transform(s[0] + (x - p0[0]) * k, s[1] - (y - p0[1]) * k) for x, y in d])
-    rb = json.load(open(P / 'rutt_bild.json'))
     if rb.get('kontroll'):
         px = [p0, p1] + [c['px'] for c in rb['kontroll']]
         sw = [guide[0], guide[-1]] + [c['sweref'] for c in rb['kontroll']]
@@ -47,6 +45,21 @@ def main():
         M, *_ = np.linalg.lstsq(A, np.array(sw, float), rcond=None)
         print('kontrollpunkter: fel %s m' % np.round(np.hypot(*(A @ M - np.array(sw, float)).T)).astype(int).tolist())
         guide = np.array([[x, y, 1.0] for x, y in d]) @ M
+    return guide
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('namn')
+    ap.add_argument('--bredd', type=float, default=500.0)
+    ap.add_argument('--kant', type=float, default=120.0)
+    a = ap.parse_args()
+    P = ROOT / a.namn
+    rb = json.load(open(P / 'rutt_bild.json'))
+    if rb.get('ledlinje_sweref'):
+        guide = np.array(rb['ledlinje_sweref'], float)
+    else:
+        guide = _guide_ur_bild(P, rb)
     gc_faktor = float(rb.get('gc_faktor', 1.0))
     GC = {'footway', 'path', 'cycleway', 'pedestrian', 'service', 'track', 'bridleway'}
     print('ledlinje %.0f m' % np.sum(np.hypot(*np.diff(guide, axis=0).T)))
@@ -119,7 +132,8 @@ def main():
     json.dump({'sweref': sweref, 'guide': guide.round(1).tolist(), 'ways': seen}, open(P / 'rutt.json', 'w'))
     json.dump({'anm': 'Korridorkarta (scripts/korridor.py): hus, träd och buskar bara inom bredd_m från rutten, '
                       'glesnar ut över kant_m. Rutten ur OSM längs rutt_bild.json (scripts/rutt_ur_bild.py).',
-               'bredd_m': a.bredd, 'kant_m': a.kant, 'rutt_sweref': sweref, 'osm_vagar': seen},
+               'bredd_m': a.bredd, 'kant_m': a.kant, 'rutt_sweref': sweref, 'osm_vagar': seen,
+               **({'grenar_sweref': rb['grenar_sweref']} if rb.get('grenar_sweref') else {})},
               open(P / 'korridor.json', 'w'), ensure_ascii=False)
     print('skrev', P / 'korridor.json')
 

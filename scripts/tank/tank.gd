@@ -221,6 +221,11 @@ var fire_blocked: bool = false
 ## Game mode rule (ThunderRoad's countdown between rounds): the tracks don't drive; the
 ## turret, optics and hatch still work.
 var move_blocked: bool = false
+## Stuck detection (_update_unstick): how long, from where and heading, tries so far.
+var _stuck_s: float = 0.0
+var _stuck_from: Vector3 = Vector3.INF
+var _stuck_yaw: float = 0.0
+var _unstick_tries: int = 0
 ## The turret was thrown off by an ammo explosion (hidden here, flying as its own body).
 var _turret_tossed: bool = false
 ## Client's own tank: turret, gun, hatch and roof MG follow the local command at once.
@@ -1495,6 +1500,17 @@ func get_hatch_progress() -> float:
 	return _hatch_progress
 
 
+## Works out the global transforms a look at or from this tank reads (ScanBatch: on the
+## main thread, before the threads read them).
+func resolve_sight_transforms() -> void:
+	var _t: Transform3D = global_transform
+	_t = _head_closed.global_transform
+	_t = _head_open.global_transform
+	_t = _turret.global_transform
+	if _commander_hitbox != null:
+		_t = _commander_hitbox.global_transform
+
+
 ## True whenever the hatch isn't fully closed.
 func is_commander_exposed() -> bool:
 	return _hatch_progress > 0.0
@@ -1570,6 +1586,7 @@ func _physics_process(delta: float) -> void:
 		_knock_out(true)   # the crew bails out: a loss, but nobody's kill
 	_hold_inside_map()
 	_hold_out_of_deep_water()
+	_update_unstick(delta)
 	var state: PhysicsDirectBodyState3D = PhysicsServer3D.body_get_direct_state(get_rid())
 	if state == null:
 		return
@@ -1593,6 +1610,59 @@ func _physics_process(delta: float) -> void:
 			-data.track_lateral_grip, data.track_lateral_grip)
 	lateral_accel *= float(grounded) / float(ray_count)
 	apply_central_force(right_dir * lateral_accel * mass)
+
+
+## Stuck detection (TankData "unstick_*"): host side, from the command, so bots too.
+## Checked UNSTICK_HZ times a second (a 10 s rule needs no more), with the time between.
+const UNSTICK_HZ: float = 5.0
+var _unstick_clock := PackedFloat32Array([0.0])
+var _unstick_dt: float = 0.0
+
+func _update_unstick(delta: float) -> void:
+	if data.unstick_after_s <= 0.0:
+		return
+	_unstick_dt += delta
+	if not Ticks.due(_unstick_clock, delta, UNSTICK_HZ):
+		return
+	delta = _unstick_dt
+	_unstick_dt = 0.0
+	var trying: bool = absf(_command.throttle) > 0.1 or absf(_command.steering) > 0.1
+	if not trying or _knocked_out or move_blocked or is_immobilised() or get_speed_factor() <= 0.0 \
+			or _deep_over_m > 0.0 or not MapEdge.contains(get_tree(), global_position):
+		_stuck_s = 0.0
+		_stuck_from = Vector3.INF
+		return
+	var yaw: float = global_basis.get_euler().y
+	if _stuck_from == Vector3.INF or global_position.distance_to(_stuck_from) > data.unstick_move_m \
+			or absf(wrapf(yaw - _stuck_yaw, -PI, PI)) > deg_to_rad(data.unstick_turn_deg):
+		_stuck_from = global_position
+		_stuck_yaw = yaw
+		_stuck_s = 0.0
+		return
+	_stuck_s += delta
+	if _stuck_s < data.unstick_after_s:
+		return
+	_stuck_s = 0.0
+	_stuck_from = Vector3.INF
+	if global_basis.y.angle_to(Vector3.UP) > deg_to_rad(data.unstick_flip_deg):
+		# On its side or roof: back on its tracks where it lies.
+		var forward := Vector3(-global_basis.z.x, 0.0, -global_basis.z.z)
+		if forward.length() < 0.1:
+			forward = Vector3(global_basis.y.x, 0.0, global_basis.y.z)   # nose straight up/down
+		global_transform = Transform3D(Basis.looking_at(forward.normalized(), Vector3.UP),
+				global_position + Vector3.UP * data.unstick_flip_lift_m)
+		linear_velocity = Vector3.ZERO
+		angular_velocity = Vector3.ZERO
+		reset_physics_interpolation()
+		return
+	var forward := Vector3(-global_basis.z.x, 0.0, -global_basis.z.z).normalized()
+	var right := Vector3(global_basis.x.x, 0.0, global_basis.x.z).normalized()
+	var wanted: Vector3 = forward * (signf(_command.throttle) if absf(_command.throttle) > 0.1 else 1.0)
+	var dirs: Array[Vector3] = [wanted, -wanted, -right, right]
+	var push: Vector3 = dirs[_unstick_tries % dirs.size()]
+	_unstick_tries += 1
+	linear_velocity = push * data.unstick_push_mps + Vector3.UP * data.unstick_lift_mps
+	angular_velocity = Vector3.ZERO
 
 
 ## The map's invisible edge (MapEdge): past it the speed outwards goes and the tank is
@@ -2184,13 +2254,22 @@ func _gun_smoke_scale() -> float:
 	return pow(maxf(calibre, 10.0) / 75.0, EffectFx.SET.muzzle_calibre_exponent)
 
 
+## The C++ hot loops (GDExtension in native/, bin/vagnfast.gdextension), null without
+## the library: then the GDScript versions run (the same rules).
+static var FAST: Object = Engine.get_singleton("VagnFast") if Engine.has_singleton("VagnFast") else null
+
+
 func _apply_suspension(state: PhysicsDirectBodyState3D, rays: Array[RayCast3D],
 		ray_count: int, points: Array[Vector3], normals: Array[Vector3]) -> void:
 	var omega: float = TAU * data.suspension_frequency_hz
 	var stiffness: float = mass * omega * omega / ray_count
 	var damping: float = 2.0 * data.suspension_damping_ratio * mass * omega / ray_count
 	var com_global: Vector3 = global_position + state.center_of_mass
-	for ray: RayCast3D in rays:
+	if FAST != null:
+		FAST.apply_suspension(self, rays, com_global, data.suspension_rest_length, stiffness,
+				damping, points, normals)
+		return
+	for ray: RayCast3D in rays:   # the same in GDScript (VagnFast.apply_suspension)
 		ray.force_raycast_update()
 		if not ray.is_colliding():
 			continue
@@ -2263,7 +2342,9 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	# Longitudinal: chase the target speed, limited by acceleration / braking.
 	var throttle: float = 0.0 if move_blocked else clampf(_command.throttle, -1.0, 1.0)
 	var top_speed_kmh: float = data.max_forward_speed_kmh if throttle >= 0.0 else data.max_reverse_speed_kmh
-	var target_speed: float = throttle * top_speed_kmh * KMH_TO_MS * _damage.speed_factor() * _ford_factor()
+	var speed_factor: float = _damage.speed_factor()   # asked once: GDScript calls cost
+	var immobilised: bool = _damage.is_immobilised()
+	var target_speed: float = throttle * top_speed_kmh * KMH_TO_MS * speed_factor * _ford_factor()
 	var speed: float = linear_velocity.dot(forward)
 	var speeding_up: bool = target_speed * speed >= 0.0 and absf(target_speed) > absf(speed)
 	var accel_limit: float = data.acceleration if speeding_up else data.brake_deceleration
@@ -2280,7 +2361,7 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	# Speeding up lifts the nose, braking dips it; the hull rocks on its springs, and
 	# the gun with it (no stabiliser), so jerky driving spoils the aim.
 	# The share of the tank's own limit counts, so driving off rocks as much as stopping.
-	var driving: bool = _damage.speed_factor() > 0.0 and not _damage.is_immobilised()
+	var driving: bool = speed_factor > 0.0 and not immobilised
 	var effort: float = clampf(accel / maxf(accel_limit, 0.01), -1.0, 1.0) if driving else 0.0
 	_rock = lerpf(_rock, effort, 1.0 - exp(-ROCK_SMOOTHING * delta))
 	_rock_slow = lerpf(_rock_slow, _rock, 1.0 - exp(-delta / maxf(data.pitch_rock_kick_time_s, 0.01)))
@@ -2295,7 +2376,7 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	var yaw_accel: float = clampf((target_yaw_rate - yaw_rate) / delta, -turn_limit, turn_limit)
 	var yaw_inertia: float = 1.0 / maxf((state.inverse_inertia_tensor * up).dot(up), 1e-9)
 	var yaw_torque: float = yaw_accel * yaw_inertia
-	if _damage.speed_factor() <= 0.0:
+	if speed_factor <= 0.0:
 		yaw_torque = 0.0   # dead engine: no drive at all
 
 	# Skid steer: right track pushing harder turns the tank left, and vice versa.
@@ -2306,13 +2387,17 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	# turning stops turning instead of spinning on.
 	var left_force: float = drive_force * 0.5 - track_split
 	var right_force: float = drive_force * 0.5 + track_split
-	if _damage.track_factor(-1) <= 0.0 or _damage.is_immobilised():
+	if immobilised or _damage.track_factor(-1) <= 0.0:
 		left_force = _track_hold_force(speed - yaw_rate * _track_half_width, delta,
 				gravity_along, traction_limit)
-	if _damage.track_factor(1) <= 0.0 or _damage.is_immobilised():
+	if immobilised or _damage.track_factor(1) <= 0.0:
 		right_force = _track_hold_force(speed + yaw_rate * _track_half_width, delta,
 				gravity_along, traction_limit)
 	var com_global: Vector3 = global_position + state.center_of_mass
+	if FAST != null:
+		FAST.apply_track_forces(self, left_force, right_force, forward, up, com_global,
+				left_points, left_normals, right_points, right_normals)
+		return
 	_apply_track_force(left_force, forward, up, com_global, left_points, left_normals)
 	_apply_track_force(right_force, forward, up, com_global, right_points, right_normals)
 

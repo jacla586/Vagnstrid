@@ -51,6 +51,17 @@ filen kan committas, så slipper du göra om steg 2.
 
 ## 3. Exportera
 
+**C++-biblioteket VagnFast** (grenen `prestanda-cpp`) ska byggas för båda plattformarna före
+exporten, annars kör spelet de långsammare GDScript-versionerna. Godot lägger `.so`/`.dll` bredvid
+programmet av sig själv:
+
+```bash
+cd native
+.venv/bin/scons platform=linux   target=template_release custom_api_file=extension_api.json -j12
+.venv/bin/scons platform=windows target=template_release custom_api_file=extension_api.json -j12
+cd ..
+```
+
 I editorn: **Project → Export… → välj förinställning → Export Project…** och bocka **ur**
 "Export With Debug".
 
@@ -85,6 +96,7 @@ Startar spelet men marken saknas: kontrollera att `.dll`/`.so` ligger bredvid pr
 ```bash
 cd build
 cp ../SPELA_ONLINE.md windows/
+cp ../WINDOWS_AVBLOCKERA.txt windows/   # med C++-biblioteket VagnFast (grenen prestanda-cpp)
 mkdir -p windows/CREDITS
 cp ../assets/models/soldier/CREDITS.md windows/CREDITS/soldat.md
 cp ../assets/audio/CREDITS.md          windows/CREDITS/ljud.md
@@ -100,7 +112,9 @@ att se att alla har samma version.
 
 ## 6. Till kompisarna (klistra in i chatten)
 
-> 1. Ladda ner zippen och **packa upp hela mappen** (starta inte exe-filen inifrån zippen).
+> 1. Ladda ner zippen. **Högerklicka på zippen → Egenskaper → bocka i "Avblockera" → OK**
+>    (se `WINDOWS_AVBLOCKERA.txt`), och **packa sedan upp hela mappen** (starta inte exe-filen
+>    inifrån zippen).
 > 2. Dubbelklicka på `Vagnstrid.exe`.
 > 3. Windows SmartScreen säger "Windows skyddade datorn": klicka **Mer info → Kör ändå**
 >    (spelet är inte signerat, det är normalt för hobbyspel).
@@ -119,6 +133,11 @@ att se att alla har samma version.
 - **Grafikkort:** Windows använder D3D12. Om spelet kraschar direkt eller visar svart skärm
   kan kompisen prova Vulkan. Skapa en genväg till exe-filen och lägg till
   `--rendering-driver vulkan` sist i "Mål".
+- **Krascher utan felmeddelande:** `Vagnstrid.console.exe` (följer med även i release,
+  `debug/export_console_wrapper=2`) startar spelet med ett terminalfönster som visar all
+  utskrift och står kvar efter en krasch. Loggfilen
+  (`%APPDATA%\Godot\app_userdata\Vagnstrid\logs\godot.log`) kan bli tom vid en tidig
+  krasch, eftersom den skrivs med buffert. Lägg till `--verbose` för mer.
 
 ## Banor som inte följer med
 
@@ -150,5 +169,6 @@ liknande).
 | Marken saknas, vagnar faller | Terrain3D-`.dll`/`.so` saknas bredvid programmet |
 | Inga träd eller buskar | `*.bin` saknas i Filters to include, exportera igen (Linux-bygget får samma fel) |
 | Spelet startar inte alls i Windows | Zippen är inte uppackad, eller så har SmartScreen eller antivirus blockerat filen |
+| "Felaktig minnesavbildning … libvagnfast…dll … 0xc0e90002" | Windows 11 Smart App Control stoppar den osignerade C++-DLL:en: avblockera zippen före uppackning (`WINDOWS_AVBLOCKERA.txt`), annars ta bort DLL:en (spelet kör GDScript-versionerna) |
 | Kompisen kan inte ansluta | Se SPELA_ONLINE.md (Tailscale, port 24680, värden måste ha tryckt Host) |
 | Ansluter men konstigt beteende | Olika versioner av spelet: skicka ny zip till alla |

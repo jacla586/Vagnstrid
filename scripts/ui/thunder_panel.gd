@@ -61,7 +61,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	var mode: ThunderRoadMode = ThunderRoadMode.instance
-	visible = mode != null and views != null and not views.is_debug_view()
+	visible = mode != null and views != null
 	if mode != _mode:
 		_connect(mode)
 	if mode != null:

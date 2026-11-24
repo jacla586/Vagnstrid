@@ -1,0 +1,10 @@
+#!/usr/bin/env python
+# Builds the VagnFast GDExtension (hot loops in C++) into ../bin/.
+#   cd native && .venv/bin/scons platform=linux target=template_debug custom_api_file=extension_api.json
+#   (template_release for exported builds; platform=windows needs mingw-w64)
+env = SConscript("godot-cpp/SConstruct")
+env.Append(CPPPATH=["src/"])
+sources = Glob("src/*.cpp")
+library = env.SharedLibrary(
+    "../bin/libvagnfast{}{}".format(env["suffix"], env["SHLIBSUFFIX"]), source=sources)
+Default(library)

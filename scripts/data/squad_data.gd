@@ -51,6 +51,14 @@ extends Resource
 ## Field of view through the leader's eyes, and through his binoculars (degrees).
 @export var view_fov_deg: float = 70.0
 @export var binocular_fov_deg: float = 10.0
+## The squad view's eye stays this far above the vegetation he kneels or lies in (m), so
+## a lying leader doesn't look into grass blades (bots' and squads' sight ignores the
+## viewer's own vegetation anyway).
+@export var view_above_cover_m: float = 0.15
+## The leader viewed through falls: the view follows his head down this long (s), turning
+## this share of the way to how his head turns, then goes to the next leader.
+@export var death_follow_s: float = 2.5
+@export_range(0.0, 1.0) var death_follow_turn_share: float = 0.6
 ## Soldier model (glTF scene). Null = placeholder capsules.
 @export var model: PackedScene
 ## Scale and turn (degrees) to make the model soldier_height_m tall, feet at the
@@ -139,6 +147,13 @@ extends Resource
 @export var soldier_spot_factor: float = 2.5
 @export var concealment: ConcealmentData
 
+@export_group("Far from players")
+## Beyond this distance (m) from every human player's tank and the camera (Relevance), the
+## squad looks round far_scan_factor times as seldom (same rules, slower). Near again within far_m.
+@export var far_m: float = 400.0
+@export var far_margin_m: float = 100.0
+@export var far_scan_factor: float = 2.0
+
 @export_group("Being spotted")
 ## How these soldiers are seen by others (bots and squads; the player only by eye).
 ## On top of soldier_spot_factor and cover (the viewer's ConcealmentData): the uniform...
@@ -166,6 +181,17 @@ extends Resource
 @export var mark_interval_s: float = 8.0
 ## How often the squad looks around (s).
 @export var scan_interval_s: float = 0.5
+## Against more enemy tanks than this the interval stretches with their number, up to
+## scan_max_stretch times (each look covers them all). The time in between still counts.
+@export var scan_reference_enemies: int = 10
+@export var scan_max_stretch: float = 2.0
+## Enemy soldiers are each looked at afresh every this many look rounds (by index, in turn);
+## between, his last answer stands (seen or not, how hard to make out) while the spotting
+## time runs on: each look at a man costs, and a dense fight has many. 1 = every round.
+## Always afresh: the squad being fought, men within soldier_look_full_m, a man who just
+## fired, and answers older than this many rounds.
+@export var soldier_look_rounds: int = 4
+@export var soldier_look_full_m: float = 100.0
 
 @export_group("Rifles")
 ## HE fragments reach soldiers this much farther than other targets (both the lethal and
@@ -189,8 +215,6 @@ extends Resource
 
 @export_group("AT rounds")
 @export var at_round: ShellData
-## Rounds per sortie (refilled on the tank).
-@export var at_rounds: int = 2
 ## Fires at enemy tanks within this (m), aimed at the track facing the squad (a hit
 ## throws it: the tank stands until it is repaired)...
 @export var at_range_m: float = 150.0
@@ -219,16 +243,24 @@ extends Resource
 @export var at_sound: SoundSetData
 
 @export_group("Mines")
-## The mine the squad lays (null = none). It carries mines_carried, at most
+## The mine the squad lays (null = none). The soldiers carry them (loadout); at most
 ## max_mines_out lie out at a time (another removes the oldest)...
 @export var mine: MineData
-@export var mines_carried: int = 1
 @export var max_mines_out: int = 2
 ## ...takes this long to lay one (s), kneeling (animation from model_animations)...
 @export var mine_lay_time_s: float = 6.0
 @export var anim_lay_mine: StringName = &"kneel_idle"
-## ...and gets a new one on the tank after this long (s).
-@export var mine_refill_s: float = 60.0
+
+@export_group("Loadout")
+## What a soldier carries besides his rifle: one AT round or one mine, never both, so
+## no single man carries the squad's kit.
+enum Kit { NONE, AT, MINE }
+## Each soldier's kit by index (soldier_count long; missing = NONE). A man who falls
+## loses his; the AT gunner and the mine layer are men who carry one.
+@export var loadout: Array[Kit] = [Kit.MINE, Kit.AT, Kit.MINE, Kit.AT]
+## Mounted, one man missing his kit gets it back this often (s). Men come back slower
+## (refill_time_s).
+@export var kit_refill_s: float = 20.0
 
 @export_group("Smoke and withdrawal")
 ## Smoke grenades per sortie (refilled on the tank).
@@ -276,8 +308,8 @@ extends Resource
 @export var assault_close_m: float = 35.0
 
 @export_group("Losses")
-## Mounted, one missing soldier comes back this often (s); AT rounds and smoke are
-## topped up when the squad is full again.
+## Mounted, one missing soldier comes back this often (s) (his kit after kit_refill_s);
+## smoke is topped up when the squad is full again.
 @export var refill_time_s: float = 20.0
 ## A squad that lost everyone is back on the tank, full, after this long (s).
 @export var wipe_cooldown_s: float = 60.0

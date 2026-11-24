@@ -179,6 +179,25 @@ var _post_across: Dictionary = {}    # defenders: across share of the post given
 var _hold: Dictionary = {}           # attackers holding outside: seconds to a new spot
 var _countering: Dictionary = {}     # flank reserves: counterattacking now
 var _ordered_pushed: Dictionary = {} # defenders: pushed_back when the post was given
+var _ordered_threat: Dictionary = {} # defenders: the commander's threat lane when the post was given
+## Each team's commander (TeamCommander; none when MatchSettings.bot_commander is off).
+var _commanders: Dictionary = {}     # team -> TeamCommander
+var _hunt: Dictionary = {}           # bot -> [enemy point, clock it ends]: going round a sniper
+var _guard: Dictionary = {}          # bot -> [enemy point, clock it ends]: holding against a flanker
+var _wave_landed: Dictionary = {}    # team -> clock a wave of gather_waiting+ tanks came
+var _was_waiting: Dictionary = {}    # team -> attackers waiting for the wave at the last update
+var _reserve_in: Dictionary = {}     # team -> true: the commander sent the reserve into this assault
+var _squad_task: Dictionary = {}     # bot -> [point, clock]: its squad out on a commander task (ambush, scouting)
+var _denying: Dictionary = {}        # defenders driving into the zone at the last minute
+## Only these teams get a commander when it is on (bit per team; tests: one side with, one without).
+static var commander_teams: int = 3
+## Developing attackers far from their line drive up in one go (`_travelling`); false = bound
+## all the way, as before 2026-11-24 (A/B: tools/ai/thunder_pace_probe.gd -- nodrive).
+static var drive_up: bool = true
+## The drive up keeps at most this far from the road (m).
+const TRAVEL_ACROSS_M: float = 60.0
+## A bot farther than 2 × TRAVEL_ACROSS_M from the road joins it this far ahead of itself first (m).
+const TRAVEL_JOIN_AHEAD_M: float = 60.0
 
 
 func _enter_tree() -> void:
@@ -196,6 +215,12 @@ func _ready() -> void:
 		set_physics_process(false)
 		return
 	mode.hold_start()
+	var commander: CommanderData = TeamCommander.data_for_setting()
+	if commander != null:
+		for team: int in [0, 1]:
+			if commander_teams & (1 << team):
+				_commanders[team] = TeamCommander.new(team, commander)
+	_kos.known_check = _team_knows
 	mode.tank_placed.connect(_on_tank_placed)
 	mode.round_started.connect(func(_n: int, _team: int) -> void: _reset_all())
 	mode.pause_started.connect(func(_i: int) -> void: _regrouped.clear())
@@ -367,6 +392,15 @@ func refill() -> void:
 # --- Orders ------------------------------------------------------------------------------
 
 func _reset_all() -> void:
+	for c: TeamCommander in _commanders.values():
+		c.reset()
+	_hunt.clear()
+	_guard.clear()
+	_release_squads(-1)
+	_wave_landed.clear()
+	_was_waiting.clear()
+	_reserve_in.clear()
+	_denying.clear()
 	_assault.clear()
 	_screeners.clear()
 	_last_screen.clear()
@@ -410,8 +444,9 @@ func _forget(bot: BotController) -> void:
 	for d: Dictionary in [_ordered_cp, _ordered_front, _post_s, _repost, _standing, _mine_think, _mine_front,
 			_depart, _urgent, _back_in, _ordered_out, _hold, _countering, _ordered_pushed, _entering,
 			_post_across, _reserve, _lane, _lane_partner, _line_goal, _bound, _bound_time, _sniper_aim,
-			_screeners]:
+			_screeners, _hunt, _guard, _denying, _ordered_threat, _squad_task]:
 		d.erase(bot)
+	bot.squad_held = false
 
 
 func _on_tank_placed(tank: Tank) -> void:
@@ -423,7 +458,18 @@ func _on_tank_placed(tank: Tank) -> void:
 			return
 
 
+## The bots' orders are thought over THINK_HZ times a second, with the time between
+## (orders and posts change over seconds; every bot each tick cost ~0.7 ms at 20 v 20).
+const THINK_HZ: float = 10.0
+var _think_clock := PackedFloat32Array([0.0])
+var _think_dt: float = 0.0
+
 func _physics_process(delta: float) -> void:
+	_think_dt += delta
+	if not Ticks.due(_think_clock, delta, THINK_HZ):
+		return
+	delta = _think_dt
+	_think_dt = 0.0
 	if not mode.has_started() or mode.is_in_break() or mode.is_over():
 		return
 	for i: int in range(_bots.size() - 1, -1, -1):
@@ -432,6 +478,7 @@ func _physics_process(delta: float) -> void:
 	var next: int = mode.get_next_checkpoint()
 	var focus: Vector3 = mode.get_checkpoint_point(next)
 	_update_situation(delta, next)
+	_update_commanders(delta, next)
 	for bot: BotController in _bots:
 		if bot.tank.is_knocked_out():
 			continue
@@ -445,6 +492,8 @@ func _physics_process(delta: float) -> void:
 			continue   # pulling back after hits: its own order first
 		var role: ThunderRoadMode.Role = mode.role_of(bot.tank.team)
 		if _update_outside(bot, role, delta):
+			continue
+		if _commander_task(bot):
 			continue
 		if role == ThunderRoadMode.Role.ATTACK and mode.is_paused() \
 				and not mode.data.retreat_instead_of_pause:
@@ -517,10 +566,235 @@ func _update_situation(delta: float, next: int) -> void:
 	_update_assault(next, short, t)
 
 
+## The commanders' picture of the fight round checkpoint `next` (TeamCommander.think).
+func _update_commanders(delta: float, next: int) -> void:
+	if _commanders.is_empty() or next >= mode.get_checkpoint_count():
+		return
+	var cp_s: float = mode.get_checkpoint_s(next)
+	for team: int in _commanders:
+		var c: TeamCommander = _commanders[team]
+		var role: ThunderRoadMode.Role = mode.role_of(team)
+		var ahead: float = 1.0 if role == ThunderRoadMode.Role.ATTACK else -1.0
+		var reach: float = c.data.picture_reach_m
+		var in_picture: Callable = func(p: Vector3) -> bool:
+			return absf(mode.project(p).x - cp_s) <= reach
+		var own_tanks := PackedVector3Array()
+		for tank: Tank in _team_tanks(team):
+			if not tank.is_knocked_out() and bool(in_picture.call(tank.global_position)):
+				own_tanks.append(tank.global_position)
+		var known := PackedVector3Array()
+		var seen: Dictionary = {}
+		for bot: BotController in _bots:
+			if is_instance_valid(bot.tank) and bot.tank.team == team:
+				var k: Dictionary = bot.get_known_enemies(c.data.memory_s)
+				for enemy: Variant in k:
+					seen[enemy] = k[enemy]
+		for enemy: Variant in seen:
+			if bool(in_picture.call(seen[enemy])):
+				known.append(seen[enemy])
+		var half_w: float = mode.half_width(role)
+		if c.think(delta, _kos.clock, own_tanks, known, _kos,
+				func(p: Vector3) -> int:
+					var across: float = ahead * _signed_across(p) / maxf(half_w, 1.0)
+					return 0 if across < -1.0 / 3.0 else (2 if across > 1.0 / 3.0 else 1),
+				func(p: Vector3) -> float: return ahead * mode.project(p).x):
+			_give_commander_tasks(team, c)
+			_give_squad_tasks(team, c, next)
+
+
+## Squads on commander tasks (CommanderData "Squads and smoke"): defending, AT ambushes on
+## the threatened side short of the zone; attacking, scouts forward from the main effort's
+## lane while it develops. A task ends when it is no longer wanted or its place moved, the
+## squad lost half its men or is back on the tank; then the bot runs its squad again.
+func _give_squad_tasks(team: int, c: TeamCommander, next: int) -> void:
+	var defending: bool = mode.role_of(team) == ThunderRoadMode.Role.DEFEND
+	var lane: int = c.threat_lane if defending else c.main_lane
+	var want: int = c.data.ambush_squads if defending else c.data.scout_squads
+	if lane < 0 or (not defending and _assault.has(team)):
+		want = 0
+	var point := Vector3.INF
+	if want > 0:
+		var cp_s: float = mode.get_checkpoint_s(next)
+		var short: float = c.data.ambush_ahead_m if defending else c.data.scout_short_m
+		var s: float = maxf(cp_s - mode.data.capture_half_length_m - short, 0.0)
+		var role := ThunderRoadMode.Role.DEFEND if defending else ThunderRoadMode.Role.ATTACK
+		point = mode.point_at(s, _lane_side(team, lane) * MAIN_LANE_SHARE * mode.half_width(role))
+	var have: int = 0
+	for bot: BotController in _squad_task.keys():
+		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
+			_squad_task.erase(bot)
+			continue
+		if bot.tank.team != team:
+			continue
+		var squad: Squad = bot.tank.squad
+		var task: Array = _squad_task[bot]
+		var done: bool = want <= 0 or bot.tank.is_knocked_out() or squad == null or not is_instance_valid(squad) \
+				or squad.get_alive_count() * 2 <= squad.data.soldier_count \
+				or (task[0] as Vector3).distance_to(point) > SQUAD_TASK_MOVED_M \
+				or (squad.is_mounted() and _kos.clock - float(task[1]) > SQUAD_TASK_BACK_S)
+		if done:
+			_squad_task.erase(bot)
+			bot.squad_held = false
+		else:
+			have += 1
+	if have >= want or not TacticalMap.may_plan():
+		return
+	var reach: float = SQUAD_TASK_REACH_SHARE
+	var candidates: Array[BotController] = []
+	for bot: BotController in _bots:
+		if not is_instance_valid(bot.tank) or bot.tank.team != team or bot.tank.is_knocked_out() \
+				or _squad_task.has(bot) or _commander_task(bot):
+			continue
+		var squad: Squad = bot.tank.squad
+		if squad == null or not is_instance_valid(squad) or squad.get_state() == Squad.State.WIPED \
+				or squad.get_state() == Squad.State.RETURNING \
+				or squad.get_alive_count() < squad.data.soldier_count \
+				or Squad._flat(bot.tank.global_position - point).length() > squad.data.max_distance_from_tank_m * reach:
+			continue
+		if not defending and (_job_of(bot) != Job.DEVELOP or int(_bound.get(bot, -1)) != Bound.HOLD):
+			continue   # scouts come from tanks standing on their line
+		candidates.append(bot)
+	candidates.sort_custom(func(a: BotController, b: BotController) -> bool:
+		return a.tank.global_position.distance_to(point) < b.tank.global_position.distance_to(point))
+	var facing: Vector3 = mode.tangent_at(mode.project(point).x) * (-1.0 if defending else 1.0)
+	for i: int in mini(want - have, candidates.size()):
+		var bot: BotController = candidates[i]
+		var squad: Squad = bot.tank.squad
+		var spot: Vector3 = point
+		var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene, squad.data.tactics)
+		if map != null:
+			spot = map.find_position(mode.get_world_3d(), point, SQUAD_TASK_RADIUS_M, facing,
+					point + facing * 200.0, 200.0, bot.tank.global_position, PackedVector3Array(),
+					squad.data.tactics, _rng, [bot.tank.get_rid()])
+		_squad_task[bot] = [point, _kos.clock]
+		bot.squad_held = true
+		bot.order_squad(Squad.ORDER_MOVE, _keep_inside(spot, bot))
+		if c.data.log_decisions:
+			print("CMD team %d t=%.0f squad %s %s" % [team, _kos.clock, "ambush" if defending else "scouts",
+					TeamCommander.LANE_NAMES[lane]])
+
+
+## Ends the squad tasks of `team` (-1: every team).
+func _release_squads(team: int) -> void:
+	for bot: BotController in _squad_task.keys():
+		if is_instance_valid(bot) and (team < 0 or (is_instance_valid(bot.tank) and bot.tank.team == team)):
+			bot.squad_held = false
+			_squad_task.erase(bot)
+		elif not is_instance_valid(bot):
+			_squad_task.erase(bot)
+
+
+## Squad tasks: the tank within this share of the squad's reach of the place; the place
+## moved this far = a new task; back on the tank this long after the order = done; a
+## covered spot within this of the place.
+const SQUAD_TASK_REACH_SHARE: float = 0.9
+const SQUAD_TASK_MOVED_M: float = 80.0
+const SQUAD_TASK_BACK_S: float = 20.0
+const SQUAD_TASK_RADIUS_M: float = 50.0
+
+
+## The commander's answers to threats: hunters round each sniper, a guard against each
+## flanker (nearest suitable bots, CommanderData.hunters/guards), none twice.
+func _give_commander_tasks(team: int, c: TeamCommander) -> void:
+	for bot: BotController in _hunt.keys():
+		if not is_instance_valid(bot) or _kos.clock > float(_hunt[bot][1]):
+			_hunt.erase(bot)
+			_ordered_out.erase(bot)   # back to its job: fresh orders
+	for bot: BotController in _guard.keys():
+		if not is_instance_valid(bot) or _kos.clock > float(_guard[bot][1]):
+			_guard.erase(bot)
+			_ordered_out.erase(bot)
+	for sniper: Vector3 in c.snipers:
+		if _tasked_near(_hunt, sniper):
+			continue
+		for bot: BotController in _nearest_free(team, sniper, c.data.hunters, true):
+			_hunt[bot] = [sniper, _kos.clock + c.data.hunt_s]
+			_order_hunt(bot, sniper, c.data.hunt_range_m)
+	for flanker: Vector3 in c.flankers:
+		if _tasked_near(_guard, flanker):
+			continue
+		for bot: BotController in _nearest_free(team, flanker, c.data.guards, false):
+			_guard[bot] = [flanker, _kos.clock + c.data.guard_s]
+			_order_guard(bot, flanker)
+
+
+## Somebody already has a task against an enemy near `point`.
+func _tasked_near(tasks: Dictionary, point: Vector3) -> bool:
+	for bot: BotController in tasks:
+		if (tasks[bot][0] as Vector3).distance_to(point) < SNIPER_REPLAN_M:
+			return true
+	return false
+
+
+## The `count` living bots of `team` nearest `point` without a commander task; hunters
+## (`mobile`) prefer flankers, scouts and harassers; snipers and the reserve stay.
+func _nearest_free(team: int, point: Vector3, count: int, mobile: bool) -> Array[BotController]:
+	var pool: Array[BotController] = []
+	for bot: BotController in _bots:
+		if not is_instance_valid(bot.tank) or bot.tank.team != team or bot.tank.is_knocked_out() \
+				or _hunt.has(bot) or _guard.has(bot) or _reserve.has(bot) \
+				or bot.get_role().kind == BotRoleData.Kind.SNIPER or bot.is_relocating():
+			continue
+		pool.append(bot)
+	pool.sort_custom(func(a: BotController, b: BotController) -> bool:
+		if mobile:
+			var ma: bool = a.get_role().kind in [BotRoleData.Kind.FLANKER, BotRoleData.Kind.SCOUT,
+					BotRoleData.Kind.HARASSER]
+			var mb: bool = b.get_role().kind in [BotRoleData.Kind.FLANKER, BotRoleData.Kind.SCOUT,
+					BotRoleData.Kind.HARASSER]
+			if ma != mb:
+				return ma
+		return a.tank.global_position.distance_squared_to(point) \
+				< b.tank.global_position.distance_squared_to(point))
+	return pool.slice(0, count)
+
+
+## Round a sniper: a spot `range_m` off its side (the side the hunter is on), facing it.
+func _order_hunt(bot: BotController, sniper: Vector3, range_m: float) -> void:
+	var from := Vector3(bot.tank.global_position.x - sniper.x, 0.0, bot.tank.global_position.z - sniper.z)
+	var side: Vector3 = from.normalized().cross(Vector3.UP)
+	if side.dot(mode.tangent_at(mode.project(sniper).x).cross(Vector3.UP)) * _side(bot) < 0.0:
+		side = -side
+	var ideal: Vector3 = sniper + (from.normalized() * 0.5 + side).normalized() * range_m
+	var facing := Vector3(sniper.x - ideal.x, 0.0, sniper.z - ideal.z).normalized()
+	bot.order_path(_spot(bot, ideal, POST_RADIUS_M, facing, sniper, Vector3.ZERO), _travel_throttle(bot), true)
+	_urgent.erase(bot)
+
+
+## Against a flanker: a covered spot near where it is, facing the enemy.
+func _order_guard(bot: BotController, flanker: Vector3) -> void:
+	var facing := Vector3(flanker.x - bot.tank.global_position.x, 0.0,
+			flanker.z - bot.tank.global_position.z).normalized()
+	bot.order_path(_spot(bot, bot.tank.global_position + facing * 20.0, POST_RADIUS_M * 0.5, facing,
+			flanker, Vector3.ZERO), _travel_throttle(bot), true)
+	_urgent.erase(bot)
+
+
+## A bot on a commander task (hunt, guard) follows it instead of its job. True if it does.
+func _commander_task(bot: BotController) -> bool:
+	return _hunt.has(bot) or _guard.has(bot)
+
+
+## Whether `team`'s bots know of `enemy` now (spotted by one of them).
+func _team_knows(team: int, enemy: Tank) -> bool:
+	for bot: BotController in _bots:
+		if is_instance_valid(bot) and is_instance_valid(bot.tank) and bot.tank.team == team \
+				and bot.is_spotted(enemy):
+			return true
+	return false
+
+
 ## Left (-1) or right (1) of the road for this bot, fixed per bot so a team's wide roles
 ## end up on both sides.
 func _side(bot: BotController) -> float:
 	return 1.0 if bot.get_instance_id() % 2 == 0 else -1.0
+
+
+## A commander's lane (0..2, along the team's own facing) as a side of the road for
+## `team`: -1 left of the route's direction, 0 astride it, 1 right.
+func _lane_side(team: int, lane: int) -> float:
+	var ahead: float = 1.0 if mode.role_of(team) == ThunderRoadMode.Role.ATTACK else -1.0
+	return (float(lane) - 1.0) * ahead
 
 
 ## The nearest living brawler of `bot`'s team (followers keep behind it), or null.
@@ -607,7 +881,11 @@ func _update_assault(next: int, short: bool, t: TacticsData) -> void:
 	if next != _phase_cp:
 		# A new checkpoint (or round): develop against it first.
 		_phase_cp = next
+		for c: TeamCommander in _commanders.values():
+			c.reset()
+		_release_squads(-1)
 		_assault.clear()
+		_reserve_in.clear()
 		_developing_since = _kos.clock
 	var cp_s: float = mode.get_checkpoint_s(next)
 	var near_from: float = cp_s - mode.data.capture_half_length_m - t.near_zone_m
@@ -621,18 +899,46 @@ func _update_assault(next: int, short: bool, t: TacticsData) -> void:
 	var upper: bool = near >= defenders + ASSAULT_MARGIN \
 			and _kos.clock - _developing_since >= DEVELOP_MIN_S
 	var must: bool = short or mode.is_overtime()
+	var c: TeamCommander = _commanders.get(team)
+	var gathering: bool = c != null and not must and _gathering(team, c)
 	if _assault.has(team):
 		var held: bool = _kos.clock - float(_assault[team]) < ASSAULT_HOLD_S
 		if not must and not held and not momentum and near < defenders + 1:
 			_assault.erase(team)   # lost the upper hand: back to developing
 			_developing_since = _kos.clock
-	elif must or upper or momentum:
+			_reserve_in.erase(team)
+	elif must or ((upper or momentum) and not gathering):
 		_assault[team] = _kos.clock
 		_pick_screeners(team, next, defenders)
+		if c != null and c.data.commit_reserve_margin >= 0 and not _reserve.is_empty() \
+				and near < defenders + ASSAULT_MARGIN + c.data.commit_reserve_margin:
+			_reserve_in[team] = true   # a thin upper hand: the reserve goes in too
+			if c.data.log_decisions:
+				print("CMD team %d t=%.0f assault with the reserve (near %d v %d)" % [team, _kos.clock, near, defenders])
+	elif gathering and (upper or momentum) and c.data.log_decisions:
+		print("CMD team %d t=%.0f assault held: gathering for the wave" % [team, _kos.clock])
 	if not _assault.has(team):
 		_screeners.clear()
 	_choose_reserve(team, next, short)
 	_assign_lanes(team)
+
+
+## Gathered push (TeamCommander): attackers waiting for a wave that comes soon, or a wave
+## that just came and is still driving up. Updates the wave tracking.
+func _gathering(team: int, c: TeamCommander) -> bool:
+	if c.data.gather_waiting <= 0:
+		return false
+	var waiting: int = 0
+	for tank: Tank in _team_tanks(team):
+		if mode.is_waiting_for_wave(tank):
+			waiting += 1
+	var was: int = int(_was_waiting.get(team, 0))
+	_was_waiting[team] = waiting
+	if was >= c.data.gather_waiting and waiting < was:
+		_wave_landed[team] = _kos.clock
+	if waiting >= c.data.gather_waiting and mode.get_wave_left() <= c.data.gather_wave_s:
+		return true
+	return _kos.clock - float(_wave_landed.get(team, -INF)) < c.data.gather_after_wave_s
 
 
 ## The reserve: RESERVE_SHARE of the attackers that would develop (at least one from
@@ -643,7 +949,7 @@ func _choose_reserve(team: int, next: int, short: bool) -> void:
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.is_knocked_out() \
 				or bot.tank.team != team:
 			_reserve.erase(bot)
-	if short or mode.is_overtime():
+	if short or mode.is_overtime() or _reserve_in.has(team):
 		_reserve.clear()
 		return
 	var candidates: Array[BotController] = []
@@ -676,9 +982,10 @@ func _assign_lanes(team: int) -> void:
 	group.sort_custom(func(a: BotController, b: BotController) -> bool:
 		return _signed_across(a.tank.global_position) < _signed_across(b.tank.global_position))
 	var n: int = group.size()
+	var shares: PackedFloat32Array = _lane_shares(team, n)
 	for i: int in n:
 		var bot: BotController = group[i]
-		var lane: float = 0.0 if n == 1 else lerpf(-DEVELOP_LANES_SHARE, DEVELOP_LANES_SHARE, float(i) / (n - 1))
+		var lane: float = shares[i]
 		# Lanes keep their bots unless they shift a lot (no new line spot per update).
 		if not _lane.has(bot) or absf(float(_lane[bot]) - lane) > 0.3:
 			_lane[bot] = lane
@@ -689,6 +996,31 @@ func _assign_lanes(team: int) -> void:
 		elif i % 2 == 1:
 			partner = group[i - 1]
 		_lane_partner[bot] = partner
+
+
+## The developing attackers' lane shares across the corridor, left to right: even over
+## the width, or with the commander's main effort (CommanderData.main_share of them in its
+## lane, the rest spread over the width).
+func _lane_shares(team: int, n: int) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	var c: TeamCommander = _commanders.get(team)
+	var main_n: int = roundi(n * c.data.main_share) if c != null and c.main_lane >= 0 and n >= 3 else 0
+	var rest: int = n - main_n
+	for i: int in rest:
+		out.append(0.0 if rest == 1 else lerpf(-DEVELOP_LANES_SHARE, DEVELOP_LANES_SHARE, float(i) / (rest - 1)))
+	if main_n > 0:
+		var centre: float = (float(c.main_lane) - 1.0) * MAIN_LANE_SHARE
+		for i: int in main_n:
+			out.append(centre + (0.0 if main_n == 1 else lerpf(-MAIN_LANE_SPREAD, MAIN_LANE_SPREAD,
+					float(i) / (main_n - 1))))
+	out.sort()
+	return out
+
+
+## The main effort's lane: its middle this share of the corridor's half width off the road,
+## its tanks spread this share either side.
+const MAIN_LANE_SHARE: float = 0.55
+const MAIN_LANE_SPREAD: float = 0.15
 
 
 ## Distance from the road, right positive.
@@ -736,8 +1068,23 @@ func _develop_step(bot: BotController, next: int, delta: float, fresh: bool) -> 
 			var partner_still: bool = alone or int(_bound[partner]) != Bound.MOVE
 			var waited: float = float(_bound_time[bot])
 			var my_turn: bool = alone or waited >= float(_bound_time.get(partner, 0.0))
-			if (partner_still and my_turn and waited >= t.solo_halt_s) or waited >= t.overwatch_max_s:
+			if _travelling(bot, t) or (partner_still and my_turn and waited >= t.solo_halt_s) \
+					or waited >= t.overwatch_max_s:
 				_start_leg(bot, cp, t)
+
+
+## Far from its line spot (more than TacticsData.bound_start_m), no contact lately and no known
+## enemy near: no bounding yet, it drives up in one go (as KotH bots do). Bounding all the way
+## from a spawn 1-1.5 km back (Vidingsjö XL) took most of a checkpoint's clock.
+func _travelling(bot: BotController, t: TacticsData) -> bool:
+	if not drive_up or not _line_goal.has(bot) or bot.get_time_since_contact() < t.bound_after_contact_s:
+		return false
+	var p: Vector3 = bot.tank.global_position
+	var sit: TeamSituation = _situation.get(bot.tank.team)
+	if sit != null and sit.enemies_near > 0 and sit.enemy_centre != Vector3.INF \
+			and Squad._flat(sit.enemy_centre - p).length() < BOUND_SCREEN_RANGE_M:
+		return false
+	return Squad._flat((_line_goal[bot] as Vector3) - p).length() > t.bound_start_m + DEVELOP_ARRIVED_M
 
 
 ## One bound: a leg of bound_length_m towards the line spot (to a covered spot that
@@ -746,6 +1093,26 @@ func _develop_step(bot: BotController, next: int, delta: float, fresh: bool) -> 
 func _start_leg(bot: BotController, cp: Vector3, t: TacticsData) -> void:
 	var goal: Vector3 = _line_goal[bot]
 	var p: Vector3 = bot.tank.global_position
+	if _travelling(bot, t):
+		# The drive up: along the road (at most TRAVEL_ACROSS_M off it) to bound_start_m short of
+		# the line spot, then bound out into the lane (the sideways first leg below). Driving up
+		# in the lane itself sent paths along the corridor's edge and stuck them at a creek.
+		var s_goal: float = mode.project(goal).x
+		var s_to: float = maxf(s_goal - t.bound_start_m * 0.75, mode.project(p).x)
+		var drive: Vector3 = mode.point_at(s_to, clampf(_signed_across(goal), -TRAVEL_ACROSS_M, TRAVEL_ACROSS_M))
+		if Squad._flat(drive - p).length() < t.bound_length_m:
+			drive = goal.lerp(p, t.bound_start_m * 0.75 / maxf(Squad._flat(goal - p).length(), 1.0))
+		_bound[bot] = Bound.MOVE
+		_bound_time[bot] = 0.0
+		# Far out in the field (where the last assault left it): join the road first, just ahead,
+		# instead of cutting across country (three bots jammed on a footpath over a creek).
+		var here: Vector2 = mode.project(p)
+		var via: Vector3 = Vector3.INF
+		if absf(here.y) > TRAVEL_ACROSS_M * 2.0 and s_to - here.x > TRAVEL_JOIN_AHEAD_M * 2.0:
+			via = mode.point_at(here.x + TRAVEL_JOIN_AHEAD_M, 0.0)
+		bot.order_path(drive, _travel_throttle(bot), true, via)
+		_urgent.erase(bot)
+		return
 	var lane_across: float = _signed_across(goal)
 	var here: Vector2 = mode.project(p)
 	if absf(_signed_across(p) - lane_across) > LANE_SPREAD_FIRST_M and here.x < mode.project(goal).x:
@@ -779,10 +1146,26 @@ func _pick_screeners(team: int, next: int, defenders: int) -> void:
 				and _job_of(bot) == Job.ASSAULT \
 				and bot.tank.get_smoke_left() > BotController.SCREEN_KEEP_SALVOS:
 			group.append(bot)
+	# The commander's main effort: its lane's tanks smoke first (CommanderData.screen_main).
+	var c: TeamCommander = _commanders.get(team)
+	var main_side: float = _lane_side(team, c.main_lane) if c != null and c.data.screen_main and c.main_lane >= 0 \
+			else INF
 	group.sort_custom(func(a: BotController, b: BotController) -> bool:
+		if main_side != INF:
+			var am: bool = _on_lane_side(a.tank.global_position, main_side)
+			var bm: bool = _on_lane_side(b.tank.global_position, main_side)
+			if am != bm:
+				return am
 		return a.tank.global_position.distance_to(cp) < b.tank.global_position.distance_to(cp))
 	for i: int in mini(want, group.size()):
 		_screeners[group[i]] = true
+
+
+## Is `p` in the attack corridor's lane on `side` (-1 left, 0 the middle third, 1 right)?
+func _on_lane_side(p: Vector3, side: float) -> bool:
+	var across: float = _signed_across(p) / maxf(mode.half_width(ThunderRoadMode.Role.ATTACK), 1.0)
+	var lane_side: float = -1.0 if across < -1.0 / 3.0 else (1.0 if across > 1.0 / 3.0 else 0.0)
+	return lane_side == side
 
 
 ## A screener lays its screen once near enough: within SCREEN_RANGE_M of the known
@@ -890,8 +1273,14 @@ func _order_assault(bot: BotController, next: int, lead: BotController) -> void:
 		# Into the zone on the own side of the road, so the assault comes in across its width.
 		var side: float = _side_of(bot.tank.global_position, minf(mode.project(bot.tank.global_position).x,
 				mode.get_length()))
-		var across: float = side * _rng.randf_range(ASSAULT_ACROSS_MIN, ASSAULT_ACROSS_MAX) \
-				* mode.data.capture_half_width_m * AT_CHECKPOINT_SHARE
+		var across: float = side * _rng.randf_range(ASSAULT_ACROSS_MIN, ASSAULT_ACROSS_MAX)
+		# Concentrated storm (TeamCommander): most go in on the main effort's side.
+		var c: TeamCommander = _commanders.get(bot.tank.team)
+		if c != null and c.main_lane >= 0 and _rng.randf() < c.data.storm_main_share:
+			var main_side: float = _lane_side(bot.tank.team, c.main_lane)
+			across = main_side * absf(across) if main_side != 0.0 \
+					else _rng.randf_range(-NARROW_ACROSS, NARROW_ACROSS)
+		across *= mode.data.capture_half_width_m * AT_CHECKPOINT_SHARE
 		goal = _spot(bot, cp + forward.cross(Vector3.UP) * across, mode.data.capture_half_length_m * 0.6,
 				forward, mode.point_at(s + LOOK_BACK_M), cp)
 	bot.order_path(goal, _travel_throttle(bot), true)
@@ -919,11 +1308,19 @@ func _update_defender(bot: BotController, delta: float) -> void:
 	var front: float = mode.get_front_s()
 	var role: BotRoleData = bot.get_role()
 	var sit: TeamSituation = _situation.get(bot.tank.team)
+	if _deny_step(bot, sit):
+		return
 	if role.post == BotRoleData.Post.FLANK_RESERVE and _update_counter(bot, sit):
 		return
 	var pushed: bool = sit != null and sit.pushed_back
+	var c: TeamCommander = _commanders.get(bot.tank.team)
+	var threat_moved: bool = c != null and c.data.threat_shift_share > 0.0 \
+			and int(_ordered_threat.get(bot, -1)) != c.threat_lane
 	var moved: bool = float(_ordered_front.get(bot, -1.0)) != front \
 			or (role.post == BotRoleData.Post.BEHIND_ZONE and bool(_ordered_pushed.get(bot, false)) != pushed)
+	if threat_moved and not moved:
+		_give_post(bot, front)   # the threat moved across: shift (no new mine)
+		return
 	_repost[bot] = float(_repost.get(bot, 0.0)) - delta
 	if moved or (float(_repost[bot]) <= 0.0 and not bot.has_orders_left()):
 		if moved:
@@ -950,6 +1347,10 @@ func _update_defender(bot: BotController, delta: float) -> void:
 ## while it counterattacks.
 func _update_counter(bot: BotController, sit: TeamSituation) -> bool:
 	var attack: bool = sit != null and sit.enemies_in > 0 and sit.enemy_centre != Vector3.INF
+	var c: TeamCommander = _commanders.get(bot.tank.team)
+	if attack and c != null and sit.friends_in + _flank_reserves(bot.tank.team) \
+			< c.data.counter_min_ratio * sit.enemies_in:
+		attack = false   # too few to win it: hold the post (TeamCommander)
 	if not attack:
 		if _countering.has(bot):
 			_countering.erase(bot)
@@ -969,10 +1370,48 @@ func _update_counter(bot: BotController, sit: TeamSituation) -> bool:
 	return true
 
 
+## Living flank reserves (BotRoleData.Post.FLANK_RESERVE) of `team`.
+func _flank_reserves(team: int) -> int:
+	var n: int = 0
+	for bot: BotController in _bots:
+		if is_instance_valid(bot.tank) and bot.tank.team == team and not bot.tank.is_knocked_out() \
+				and bot.get_role().post == BotRoleData.Post.FLANK_RESERVE:
+			n += 1
+	return n
+
+
+## The last minute (TeamCommander, CommanderData.deny_time_s): attackers in the zone and
+## little time left: the defender drives into the zone to keep it from falling. True while so.
+func _deny_step(bot: BotController, sit: TeamSituation) -> bool:
+	var c: TeamCommander = _commanders.get(bot.tank.team)
+	var next: int = mode.get_next_checkpoint()
+	var deny: bool = c != null and c.data.deny_time_s > 0.0 and sit != null and sit.enemies_in > 0 \
+			and next < mode.get_checkpoint_count() and not mode.is_paused() \
+			and mode.get_time_left() < c.data.deny_time_s
+	if not deny:
+		if _denying.has(bot):
+			_denying.erase(bot)
+			_repost[bot] = 0.0
+		return false
+	if _denying.has(bot) and (bot.has_orders_left() or mode.is_in_checkpoint(bot.tank.global_position, next)):
+		return true
+	_denying[bot] = true
+	var cp: Vector3 = mode.get_checkpoint_point(next)
+	var s: float = mode.get_checkpoint_s(next)
+	bot.order_path(_spot(bot, cp, mode.data.capture_half_length_m * 0.6, -mode.tangent_at(s), cp, cp),
+			_travel_throttle(bot), true)
+	_urgent.erase(bot)
+	if c.data.log_decisions and _denying.size() == 1:
+		print("CMD team %d t=%.0f last minute: defenders into the zone" % [bot.tank.team, _kos.clock])
+	return true
+
+
 ## Defenders mine all they can: a carried mine goes out (unless all are out and the
 ## front hasn't moved since the last one); with none left the squad comes back to the
-## tank to refill (SquadData.mine_refill_s), then goes again.
+## tank to refill (SquadData.kit_refill_s per man), then goes again.
 func _mine_step(bot: BotController, front: float) -> void:
+	if _squad_task.has(bot):
+		return   # out in an ambush (TeamCommander)
 	var squad: Squad = bot.tank.squad
 	if squad == null or not is_instance_valid(squad) or squad.data.mine == null \
 			or squad.get_state() == Squad.State.WIPED or squad.get_state() == Squad.State.RETURNING \
@@ -990,6 +1429,8 @@ func _mine_step(bot: BotController, front: float) -> void:
 
 func _give_post(bot: BotController, front: float) -> void:
 	_ordered_front[bot] = front
+	var cmd: TeamCommander = _commanders.get(bot.tank.team)
+	_ordered_threat[bot] = cmd.threat_lane if cmd != null else -1
 	_repost[bot] = _rng.randf_range(mode.data.defender_repost_min_s, mode.data.defender_repost_max_s)
 	_standing.erase(bot)
 	var next: int = mode.get_next_checkpoint()
@@ -1052,6 +1493,15 @@ func _give_post(bot: BotController, front: float) -> void:
 		return
 	var wide: bool = across_lo > 0.0 and bot_role.post != BotRoleData.Post.BEHIND_LEAD
 	var centred: bool = across_lo < 0.0 and across_hi > 0.0   # astride the road
+	# The threatened side (TeamCommander): this share of the posts go to its side of the road.
+	# Threatened down the middle: wide posts pull in beside the road.
+	var shift: float = 0.0
+	var pull_in: bool = false
+	var c: TeamCommander = _commanders.get(bot.tank.team)
+	if c != null and c.threat_lane >= 0 and bot_role.post != BotRoleData.Post.BEHIND_LEAD \
+			and _rng.randf() < c.data.threat_shift_share:
+		shift = _lane_side(bot.tank.team, c.threat_lane)
+		pull_in = shift == 0.0 and wide
 	hi = minf(hi, mode.get_length() - 20.0)
 	lo = minf(lo, hi)
 	var goal := Vector3.INF
@@ -1064,6 +1514,10 @@ func _give_post(bot: BotController, front: float) -> void:
 			share = signf(share if share != 0.0 else 1.0) * lerpf(POST_CENTRE_GAP, across_hi, absf(share) / across_hi)
 		if wide:
 			share *= _side(bot)
+		if shift != 0.0:
+			share = absf(share) * shift
+		elif pull_in:
+			share = signf(share) * _rng.randf_range(POST_CENTRE_GAP, NARROW_ACROSS)
 		_post_across[bot] = share
 		var across: float = share * mode.half_width(role)
 		var center: Vector3 = mode.point_at(post_s, across)

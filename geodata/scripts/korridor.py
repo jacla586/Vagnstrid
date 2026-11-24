@@ -4,7 +4,10 @@ Finns <projekt>/korridor.json läggs objekt bara ut inom `bredd_m` från rutten,
 som glesnar ut över `kant_m` (så att skogen inte slutar i en linjal). Terrängen och vägarna byggs
 som vanligt över hela rutan (Terrain3D kostar inte per yta, objekten gör det).
 
-    {"rutt_sweref": [[E, N], ...], "bredd_m": 500, "kant_m": 100}
+    {"rutt_sweref": [[E, N], ...], "bredd_m": 500, "kant_m": 100,
+     "grenar_sweref": [[[E, N], ...], ...]}
+
+`grenar_sweref` (valfritt): fler linjer med samma bredd, t.ex. mot en möjlig extra zon.
 
 Utan filen gör modulen ingenting (alla andra kartor).
 """
@@ -28,14 +31,16 @@ def _las(work: Path):
     from rasterio.features import rasterize
     from rasterio.transform import from_origin
     from shapely.geometry import LineString
+    from shapely.ops import unary_union
     k = json.loads(fil.read_text())
     g = json.load(open(str(work / 'grid.json')))
     W, H, RES, X0, Y1 = g['W'], g['H'], g['RES'], g['x0'], g['y1']
-    linje = LineString(k['rutt_sweref']).buffer(RES)
+    linjer = [k['rutt_sweref']] + list(k.get('grenar_sweref', []))
+    linje = unary_union([LineString(l).buffer(RES) for l in linjer])
     pa = rasterize([(linje, 1)], out_shape=(H, W), transform=from_origin(X0, Y1, RES, RES)).astype(bool)
     d = ndi.distance_transform_edt(~pa).astype(np.float32) * RES
     _avst = (d, X0, Y1, RES, float(k.get('bredd_m', 500.0)), float(k.get('kant_m', 100.0)))
-    print(f"korridor: {k.get('bredd_m', 500)} m runt rutten ({fil.name})")
+    print(f"korridor: {k.get('bredd_m', 500)} m runt rutten + {len(linjer) - 1} grenar ({fil.name})")
     return _avst
 
 

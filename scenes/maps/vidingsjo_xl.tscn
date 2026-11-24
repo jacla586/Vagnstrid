@@ -1,0 +1,87 @@
+[gd_scene format=3]
+
+[ext_resource type="Terrain3DMaterial" path="res://terrain/vidingsjo_xl/material.tres" id="1_ntj3b"]
+[ext_resource type="Terrain3DAssets" path="res://terrain/vidingsjo_xl/assets.tres" id="2_y22id"]
+[ext_resource type="PackedScene" path="res://assets/maps/vidingsjo_xl/vidingsjo_xl_objekt.glb" id="3_k06cj"]
+[ext_resource type="Script" path="res://scripts/world/mesh_collision.gd" id="4_ird7s"]
+[ext_resource type="Script" path="res://scripts/world/tree_field.gd" id="5_tjjyg"]
+[ext_resource type="PackedScene" path="res://scenes/player/player_rig.tscn" id="6_sitv7"]
+[ext_resource type="PackedScene" path="res://scenes/tank/tank.tscn" id="7_tank"]
+[ext_resource type="Script" uid="uid://t1duuxcrtose" path="res://scripts/control/bot_controller.gd" id="8_botctrl"]
+[ext_resource type="Resource" uid="uid://xul8ehta6d3o" path="res://data/bots/bot_regular.tres" id="9_botdata"]
+[ext_resource type="Script" uid="uid://bc1odctfft7i4" path="res://scripts/control/respawn_at_start.gd" id="10_respawn"]
+[ext_resource type="PackedScene" path="res://assets/maps/vidingsjo_xl/vidingsjo_xl_vagar.glb" id="11_roads"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_qseep"]
+
+[sub_resource type="Sky" id="Sky_s2d1j"]
+sky_material = SubResource("ProceduralSkyMaterial_qseep")
+
+[sub_resource type="Environment" id="Environment_7n5cb"]
+background_mode = 2
+sky = SubResource("Sky_s2d1j")
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.68, 0.73, 0.8, 1)
+fog_density = 0.0004
+fog_aerial_perspective = 0.4
+fog_sky_affect = 0.25
+
+[node name="VidingsjoXl" type="Node3D" unique_id=452090089]
+
+[node name="Terrain3D" type="Terrain3D" parent="." unique_id=313290818]
+data_directory = "res://terrain/vidingsjo_xl"
+material = ExtResource("1_ntj3b")
+assets = ExtResource("2_y22id")
+collision_mode = 3
+vertex_spacing = 2.0
+displacement_sharpness = 0.5
+top_level = true
+metadata/_edit_lock_ = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1483392726]
+environment = SubResource("Environment_7n5cb")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=96359243]
+transform = Transform3D(0.8660254, -0.38302222, 0.32139382, 0, 0.64278764, 0.76604444, -0.5, -0.66341394, 0.5566704, 0, 0, 0)
+shadow_enabled = true
+directional_shadow_max_distance = 300.0
+
+[node name="Objects" type="Node3D" parent="." unique_id=657585945 instance=ExtResource("3_k06cj")]
+script = ExtResource("4_ird7s")
+collision_prefixes = PackedStringArray("Byggnader", "Broar", "Stenar", "Banhinder", "Kollision")
+hidden_prefixes = PackedStringArray("Kollision")
+
+[node name="Roads" type="Node3D" parent="." unique_id=657585946 instance=ExtResource("11_roads")]
+
+[node name="Trees" type="Node3D" parent="." unique_id=1917325310]
+script = ExtResource("5_tjjyg")
+info_path = "res://assets/maps/vidingsjo_xl/trees_info.json"
+data_path = "res://assets/maps/vidingsjo_xl/trees.bin"
+
+[node name="Bushes" type="Node3D" parent="." unique_id=1815095816]
+script = ExtResource("5_tjjyg")
+info_path = "res://assets/maps/vidingsjo_xl/buskar_info.json"
+data_path = "res://assets/maps/vidingsjo_xl/buskar.bin"
+data_prefix = "field_bush_"
+visibility_end_m = 800.0
+
+[node name="PlayerRig" type="Node3D" parent="." unique_id=1647520339 instance=ExtResource("6_sitv7")]
+transform = Transform3D(0.100482, 0, -0.994939, 0, 1, 0, 0.994939, 0, 0.100482, 4565.10, 68.08, 4083.10)
+
+[node name="Enemies" type="Node3D" parent="." unique_id=1402552001]
+
+[node name="EnemyGarnisonen" parent="Enemies" unique_id=1402552002 instance=ExtResource("7_tank")]
+transform = Transform3D(0.955136, 0, -0.296166, 0, 1, 0, 0.296166, 0, 0.955136, 649.90, 74.01, 583.90)
+team = 1
+
+[node name="EnemyGarnisonenController" type="Node" parent="Enemies" unique_id=1402552003 node_paths=PackedStringArray("tank")]
+script = ExtResource("8_botctrl")
+bot_data = ExtResource("9_botdata")
+tank = NodePath("../EnemyGarnisonen")
+pivot_turn_deg = 100.0
+unstick_after_s = 3.0
+
+[node name="PlayerRespawn" type="Node" parent="." unique_id=1402552004 node_paths=PackedStringArray("tank")]
+script = ExtResource("10_respawn")
+tank = NodePath("../PlayerRig/Tank")

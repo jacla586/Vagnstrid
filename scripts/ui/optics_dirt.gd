@@ -27,7 +27,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	var tank: Tank = views.get_tank() if views != null else null
 	var dirt: float = tank.get_optics_dirt() if tank != null else 0.0
-	var show: bool = dirt > 0.0 and not views.is_debug_view() and not views.is_squad_view() \
+	var show: bool = dirt > 0.0 and not views.is_squad_view() \
 			and not views.is_killcam()
 	visible = show
 	if not show:

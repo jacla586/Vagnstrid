@@ -25,8 +25,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	var tank: Tank = views.get_tank() if views != null else null
-	var burning: bool = tank != null and tank.is_burning() and not tank.is_knocked_out() \
-			and not views.is_debug_view()
+	var burning: bool = tank != null and tank.is_burning() and not tank.is_knocked_out()
 	_amount = move_toward(_amount, 1.0 if burning else 0.0, fade_rate * delta)
 	var flicker: float = 0.06 * sin(_time * 5.3) + 0.04 * sin(_time * 11.7)
 	modulate.a = _amount * clampf(opacity + flicker, 0.0, 1.0)

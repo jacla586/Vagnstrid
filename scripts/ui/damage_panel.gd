@@ -5,8 +5,8 @@ extends Control
 ## and every module in its place, coloured green OK, yellow damaged, red destroyed;
 ## under it a structure bar and FIRE / REPAIRING 12 s / "stand still to repair", and a
 ## line for wounded crew (DRIVER WOUNDED 42 s: he answers late, heals by himself).
-## An arrow in the middle shows where the player looks (commander's view, or the
-## gunner's sight), like the cone on the minimap.
+## An arrow in the middle shows where the commander looks, also from the gunner's sight
+## (where the commander's view will be on switching back; the turret shows the gun).
 ## Enemy hp is never shown. Hidden in the debug view.
 
 @export var views: PlayerViews
@@ -48,7 +48,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
-	visible = views != null and not views.is_debug_view() and views.get_tank() != null
+	visible = views != null and views.get_tank() != null
 	# Redrawn REDRAW_HZ times a second, not every frame.
 	if visible and Ticks.due(_redraw_clock, delta, REDRAW_HZ):
 		queue_redraw()
@@ -148,12 +148,12 @@ func _draw_icon(tank: Tank) -> void:
 	_draw_look_arrow(tank, centre)
 
 
-## Where the player looks, in the hull's frame (forward = up), from the icon's middle:
-## a slim arrow with a notch, outlined so it reads over the modules.
+## Where the commander looks, in the hull's frame (forward = up), from the icon's middle:
+## a slim arrow with a notch, outlined so it reads over the modules. Always the commander's
+## view: through the gunner's sight it showed the sight, and switching back to the commander
+## looked somewhere else.
 func _draw_look_arrow(tank: Tank, at: Vector2) -> void:
-	var camera: Camera3D = views.get_view_camera() if views != null else null
-	if camera == null and views != null:
-		camera = views.commander_camera
+	var camera: Camera3D = views.commander_camera if views != null else null
 	if camera == null:
 		return
 	var look3: Vector3 = tank.global_basis.orthonormalized().inverse() * -camera.global_basis.z

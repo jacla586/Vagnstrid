@@ -1,20 +1,19 @@
 class_name PlayerViews
 extends Node
 ## Owns the local player's cameras: commander view (default), gunner's sight, the
-## squad leader's eyes (only while the squad is off the tank; look only, no control)
-## and the debug orbit view. Also handles mouse capture.
+## squad leader's eyes (only while the squad is off the tank; look only, no control).
+## Also handles mouse capture. There is deliberately no free third-person camera: the
+## commander's view is the point of the game.
 
-enum ViewMode { COMMANDER, GUNNER, DEBUG, SQUAD }
+enum ViewMode { COMMANDER, GUNNER, SQUAD }
 ## Values match the `mode` uniform in view_mask.gdshader.
 enum OverlayMode { NONE, PERISCOPE, BINOCULARS, SIGHT }
 
 @export var commander_camera: CommanderCamera
 @export var gunner_camera: GunnerCamera
-@export var debug_camera: OrbitCamera
 @export var squad_camera: SquadCamera
 
 var _mode: ViewMode = ViewMode.COMMANDER
-var _mode_before_debug: ViewMode = ViewMode.COMMANDER
 var _killcam: bool = false
 
 
@@ -22,7 +21,7 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	# The cameras are placed every frame (_process) from the hull's interpolated pose:
 	# physics interpolation must leave them alone.
-	for camera: Camera3D in [commander_camera, gunner_camera, debug_camera, squad_camera]:
+	for camera: Camera3D in [commander_camera, gunner_camera, squad_camera]:
 		if camera != null:
 			camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_apply_view()
@@ -31,15 +30,9 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("release_mouse"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	elif event.is_action_pressed("toggle_debug_view"):
-		if _mode == ViewMode.DEBUG:
-			_set_mode(_mode_before_debug)
-		else:
-			_mode_before_debug = _mode
-			_set_mode(ViewMode.DEBUG)
-	elif event.is_action_pressed("toggle_gunner_sight") and _mode != ViewMode.DEBUG:
+	elif event.is_action_pressed("toggle_gunner_sight"):
 		_set_mode(ViewMode.COMMANDER if _mode == ViewMode.GUNNER else ViewMode.GUNNER)
-	elif event.is_action_pressed("toggle_squad_view") and _mode != ViewMode.DEBUG:
+	elif event.is_action_pressed("toggle_squad_view"):
 		if _mode == ViewMode.SQUAD:
 			_set_mode(ViewMode.COMMANDER)
 		elif squad_camera != null and squad_camera.can_view():
@@ -58,17 +51,13 @@ func is_gunner_view() -> bool:
 	return _mode == ViewMode.GUNNER
 
 
-func is_debug_view() -> bool:
-	return _mode == ViewMode.DEBUG
-
-
 func is_squad_view() -> bool:
 	return _mode == ViewMode.SQUAD
 
 
-## True when the active view steers the turret every frame (gunner's sight, debug).
+## True when the active view steers the turret every frame (gunner's sight).
 func drives_turret() -> bool:
-	return _mode == ViewMode.GUNNER or _mode == ViewMode.DEBUG
+	return _mode == ViewMode.GUNNER
 
 
 ## Back to the tank when the squad mounts (or is gone) while looking through it.
@@ -85,8 +74,6 @@ func get_aim_point() -> Vector3:
 	match _mode:
 		ViewMode.GUNNER:
 			return gunner_camera.get_aim_point()
-		ViewMode.DEBUG:
-			return debug_camera.get_aim_point()
 		ViewMode.SQUAD:
 			return squad_camera.get_aim_point()
 		_:
@@ -99,8 +86,6 @@ func get_overlay_mode() -> OverlayMode:
 	match _mode:
 		ViewMode.GUNNER:
 			return OverlayMode.SIGHT
-		ViewMode.DEBUG:
-			return OverlayMode.NONE
 		ViewMode.SQUAD:
 			return OverlayMode.BINOCULARS if squad_camera.is_binoculars_active() else OverlayMode.NONE
 	if commander_camera.is_binoculars_active():
@@ -115,7 +100,7 @@ func get_tank() -> Tank:
 
 
 ## The camera the player looks through from the tank (commander or gunner); null in
-## the debug and squad views.
+## the squad view.
 func get_view_camera() -> Camera3D:
 	match _mode:
 		ViewMode.COMMANDER: return commander_camera
@@ -152,6 +137,5 @@ func _apply_view() -> void:
 		return
 	commander_camera.current = _mode == ViewMode.COMMANDER
 	gunner_camera.current = _mode == ViewMode.GUNNER
-	debug_camera.current = _mode == ViewMode.DEBUG
 	if squad_camera != null:
 		squad_camera.current = _mode == ViewMode.SQUAD

@@ -19,10 +19,19 @@ const MIN_MARK_SPACING_PX: float = 3.0
 @export var reticle_color: Color = Color(0.03, 0.03, 0.03, 0.95)
 @export var desired_aim_color: Color = Color(1.0, 1.0, 1.0, 0.8)
 @export var warning_color: Color = Color(1.0, 0.35, 0.2, 1.0)
+## Loading shown on the centre circle: dark while the gun loads, filling clockwise from the
+## top in `loaded_color` over the reload (half filled = half the time left), all of it in
+## `loaded_color` once a round is in the breech. Width in 1080p px.
+@export var loaded_color: Color = Color(0.25, 0.9, 0.3, 0.95)
+@export var loading_color: Color = Color(0.0, 0.0, 0.0, 0.95)
+@export var load_ring_width: float = 3.5
 
 var _table_shell: ShellData
 var _table_ranges: PackedFloat32Array = PackedFloat32Array()
 var _table_drops_mrad: PackedFloat32Array = PackedFloat32Array()
+## The reload as it started (s): the remaining time jumps up when one starts.
+var _reload_total: float = 0.0
+var _reload_last: float = 0.0
 
 
 func _ready() -> void:
@@ -53,7 +62,7 @@ func _draw() -> void:
 
 	# Crosshair lines and centre circle.
 	var circle_radius: float = 20.0 * unit
-	draw_arc(centre, circle_radius, 0.0, TAU, 48, reticle_color, line_width, true)
+	_draw_load_ring(centre, circle_radius, maxf(load_ring_width * unit, 2.0))
 	draw_line(Vector2(0.0, centre.y), Vector2(centre.x - circle_radius, centre.y), reticle_color, line_width)
 	draw_line(Vector2(centre.x + circle_radius, centre.y), Vector2(size.x, centre.y), reticle_color, line_width)
 	draw_line(Vector2(centre.x, 0.0), Vector2(centre.x, centre.y - circle_radius), reticle_color, line_width)
@@ -69,6 +78,22 @@ func _draw() -> void:
 	if views.get_tank().is_commander_exposed():
 		draw_string(font, Vector2(0.0, size.y * 0.95), "HATCH OPEN",
 				HORIZONTAL_ALIGNMENT_CENTER, size.x, font_size, warning_color)
+
+
+func _draw_load_ring(centre: Vector2, radius: float, width: float) -> void:
+	var remaining: float = views.get_tank().get_reload_remaining()
+	if remaining > _reload_last + 0.05:
+		_reload_total = remaining   # a reload (or an ammo change) started
+	_reload_last = remaining
+	if remaining <= 0.0 or _reload_total <= 0.0:
+		draw_arc(centre, radius, 0.0, TAU, 48, loaded_color, width, true)
+		return
+	draw_arc(centre, radius, 0.0, TAU, 48, loading_color, width, true)
+	var done: float = clampf(1.0 - remaining / _reload_total, 0.0, 1.0)
+	if done > 0.0:
+		var start: float = -PI * 0.5   # 12 o'clock; screen angles go clockwise
+		draw_arc(centre, radius, start, start + TAU * done, maxi(int(48.0 * done), 2), loaded_color,
+				width, true)
 
 
 func _draw_side_scale(centre: Vector2, unit: float, line_width: float, font: Font,

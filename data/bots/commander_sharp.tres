@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="CommanderData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/commander_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Sharp"
+think_interval_s = 5.0
+main_hold_s = 40.0
+switch_after_losses = 2
+main_share = 0.65
+hunters = 2
+guards = 1
+gather_waiting = 0
+gather_after_wave_s = 35.0
+commit_reserve_margin = 1
+counter_min_ratio = 0.8
+deny_time_s = 45.0
+threat_shift_share = 0.6
+ambush_squads = 2
+scout_squads = 2

@@ -42,6 +42,7 @@ var _struck_tank: Tank
 
 
 func _ready() -> void:
+	add_to_group(Relevance.GROUP)
 	if squad_map != null:
 		squad_map.squad_order_requested.connect(func(point: Vector3) -> void:
 			_squad_order = Squad.ORDER_MOVE

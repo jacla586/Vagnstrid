@@ -43,7 +43,7 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	if _tank == null or views == null or views.is_debug_view():
+	if _tank == null or views == null:
 		return
 	var rect := Rect2(Vector2.ZERO, size)
 	var alpha: float = _flash * flash_alpha

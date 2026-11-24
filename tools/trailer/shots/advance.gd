@@ -13,8 +13,8 @@ const GAP_M: float = 20.0
 const STAGGER_M: Array[float] = [6.0, -4.0, 3.0, -2.0, 5.0, -3.0, -12.0]   # the camera's tank last, behind
 const SPEED_MPS: float = 4.2
 const CAM_TANK: int = 6   # the right end: it sees the line slant off towards the town
-## Middle of Vallastaden's blocks (map metres).
-const VALLASTADEN: Vector2 = Vector2(1960.0, 820.0)
+## Middle of Vallastaden's blocks (map metres; road_to_science grown 2026-11-20, origin moved 1350 m W and 1610 m N).
+const VALLASTADEN: Vector2 = Vector2(3310.0, 2430.0)
 const DRIVE_M: float = 60.0
 const HE_TIMES_S: Array[float] = [2.2, 4.6, 7.4]
 const HE_SPOTS: Array[Vector2] = [Vector2(10.0, 60.0), Vector2(-35.0, 45.0), Vector2(30.0, 85.0)]   # (right, ahead) of the line
@@ -58,8 +58,8 @@ func _lane(i: int, ahead: float) -> Vector3:
 func _find_line() -> bool:
 	var skip: int = int(options.get("spot", "0"))
 	var tries: Array[Vector2] = []
-	for x: int in range(2100, 2750, 25):
-		for z: int in range(700, 1400, 25):
+	for x: int in range(3450, 4100, 25):
+		for z: int in range(2310, 3010, 25):
 			tries.append(Vector2(x, z))
 	# Nearest the town first: its houses should be big enough to know.
 	tries.sort_custom(func(a: Vector2, b: Vector2) -> bool:

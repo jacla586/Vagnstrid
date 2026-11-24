@@ -11,6 +11,9 @@ editor), plus ThunderRoadBots.
 --join=M: join road pieces whose points are this close (default 15 m; more across
 roundabouts whose ring has another name).
 --spacing=M: aimed checkpoint spacing (default 330 m; keep checkpoints >= 500 m apart).
+--checkpoints=E,N;E,N;...: checkpoints at these SWEREF points (each snapped to the nearest
+route point; origin from geodata/<map>/out/heightmap_info.json, as the route) instead of spaced evenly.
+--data=res://...tres: the ThunderRoadData the scene uses (default data/modes/thunder_road.tres).
 
 Or take a ready route (any roads and paths, e.g. a corridor map's korridor.json with
 "rutt_sweref": [[E, N], ...] from start to end) instead of road names:
@@ -173,12 +176,20 @@ def fmt(v: float) -> str:
 def main() -> None:
     global JOIN_M, SPACING_M
     path_file = ""
+    cp_sweref: list[tuple[float, float]] = []
+    data_path = "res://data/modes/thunder_road.tres"
     for arg in list(sys.argv[1:]):
         if arg.startswith("--join="):
             JOIN_M = float(arg.split("=", 1)[1])
             sys.argv.remove(arg)
         elif arg.startswith("--spacing="):
             SPACING_M = float(arg.split("=", 1)[1])
+            sys.argv.remove(arg)
+        elif arg.startswith("--checkpoints="):
+            cp_sweref = [tuple(float(v) for v in q.split(",")) for q in arg.split("=", 1)[1].split(";") if q]
+            sys.argv.remove(arg)
+        elif arg.startswith("--data="):
+            data_path = arg.split("=", 1)[1]
             sys.argv.remove(arg)
         elif arg.startswith("--path="):
             path_file = arg.split("=", 1)[1]
@@ -198,10 +209,21 @@ def main() -> None:
     route = resample(path, STEP_M)
     total = length(route)
     n = max(1, round(total / SPACING_M))
-    # The first spacing stays free: a drive to the fight before the first checkpoint.
-    checkpoints = [point_at(route, total * k / n) for k in range(2, n + 1)]
-    print("%s: %.0f m, %d route points, %d checkpoints %.0f m apart"
-          % (node_name, total, len(route), n - 1, total / n))
+    if cp_sweref:
+        info = json.loads((ROOT / "geodata" / map_name / "out" / "heightmap_info.json").read_text())
+        oe, on = info["origin_sweref_of_pixel_0_0"]
+        checkpoints = []
+        for e, nn in cp_sweref:
+            x, z = e - oe, on - nn
+            best = min(route, key=lambda p: (p[0] - x) ** 2 + (p[2] - z) ** 2)
+            print("checkpoint %d: %.0f m from its point" % (len(checkpoints) + 1, math.dist((best[0], best[2]), (x, z))))
+            checkpoints.append(best)
+        print("%s: %.0f m, %d route points, %d checkpoints" % (node_name, total, len(route), len(checkpoints)))
+    else:
+        # The first spacing stays free: a drive to the fight before the first checkpoint.
+        checkpoints = [point_at(route, total * k / n) for k in range(2, n + 1)]
+        print("%s: %.0f m, %d route points, %d checkpoints %.0f m apart"
+              % (node_name, total, len(route), n - 1, total / n))
 
     rng = random.Random(node_name)
     uid = lambda: rng.randint(10 ** 8, 2 ** 31 - 1)
@@ -213,7 +235,7 @@ def main() -> None:
         '',
         '[ext_resource type="PackedScene" path="res://scenes/maps/%s.tscn" id="1_base"]' % map_name,
         '[ext_resource type="Script" path="res://scripts/modes/thunder_road_mode.gd" id="2_mode"]',
-        '[ext_resource type="Resource" path="res://data/modes/thunder_road.tres" id="3_data"]',
+        '[ext_resource type="Resource" path="%s" id="3_data"]' % data_path,
         '[ext_resource type="Script" path="res://scripts/modes/thunder_road_bots.gd" id="4_bots"]',
         '',
         '[sub_resource type="Curve3D" id="Curve3D_route"]',

@@ -13,6 +13,12 @@ static var weather: String = "random"
 ## Bot tanks on the players' side in free fight (bot hunt).
 static var free_allies: int = 0
 const MAX_FREE_ALLIES: int = 8
+## The bots' team commander (TeamCommander): 0 off, 1 normal, 2 sharp (COMMANDER_PATHS).
+## Always sharp in the game (the commander runs the bots' tactics; players never choose it);
+## only the test tools set it.
+static var bot_commander: int = 2
+const COMMANDER_PATHS: PackedStringArray = ["", "res://data/bots/commander_normal.tres",
+		"res://data/bots/commander_sharp.tres"]
 ## The player's name as last typed in the main menu ("" = none yet).
 static var player_name: String = ""
 static var _loaded: bool = false
@@ -55,6 +61,12 @@ static func set_free_allies(n: int) -> void:
 	cfg.load(SETTINGS_PATH)
 	cfg.set_value("match", "free_allies", free_allies)
 	cfg.save(SETTINGS_PATH)
+
+
+## The CommanderData file for the setting ("" = off).
+static func commander_path() -> String:
+	load_settings()
+	return COMMANDER_PATHS[clampi(bot_commander, 0, COMMANDER_PATHS.size() - 1)]
 
 
 static func set_player_name(n: String) -> void:

@@ -869,6 +869,120 @@
    ],
    "riktning_grad": 306.0,
    "hojd_m": 1.2
+  },
+  {
+   "namn": "Berga centrum",
+   "typ": "bokstavsskylt",
+   "stil": "berga_centrum",
+   "_anm": "Röda bokstäver på entrétakets nock (Mapillary 2021, vidingsjo_xl/data/mapillary/berga_centrum/); lasern: skylten når 7,5 m vid (537605, 6472574). OSM-huset har inte entrégaveln, så skylten står på takfoten med två stolpar.",
+   "lage": [
+    537605.0,
+    6472574.5
+   ],
+   "riktning_grad": 341,
+   "bredd_m": 3.6,
+   "hojd_m": 1.9,
+   "over_mark_m": 5.6,
+   "stolpar_fran_m": 4.0,
+   "rader": [
+    [
+     "BERGA",
+     [
+      214,
+      28,
+      34
+     ],
+     0.62
+    ],
+    [
+     "centrum",
+     [
+      214,
+      28,
+      34
+     ],
+     0.38
+    ]
+   ]
+  },
+  {
+   "namn": "Stora Coop (fasad)",
+   "typ": "bokstavsskylt",
+   "stil": "stora_coop",
+   "_anm": "Logotypen över entrén på östra fasaden mot parkeringen (Mapillary 2021, stora_coop/): limegrönt 'Stora' över turkost 'coop'.",
+   "lage": [
+    536517.05,
+    6472444.5
+   ],
+   "riktning_grad": 87,
+   "bredd_m": 4.4,
+   "hojd_m": 2.2,
+   "over_mark_m": 4.4,
+   "rader": [
+    [
+     "Stora",
+     [
+      150,
+      204,
+      40
+     ],
+     0.38,
+     true
+    ],
+    [
+     "coop",
+     [
+      0,
+      172,
+      152
+     ],
+     0.62
+    ]
+   ]
+  },
+  {
+   "namn": "Stora Coop (pylon)",
+   "typ": "skyltpylon",
+   "stil": "stora_coop_pylon",
+   "_anm": "Fristående skylt vid parkeringens södra ände (Mapillary 2021; läget uppskattat ur bildriktningen).",
+   "lage": [
+    536521.0,
+    6472399.0
+   ],
+   "riktning_grad": 45,
+   "hojd_m": 5.0,
+   "bredd_m": 1.6,
+   "falt_m": 2.6,
+   "rader": [
+    [
+     "Stora",
+     [
+      150,
+      204,
+      40
+     ],
+     0.3,
+     true
+    ],
+    [
+     "coop",
+     [
+      0,
+      172,
+      152
+     ],
+     0.45
+    ],
+    [
+     "Öppet 7-22",
+     [
+      240,
+      240,
+      240
+     ],
+     0.25
+    ]
+   ]
   }
  ],
  "hus_justera": [

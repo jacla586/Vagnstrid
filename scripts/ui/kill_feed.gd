@@ -60,7 +60,6 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	visible = views == null or not views.is_debug_view()
 	if not NetRole.is_client() and Engine.get_process_frames() % 30 == 0:
 		_connect_tanks()
 	for i: int in range(_ages.size() - 1, -1, -1):

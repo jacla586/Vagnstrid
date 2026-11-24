@@ -29,6 +29,10 @@
 # Mapillary-nyckeln (privat)
 /mapillary.txt
 
+# VagnFast GDExtension builds (cd native && .venv/bin/scons ...)
+bin/*.so
+bin/*.dll
+
 # Planer och anteckningar: bara lokalt, inte på GitHub (2026-11-24)
 /SERVER_PLAN.md
 /SLAPP_ATT_GORA.md
@@ -38,3 +42,4 @@
 /TRAFFTABELL.md
 /TUTORIAL_PLAN.md
 /VAD_SOM_GICK_FEL.md
+/PRESTANDA_PLAN.md

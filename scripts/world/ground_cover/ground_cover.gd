@@ -73,15 +73,24 @@ func water_depth(pos: Vector3) -> float:
 ## Share (0..1) of a body `body_height` m tall at `pos` hidden by the vegetation, seen
 ## from `viewer`: full along the ground, less when looked down on from above.
 func hidden_share(pos: Vector3, body_height: float, viewer: Vector3) -> float:
+	var share: float = body_share(pos, body_height)
+	return share * grazing(pos, body_height, viewer) if share > 0.0 else 0.0
+
+
+## The viewer-free part of hidden_share: share of the body below the vegetation at `pos`.
+func body_share(pos: Vector3, body_height: float) -> float:
 	var veg: float = height_at(pos)
 	var lo: float = rules.min_hiding_height_m
 	if veg <= lo or body_height <= lo:
 		return 0.0
-	var share: float = clampf((veg - lo) / (body_height - lo), 0.0, 1.0)
+	return clampf((veg - lo) / (body_height - lo), 0.0, 1.0)
+
+
+## The viewer's part of hidden_share: 1 looked at along the ground, 0 from high above.
+func grazing(pos: Vector3, body_height: float, viewer: Vector3) -> float:
 	var flat: float = Vector2(viewer.x - pos.x, viewer.z - pos.z).length()
 	var down_deg: float = rad_to_deg(atan2(viewer.y - (pos.y + body_height * 0.5), maxf(flat, 0.1)))
-	var grazing: float = 1.0 - smoothstep(rules.grazing_full_deg, rules.grazing_none_deg, down_deg)
-	return share * grazing
+	return 1.0 - smoothstep(rules.grazing_full_deg, rules.grazing_none_deg, down_deg)
 
 
 func spot_time_factor(hidden: float) -> float:

@@ -9,11 +9,22 @@ extends Resource
 @export_group("Spotting")
 ## How often the commander looks around (s).
 @export var scan_interval_s: float = 0.25
+## Against more enemy tanks than this the interval stretches with their number (each
+## look covers them all), up to scan_max_stretch times: 20 v 20 looks round every 0.5 s.
+## The time in between still counts towards spotting.
+@export var scan_reference_enemies: int = 10
+@export var scan_max_stretch: float = 2.0
 ## Tanks farther away than these ranges (m) are looked at only every 2nd / 4th scan (the
 ## time in between still counts towards spotting): fewer sight lines, same rules. The
 ## current target is looked at every scan.
-@export var look_every_2nd_beyond_m: float = 400.0
-@export var look_every_4th_beyond_m: float = 800.0
+@export var look_every_2nd_beyond_m: float = 250.0
+@export var look_every_4th_beyond_m: float = 600.0
+## Enemy soldiers are each looked at afresh every this many look rounds (by index, in turn);
+## between, his last answer stands while the spotting time runs on (SquadData has the same).
+## Always afresh: the squad in the MG's sights, men within soldier_look_full_m, a man who
+## just fired, and answers older than this many rounds. 1 = every round.
+@export var soldier_look_rounds: int = 4
+@export var soldier_look_full_m: float = 100.0
 ## Farthest the commander spots a tank with the hatch open / closed (m).
 @export var view_range_open_m: float = 1200.0
 @export var view_range_closed_m: float = 700.0
@@ -29,6 +40,15 @@ extends Resource
 @export var spot_remark_s: float = 12.0
 ## Cover and movement rules for the tanks this crew looks for. Null = ignored.
 @export var concealment: ConcealmentData
+
+@export_group("Far from players")
+## Beyond this distance (m) from every human player's tank and the camera (Relevance), the
+## crew thinks far_think_hz times a second and looks round far_scan_factor times as seldom:
+## the same rules at a slower pace (a fight nobody watches). Near again within far_m.
+@export var far_m: float = 400.0
+@export var far_margin_m: float = 100.0
+@export var far_think_hz: float = 7.5
+@export var far_scan_factor: float = 2.0
 
 @export_group("Gunnery")
 ## Range estimation error for the first shot, as a share of the true range (±).

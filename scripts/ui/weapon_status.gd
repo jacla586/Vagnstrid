@@ -22,7 +22,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	visible = views != null and not views.is_debug_view()
+	visible = views != null
 	if not visible:
 		return
 	var tank: Tank = views.get_tank()

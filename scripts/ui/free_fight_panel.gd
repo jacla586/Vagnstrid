@@ -24,7 +24,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	var mode: FreeFight = FreeFight.instance
-	visible = mode != null and views != null and not views.is_debug_view()
+	visible = mode != null and views != null
 	if visible and Ticks.due(_redraw_clock, delta, REDRAW_HZ):
 		queue_redraw()
 
