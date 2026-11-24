@@ -287,6 +287,8 @@ func _on_packet(id: int, packet: PackedByteArray) -> void:
 func rpc_hello(name_: String, config_key: String) -> void:
 	if NetRole.is_host():
 		known_peers[multiplayer.get_remote_sender_id()] = [name_.strip_edges().left(20), config_key]
+		if server != null:
+			server.on_hello(multiplayer.get_remote_sender_id())
 		rpc_id(multiplayer.get_remote_sender_id(), "rpc_welcome", map_path, bots,
 				Weather.current().resource_path)
 		if game != null:

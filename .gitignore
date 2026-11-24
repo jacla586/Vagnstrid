@@ -46,3 +46,6 @@ bin/*.dll
 
 # ez-tree test (2026-11-22): local clone, Node and outputs, not used by the game
 /tools/trees/
+
+# Python caches (tools)
+__pycache__/

@@ -1,0 +1,18 @@
+# Vagnstrid server panel (web page on the LAN) as a systemd user service, beside vagnstrid-server.
+#   cp tools/server/panel/vagnstrid-panel.service ~/.config/systemd/user/
+#   (edit WorkingDirectory below if the game lives elsewhere)
+#   systemctl --user daemon-reload && systemctl --user enable --now vagnstrid-panel
+#   journalctl --user -u vagnstrid-panel     # shows the sign-in token on first start
+# Open http://<the server's IP>:8080/ from another machine on the LAN.
+[Unit]
+Description=Vagnstrid server panel
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/stridsvagn
+ExecStart=/usr/bin/env python3 tools/server/panel/panel.py --log-dir %h/vagnstrid-server --port 8080 --unit vagnstrid-server
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

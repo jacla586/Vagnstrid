@@ -1281,6 +1281,13 @@ Host-authoritative, Godot ENet, all in `scripts/net/`:
   JSON object per line (status, subscribe = status every 1 s + every log line, config_get/config_set, change_map,
   end_match, close_vote, kick, say, quit); no authentication, so it never listens elsewhere: the planned web panel
   beside it faces the LAN. Shell: `tools/server/admin_cli.py status|watch|config|set k=v|map|end|vote|kick|say|quit`.
+  Popularity log lines (2026-11-25, players told apart by name): server_start, hello (name; a session runs hello ->
+  leave), online (every 120 s while anyone is in), deploy (tank), kill (only when a player is killer, victim or
+  assist; NetGame `_register` -> `DedicatedServer.on_knockout`), match_end gains `gunnery` (per player shots, hits,
+  pens, ricochets: main gun) and `bot_kills` (bot by bot, counted only). Web panel `tools/server/panel/` (Python
+  stdlib, README there, `vagnstrid-panel.service`, port 8080, LAN addresses + token in `<log dir>/panel_token.txt`):
+  live status and commands, systemd start/stop/restart, console (journalctl) and events, settings, and statistics
+  from the log (`stats.py`: unique players, peak, person-minutes, leaderboard, fun facts; tests in `panel/tests`).
 - Player guide (Swedish): `SPELA_ONLINE.md` (hosting, joining, Tailscale, F3).
 - Measured: ~0.8 kB/s per tank per recipient. Test with two (or three) headless
   instances running scratch scripts (`--script`, the autoload is there), or two windows.

@@ -15,6 +15,8 @@ extends Node
 
 const DATA_PATH: String = "res://data/server/server.tres"
 const TICK_S: float = 0.5
+## While anyone is connected an "online" line goes to the log this often (s).
+const ONLINE_EVERY_S: float = 120.0
 
 enum Phase { PLAYING, RESULT, VOTE, IDLE }
 
@@ -35,10 +37,15 @@ var _votes: Dictionary = {}       # peer -> scenario index
 var _tick: float = 0.0
 var _defaults: ServerData
 var _test_max_match_s: float = 0.0
+## This match's gunnery per player name: {shots, hits, pens, ricochets} (main gun only).
+var _gunnery: Dictionary = {}
+var _bot_kills: int = 0          # bot by bot this match (not logged one by one)
+var _online_clock: float = 0.0
 
 
 func start(first: String) -> void:
 	_defaults = load(DATA_PATH) as ServerData
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(log_dir))
 	var args: PackedStringArray = OS.get_cmdline_user_args()
 	var at: int = args.find("--max-match-s")   # testing: end matches sooner
 	if at >= 0 and at + 1 < args.size():
@@ -66,6 +73,7 @@ func start(first: String) -> void:
 		if phase == Phase.VOTE:
 			_send_vote_open(id))
 	Weather.resolve()
+	log_event({"ev": "server_start", "port": net.port})
 	print("dedicated server: %d scenarios, first %s, log %s, settings %s" % [scenarios.size(),
 			first, ProjectSettings.globalize_path(log_dir.path_join("server_log.jsonl")),
 			ProjectSettings.globalize_path(config_path)])
@@ -82,6 +90,11 @@ func _process(delta: float) -> void:
 		return
 	var dt: float = _tick
 	_tick = 0.0
+	_online_clock += dt
+	if _online_clock >= ONLINE_EVERY_S:
+		_online_clock = 0.0
+		if _peer_count() > 0:   # bounds sessions if the server dies without a "leave"
+			log_event({"ev": "online", "players": _peer_count(), "names": _names()})
 	match phase:
 		Phase.PLAYING:
 			if _mode_over():
@@ -113,6 +126,8 @@ func _begin_match(path: String) -> void:
 	current = path
 	phase = Phase.PLAYING
 	_match_time = 0.0
+	_gunnery.clear()
+	_bot_kills = 0
 	log_event({"ev": "match_start", "scenario": path.get_file().get_basename(),
 			"weather": Weather.current().resource_path.get_file().get_basename(),
 			"players": _peer_count(), "names": _names()})
@@ -147,7 +162,10 @@ func _end_match(reason: String) -> void:
 			humans.append(row)
 	log_event({"ev": "match_end", "scenario": current.get_file().get_basename(),
 			"length_s": roundi(_match_time), "timed_out": reason == "timeout", "reason": reason,
-			"winner": winner, "players": _peer_count(), "humans": humans})
+			"winner": winner, "players": _peer_count(), "humans": humans,
+			"gunnery": _gunnery.duplicate(true), "bot_kills": _bot_kills})
+	_gunnery.clear()
+	_bot_kills = 0
 	phase = Phase.RESULT
 	_apply_settings()   # the vote and the next match see edits made meanwhile
 	_phase_left = data.result_s
@@ -243,6 +261,80 @@ func _close_vote() -> void:
 			"winner": path.get_file().get_basename(), "tie": tie, "no_votes": best == 0})
 	NetSession.instance.rpc("rpc_vote_close", MainMenu.scenario_label(path))
 	_load(path)
+
+
+# --- Statistics (NetSession / NetGame hooks) -----------------------------------------
+# Players are told apart by name (there are no accounts). tools/server/panel/stats.py
+# turns these lines into the panel's statistics.
+
+## NetSession: a player told us their name (sessions run from here to "leave").
+func on_hello(peer: int) -> void:
+	log_event({"ev": "hello", "peer": peer, "name": _name_of(peer), "players": _peer_count()})
+
+
+## NetGame: a player took a tank.
+func on_deploy(peer: int, team: int, tank_type: String) -> void:
+	log_event({"ev": "deploy", "name": _name_of(peer), "team": team, "tank": tank_type,
+			"scenario": current.get_file().get_basename()})
+
+
+## NetGame: any knock-out. Logged one by one when a player is in it (killer, victim or an
+## assist); bot against bot only counts.
+func on_knockout(victim: Tank, killer: Tank, assists: Array[Tank]) -> void:
+	if phase != Phase.PLAYING:
+		return
+	var victim_peer: int = _peer_of(victim)
+	var killer_peer: int = _peer_of(killer)
+	var helpers: Array = []
+	for t: Tank in assists:
+		var p: int = _peer_of(t)
+		if p > 0:
+			helpers.append(_name_of(p))
+	if victim_peer <= 0 and killer_peer <= 0 and helpers.is_empty():
+		if killer != null:
+			_bot_kills += 1
+		return
+	var weapon: String = victim.get_kill_weapon() if killer != null else ""
+	log_event({"ev": "kill", "scenario": current.get_file().get_basename(),
+			"killer": _name_of(killer_peer) if killer_peer > 0 else ("Bot" if killer != null else ""),
+			"killer_human": killer_peer > 0,
+			"killer_tank": killer.get_type_name() if killer != null and is_instance_valid(killer) else "",
+			"victim": _name_of(victim_peer) if victim_peer > 0 else "Bot",
+			"victim_human": victim_peer > 0, "victim_tank": victim.get_type_name(),
+			"weapon": weapon if weapon != "" else ("gun" if killer != null else "none"),
+			"assists": helpers})
+
+
+## NetGame: a player's tank fired its main gun.
+func on_shot(tank: Tank) -> void:
+	_gun_row(tank)["shots"] += 1
+
+
+## NetGame: a player's main-gun round landed (null or not a tank: a miss).
+func on_shot_landed(tank: Tank, result: HitResult) -> void:
+	if result == null or result.bullet or not result.target is Tank or result.target == tank:
+		return
+	var row: Dictionary = _gun_row(tank)
+	row["hits"] += 1
+	if result.outcome == HitResult.Outcome.PENETRATION:
+		row["pens"] += 1
+	elif result.outcome == HitResult.Outcome.RICOCHET:
+		row["ricochets"] += 1
+
+
+func _gun_row(tank: Tank) -> Dictionary:
+	var name_: String = _name_of(_peer_of(tank))
+	if not _gunnery.has(name_):
+		_gunnery[name_] = {"shots": 0, "hits": 0, "pens": 0, "ricochets": 0}
+	return _gunnery[name_]
+
+
+## The player driving `tank`, 0 for a bot or none.
+func _peer_of(tank: Tank) -> int:
+	var game: NetGame = NetSession.instance.game
+	if tank == null or not is_instance_valid(tank) or game == null or not is_instance_valid(game):
+		return 0
+	return int(game.owners.get(tank.net_id, 0))
 
 
 # --- Settings ------------------------------------------------------------------------

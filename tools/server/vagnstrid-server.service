@@ -4,7 +4,8 @@
 #   systemctl --user daemon-reload && systemctl --user enable --now vagnstrid-server
 #   loginctl enable-linger $USER     # keeps it running when you're logged out
 #   journalctl --user -u vagnstrid-server -f     # follow its output
-# Settings: server.cfg beside the log (user:// unless --log-dir), read before every match.
+# Log, settings (server.cfg) and the panel token live in ~/vagnstrid-server (--log-dir).
+# Web panel beside it: tools/server/panel/ (vagnstrid-panel.service).
 # Admin socket on 127.0.0.1:24681 (--admin-port N, 0 = off): tools/server/admin_cli.py status|watch|...
 [Unit]
 Description=Vagnstrid dedicated server
@@ -12,7 +13,7 @@ After=network-online.target
 
 [Service]
 WorkingDirectory=/media/jacob/Dump/projekt/stridsvagn
-ExecStart=/usr/bin/env godot --headless --path . -- --dedicated --port 24680
+ExecStart=/usr/bin/env godot --headless --path . -- --dedicated --port 24680 --log-dir %h/vagnstrid-server
 Restart=always
 RestartSec=10
 Nice=5
