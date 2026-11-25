@@ -228,6 +228,13 @@ func _register(tank: Tank, owner_peer: int) -> int:
 	tank.eliminated.connect(func(killer: Tank, _assists: Array[Tank]) -> void:
 		if killer != null and is_instance_valid(killer) and not multiplayer.get_peers().is_empty():
 			NetSession.instance.rpc("rpc_kill_feed", KillFeed.entry_of(killer, tank)))
+	var server: DedicatedServer = NetSession.instance.server
+	if server != null:   # statistics for the server log
+		tank.eliminated.connect(func(killer: Tank, assists: Array[Tank]) -> void:
+			server.on_knockout(tank, killer, assists))
+		if owner_peer > 0:
+			tank.fired.connect(func(_shell: Shell) -> void: server.on_shot(tank))
+			tank.shot_landed.connect(func(result: HitResult) -> void: server.on_shot_landed(tank, result))
 	tank.wreck_left.connect(func(at: Transform3D, yaw: float, pitch: float) -> void:
 		_wrecks.append([TankBuilder.spec_of(tank), at, yaw, pitch])
 		if _wrecks.size() > Tank.MAX_WRECKS:
@@ -532,6 +539,8 @@ func on_deploy(peer: int, config_key: String) -> void:
 		if bot_tank != null:
 			remove_tank(bot_tank)
 	_spawn_player(peer)
+	if NetSession.instance.server != null:
+		NetSession.instance.server.on_deploy(peer, int(teams[peer]), cfg.display_name)
 	if director != null:
 		director.refill.call_deferred()   # a team over full: the other side gets a bot
 	_push_roster()

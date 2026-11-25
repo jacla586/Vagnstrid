@@ -419,9 +419,65 @@ Fiendens hp skickas aldrig. Egen vagns torn och lucka förutsägs lokalt; andra 
 
 Välj lag och vagn i matchen. Bottar fyller ut lagen och lämnar plats när spelare ansluter. Byt lag via Esc, eller be någon på andra sidan att byta.
 
-#### Dedikerad server
+## Dedikerad server
 
-`--dedicated`: bottar fyller lagen, matchen slutar, alla röstar på nästa karta. Loggar matcher och röster som JSON. Systemd-tjänst ingår.
+`--dedicated` startar spelet som server utan egen spelare: bottar fyller lagen, och när en match är slut röstar alla om nästa karta. Servern kan stå utan skärm och tangentbord någonstans i huset. Allt sköts från en webbsida som du öppnar på det lokala nätet: se vad som händer just nu, byt bana, sparka en fuskare, ändra lagstorlek eller starta om servern. Efteråt visar samma sida hur populärt spelet blev.
+
+_Bilderna visar påhittad exempeldata._
+
+![Serverpanelens Live-flik: bana, matchklocka, spelare med ping, bottar, tick-tid och knappar för att styra matchen](docs/readme/server_live.jpg)
+
+### Live
+
+- **Läget just nu:** bana, väder, matchklocka och tid kvar, poängen i King of the Hill, checkpoint och liv i Thunder Road, våg i Free fight. Under röstningen syns rösterna medan de kommer in.
+- **Spelarna:** namn, lag, vagn och ping, med en kick-knapp per rad. Bottarna räknas per lag.
+- **Maskinen:** tick-tid per fysiksteg mot budgeten på 33 ms, med de senaste fem minuterna som graf, minne, nätverkstrafik och upptid. Det är så man ser hur stora lag burken klarar.
+- **Styra matchen:** ladda en bana nu, avsluta matchen (resultatet och röstningen följer som vanligt), hoppa över röstningen eller skicka ett meddelande som syns på allas skärmar.
+- **Styra processen:** starta, starta om och stoppa spelservern. Det fungerar även när spelet har kraschat, eftersom panelen är en egen process.
+
+### Hur populärt blev det?
+
+![Statistikfliken: unika spelare, flest samtidigt, personminuter, spelare online över två dagar, när folk spelar, vagnar, banor och omröstningar](docs/readme/server_stats.jpg)
+
+Allt räknas fram ur serverns logg och kan avgränsas till i dag, senaste dygnet eller valfria tider (till exempel bara själva tävlingen).
+
+- **Antal unika spelare, flest samtidigt och personminuter**: två som spelar i tio minuter blir tjugo personminuter.
+- **Spelare online över tid** och **när på dygnet folk spelar**.
+- **Vagnar och banor**: hur ofta varje vagn väljs och hur många knock-outs den får, hur många matcher varje bana spelats.
+- **Omröstningarna**: röster per bana med andel, vinster (med och utan lottning) och antal olika spelare som röstat på den, och röster per spelläge. Där syns vad folk faktiskt vill spela.
+
+![Fun facts och topplistan med knock-outs mot spelare och bottar, K/D, assists, träffprocent, vinster, speltid, favoritvagn och favoritbana](docs/readme/server_leaderboard.jpg)
+
+- **Topplistan** gäller bara människor. Bottarnas kills räknas inte, men en människa som skjuter bottar får dem: knock-outs mot spelare och mot bottar, förluster, K/D, assists, träffprocent, vunna matcher, speltid, knock-outs per timme, favoritvagn och den bana man röstar mest på. Klicka på en kolumn för att sortera.
+- **Fun facts**: first blood, nemesis, prickskytt, bot-jägare, lagspelare, rikoschettkung, botarnas favoritoffer och den farligaste botvagnen.
+
+### Loggar och inställningar
+
+![Loggfliken: serverns händelser i klartext till vänster och spelserverns konsol till höger](docs/readme/server_logs.jpg)
+
+**Logs** visar serverns händelser i klartext (vem som anslöt, vem som sköt vem, vem som röstade på vad) och spelserverns konsol live, båda med filter. **Settings** är ett formulär för lagstorlek, väder, vilka banor som är med i röstningen och tiderna. Ändringarna gäller från nästa match.
+
+### Så fungerar det
+
+```
+ webbläsare på LAN:et
+        │  http :8080, token
+        ▼
+ panel.py ────────── TCP 127.0.0.1:24681, en JSON-rad per meddelande ──────────▶ Godot --dedicated
+   │   Python, bara standardbiblioteket                                         (AdminLink)
+   ├─ journalctl --user -f        → konsolen                                       │
+   ├─ systemctl --user start/stop → processen                                      ├─ server_log.jsonl
+   └─ stats.py                    ← läser server_log.jsonl                         └─ server.cfg
+```
+
+- **Två processer.** Spelservern har ett adminuttag (`AdminLink`) som bara lyssnar på `127.0.0.1`: status varje sekund, varje loggrad direkt, och kommandon. Panelen (`tools/server/panel/`) är den enda som syns på nätet. Den kör bredvid som en egen systemd-tjänst och kan därför starta om spelet.
+- **Säkerhet.** Panelen svarar bara privata adresser och bara med en token, som skapas vid första start i `panel_token.txt`. Skrivande anrop kräver dessutom en egen header, så att en annan sida inte kan skicka kommandon via webbläsaren. Spelarnamn ritas alltid som text, aldrig som HTML.
+- **Loggen är sanningen.** Spelservern skriver en JSON-rad per händelse: anslutning och namn, en rad varannan minut med vilka som är inne, vagnval, varje knock-out där en människa är inblandad (skytt, offer, vagnar, vapen och assists), varje röst och en sammanfattning per match med skott, träffar och genomslag per spelare. Statistiken räknas om från loggen varje gång. Spelare skiljs åt på namn, eftersom det inte finns några konton, och en krasch kostar högst två minuter speltid i räkningen.
+- **Inställningar i en fil.** `server.cfg` bredvid loggen ersätter värdena i `server.tres` och läses in före varje match, så att den kan ändras medan servern kör, för hand eller från panelen.
+- **Inga beroenden.** Python 3 och Godot är allt som behövs, och sidan fungerar utan internet. Diagrammen är egen SVG med verktygstips och tabellvy, och färgerna är spelmenyns.
+- **Kommandoraden.** Samma kommandon finns i terminalen: `tools/server/admin_cli.py status | watch | set team_size=6 | map campus_koth | say ...`.
+
+**Sätta upp:** två systemd-tjänster, `tools/server/vagnstrid-server.service` och `tools/server/panel/vagnstrid-panel.service`, och öppna portarna 8080/tcp och 24680/udp för det lokala nätet. Steg för steg i [tools/server/panel/README.md](tools/server/panel/README.md).
 
 ## Teknik och prestanda
 

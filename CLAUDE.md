@@ -1286,6 +1286,21 @@ Host-authoritative, Godot ENet, all in `scripts/net/`:
   `known_peers` (names, tank keys) for the next NetGame. Log: one JSON line per match/vote/join/leave in
   `server_log.jsonl`; `tools/server/vote_stats.py` sums it up; `tools/server/vagnstrid-server.service`
   (systemd). Testing: `--max-match-s 40` shortens matches and the vote.
+  Settings (2026-11-24): `server.cfg` beside the log (`--config <file>`; `ServerConfig`, written with every key on first
+  start, server.tres = defaults) is read when a match ends and before every load, so edits apply from the next match.
+  Admin socket `AdminLink` (child of DedicatedServer): TCP on 127.0.0.1 only, `--admin-port N` (24681, 0 = off), one
+  JSON object per line (status, subscribe = status every 1 s + every log line (the first reply carries the last 5 min
+  of tick times, `history`), config_get/config_set, change_map,
+  end_match, close_vote, kick, say, quit); no authentication, so it never listens elsewhere: the planned web panel
+  beside it faces the LAN. Shell: `tools/server/admin_cli.py status|watch|config|set k=v|map|end|vote|kick|say|quit`.
+  Popularity log lines (2026-11-25, players told apart by name): server_start, hello (name; a session runs hello ->
+  leave), online (every 120 s while anyone is in), deploy (tank), kill (only when a player is killer, victim or
+  assist; NetGame `_register` -> `DedicatedServer.on_knockout`), match_end gains `gunnery` (per player shots, hits,
+  pens, ricochets: main gun) and `bot_kills` (bot by bot, counted only); vote gains `ballots` (player name -> map,
+  their last choice) and `offered`. Web panel `tools/server/panel/` (Python
+  stdlib, README there, `vagnstrid-panel.service`, port 8080, LAN addresses + token in `<log dir>/panel_token.txt`):
+  live status and commands, systemd start/stop/restart, console (journalctl) and events, settings, and statistics
+  from the log (`stats.py`: unique players, peak, person-minutes, leaderboard, fun facts; tests in `panel/tests`).
 - Player guide (Swedish): `SPELA_ONLINE.md` (hosting, joining, Tailscale, F3).
 - Measured: ~0.8 kB/s per tank per recipient. Test with two (or three) headless
   instances running scratch scripts (`--script`, the autoload is there), or two windows.

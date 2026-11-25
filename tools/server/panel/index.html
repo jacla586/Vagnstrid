@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vagnstrid server</title>
+<style>
+/* Colours from the game's main menu (scripts/ui/menu_theme.gd: MenuTheme). One dark theme only. */
+:root {
+  color-scheme: dark;
+  --shade: #050508;                         /* MenuTheme.SHADE */
+  --backdrop: #141214;                      /* add_backdrop's base */
+  --field: rgba(15, 15, 18, .72);           /* FIELD */
+  --field-hover: rgba(31, 31, 33, .82);     /* FIELD_HOVER */
+  --edge: rgba(255, 255, 255, .14);         /* EDGE */
+  --edge-hover: rgba(255, 255, 255, .30);
+  --inset: rgba(255, 255, 255, .05);        /* rows, facts */
+  --grid: rgba(255, 255, 255, .08);
+  --text-primary: #ede8db;                  /* TEXT */
+  --text-secondary: #cfc9bb;
+  --text-muted: #b3ad9e;                    /* MUTED */
+  --accent: #db8c38;                        /* ACCENT */
+  --accent-hover: #f2a34d;                  /* ACCENT_HOVER */
+  --accent-soft: rgba(219, 140, 56, .28);   /* selected rows */
+  --accent-text: #140f0a;                   /* text on the accent button */
+  --series-1: #db8c38; --series-1-fill: rgba(219, 140, 56, .20);
+  --good: #5cc98a; --critical: #ef6a64; --warning: #e6b450;
+}
+* { box-sizing: border-box; }
+html { background: var(--backdrop); }
+body { margin: 0; min-height: 100vh; color: var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background:
+    linear-gradient(90deg, rgba(5,5,8,.94), rgba(5,5,8,.86) 45%, rgba(5,5,8,.80)),
+    url("/bg.jpg") center / cover fixed no-repeat, var(--backdrop); }
+::selection { background: var(--accent-soft); }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 12px 16px 10px;
+  background: rgba(5, 5, 8, .82); backdrop-filter: blur(6px); border-bottom: 1px solid var(--edge);
+  position: sticky; top: 0; z-index: 5; }
+header h1 { font-size: 16px; margin: 0; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+  text-shadow: 0 2px 0 rgba(0,0,0,.6); position: relative; padding-bottom: 5px; }
+header h1::after { content: ""; position: absolute; left: 0; bottom: 0; width: 40px; height: 3px; background: var(--accent); }
+.state { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); }
+.dot.on { background: var(--good); } .dot.off { background: var(--critical); }
+nav { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+nav button { background: none; border: 1px solid transparent; padding: 6px 12px; border-radius: 3px; color: var(--text-muted);
+  font: inherit; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+nav button:hover { color: #fff; }
+nav button[aria-selected="true"] { background: var(--accent-soft); color: #fff; border-color: rgba(219,140,56,.5); }
+main { padding: 16px; max-width: 1280px; margin: 0 auto; }
+section[hidden] { display: none; }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.card { background: var(--field); border: 1px solid var(--edge); border-radius: 4px; padding: 14px; min-width: 0;
+  backdrop-filter: blur(4px); }
+.card h2 { font-size: 12px; margin: 0 0 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-primary); }
+.card h2 small { font-weight: 400; color: var(--text-muted); letter-spacing: normal; text-transform: none; font-size: 12px; margin-left: 4px; }
+.wide { grid-column: 1 / -1; }
+@media (min-width: 900px) { .span2 { grid-column: span 2; } }
+.tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); margin-bottom: 12px; }
+.tile { background: var(--field); border: 1px solid var(--edge); border-top: 2px solid var(--accent); border-radius: 4px;
+  padding: 11px 14px 12px; backdrop-filter: blur(4px); }
+.tile .label { color: var(--text-muted); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.tile .value { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.25; }
+.tile .sub { color: var(--text-muted); font-size: 12px; }
+.tile .value.text { font-size: 17px; line-height: 1.3; padding: 4px 0 2px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { color: var(--text-muted); font-weight: 600; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+tbody tr:hover td { background: var(--inset); }
+th.sort { cursor: pointer; user-select: none; }
+th.sort:hover { color: #fff; }
+th.sort[data-dir] { color: var(--accent); }
+th.sort[data-dir]::after { content: attr(data-dir); margin-left: 3px; }
+td.num, th.num { text-align: right; }
+.scroll { overflow-x: auto; }
+.muted { color: var(--text-muted); }
+button.btn, select, input { font: inherit; color: var(--text-primary); background: var(--field);
+  border: 1px solid var(--edge); border-radius: 3px; padding: 6px 10px; }
+select option { background: #141416; color: var(--text-primary); }
+input::placeholder { color: var(--text-muted); opacity: .8; }
+input[type=checkbox] { accent-color: var(--accent); padding: 0; }
+button.btn { cursor: pointer; }
+button.btn:hover, select:hover, input:hover { background: var(--field-hover); border-color: var(--edge-hover); color: #fff; }
+button.btn:focus-visible, select:focus-visible, input:focus-visible, nav button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; padding: 7px 18px; }
+button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-text); }
+button.danger { color: var(--critical); }
+button.danger:hover { color: #ff8a84; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.row > input[type=text] { flex: 1 1 200px; min-width: 0; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.filters button[aria-pressed="true"] { background: var(--accent-soft); border-color: rgba(219,140,56,.5); color: #fff; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart .axis text { fill: var(--text-muted); font-size: 11px; }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .baseline { stroke: var(--edge-hover); stroke-width: 1; }
+.tip { position: absolute; pointer-events: none; background: rgba(20, 20, 23, .97); color: var(--text-primary);
+  border: 1px solid var(--edge); border-radius: 3px; padding: 5px 8px; font-size: 12px; white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0,0,0,.5); transform: translate(-50%, calc(-100% - 10px)); display: none; z-index: 3; }
+.tip b { font-variant-numeric: tabular-nums; }
+.hbar { display: grid; grid-template-columns: minmax(80px, 34%) 1fr auto; gap: 8px; align-items: center; margin: 5px 0; }
+.hbar .track { height: 12px; position: relative; background: var(--inset); border-radius: 0 3px 3px 0; }
+.hbar .fill { height: 100%; background: var(--series-1); border-radius: 0 3px 3px 0; min-width: 2px; }
+.hbar .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar .val { font-variant-numeric: tabular-nums; color: var(--text-secondary); font-size: 12px; }
+.facts { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.fact { background: var(--inset); border-left: 2px solid var(--accent); border-radius: 3px; padding: 9px 12px; }
+.fact .k { color: var(--text-muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.fact .v { font-weight: 600; }
+.log { font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: rgba(0, 0, 0, .45);
+  border: 1px solid var(--edge); border-radius: 3px; padding: 8px 10px; height: 460px; overflow: auto;
+  white-space: pre-wrap; word-break: break-word; }
+.log .t { color: var(--text-muted); }
+.log .err { color: var(--critical); }
+.log .warn { color: var(--warning); }
+details summary { cursor: pointer; color: var(--text-muted); font-size: 12px; margin-top: 6px; }
+details summary:hover { color: #fff; }
+form.settings { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+form.settings label { display: grid; gap: 4px; color: var(--text-muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+form.settings label > input, form.settings label > select { font-size: 14px; letter-spacing: normal; text-transform: none; }
+.checks { display: grid; gap: 2px 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+form.settings .checks label { display: flex; gap: 6px; align-items: center; color: var(--text-primary); font-size: 13px;
+  letter-spacing: normal; text-transform: none; }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: rgba(20, 20, 23, .97);
+  border: 1px solid var(--edge); border-left: 3px solid var(--accent); border-radius: 3px; padding: 8px 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5); display: none; z-index: 10; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+@media (max-width: 600px) { header { padding: 10px 16px; } nav { margin-left: 0; } .tile .value { font-size: 22px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Vagnstrid server</h1>
+  <span class="state"><span class="dot" id="dot"></span><span id="state">connecting…</span></span>
+  <nav role="tablist">
+    <button role="tab" data-tab="live" aria-selected="true">Live</button>
+    <button role="tab" data-tab="pop">Popularity</button>
+    <button role="tab" data-tab="logs">Logs</button>
+    <button role="tab" data-tab="settings">Settings</button>  </nav>
+</header>
+<main>
+
+<!-- LIVE -->
+<section id="tab-live">
+  <div class="tiles" id="live-tiles"></div>
+  <div class="grid">
+    <div class="card">
+      <h2>Players <small id="players-count"></small></h2>
+      <div class="scroll"><table id="players"></table></div>
+    </div>
+    <div class="card">
+      <h2>Match <small id="mode-line"></small></h2>
+      <div class="scroll"><table id="scores"></table></div>
+    </div>
+    <div class="card">
+      <h2>Physics tick <small>ms per tick, last 5 minutes</small></h2>
+      <div class="chart" id="perf-chart"></div>
+      <div class="muted" id="perf-line" style="font-size:12px;margin-top:4px"></div>
+    </div>
+    <div class="card">
+      <h2>Run the match</h2>
+      <div class="row"><select id="map-select" style="flex:1 1 200px;min-width:0"></select>
+        <button class="btn" id="map-go">Load now</button></div>
+      <div class="row"><button class="btn" id="end-match">End match</button>
+        <button class="btn" id="close-vote">Skip result / close vote</button></div>
+      <div class="row"><input type="text" id="say-text" maxlength="200" placeholder="Message to every player">
+        <button class="btn" id="say-go">Send</button></div>
+    </div>
+    <div class="card">
+      <h2>Game server process <small id="svc-line"></small></h2>
+      <div class="row">
+        <button class="btn" data-svc="start">Start</button>
+        <button class="btn" data-svc="restart">Restart</button>
+        <button class="btn danger" data-svc="stop">Stop</button>
+      </div>
+      <div class="muted" style="font-size:12px">systemd user unit; works while the game is down. A restart drops every player.</div>
+    </div>
+  </div>
+</section>
+
+<!-- POPULARITY -->
+<section id="tab-pop" hidden>
+  <div class="filters" id="range">
+    <span class="muted">Range</span>
+    <button class="btn" data-range="all" aria-pressed="true">All time</button>
+    <button class="btn" data-range="today">Today</button>
+    <button class="btn" data-range="24h">Last 24 h</button>
+    <button class="btn" data-range="custom">From…</button>
+    <input type="datetime-local" id="since" hidden>
+    <input type="datetime-local" id="until" hidden>
+    <span class="muted" id="range-note" style="margin-left:auto;font-size:12px"></span>
+  </div>
+  <div class="tiles" id="pop-tiles"></div>
+  <div class="grid">
+    <div class="card wide">
+      <h2>Players online <small>most at once per 5 minutes</small></h2>
+      <div class="chart" id="online-chart"></div>
+      <details><summary>Show as table</summary><div class="scroll" style="max-height:240px"><table id="online-table"></table></div></details>
+    </div>
+    <div class="card">
+      <h2>When people play <small>person-minutes by hour of day</small></h2>
+      <div class="chart" id="hour-chart"></div>
+      <details><summary>Show as table</summary><div class="scroll"><table id="hour-table"></table></div></details>
+    </div>
+    <div class="card">
+      <h2>Tanks <small>times picked</small></h2>
+      <div id="tanks"></div>
+    </div>
+    <div class="card span2">
+      <h2>Maps <small>matches played with players</small></h2>
+      <div id="maps"></div>
+    </div>
+    <div class="card span2">
+      <h2>Map votes <small id="votes-note"></small></h2>
+      <div id="map-votes"></div>
+    </div>
+    <div class="card span2">
+      <h2>Votes by game mode <small>which kind of match people ask for</small></h2>
+      <div id="mode-votes"></div>
+    </div>
+    <div class="card wide">
+      <h2>Fun facts</h2>
+      <div class="facts" id="facts"></div>
+    </div>
+    <div class="card wide">
+      <h2>Leaderboard <small>players only; click a column to sort</small></h2>
+      <div class="scroll"><table id="leaderboard"></table></div>
+    </div>
+    <div class="card" id="days-card" hidden>
+      <h2>By day</h2>
+      <div class="scroll"><table id="days"></table></div>
+    </div>
+  </div>
+</section>
+
+<!-- LOGS -->
+<section id="tab-logs" hidden>
+  <div class="grid">
+    <div class="card">
+      <h2>Events <small>matches, votes, players, kills</small></h2>
+      <div class="row"><input type="text" id="ev-filter" placeholder="Filter (e.g. kill, Anna)">
+        <label class="muted"><input type="checkbox" id="ev-follow" checked> follow</label></div>
+      <div class="log" id="events"></div>
+    </div>
+    <div class="card">
+      <h2>Console <small>game server output</small></h2>
+      <div class="row"><input type="text" id="con-filter" placeholder="Filter">
+        <label class="muted"><input type="checkbox" id="con-follow" checked> follow</label>
+        <button class="btn" id="con-clear">Clear</button></div>
+      <div class="log" id="console"></div>
+    </div>
+  </div>
+</section>
+
+<!-- SETTINGS -->
+<section id="tab-settings" hidden>
+  <div class="card">
+    <h2>Server settings <small id="cfg-path"></small></h2>
+    <p class="muted" style="margin-top:0">Saved to server.cfg. They take effect from the next match.</p>
+    <form class="settings" id="cfg-form">
+      <label>Tanks per team (bots fill up)<input type="number" name="team_size" min="0" step="1"></label>
+      <label>Weather<select name="weather"></select></label>
+      <label>Result shown (s)<input type="number" name="result_s" min="1" step="1"></label>
+      <label>Vote time (s)<input type="number" name="vote_s" min="3" step="1"></label>
+      <label>Longest match (min)<input type="number" name="max_match_min" min="1" step="1"></label>
+      <div class="wide" style="grid-column:1/-1">
+        <div class="muted" style="font-size:12px;margin-bottom:4px">Maps in the vote (none ticked = all)</div>
+        <div class="checks" id="cfg-maps"></div>
+      </div>
+      <div style="grid-column:1/-1"><button class="btn primary" type="submit">Save</button>
+        <span class="muted" id="cfg-msg" style="margin-left:8px"></span></div>
+    </form>
+  </div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+// ---------- helpers ----------
+const $ = (s) => document.querySelector(s);
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null) e.append(k instanceof Node ? k : String(k));
+  return e;
+}
+const SVGNS = "http://www.w3.org/2000/svg";
+function s(tag, attrs, ...kids) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) e.setAttribute(k, v);
+  for (const k of kids) if (k != null) e.append(k instanceof Node ? k : String(k));
+  return e;
+}
+const fmtInt = (n) => (n == null ? "–" : Math.round(n).toLocaleString("en-GB"));
+function fmtDur(min) {
+  if (min == null) return "–";
+  if (min < 60) return Math.round(min) + " min";
+  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  return h + " h " + String(m).padStart(2, "0") + " min";
+}
+function fmtClock(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); }
+const fmtTime = (iso) => iso ? new Date(iso).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "–";
+const fmtHM = (d) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+function toast(text) { const t = $("#toast"); t.textContent = text; t.style.display = "block"; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none", 3500); }
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-Requested-With": "panel" }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  if (r.status === 401) { location.href = "/login"; throw new Error("sign in"); }
+  return r.json();
+}
+function tile(label, value, sub, text) { return el("div", { class: "tile" }, el("div", { class: "label" }, label), el("div", { class: text ? "value text" : "value" }, value), sub ? el("div", { class: "sub" }, sub) : null); }
+function table(t, head, rows) {
+  t.replaceChildren(el("thead", {}, el("tr", {}, head.map((h) => el("th", { class: h.num ? "num" : "" }, h.label || h)))),
+    el("tbody", {}, rows.map((r) => el("tr", {}, r.map((c, i) => el("td", { class: head[i] && head[i].num ? "num" : "" }, c))))));
+}
+const TEAM = (t) => (t === 0 ? "Team 1" : t === 1 ? "Team 2" : t >= 0 ? "Team " + (t + 1) : "–");
+
+// ---------- tabs ----------
+(function () {
+  for (const b of document.querySelectorAll("nav [data-tab]")) b.onclick = () => showTab(b.dataset.tab);
+})();
+function showTab(name) {
+  for (const b of document.querySelectorAll("nav [data-tab]")) b.setAttribute("aria-selected", b.dataset.tab === name);
+  for (const sct of document.querySelectorAll("main > section")) sct.hidden = sct.id !== "tab-" + name;
+  try { localStorage.setItem("tab", name); } catch (e) {}
+  history.replaceState(null, "", "#" + name);
+  if (name === "pop") loadStats();
+  if (name === "settings") loadConfig();
+  if (name === "logs") startConsole();
+  redrawCharts();
+}
+
+// ---------- charts (inline SVG, one series, hover tooltip) ----------
+const charts = {};
+function redrawCharts() { for (const k in charts) charts[k](); }
+// A y scale from 0: about n gridlines on steps of 1/2/5 × 10^k (whole steps for counts).
+function yScale(max, n, integer) {
+  const raw = Math.max(max, integer ? 1 : 1e-6) / n;
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  let step = [1, 2, 5, 10].map((m) => m * p).find((x) => x >= raw);
+  if (integer) step = Math.max(1, Math.round(step));
+  const top = Math.max(step, Math.ceil(max / step - 1e-9) * step);
+  const ticks = []; for (let v = 0; v <= top + 1e-9; v += step) ticks.push(+v.toFixed(6));
+  return { top, ticks };
+}
+
+// Line/area over time. pts: [{x: Date, y}], step: hold each value until the next point.
+function lineChart(id, pts, opt) {
+  const box = document.getElementById(id);
+  charts[id] = () => drawLine(box, pts, opt);
+  charts[id]();
+}
+function drawLine(box, pts, opt) {
+  box.replaceChildren();
+  if (!box.offsetParent) return;   // hidden tab: drawn when shown
+  const W = Math.max(280, box.clientWidth), H = opt.height || 200, L = 36, R = 10, T = 10, B = 24;
+  if (!pts.length) { box.append(el("div", { class: "muted" }, opt.empty || "No data yet.")); return; }
+  const x0 = +pts[0].x, x1 = Math.max(+pts[pts.length - 1].x, x0 + 1);
+  const sc = yScale(Math.max(opt.minMax || 0, ...pts.map((p) => p.y)), 4, opt.integer);
+  const ymax = sc.top;
+  const X = (x) => L + (x - x0) / (x1 - x0) * (W - L - R), Y = (y) => T + (1 - y / ymax) * (H - T - B);
+  const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opt.label });
+  const ax = s("g", { class: "axis" });
+  for (const v of sc.ticks) { ax.append(s("line", { class: "gridline", x1: L, x2: W - R, y1: Y(v), y2: Y(v) }), s("text", { x: L - 6, y: Y(v) + 4, "text-anchor": "end" }, opt.fmtY ? opt.fmtY(v) : v)); }
+  const nT = Math.max(2, Math.floor((W - L - R) / 90));
+  let prevLabel = null;
+  for (let i = 0; i <= nT; i++) {
+    const x = x0 + (x1 - x0) * i / nT, label = opt.fmtX(new Date(x));
+    if (label === prevLabel) continue;   // short ranges: no repeated times
+    prevLabel = label;
+    ax.append(s("text", { x: X(x), y: H - 6, "text-anchor": i === 0 ? "start" : i === nT ? "end" : "middle" }, label));
+  }
+  ax.append(s("line", { class: "baseline", x1: L, x2: W - R, y1: Y(0), y2: Y(0) }));
+  svg.append(ax);
+  let d = "";
+  pts.forEach((p, i) => {
+    const x = X(+p.x), y = Y(p.y);
+    if (i === 0) d = `M${x},${y}`; else d += opt.step ? `H${x}V${y}` : `L${x},${y}`;
+  });
+  if (opt.step) d += `H${X(x1)}`;
+  const area = d + `V${Y(0)}H${X(x0)}Z`;
+  svg.append(s("path", { d: area, fill: "var(--series-1-fill)", stroke: "none" }),
+    s("path", { d, fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round" }));
+  const cross = s("line", { y1: T, y2: Y(0), stroke: "var(--text-muted)", "stroke-width": 1, "stroke-dasharray": "3 3", visibility: "hidden" });
+  const dot = s("circle", { r: 4, fill: "var(--series-1)", stroke: "var(--backdrop)", "stroke-width": 2, visibility: "hidden" });
+  const hit = s("rect", { x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent" });
+  svg.append(cross, dot, hit);
+  const tip = el("div", { class: "tip" });
+  box.append(svg, tip);
+  const move = (ev) => {
+    const r = svg.getBoundingClientRect(), sx = (ev.clientX - r.left) * W / r.width;
+    const xv = x0 + (sx - L) / (W - L - R) * (x1 - x0);
+    let best = 0;
+    for (let i = 0; i < pts.length; i++) { if (opt.step ? +pts[i].x <= xv : Math.abs(pts[i].x - xv) < Math.abs(pts[best].x - xv)) best = i; }
+    const p = pts[best], px = opt.step ? Math.min(Math.max(sx, L), W - R) : X(+p.x);
+    cross.setAttribute("x1", px); cross.setAttribute("x2", px); dot.setAttribute("cx", px); dot.setAttribute("cy", Y(p.y));
+    cross.setAttribute("visibility", "visible"); dot.setAttribute("visibility", "visible");
+    tip.replaceChildren(el("div", { class: "muted" }, opt.fmtTip ? opt.fmtTip(p.x) : opt.fmtX(p.x)), el("b", {}, opt.fmtY ? opt.fmtY(p.y) : p.y), " " + (opt.unit || ""));
+    tip.style.left = (px / W * r.width) + "px"; tip.style.top = (Y(p.y) / H * r.height) + "px"; tip.style.display = "block";
+  };
+  hit.addEventListener("pointermove", move);
+  hit.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+}
+
+// Vertical bars. items: [{label, value, tip}]
+function barChart(id, items, opt) {
+  const box = document.getElementById(id);
+  charts[id] = () => drawBars(box, items, opt);
+  charts[id]();
+}
+function drawBars(box, items, opt) {
+  box.replaceChildren();
+  if (!box.offsetParent) return;
+  const W = Math.max(280, box.clientWidth), H = opt.height || 190, L = 36, R = 6, T = 10, B = 22;
+  const sc = yScale(Math.max(0, ...items.map((i) => i.value)), 4, true);
+  const ymax = sc.top;
+  const Y = (y) => T + (1 - y / ymax) * (H - T - B);
+  const slot = (W - L - R) / items.length, bw = Math.max(2, slot - 2);
+  const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opt.label });
+  const ax = s("g", { class: "axis" });
+  for (const v of sc.ticks) ax.append(s("line", { class: "gridline", x1: L, x2: W - R, y1: Y(v), y2: Y(v) }), s("text", { x: L - 6, y: Y(v) + 4, "text-anchor": "end" }, fmtInt(v)));
+  const every = Math.ceil(items.length / Math.max(1, Math.floor((W - L - R) / 28)));
+  items.forEach((it, i) => { if (i % every === 0) ax.append(s("text", { x: L + slot * i + slot / 2, y: H - 6, "text-anchor": "middle" }, it.label)); });
+  svg.append(ax);
+  const tip = el("div", { class: "tip" });
+  items.forEach((it, i) => {
+    const x = L + slot * i + 1, y = Y(it.value), h = Y(0) - y, r = Math.min(4, bw / 2, h);
+    const g = s("g", {});
+    if (h > 0.5) g.append(s("path", { d: `M${x},${Y(0)}V${y + r}Q${x},${y} ${x + r},${y}H${x + bw - r}Q${x + bw},${y} ${x + bw},${y + r}V${Y(0)}Z`, fill: "var(--series-1)" }));
+    const hit = s("rect", { x: L + slot * i, y: T, width: slot, height: H - T - B, fill: "transparent" });
+    hit.addEventListener("pointerenter", () => {
+      const rr = svg.getBoundingClientRect();
+      tip.replaceChildren(el("div", { class: "muted" }, it.tip || it.label), el("b", {}, fmtInt(it.value)), " " + (opt.unit || ""));
+      tip.style.left = ((x + bw / 2) / W * rr.width) + "px"; tip.style.top = (y / H * rr.height) + "px"; tip.style.display = "block";
+    });
+    hit.addEventListener("pointerleave", () => tip.style.display = "none");
+    g.append(hit); svg.append(g);
+  });
+  svg.append(s("line", { class: "baseline", x1: L, x2: W - R, y1: Y(0), y2: Y(0) }));
+  box.append(svg, tip);
+}
+
+// Horizontal bars as HTML, value labelled on each row.
+function hbars(box, rows) {
+  box.replaceChildren();
+  if (!rows.length) { box.append(el("div", { class: "muted" }, "No data yet.")); return; }
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  for (const r of rows) box.append(el("div", { class: "hbar", title: r.title || "" }, el("div", { class: "name" }, r.label),
+    el("div", { class: "track" }, el("div", { class: "fill", style: `width:${Math.max(0.5, r.value / max * 100)}%` })),
+    el("div", { class: "val" }, r.text)));
+}
+
+// ---------- live ----------
+let status = null, config = null;
+const perf = [];      // {x, y} physics ms
+function setState(online, text) { $("#dot").className = "dot " + (online ? "on" : "off"); $("#state").textContent = text; }
+function renderStatus(st) {
+  status = st;
+  const m = st.mode || {};
+  const phase = { playing: "Playing", result: "Result", vote: "Voting", idle: "Waiting for players" }[st.phase] || st.phase;
+  setState(true, `${phase} · ${st.label || st.scenario}`);
+  const left = st.phase === "playing" ? (m.kind === "thunder" ? m.time_left_s : st.phase_left_s) : st.phase_left_s;
+  $("#live-tiles").replaceChildren(
+    tile("Map", st.label || st.scenario, st.weather, true),
+    tile(st.phase === "playing" ? "Match time" : phase, fmtClock(st.phase === "playing" ? st.match_s : left), st.phase === "playing" ? `${fmtClock(left)} left` : ""),
+    tile("Players", st.players.length, `bots ${st.bots[0]} + ${st.bots[1]}`),
+    tile("Tick (physics)", (st.perf.physics_ms || 0).toFixed(1) + " ms", `worst ${st.perf.worst_physics_ms.toFixed(1)} · budget ${(1000 / st.perf.physics_hz).toFixed(0)}`),
+    tile("Memory", fmtInt(st.perf.memory_mb) + " MB", `${fmtInt(st.perf.nodes)} nodes`),
+    tile("Uptime", fmtDur(st.uptime_s / 60), `port ${st.port}`));
+  $("#players-count").textContent = st.players.length ? `${st.players.length} connected` : "nobody connected";
+  table($("#players"), ["Name", "Team", "Tank", { label: "Ping", num: true }, ""],
+    st.players.map((p) => [p.name || "(joining)", p.choosing ? "choosing" : TEAM(p.team), p.tank || "–",
+      p.ping_ms >= 0 ? p.ping_ms + " ms" : "–",
+      el("button", { class: "btn danger", onclick: () => kick(p) }, "Kick")]));
+  let line = "";
+  if (m.kind === "koth") line = `King of the Hill · ${m.score[0]} – ${m.score[1]} · zone ${m.zone}`;
+  else if (m.kind === "thunder") line = `Thunder Road · round ${m.round} · checkpoint ${m.next_checkpoint + 1}/${m.checkpoints} · ${m.lives} lives${m.overtime ? " · OVERTIME" : ""}${m.paused ? " · retreat" : ""}`;
+  else if (m.kind === "free") line = `Free fight · wave ${m.wave} · ${m.alive} bots alive`;
+  $("#mode-line").textContent = line;
+  if (st.vote) {
+    table($("#scores"), ["Map", { label: "Votes", num: true }], st.vote.filter((v) => v.votes > 0).map((v) => [v.name, v.votes]));
+  } else if (m.stats) {
+    const cols = m.columns;
+    const ix = (c) => cols.indexOf(c);
+    table($("#scores"), ["Name", "Team", { label: "KO", num: true }, { label: "Lost", num: true }, { label: "Assists", num: true }].concat(ix("points") >= 0 ? [{ label: "Points", num: true }] : []),
+      m.stats.map((r) => [String(r[0]).startsWith("Bot (") ? el("span", { class: "muted", title: r[0] }, "Bot") : r[0], TEAM(r[1]), r[ix("ko")], r[ix("lost")], r[ix("assists")]].concat(ix("points") >= 0 ? [r[ix("points")]] : [])));
+  } else $("#scores").replaceChildren();
+  if (st.history) {   // first status after (re)connecting: the server's last minutes
+    perf.length = 0;
+    for (const h of st.history) perf.push({ x: new Date(h[0] * 1000), y: h[1] });
+  }
+  perf.push({ x: new Date(), y: st.perf.physics_ms });
+  while (perf.length > 300) perf.shift();
+  $("#perf-line").textContent = `process ${st.perf.process_ms.toFixed(1)} ms · ${fmtInt(st.perf.fps)} fps · net out ${fmtInt(st.perf.net_out_bps / 1024)} kB/s`;
+  if ($("#tab-live").hidden === false) lineChart("perf-chart", perf.slice(), { label: "Physics tick time", height: 150, fmtX: fmtHM, fmtTip: (d) => d.toLocaleTimeString("en-GB"), fmtY: (v) => (+v).toFixed(1), unit: "ms", minMax: 2 });
+  if (!config) loadConfig();
+}
+async function kick(p) {
+  const reason = prompt(`Kick ${p.name}? Reason (optional):`, "");
+  if (reason === null) return;
+  const r = await api("/api/cmd", { cmd: "kick", peer: p.peer, reason }); toast(r.ok ? `${p.name} kicked` : r.error);
+}
+async function cmd(c, extra, done) { const r = await api("/api/cmd", Object.assign({ cmd: c }, extra || {})); toast(r.ok ? done : (r.error || "failed")); }
+$("#map-go").onclick = () => { const v = $("#map-select").value; if (v && confirm(`Load ${v} now? The running match ends.`)) cmd("change_map", { scenario: v }, "loading " + v); };
+$("#end-match").onclick = () => confirm("End the match now? The result and the vote follow.") && cmd("end_match", {}, "match ended");
+$("#close-vote").onclick = () => cmd("close_vote", {}, "skipped");
+$("#say-go").onclick = () => { const t = $("#say-text").value.trim(); if (t) cmd("say", { text: t }, "sent"); $("#say-text").value = ""; };
+$("#say-text").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#say-go").click(); });
+for (const b of document.querySelectorAll("[data-svc]")) b.onclick = async () => {
+  const a = b.dataset.svc;
+  if (a !== "start" && !confirm(`${a} the game server? Everyone connected drops.`)) return;
+  const r = await api("/api/service", { action: a }); toast(r.ok ? `${a}: done` : (r.output || r.error || "failed")); showService(r.state);
+};
+function showService(sv) {
+  if (!sv) return;
+  $("#svc-line").textContent = sv.available ? `${sv.unit}: ${sv.active} (${sv.sub})${sv.restarts && sv.restarts !== "0" ? ` · ${sv.restarts} restarts` : ""}` : "systemd not available";
+}
+async function pollService() { try { showService(await api("/api/service")); } catch (e) {} }
+setInterval(pollService, 10000);
+
+// ---------- live stream ----------
+const evBuf = [];
+function startStream() {
+  const es = new EventSource("/api/stream");
+  es.addEventListener("status", (e) => renderStatus(JSON.parse(e.data)));
+  es.addEventListener("log", (e) => addEvent(JSON.parse(e.data)));
+  es.addEventListener("offline", (e) => { const d = JSON.parse(e.data); setState(false, "game server not running" + (d.service && d.service.available ? ` (${d.service.active})` : "")); showService(d.service); });
+  es.onerror = () => setState(false, "panel connection lost, retrying…");
+}
+
+// ---------- events log ----------
+function describe(e) {
+  switch (e.ev) {
+    case "hello": return `${e.name} joined${e.players != null ? ` (${e.players} online)` : ""}`;
+    case "leave": return `${e.name || "peer " + e.peer} left${e.players != null ? ` (${e.players} online)` : ""}`;
+    case "join": return `connection from peer ${e.peer}`;
+    case "deploy": return `${e.name} took a ${e.tank} (${TEAM(e.team)})`;
+    case "kill": return `${e.killer || "–"}${e.killer_tank ? " (" + e.killer_tank + ")" : ""} → ${e.victim} (${e.victim_tank})${e.weapon && e.weapon !== "gun" ? " · " + e.weapon : ""}${e.assists && e.assists.length ? " · assist " + e.assists.join(", ") : ""}`;
+    case "match_start": return `match started: ${e.scenario}${e.weather ? ", " + e.weather : ""}${e.players != null ? `, ${e.players} players` : ""}`;
+    case "match_end": return `match ended: ${e.scenario} after ${fmtDur(e.length_s / 60)} (${e.reason || (e.timed_out ? "timeout" : "mode")})${e.winner >= 0 ? ", " + TEAM(e.winner) + " won" : ""}`;
+    case "vote": {
+      const who = Object.entries(e.ballots || {}).map(([n, m]) => `${n}: ${m}`).join(", ");
+      return `vote: ${e.winner}${e.tie ? " (drawn by lot)" : ""}${e.no_votes ? " (no votes)" : ""}${who ? " · " + who : ""}`;
+    }
+    case "server_start": return `server started (port ${e.port})`;
+    case "online": return `online: ${(e.names || []).join(", ")}`;
+    case "say": return `said: ${e.text}`;
+    case "kick": return `kicked ${e.name}${e.reason ? ": " + e.reason : ""}`;
+    case "admin_config": return `settings changed: ${JSON.stringify(e.values)}`;
+    case "admin_change_map": return `admin loaded ${e.scenario}`;
+    case "admin_quit": return "admin stopped the server";
+  }
+  return JSON.stringify(e);
+}
+function addEvent(e) { evBuf.push(e); if (evBuf.length > 3000) evBuf.shift(); appendEvent(e); }
+function appendEvent(e) {
+  const f = $("#ev-filter").value.trim().toLowerCase();
+  const text = describe(e);
+  if (f && !(e.ev + " " + text).toLowerCase().includes(f)) return;
+  const box = $("#events");
+  box.append(el("div", {}, el("span", { class: "t" }, (e.t ? new Date(e.t).toLocaleTimeString("en-GB") : "") + " "), text));
+  while (box.childElementCount > 1500) box.firstChild.remove();
+  if ($("#ev-follow").checked) box.scrollTop = box.scrollHeight;
+}
+$("#ev-filter").addEventListener("input", () => { $("#events").replaceChildren(); evBuf.forEach(appendEvent); });
+
+// ---------- console ----------
+let conStarted = false;
+const conBuf = [];
+function startConsole() {
+  if (conStarted) return; conStarted = true;
+  const es = new EventSource("/api/console");
+  es.addEventListener("line", (e) => { const l = JSON.parse(e.data); conBuf.push(l); if (conBuf.length > 5000) conBuf.shift(); appendCon(l); });
+}
+function appendCon(line) {
+  const f = $("#con-filter").value.trim().toLowerCase();
+  if (f && !line.toLowerCase().includes(f)) return;
+  const box = $("#console");
+  const cls = /error|script error/i.test(line) ? "err" : /warn/i.test(line) ? "warn" : "";
+  box.append(el("div", { class: cls }, line));
+  while (box.childElementCount > 3000) box.firstChild.remove();
+  if ($("#con-follow").checked) box.scrollTop = box.scrollHeight;
+}
+$("#con-filter").addEventListener("input", () => { $("#console").replaceChildren(); conBuf.forEach(appendCon); });
+$("#con-clear").onclick = () => { conBuf.length = 0; $("#console").replaceChildren(); };
+
+// ---------- settings ----------
+async function loadConfig() {
+  const r = await api("/api/config");
+  if (!r.ok) { $("#cfg-msg").textContent = "game server not running: settings can be changed once it runs"; return; }
+  config = r;
+  const c = r.config, f = $("#cfg-form");
+  $("#cfg-path").textContent = r.path;
+  f.team_size.value = c.team_size; f.team_size.max = r.max_team_size;
+  f.weather.replaceChildren(...r.weathers.map((w) => el("option", { value: w, selected: w === c.weather }, w)));
+  f.result_s.value = c.result_s; f.vote_s.value = c.vote_s; f.max_match_min.value = Math.round(c.max_match_s / 60);
+  $("#cfg-maps").replaceChildren(...r.scenarios_available.map((sc) => el("label", {},
+    el("input", { type: "checkbox", value: sc.name, checked: c.scenarios.includes(sc.name) }), sc.label)));
+  const cur = $("#map-select").value;
+  $("#map-select").replaceChildren(el("option", { value: "" }, "Load a map now…"), ...r.scenarios_available.map((sc) => el("option", { value: sc.name }, sc.label)));
+  $("#map-select").value = cur;
+  if (statsData) renderStats();   // map names
+}
+$("#cfg-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = ev.target;
+  const values = { team_size: +f.team_size.value, weather: f.weather.value, result_s: +f.result_s.value,
+    vote_s: +f.vote_s.value, max_match_s: +f.max_match_min.value * 60,
+    scenarios: [...document.querySelectorAll("#cfg-maps input:checked")].map((i) => i.value) };
+  const r = await api("/api/config", { values });
+  $("#cfg-msg").textContent = r.ok ? "Saved: from the next match." : "Not saved: " + (r.refused ? Object.values(r.refused).join("; ") : r.error);
+  if (r.ok) loadConfig();
+});
+
+// ---------- popularity ----------
+let range = "all", statsData = null, lbSort = { key: "kills", dir: -1 };
+for (const b of document.querySelectorAll("#range [data-range]")) b.onclick = () => {
+  range = b.dataset.range;
+  for (const o of document.querySelectorAll("#range [data-range]")) o.setAttribute("aria-pressed", o === b);
+  $("#since").hidden = $("#until").hidden = range !== "custom";
+  if (range !== "custom") loadStats();
+};
+$("#since").onchange = $("#until").onchange = () => loadStats();
+function rangeQuery() {
+  const now = new Date();
+  if (range === "today") { const d = new Date(now); d.setHours(0, 0, 0, 0); return "?since=" + d.toISOString(); }
+  if (range === "24h") return "?since=" + new Date(now - 864e5).toISOString();
+  if (range === "custom") {
+    const q = [];
+    if ($("#since").value) q.push("since=" + encodeURIComponent($("#since").value));
+    if ($("#until").value) q.push("until=" + encodeURIComponent($("#until").value));
+    return q.length ? "?" + q.join("&") : "";
+  }
+  return "";
+}
+async function loadStats() {
+  const r = await api("/api/stats" + rangeQuery());
+  if (!r.ok) return;
+  statsData = r; renderStats();
+}
+setInterval(() => { if (!$("#tab-pop").hidden) loadStats(); }, 30000);
+function renderStats() {
+  const r = statsData, t = r.totals;
+  $("#range-note").textContent = r.range.first_event ? `log from ${fmtTime(r.range.first_event)} · updated ${fmtHM(new Date())}` : "no log yet";
+  $("#pop-tiles").replaceChildren(
+    tile("Unique players", fmtInt(t.unique_players), `${fmtInt(t.sessions)} sessions · median ${fmtDur(t.median_session_min)}`),
+    tile("Most at once", fmtInt(t.peak_concurrent), t.peak_at ? fmtTime(t.peak_at) : ""),
+    tile("Person-minutes", fmtInt(t.person_minutes), fmtDur(t.person_minutes) + " of playing"),
+    tile("Matches with players", fmtInt(t.matches_with_players), ""),
+    tile("Bots destroyed", fmtInt(t.bots_killed_by_humans), "by players"),
+    tile("Player vs player", fmtInt(t.humans_killed_by_humans), "knock-outs"),
+    tile("Bots' revenge", fmtInt(t.humans_killed_by_bots), "players knocked out by bots"),
+    tile("Shots fired", fmtInt(t.shots), `${fmtInt(t.ricochets)} ricochets · bots killed each other ${fmtInt(t.bot_vs_bot_kills)}×`));
+  const pts = r.online.map((p) => ({ x: new Date(p.t), y: p.players }));
+  const multiDay = pts.length && (pts[pts.length - 1].x - pts[0].x) > 864e5;
+  const fx = multiDay ? (d) => d.toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : fmtHM;
+  lineChart("online-chart", pts, { label: "Players online over time", step: true, integer: true, height: 220, fmtX: fx,
+    fmtTip: (d) => d.toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }), fmtY: fmtInt, unit: "players", empty: "Nobody has played yet." });
+  table($("#online-table"), ["Time", { label: "Players", num: true }], r.online.filter((p, i, a) => i === 0 || p.players !== a[i - 1].players).map((p) => [fmtTime(p.t), p.players]));
+  const hours = r.minutes_by_hour.map((v, h) => ({ label: String(h).padStart(2, "0"), value: v, tip: `${String(h).padStart(2, "0")}:00–${String(h).padStart(2, "0")}:59` }));
+  barChart("hour-chart", hours, { label: "Person-minutes by hour of day", unit: "person-minutes" });
+  table($("#hour-table"), ["Hour", { label: "Person-minutes", num: true }], hours.filter((h) => h.value > 0).map((h) => [h.tip, fmtInt(h.value)]));
+  renderFacts(r.facts);
+  renderLeaderboard();
+  hbars($("#tanks"), r.tanks.map((x) => ({ label: x.tank, value: x.deploys, text: `${x.deploys}× · ${x.kills} KO`, title: `${x.tank}: picked ${x.deploys} times, ${x.kills} knock-outs by players` })));
+  const labels = {};
+  for (const sc of (config && config.scenarios_available) || []) labels[sc.name] = sc.label;
+  hbars($("#maps"), r.scenarios.map((x) => ({ label: labels[x.scenario] || x.scenario, value: x.matches, text: `${x.matches} · ${fmtDur(x.minutes)} · ${x.votes} votes`, title: `${x.scenario}: ${x.matches} matches, ${x.votes} votes` })));
+  const mv = r.map_votes || { maps: [], modes: [] };
+  $("#votes-note").textContent = mv.rounds ? `${mv.votes} votes in ${mv.rounds} rounds${mv.turnout != null ? ` · ${Math.round(mv.turnout * 100)} % of players vote` : ""}` : "";
+  hbars($("#map-votes"), mv.maps.map((x) => ({ label: labels[x.scenario] || x.scenario, value: x.votes,
+    text: `${x.votes} · ${Math.round(x.share * 100)} % · won ${x.won}${x.won_by_lot ? " (+" + x.won_by_lot + " by lot)" : ""} · ${x.fans} fans`,
+    title: `${x.scenario}: ${x.votes} votes from ${x.fans} different players, won ${x.won} votes outright, ${x.won_by_lot} by lot` })));
+  hbars($("#mode-votes"), mv.modes.map((x) => ({ label: x.mode, value: x.votes, text: `${x.votes}` })));
+  $("#days-card").hidden = r.by_day.length < 2;
+  table($("#days"), ["Day", { label: "Players", num: true }, { label: "Person-minutes", num: true }], r.by_day.map((d) => [d.day, d.players, fmtInt(d.minutes)]));
+}
+function renderFacts(f) {
+  const out = [];
+  const add = (k, v) => v && out.push(el("div", { class: "fact" }, el("div", { class: "k" }, k), el("div", { class: "v" }, v)));
+  if (f.first_blood) add("First blood", `${f.first_blood.killer} → ${f.first_blood.victim_human ? f.first_blood.victim : "a bot"} (${fmtTime(f.first_blood.t)})`);
+  if (f.nemesis) add("Nemesis", `${f.nemesis.killer} got ${f.nemesis.victim} ${f.nemesis.kills}×`);
+  if (f.most_played) add("Most time in a tank", `${f.most_played.name}: ${fmtDur(f.most_played.value)}`);
+  if (f.longest_session) add("Longest sitting", `${f.longest_session.name}: ${fmtDur(f.longest_session.minutes)}`);
+  if (f.sharpshooter) add("Sharpshooter", `${f.sharpshooter.name}: ${Math.round(f.sharpshooter.value * 100)} % hits`);
+  if (f.bot_hunter) add("Bot hunter", `${f.bot_hunter.name}: ${f.bot_hunter.value} bots`);
+  if (f.team_player) add("Team player", `${f.team_player.name}: ${f.team_player.value} assists`);
+  if (f.ricochet_king) add("Ricochet king", `${f.ricochet_king.name}: ${f.ricochet_king.value} pings`);
+  if (f.most_killed_by_bots) add("Bots' favourite target", `${f.most_killed_by_bots.name}: ${f.most_killed_by_bots.value}×`);
+  if (f.deadliest_bot_tank) add("Deadliest bot tank", `${f.deadliest_bot_tank.tank}: ${f.deadliest_bot_tank.kills} players`);
+  $("#facts").replaceChildren(...(out.length ? out : [el("div", { class: "muted" }, "Facts appear once people play.")]));
+}
+const LB = [
+  { key: "rank", label: "#" }, { key: "name", label: "Player" },
+  { key: "kills", label: "KO", num: true }, { key: "human_kills", label: "vs players", num: true }, { key: "bot_kills", label: "vs bots", num: true },
+  { key: "deaths", label: "Lost", num: true }, { key: "kd", label: "K/D", num: true, f: (v) => v == null ? "–" : v.toFixed(2) },
+  { key: "assists", label: "Assists", num: true },
+  { key: "accuracy", label: "Hit %", num: true, f: (v) => v == null ? "–" : Math.round(v * 100) + " %" },
+  { key: "wins", label: "Won", num: true, f: (v, r) => r.matches ? `${v}/${r.matches}` : "–" },
+  { key: "minutes", label: "Time", num: true, f: fmtDur },
+  { key: "kills_per_hour", label: "KO/h", num: true, f: (v) => v == null ? "–" : v },
+  { key: "favourite_tank", label: "Favourite tank", f: (v) => v || "–" },
+  { key: "favourite_map", label: "Votes for", f: (v) => v ? (mapLabels()[v] || v) : "–" },
+];
+function mapLabels() { const o = {}; for (const sc of (config && config.scenarios_available) || []) o[sc.name] = sc.label; return o; }
+function renderLeaderboard() {
+  const rows = statsData.players.slice();
+  const k = lbSort.key;
+  if (k !== "rank") rows.sort((a, b) => { const x = a[k], y = b[k]; if (x == null) return 1; if (y == null) return -1; return (x < y ? -1 : x > y ? 1 : 0) * lbSort.dir; });
+  const t = $("#leaderboard");
+  t.replaceChildren(el("thead", {}, el("tr", {}, LB.map((c) => el("th", { class: (c.num ? "num " : "") + (c.key !== "rank" ? "sort" : ""), "data-dir": c.key === lbSort.key ? (lbSort.dir < 0 ? "▼" : "▲") : null,
+      onclick: c.key === "rank" ? null : () => { lbSort = { key: c.key, dir: lbSort.key === c.key ? -lbSort.dir : (c.key === "name" || c.key === "deaths" ? 1 : -1) }; renderLeaderboard(); } }, c.label)))),
+    el("tbody", {}, rows.length ? rows.map((r, i) => el("tr", {}, LB.map((c) => el("td", { class: c.num ? "num" : "" },
+      c.key === "rank" ? i + 1 : c.f ? c.f(r[c.key], r) : r[c.key])))) : [el("tr", {}, el("td", { colspan: LB.length, class: "muted" }, "Nobody has played yet."))]));
+}
+window.addEventListener("resize", () => { clearTimeout(window._rz); window._rz = setTimeout(redrawCharts, 150); });
+
+// ---------- start ----------
+(function () {
+  let tab = "live"; try { tab = localStorage.getItem("tab") || "live"; } catch (e) {}
+  if (location.hash.length > 1) tab = location.hash.slice(1);
+  showTab(document.getElementById("tab-" + tab) ? tab : "live");
+  startStream();
+  pollService();
+  api("/api/log?limit=500").then((r) => { if (r.ok) r.events.forEach(addEvent); });
+})();
+</script>
+</body>
+</html>

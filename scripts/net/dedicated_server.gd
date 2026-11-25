@@ -7,14 +7,25 @@ extends Node
 ## finished match until someone comes, then loads the next one. Every match, vote, join
 ## and leave goes as one JSON line to <log dir>/server_log.jsonl (`--log-dir`, default
 ## user://). A child of NetSession, so it outlives map changes.
+##
+## Settings: data/server/server.tres are the defaults, `server.cfg` beside the log (or
+## `--config <file>`) overrides them (ServerConfig); it is read again when a match ends and
+## before every map load, so edits apply from the next match. `AdminLink` (child, TCP on
+## 127.0.0.1, `--admin-port N`) lets the admin panel watch and steer the server.
 
 const DATA_PATH: String = "res://data/server/server.tres"
 const TICK_S: float = 0.5
+## While anyone is connected an "online" line goes to the log this often (s).
+const ONLINE_EVERY_S: float = 120.0
 
 enum Phase { PLAYING, RESULT, VOTE, IDLE }
 
+## The settings in force (defaults + server.cfg + test overrides).
 var data: ServerData
 var log_dir: String = "user://"
+## The settings file; "" = server.cfg in log_dir.
+var config_path: String = ""
+var admin: AdminLink
 var scenarios: PackedStringArray = []
 var phase: Phase = Phase.PLAYING
 var current: String = ""
@@ -24,21 +35,36 @@ var _phase_left: float = 0.0
 var _match_time: float = 0.0
 var _votes: Dictionary = {}       # peer -> scenario index
 var _tick: float = 0.0
+var _defaults: ServerData
+var _test_max_match_s: float = 0.0
+## This match's gunnery per player name: {shots, hits, pens, ricochets} (main gun only).
+var _gunnery: Dictionary = {}
+var _bot_kills: int = 0          # bot by bot this match (not logged one by one)
+var _online_clock: float = 0.0
 
 
 func start(first: String) -> void:
-	data = load(DATA_PATH) as ServerData
-	scenarios = data.scenarios if not data.scenarios.is_empty() else MainMenu.find_maps()
-	scenarios.sort()
+	_defaults = load(DATA_PATH) as ServerData
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(log_dir))
 	var args: PackedStringArray = OS.get_cmdline_user_args()
 	var at: int = args.find("--max-match-s")   # testing: end matches sooner
 	if at >= 0 and at + 1 < args.size():
-		data = data.duplicate() as ServerData
-		data.max_match_s = float(args[at + 1])
-		data.result_s = minf(data.result_s, 3.0)
-		data.vote_s = minf(data.vote_s, 6.0)
-	MatchSettings.team_size = data.team_size
-	MatchSettings.weather = data.weather
+		_test_max_match_s = float(args[at + 1])
+	at = args.find("--config")
+	if at >= 0 and at + 1 < args.size():
+		config_path = args[at + 1]
+	if config_path == "":
+		config_path = log_dir.path_join("server.cfg")
+	if not FileAccess.file_exists(config_path):
+		ServerConfig.write(config_path, _defaults)   # every key, ready to edit
+	_apply_settings()
+	admin = AdminLink.new()
+	admin.name = "AdminLink"
+	admin.server = self
+	at = args.find("--admin-port")
+	if at >= 0 and at + 1 < args.size():
+		admin.port = int(args[at + 1])
+	add_child(admin)
 	if first == "" or not ResourceLoader.exists(first):
 		first = scenarios[0] if not scenarios.is_empty() else NetSession.DEFAULT_MAP
 	var net: NetSession = NetSession.instance
@@ -47,8 +73,10 @@ func start(first: String) -> void:
 		if phase == Phase.VOTE:
 			_send_vote_open(id))
 	Weather.resolve()
-	print("dedicated server: %d scenarios, first %s, log %s" % [scenarios.size(), first,
-			ProjectSettings.globalize_path(log_dir.path_join("server_log.jsonl"))])
+	log_event({"ev": "server_start", "port": net.port})
+	print("dedicated server: %d scenarios, first %s, log %s, settings %s" % [scenarios.size(),
+			first, ProjectSettings.globalize_path(log_dir.path_join("server_log.jsonl")),
+			ProjectSettings.globalize_path(config_path)])
 	if net.host(first, true) == OK:
 		_begin_match(first)
 
@@ -62,10 +90,17 @@ func _process(delta: float) -> void:
 		return
 	var dt: float = _tick
 	_tick = 0.0
+	_online_clock += dt
+	if _online_clock >= ONLINE_EVERY_S:
+		_online_clock = 0.0
+		if _peer_count() > 0:   # bounds sessions if the server dies without a "leave"
+			log_event({"ev": "online", "players": _peer_count(), "names": _names()})
 	match phase:
 		Phase.PLAYING:
-			if _mode_over() or _match_time >= data.max_match_s:
-				_end_match(_match_time >= data.max_match_s and not _mode_over())
+			if _mode_over():
+				_end_match("mode")
+			elif _match_time >= data.max_match_s:
+				_end_match("timeout")
 		Phase.RESULT:
 			_phase_left -= dt
 			if _phase_left <= 0.0:
@@ -91,6 +126,8 @@ func _begin_match(path: String) -> void:
 	current = path
 	phase = Phase.PLAYING
 	_match_time = 0.0
+	_gunnery.clear()
+	_bot_kills = 0
 	log_event({"ev": "match_start", "scenario": path.get_file().get_basename(),
 			"weather": Weather.current().resource_path.get_file().get_basename(),
 			"players": _peer_count(), "names": _names()})
@@ -106,7 +143,8 @@ func _mode_over() -> bool:
 	return false
 
 
-func _end_match(timed_out: bool) -> void:
+## `reason`: "mode" (its own end), "timeout" (max_match_s) or "admin".
+func _end_match(reason: String) -> void:
 	var stats: Array = []
 	var winner: int = -2
 	if KothMode.instance != null and is_instance_valid(KothMode.instance):
@@ -123,14 +161,19 @@ func _end_match(timed_out: bool) -> void:
 		if row is Array and (row as Array).size() > 0 and names.has(str(row[0])):
 			humans.append(row)
 	log_event({"ev": "match_end", "scenario": current.get_file().get_basename(),
-			"length_s": roundi(_match_time), "timed_out": timed_out, "winner": winner,
-			"players": _peer_count(), "humans": humans})
+			"length_s": roundi(_match_time), "timed_out": reason == "timeout", "reason": reason,
+			"winner": winner, "players": _peer_count(), "humans": humans,
+			"gunnery": _gunnery.duplicate(true), "bot_kills": _bot_kills})
+	_gunnery.clear()
+	_bot_kills = 0
 	phase = Phase.RESULT
+	_apply_settings()   # the vote and the next match see edits made meanwhile
 	_phase_left = data.result_s
 
 
 func _load(path: String) -> void:
 	_votes.clear()
+	_apply_settings()
 	Weather.resolve()
 	NetSession.instance.change_map(path)
 	_begin_match(path)
@@ -214,10 +257,260 @@ func _close_vote() -> void:
 	for i: int in counts.size():
 		if int(counts[i]) > 0:
 			by_name[scenarios[i].get_file().get_basename()] = counts[i]
-	log_event({"ev": "vote", "votes": by_name, "voters": _votes.size(), "players": _peer_count(),
+	var ballots: Dictionary = {}   # player name -> the map they voted for (their last choice)
+	for peer: Variant in _votes:
+		var i: int = int(_votes[peer])
+		if i >= 0 and i < scenarios.size():
+			ballots[_name_of(int(peer))] = scenarios[i].get_file().get_basename()
+	log_event({"ev": "vote", "votes": by_name, "ballots": ballots, "voters": _votes.size(),
+			"players": _peer_count(), "offered": scenarios.size(),
 			"winner": path.get_file().get_basename(), "tie": tie, "no_votes": best == 0})
 	NetSession.instance.rpc("rpc_vote_close", MainMenu.scenario_label(path))
 	_load(path)
+
+
+# --- Statistics (NetSession / NetGame hooks) -----------------------------------------
+# Players are told apart by name (there are no accounts). tools/server/panel/stats.py
+# turns these lines into the panel's statistics.
+
+## NetSession: a player told us their name (sessions run from here to "leave").
+func on_hello(peer: int) -> void:
+	log_event({"ev": "hello", "peer": peer, "name": _name_of(peer), "players": _peer_count()})
+
+
+## NetGame: a player took a tank.
+func on_deploy(peer: int, team: int, tank_type: String) -> void:
+	log_event({"ev": "deploy", "name": _name_of(peer), "team": team, "tank": tank_type,
+			"scenario": current.get_file().get_basename()})
+
+
+## NetGame: any knock-out. Logged one by one when a player is in it (killer, victim or an
+## assist); bot against bot only counts.
+func on_knockout(victim: Tank, killer: Tank, assists: Array[Tank]) -> void:
+	if phase != Phase.PLAYING:
+		return
+	var victim_peer: int = _peer_of(victim)
+	var killer_peer: int = _peer_of(killer)
+	var helpers: Array = []
+	for t: Tank in assists:
+		var p: int = _peer_of(t)
+		if p > 0:
+			helpers.append(_name_of(p))
+	if victim_peer <= 0 and killer_peer <= 0 and helpers.is_empty():
+		if killer != null:
+			_bot_kills += 1
+		return
+	var weapon: String = victim.get_kill_weapon() if killer != null else ""
+	log_event({"ev": "kill", "scenario": current.get_file().get_basename(),
+			"killer": _name_of(killer_peer) if killer_peer > 0 else ("Bot" if killer != null else ""),
+			"killer_human": killer_peer > 0,
+			"killer_tank": killer.get_type_name() if killer != null and is_instance_valid(killer) else "",
+			"victim": _name_of(victim_peer) if victim_peer > 0 else "Bot",
+			"victim_human": victim_peer > 0, "victim_tank": victim.get_type_name(),
+			"weapon": weapon if weapon != "" else ("gun" if killer != null else "none"),
+			"assists": helpers})
+
+
+## NetGame: a player's tank fired its main gun.
+func on_shot(tank: Tank) -> void:
+	_gun_row(tank)["shots"] += 1
+
+
+## NetGame: a player's main-gun round landed (null or not a tank: a miss).
+func on_shot_landed(tank: Tank, result: HitResult) -> void:
+	if result == null or result.bullet or not result.target is Tank or result.target == tank:
+		return
+	var row: Dictionary = _gun_row(tank)
+	row["hits"] += 1
+	if result.outcome == HitResult.Outcome.PENETRATION:
+		row["pens"] += 1
+	elif result.outcome == HitResult.Outcome.RICOCHET:
+		row["ricochets"] += 1
+
+
+func _gun_row(tank: Tank) -> Dictionary:
+	var name_: String = _name_of(_peer_of(tank))
+	if not _gunnery.has(name_):
+		_gunnery[name_] = {"shots": 0, "hits": 0, "pens": 0, "ricochets": 0}
+	return _gunnery[name_]
+
+
+## The player driving `tank`, 0 for a bot or none.
+func _peer_of(tank: Tank) -> int:
+	var game: NetGame = NetSession.instance.game
+	if tank == null or not is_instance_valid(tank) or game == null or not is_instance_valid(game):
+		return 0
+	return int(game.owners.get(tank.net_id, 0))
+
+
+# --- Settings ------------------------------------------------------------------------
+
+## Reads server.cfg over the defaults and puts team size and weather where the modes
+## read them (MatchSettings; they only read them when a match starts or fills teams, so
+## this runs between matches).
+func _apply_settings() -> void:
+	data = ServerConfig.read(config_path, _defaults)
+	if _test_max_match_s > 0.0:
+		data.max_match_s = _test_max_match_s
+		data.result_s = minf(data.result_s, 3.0)
+		data.vote_s = minf(data.vote_s, 6.0)
+	scenarios = data.scenarios if not data.scenarios.is_empty() else MainMenu.find_maps()
+	scenarios.sort()
+	MatchSettings.team_size = data.team_size
+	MatchSettings.weather = data.weather
+
+
+## The settings the file holds now (what the next match gets).
+func file_settings() -> ServerData:
+	return ServerConfig.read(config_path, _defaults)
+
+
+## AdminLink: changes `values` in server.cfg (from the next match). Returns refused keys
+## with why; nothing is written if any is refused.
+func set_config(values: Dictionary) -> Dictionary:
+	var next: ServerData = file_settings()
+	var refused: Dictionary = ServerConfig.apply(next, values)
+	if not refused.is_empty():
+		return refused
+	var err: Error = ServerConfig.write(config_path, next)
+	if err != OK:
+		return {"file": "can't write %s (%s)" % [config_path, error_string(err)]}
+	log_event({"ev": "admin_config", "values": values})
+	return {}
+
+
+# --- Admin commands (AdminLink) -----------------------------------------------------
+
+## Loads `path` now; a running match is logged as ended by the admin.
+func admin_change_map(path: String) -> void:
+	if phase == Phase.PLAYING:
+		_end_match("admin")
+	log_event({"ev": "admin_change_map", "scenario": path.get_file().get_basename()})
+	if phase == Phase.VOTE:
+		NetSession.instance.rpc("rpc_vote_close", MainMenu.scenario_label(path))
+	_load(path)
+
+
+## Ends the running match: result, then the vote, as if it had ended by itself.
+func admin_end_match() -> bool:
+	if phase != Phase.PLAYING:
+		return false
+	_end_match("admin")
+	return true
+
+
+## Cuts the result short (the vote opens) or closes the vote now.
+func admin_close_vote() -> bool:
+	if phase == Phase.VOTE:
+		_close_vote()
+		return true
+	if phase == Phase.RESULT:
+		_phase_left = 0.0
+		return true
+	return false
+
+
+func admin_kick(peer: int, reason: String) -> bool:
+	var net: NetSession = NetSession.instance
+	if not net.multiplayer.get_peers().has(peer):
+		return false
+	log_event({"ev": "kick", "peer": peer, "name": _name_of(peer), "reason": reason})
+	net.rpc_id(peer, "rpc_notice", "Kicked by the server" + (": " + reason if reason != "" else ""), 6.0)
+	get_tree().create_timer(0.5).timeout.connect(func() -> void:   # let the notice go first
+		if net.multiplayer.get_peers().has(peer):
+			(net.multiplayer.multiplayer_peer as ENetMultiplayerPeer).disconnect_peer(peer))
+	return true
+
+
+## A line on every player's screen (MatchNotice).
+func admin_say(text: String) -> void:
+	text = text.left(200)
+	log_event({"ev": "say", "text": text})
+	NetSession.instance.rpc("rpc_notice", "[Server] " + text, 8.0)
+
+
+## Stops the server (systemd's Restart=always brings it back: a restart).
+func admin_quit() -> void:
+	log_event({"ev": "admin_quit", "players": _peer_count()})
+	get_tree().create_timer(0.3).timeout.connect(func() -> void: get_tree().quit())
+
+
+## AdminLink's status: phase, match, mode state, players and vote.
+func status() -> Dictionary:
+	var left: float = maxf(0.0, _phase_left) if phase != Phase.PLAYING \
+			else maxf(0.0, data.max_match_s - _match_time)
+	var s: Dictionary = {
+		"phase": (Phase.keys()[phase] as String).to_lower(),
+		"scenario": current.get_file().get_basename(),
+		"label": MainMenu.scenario_label(current) if current != "" else "",
+		"match_s": roundi(_match_time),
+		"phase_left_s": roundi(left),
+		"max_match_s": data.max_match_s,
+		"weather": Weather.current().resource_path.get_file().get_basename(),
+		"team_size": data.team_size,
+		"port": NetSession.instance.port,
+		"players": _players(),
+		"mode": _mode_status(),
+	}
+	var bots: Array = [0, 0]
+	var game: NetGame = NetSession.instance.game
+	if game != null and is_instance_valid(game):
+		for row: Array in game.roster:
+			if int(row[2]) == DeployScreen.Kind.BOT and int(row[0]) >= 0 and int(row[0]) < 2:
+				bots[int(row[0])] = int(bots[int(row[0])]) + 1
+	s["bots"] = bots
+	if phase == Phase.VOTE:
+		var counts: Array = _counts()
+		var rows: Array = []
+		for i: int in scenarios.size():
+			rows.append({"name": scenarios[i].get_file().get_basename(), "votes": counts[i]})
+		s["vote"] = rows
+	return s
+
+
+func _players() -> Array:
+	var net: NetSession = NetSession.instance
+	var by_peer: Dictionary = {}
+	var game: NetGame = net.game
+	if game != null and is_instance_valid(game):
+		for row: Array in game.roster:
+			if int(row[4]) > 0:
+				by_peer[int(row[4])] = row
+	var enet := net.multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	var out: Array = []
+	for peer: int in net.multiplayer.get_peers():
+		var row: Array = by_peer.get(peer, [])
+		var ping: int = -1
+		if enet != null:
+			var p: ENetPacketPeer = enet.get_peer(peer)
+			if p != null:
+				ping = roundi(p.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME))
+		out.append({"peer": peer, "name": _name_of(peer),
+				"team": int(row[0]) if not row.is_empty() else -1,
+				"tank": str(row[3]) if not row.is_empty() else "",
+				"choosing": not row.is_empty() and int(row[2]) == DeployScreen.Kind.CHOOSING,
+				"ping_ms": ping})
+	return out
+
+
+func _mode_status() -> Dictionary:
+	if KothMode.instance != null and is_instance_valid(KothMode.instance):
+		var k: KothMode = KothMode.instance
+		return {"kind": "koth", "score": [roundi(k.get_score(0)), roundi(k.get_score(1))],
+				"zone": k.get_zone_number(), "zones": k.get_zone_count(),
+				"columns": ["name", "team", "ko", "lost", "points", "assists"], "stats": k.get_stats()}
+	if ThunderRoadMode.instance != null and is_instance_valid(ThunderRoadMode.instance):
+		var t: ThunderRoadMode = ThunderRoadMode.instance
+		return {"kind": "thunder", "round": t.get_round(), "attackers": t.get_attack_team(),
+				"next_checkpoint": t.get_next_checkpoint(), "checkpoints": t.get_checkpoint_count(),
+				"time_left_s": roundi(t.get_time_left()), "lives": t.get_lives(),
+				"overtime": t.is_overtime(), "paused": t.is_paused(),
+				"columns": ["name", "team", "ko", "lost", "assists", "points"], "stats": t.get_stats()}
+	if FreeFight.instance != null and is_instance_valid(FreeFight.instance):
+		var f: FreeFight = FreeFight.instance
+		return {"kind": "free", "wave": f.get_wave_number(), "alive": f.get_alive(),
+				"columns": ["name", "team", "ko", "lost", "assists"], "stats": f.get_stats()}
+	return {"kind": "none"}
 
 
 # --- Helpers -------------------------------------------------------------------------
@@ -248,3 +541,5 @@ func log_event(event: Dictionary) -> void:
 	f.seek_end()
 	f.store_line(JSON.stringify(event))
 	print("server: ", JSON.stringify(event))
+	if admin != null:
+		admin.push_log(event)
