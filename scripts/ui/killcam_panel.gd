@@ -6,7 +6,7 @@ extends Control
 ## it this life on top (red penetration, yellow no penetration, grey ricochet; a line
 ## from where it came; the killing one big and ringed), and in words who, from how
 ## far, with what, and why it went through (HitRecord, Tank.get_hits_this_life).
-## English text. Gone on respawn.
+## English text. Gone after KillcamData.panel_s (Killcam.panel_shown) or on respawn.
 
 const TANK_SCENE: PackedScene = preload("res://scenes/tank/tank.tscn")
 const PART_EN: Dictionary = {"hull": "Hull", "turret": "Turret"}
@@ -57,7 +57,7 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	var tank: Tank = views.get_tank() if views != null else null
-	var replay_over: bool = killcam.has_played() if killcam != null else not views.is_killcam()
+	var replay_over: bool = killcam.panel_shown() if killcam != null else not views.is_killcam()
 	visible = tank != null and tank.is_knocked_out() and tank.get_kill_record() != null \
 			and replay_over
 	if visible and tank.get_kill_record() != _model_kill:

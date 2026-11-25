@@ -13,6 +13,8 @@ enum OverlayMode { NONE, PERISCOPE, BINOCULARS, SIGHT }
 @export var gunner_camera: GunnerCamera
 @export var squad_camera: SquadCamera
 
+var _spectated: Tank
+var _spectate_camera: Camera3D
 var _mode: ViewMode = ViewMode.COMMANDER
 var _killcam: bool = false
 
@@ -130,6 +132,21 @@ func set_killcam(active: bool) -> void:
 
 func is_killcam() -> bool:
 	return _killcam
+
+
+## Knocked out: the teammate the killcam follows and its camera (null: none). The maps
+## centre on it and draw it as the own tank, so the player sees where the fight is.
+func set_spectated(watched: Tank, camera: Camera3D) -> void:
+	_spectated = watched
+	_spectate_camera = camera
+
+
+func get_spectated() -> Tank:
+	return _spectated if _spectated != null and is_instance_valid(_spectated) else null
+
+
+func get_spectate_camera() -> Camera3D:
+	return _spectate_camera if get_spectated() != null else null
 
 
 func _apply_view() -> void:

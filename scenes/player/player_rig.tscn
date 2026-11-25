@@ -49,6 +49,7 @@
 [ext_resource type="Script" path="res://scripts/ui/help_overlay.gd" id="95_help_overlay"]
 [ext_resource type="Script" path="res://scripts/ui/mode_radio.gd" id="96_mode_radio"]
 [ext_resource type="Script" path="res://scripts/world/road_look.gd" id="97_road_look"]
+[ext_resource type="Script" path="res://scripts/ui/spectate_label.gd" id="98_spectate_label"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("9_mask")
@@ -273,6 +274,10 @@ font_size = 20
 
 [node name="MatchNotice" type="Label" parent="HUD"]
 script = ExtResource("91_match_notice")
+
+[node name="SpectateLabel" type="Label" parent="HUD" node_paths=PackedStringArray("views")]
+script = ExtResource("98_spectate_label")
+views = NodePath("../../PlayerViews")
 
 
 [node name="EscMenu" type="Control" parent="HUD" node_paths=PackedStringArray("views")]

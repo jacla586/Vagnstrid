@@ -38,7 +38,8 @@ func _draw() -> void:
 	if tank == null:
 		return
 	var rect := Rect2(Vector2.ZERO, size)
-	draw_map(rect, Vector2(tank.global_position.x, tank.global_position.z),
+	var focus: Tank = get_focus_tank()   # a followed teammate while knocked out
+	draw_map(rect, Vector2(focus.global_position.x, focus.global_position.z),
 			size.x / view_range_m)
 	var font: Font = get_theme_default_font()
 	_draw_text(font, Vector2(size.x * 0.5 - 5.0, font_size + 2.0), "N", font_size, text_color)

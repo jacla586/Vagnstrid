@@ -3,8 +3,9 @@ extends Node
 ## Player rig: when the own tank is knocked out by a gun round, replays that round
 ## (HitRecord from Tank.get_kill_record): a chase camera follows a ghost round from
 ## where it was fired to where it struck, then holds on the entry (red marker). Any
-## key or click skips. The hit picture (KillcamPanel) stays up until the respawn; behind
-## it a chase camera follows a living teammate (KillcamData "Spectate"; click: the next).
+## key or click skips. The hit picture (KillcamPanel) stays up KillcamData.panel_s; from
+## then on (behind it too) a chase camera follows a living teammate (KillcamData
+## "Spectate"; click: the next), and the maps follow that tank (PlayerViews.set_spectated).
 
 const GHOST_COLOR: Color = Color(1.0, 0.6, 0.2)
 const MARK_COLOR: Color = Color(1.0, 0.15, 0.1)
@@ -27,6 +28,8 @@ var _played: bool = false
 var _tank: Tank
 var _spectating: bool = false
 var _watched: Tank
+## Time the hit picture has left once the replay is over (s).
+var _panel_left: float = 0.0
 
 
 func _ready() -> void:
@@ -70,6 +73,7 @@ func _process(delta: float) -> void:
 		_time += delta
 		_update_replay()
 	elif _played:
+		_panel_left -= delta
 		_spectate(delta)
 
 
@@ -82,6 +86,7 @@ func _input(event: InputEvent) -> void:
 	if _spectating:
 		if event.is_action_pressed("fire"):
 			_watched = _next_teammate(_watched)
+			views.set_spectated(_watched, _camera)
 			get_viewport().set_input_as_handled()
 		return
 	if not _running:
@@ -103,6 +108,11 @@ func has_played() -> bool:
 	return _played
 
 
+## The hit picture is up: the replay is over and KillcamData.panel_s hasn't run out.
+func panel_shown() -> bool:
+	return _played and _panel_left > 0.0
+
+
 func _on_knocked_out() -> void:
 	_played = false
 	_wait = data.start_delay_s
@@ -112,6 +122,7 @@ func _start() -> void:
 	_record = _tank.get_kill_record()
 	if _record == null or _record.origin.distance_to(_record.impact) < 1.0:
 		_played = true
+		_panel_left = data.panel_s
 		return
 	var distance: float = _record.origin.distance_to(_record.impact)
 	_flight_s = clampf(distance / maxf(data.replay_speed_mps, 1.0), data.min_flight_s,
@@ -133,6 +144,7 @@ func _stop() -> void:
 		return
 	_running = false
 	_played = true
+	_panel_left = data.panel_s
 	_ghost.visible = false
 	_mark.visible = false
 	_camera.current = false
@@ -151,6 +163,7 @@ func _spectate(delta: float) -> void:
 		var had: bool = _watched != null
 		_watched = _next_teammate(null)
 		first = first or (had and _watched != null)
+	views.set_spectated(_watched, _camera)
 	if _watched == null:
 		if first or _camera.global_position == Vector3.ZERO:
 			var at: Vector3 = _tank.global_position
@@ -175,6 +188,7 @@ func _end_spectate() -> void:
 		return
 	_spectating = false
 	_watched = null
+	views.set_spectated(null, null)
 	_camera.current = false
 	views.set_killcam(false)
 

@@ -73,6 +73,13 @@ func get_tank() -> Tank:
 	return views.get_tank() if views != null else null
 
 
+## The tank the maps centre on and draw as the own: the own tank, or while knocked out the
+## teammate the killcam follows.
+func get_focus_tank() -> Tank:
+	var watched: Tank = views.get_spectated() if views != null else null
+	return watched if watched != null else get_tank()
+
+
 ## Draws the map inside `rect`, with world point `centre` (x, z) at the rect's
 ## centre and `scale_px` pixels per metre.
 func draw_map(rect: Rect2, centre: Vector2, scale_px: float) -> void:
@@ -108,7 +115,7 @@ func draw_map(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 				# Infantry: a ring.
 				draw_arc(p, mark_radius_px, 0.0, TAU, 24, color, 2.0, true)
 			draw_circle(p, 1.5, color)
-	var tank: Tank = get_tank()
+	var tank: Tank = get_focus_tank()
 	if tank != null:
 		var own := Vector2(tank.global_position.x, tank.global_position.z)
 		var p: Vector2 = _to_screen(own, rect, centre, scale_px)
@@ -332,7 +339,11 @@ func _draw_friends(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 		return
 	for node: Node in get_tree().get_nodes_in_group("tanks"):
 		var t := node as Tank
-		if t == null or t == own or not is_instance_valid(t) or not Tank.is_friendly(own, t):
+		if t == null or not is_instance_valid(t) or not Tank.is_friendly(own, t) \
+				or t == views.get_spectated():
+			continue
+		# The own tank is drawn as the own, unless a teammate is followed: then its wreck.
+		if t == own and views.get_spectated() == null:
 			continue
 		var p: Vector2 = _to_screen(Vector2(t.global_position.x, t.global_position.z), rect, centre, scale_px)
 		if not rect.has_point(p):
@@ -349,7 +360,11 @@ func _draw_friends(rect: Rect2, centre: Vector2, scale_px: float) -> void:
 ## The own player's view direction from the tank at `at`: a faint cone (none in the
 ## debug and squad views).
 func _draw_view_cone(at: Vector2) -> void:
-	var camera: Camera3D = views.get_view_camera() if views != null else null
+	var camera: Camera3D = null
+	if views != null:
+		camera = views.get_spectate_camera()
+		if camera == null:
+			camera = views.get_view_camera()
 	if camera == null:
 		return
 	var look3: Vector3 = -camera.global_basis.z

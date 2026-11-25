@@ -17,6 +17,9 @@ extends Resource
 @export var chase_back_m: float = 6.0
 @export var chase_up_m: float = 1.2
 @export var hold_distance_m: float = 7.0
+## The hit picture (KillcamPanel) stays up this long once the replay is over (s); then
+## only the teammate being followed shows.
+@export var panel_s: float = 7.0
 
 @export_group("Spectate")
 ## After the replay, until the respawn: a chase camera behind a living teammate (nearest
