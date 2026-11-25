@@ -356,12 +356,16 @@ Två GPS-punkter räcker för en ny karta. Ange två hörn på en rektangel, så
 | Jordbruksverket | Åkerblock och vilken gröda som växer var |
 | Mapillary | Positioner för gatlyktor, vägskyltar och gatumöbler ur gatubilder |
 | Copernicus DEM | Höjddata där laser saknas |
-| Orienteringskartor (privat bruk) | Stenblock, snår, myr och öppen mark |
+| Orienteringskartor (med tillstånd från klubbarna, se nedan) | Stenblock, snår, myr och öppen mark |
 | Egna foton och GPS-punkter | Handplacerade detaljer på campus: konstverk, Corsons lampor, Studenthusets fasad, Blå havet |
 
-![Före och efter: gatlyktor placerade efter regel kontra från Mapillary](docs/readme/cmp_mapillary.jpg)
+![Före och efter: Linghems stationsområde utan och med häckar utlästa ur laserdata](docs/readme/cmp_hedges.jpg)
 
-_Gatlyktor var 32:a meter (före) mot lyktor och skyltar där Mapillary har sett dem (efter)._
+_Häckar i Linghem: före, och efter att raka band av låg vegetation i laserdata blivit häckrader. De skymmer sikten och räknas som skyl för bottarna._
+
+![Före och efter: Lambohovsleden som en bro utan något under, och som en undergång med pelare och slänter](docs/readme/cmp_underpass.jpg)
+
+_Bron över Lambohovsleden: före låg däcket som en platta på marken, efter grävs en undergång ut med pelare och stensatta slänter, så att en vagn kan köra under._
 
 ![Före och efter: Vallastaden i spelet med och utan takfärger utlästa ur flygfoto](docs/readme/cmp_roofs_game.jpg)
 
@@ -549,6 +553,6 @@ bibliotek står i [CREDITS.md](CREDITS.md) (och under Credits i huvudmenyn).
 
 ---
 
-Vagnstrid är ett hobbyspel som inte ges ut. Koden är skriven med Claude Code. Kartdata: OpenStreetMap-bidragsgivare (ODbL), Lantmäteriet (CC BY 4.0), Naturvårdsverket NMD, Trafikverket NVDB, Jordbruksverket, Mapillary (CC BY-SA 4.0), Copernicus DEM. Soldat: KolosStudios (CC BY 3.0), animationer Mixamo. Ljud: Freesound och Kenney (CC0). Röster: ElevenLabs. Texturer: ambientCG (CC0). Ikon: Google Gemini.
+Vagnstrid är ett hobbyspel som inte ges ut. Koden är skriven med Claude Code. Kartdata: OpenStreetMap-bidragsgivare (ODbL), Lantmäteriet (CC BY 4.0), Naturvårdsverket NMD, Trafikverket NVDB, Jordbruksverket, Mapillary (CC BY-SA 4.0), Copernicus DEM. Orienteringskartor med tillåtelse av IFK Linköpings orienteringssällskap (Linghem) och Linköpings Orienteringsklubb (Linköping). Soldat: KolosStudios (CC BY 3.0), animationer Mixamo. Ljud: Freesound och Kenney (CC0). Röster: ElevenLabs. Texturer: ambientCG (CC0). Ikon: Google Gemini.
 
 Alla bilder är renderade i spelet: trailerscener, jämförelsevyer och nya vagnrenderingar från 23 november 2026.
