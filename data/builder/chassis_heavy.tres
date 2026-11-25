@@ -43,3 +43,4 @@ guns = Array[ExtResource("4_gun_script")]([ExtResource("g0"), ExtResource("g1"),
 armour_packages = Array[ExtResource("5_pack_script")]([ExtResource("p0"), ExtResource("p1"), ExtResource("p2")])
 cost = 260
 bot_role = ExtResource("role_breaker")
+bot_max_share = 0.2

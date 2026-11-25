@@ -130,11 +130,25 @@ func _exit_tree() -> void:
 func _give_bots_configs() -> void:
 	if data == null or data.bot_configs.is_empty() or get_parent() == null:
 		return
+	# Tanks aren't ready (nor in the "tanks" group) yet: count the scene's own per team.
+	var tanks: Array[Tank] = []
+	var size: Dictionary = {}
 	for node: Node in get_parent().find_children("*", "", true, false):
 		var tank := node as Tank
-		if tank != null and not tank.is_node_ready() and tank.config == null \
-				and not tank.use_player_config:
-			tank.config = data.bot_configs[randi() % data.bot_configs.size()]
+		if tank != null and not tank.is_node_ready():
+			tanks.append(tank)
+			size[tank.team] = int(size.get(tank.team, 0)) + 1
+	MatchSettings.load_settings()
+	var taken: Dictionary = {}   # team -> Array[TankConfig]
+	for tank: Tank in tanks:
+		if tank.config != null or tank.use_player_config:
+			continue
+		if not taken.has(tank.team):
+			taken[tank.team] = [] as Array[TankConfig]
+		var mine: Array[TankConfig] = taken[tank.team]
+		tank.config = BotTankPick.pick(data.bot_configs, mine,
+				maxi(MatchSettings.team_size, int(size[tank.team])))
+		mine.append(tank.config)
 
 
 func _ready() -> void:

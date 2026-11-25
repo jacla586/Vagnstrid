@@ -49,6 +49,9 @@ enum Kind { LIGHT, MEDIUM, HEAVY, TANK_DESTROYER }
 
 ## How bots use it (BotRoleData; none = a brawler).
 @export var bot_role: BotRoleData
+## At most this share of a team's tanks may be bots on this chassis (rounded, at least 1;
+## 1 = no limit; BotTankPick). Players are never limited and don't count.
+@export_range(0.0, 1.0) var bot_max_share: float = 1.0
 
 @export_group("Options")
 @export var guns: Array[GunData] = []

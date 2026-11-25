@@ -312,7 +312,8 @@ func _add_bot(team: int, index: int) -> void:
 	tank.data = _template_data
 	var pool: Array[TankConfig] = mode.data.bot_configs
 	if not pool.is_empty():
-		tank.config = pool[_rng.randi() % pool.size()]
+		tank.config = BotTankPick.pick(pool, BotTankPick.team_bot_configs(get_tree(), team),
+				maxi(_target_size(), BotTankPick.team_count(get_tree(), team) + 1), _rng)
 	var parent: Node = _bot_parent if is_instance_valid(_bot_parent) else get_tree().current_scene
 	parent.add_child(tank)
 	tank.global_transform = _template_xform.translated(Vector3(index * 12.0 + 12.0, 2.0, 0.0))

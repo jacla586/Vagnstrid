@@ -294,7 +294,7 @@ func _start_wave() -> void:
 	for i: int in count:
 		var spot: Vector3 = _defend_spot(toward, placed)
 		placed.append(spot)
-		_add_bot(spot, toward, crew, pool)
+		_add_bot(spot, toward, crew, pool, count)
 	_round += 1
 	_phase = Phase.DEFEND
 	_last_seen.clear()
@@ -345,14 +345,15 @@ func _crew_for(round_: int, hard: bool) -> BotData:
 
 # --- Bots --------------------------------------------------------------------------
 
-func _add_bot(at: Vector3, toward: Vector3, crew: BotData, pool: Array[TankConfig]) -> void:
+func _add_bot(at: Vector3, toward: Vector3, crew: BotData, pool: Array[TankConfig], wave_size: int) -> void:
 	var tank: Tank = (load(TANK_SCENE_PATH) as PackedScene).instantiate()
 	_serial += 1
 	tank.name = "WaveBot%d" % _serial
 	tank.team = data.bot_team
 	tank.data = load(BOT_TANK_DATA)
 	if not pool.is_empty():
-		tank.config = pool[_rng.randi() % pool.size()]
+		tank.config = BotTankPick.pick(pool, BotTankPick.team_bot_configs(get_tree(), data.bot_team),
+				wave_size, _rng)
 	var parent: Node = get_parent()
 	parent.add_child(tank)
 	KothMode.place_tank(tank, Transform3D(Basis.looking_at(toward, Vector3.UP), at))
@@ -415,7 +416,8 @@ func _make_allies() -> void:
 		tank.team = leader.team
 		tank.data = load(BOT_TANK_DATA)
 		if not pool.is_empty():
-			tank.config = pool[_rng.randi() % pool.size()]
+			tank.config = BotTankPick.pick(pool, BotTankPick.team_bot_configs(get_tree(), leader.team),
+					n + _humans().size(), _rng)
 		parent.add_child(tank)
 		KothMode.place_tank(tank, _beside(leader, i + 1))
 		var bot := BotController.new()
