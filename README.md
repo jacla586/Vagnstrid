@@ -419,13 +419,9 @@ Fiendens hp skickas aldrig. Egen vagns torn och lucka förutsägs lokalt; andra 
 
 Välj lag och vagn i matchen. Bottar fyller ut lagen och lämnar plats när spelare ansluter. Byt lag via Esc, eller be någon på andra sidan att byta.
 
-#### Dedikerad server
+## Dedikerad server
 
-`--dedicated`: bottar fyller lagen, matchen slutar, alla röstar på nästa karta. Servern sköts från en webbpanel, se nedan.
-
-## Servern i garderoben
-
-En dedikerad server kan stå utan skärm och tangentbord någonstans i huset. Allt sköts från en webbsida som du öppnar på det lokala nätet: se vad som händer just nu, byt bana, sparka en fuskare, ändra lagstorlek eller starta om servern. Efteråt visar samma sida hur populärt spelet blev.
+`--dedicated` startar spelet som server utan egen spelare: bottar fyller lagen, och när en match är slut röstar alla om nästa karta. Servern kan stå utan skärm och tangentbord någonstans i huset. Allt sköts från en webbsida som du öppnar på det lokala nätet: se vad som händer just nu, byt bana, sparka en fuskare, ändra lagstorlek eller starta om servern. Efteråt visar samma sida hur populärt spelet blev.
 
 _Bilderna visar påhittad exempeldata._
 
