@@ -64,7 +64,7 @@ func _one(i: int) -> void:
 	var dir: Vector3 = (to - from).normalized()
 	var max_blockers: int = _blockers[i]
 	var query := PhysicsRayQueryParameters3D.create(from, to + dir * 0.5,
-			0xFFFFFFFF if max_blockers == PLAIN else Vision.SHOT_MASK)
+			0xFFFFFFFF if max_blockers == PLAIN else Vision.SIGHT_THROUGH_MASK)
 	query.collide_with_areas = true
 	query.exclude = _exclude[i]
 	var hit: Dictionary = _space.intersect_ray(query)

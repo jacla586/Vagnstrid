@@ -49,7 +49,7 @@ func _ready() -> void:
 	_rng.randomize()
 	_drift = Weather.wind() * Weather.current().smoke_drift_share
 	_area = Area3D.new()
-	_area.collision_layer = Vision.LAYER_VISION_BLOCKER
+	_area.collision_layer = Vision.LAYER_VISION_BLOCKER | Vision.LAYER_SMOKE
 	_area.collision_mask = 0
 	_area.monitoring = false
 	_shape = CylinderShape3D.new()
@@ -136,7 +136,7 @@ func _apply(age: float) -> void:
 	_shape.height = height_m * grow
 	(_area.get_child(0) as Node3D).position = Vector3(0.0, _shape.height * 0.5, 0.0)
 	# Thin smoke stops blocking sight before it has quite gone.
-	_area.collision_layer = Vision.LAYER_VISION_BLOCKER if fade > 0.3 else 0
+	_area.collision_layer = (Vision.LAYER_VISION_BLOCKER | Vision.LAYER_SMOKE) if fade > 0.3 else 0
 	for material: StandardMaterial3D in _materials:
 		material.albedo_color.a = COLOR.a * fade
 	var stretch: Vector3 = _drift * minf(age, STRETCH_MAX_S)

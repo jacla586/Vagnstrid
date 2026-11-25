@@ -8,13 +8,18 @@ extends RefCounted
 ##   2 vehicles          tanks (also on layer 1); watched by tree push triggers
 ##   3 commander_hitbox  exposed commanders (areas)
 ##   5 vision_blocker    bushes and tree canopies (areas): block sight only
-## Shells and fragments use SHOT_MASK, so they pass through vision blockers.
+##   6 smoke             smoke clouds (areas, also on 5): block sight, even infantry's
+## Shells and fragments use SHOT_MASK, so they pass through vision blockers and smoke.
 
 const LAYER_VEHICLES: int = 1 << 1
 const LAYER_COMMANDER_HITBOX: int = 1 << 2
 const LAYER_VISION_BLOCKER: int = 1 << 4
-## Mask for shell and fragment rays: everything except vision blockers.
-const SHOT_MASK: int = 0xFFFFFFFF & ~LAYER_VISION_BLOCKER
+const LAYER_SMOKE: int = 1 << 5
+## Mask for shell and fragment rays: everything except vision blockers and smoke.
+const SHOT_MASK: int = 0xFFFFFFFF & ~LAYER_VISION_BLOCKER & ~LAYER_SMOKE
+## The solid ray of a see-through look (has_line_of_sight_through): as shells, but smoke
+## blocks it. Infantry see through a little vegetation, never through smoke.
+const SIGHT_THROUGH_MASK: int = SHOT_MASK | LAYER_SMOKE
 
 
 ## True if a ray from `from` to `to` reaches `target` before anything else that
@@ -50,8 +55,8 @@ static func has_line_of_sight_through_in(space: PhysicsDirectSpaceState3D, from:
 		exclude: Array[RID] = []) -> bool:
 	var dir: Vector3 = (to - from).normalized()
 	var end: Vector3 = to + dir * 0.5
-	# Solid things (and other hitboxes) first: the target must be the first of them.
-	var query := PhysicsRayQueryParameters3D.create(from, end, SHOT_MASK)
+	# Solid things, smoke (and other hitboxes) first: the target must be the first of them.
+	var query := PhysicsRayQueryParameters3D.create(from, end, SIGHT_THROUGH_MASK)
 	query.collide_with_areas = true
 	query.exclude = exclude
 	var hit: Dictionary = space.intersect_ray(query)

@@ -1641,7 +1641,7 @@ func _prefetch_sight(eye: Vector3) -> void:
 			"look_wait": _tank_look_wait, "every2_m": TANK_LOOK_EVERY_2ND_M,
 			"heights": TANK_LOOK_HEIGHTS,
 			"see_through": Array(data.see_through_ranges_m),
-			"shot_mask": Vision.SHOT_MASK, "crown_mask": Vision.LAYER_VISION_BLOCKER,
+			"shot_mask": Vision.SIGHT_THROUGH_MASK, "crown_mask": Vision.LAYER_VISION_BLOCKER,
 		})
 		return
 	var rays := SightRays.new(get_world_3d().direct_space_state)
