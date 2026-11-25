@@ -2351,6 +2351,10 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	if speeding_up and _is_pushing():
 		var fade: float = clampf(absf(speed) / maxf(data.push_fade_speed_kmh * KMH_TO_MS, 0.1), 0.0, 1.0)
 		accel_limit = maxf(accel_limit, lerpf(data.push_accel, data.acceleration, fade))
+	# Throttle 0 while coasting rolls out; the brake's limit still measures the rocking.
+	var rock_limit: float = accel_limit
+	if throttle == 0.0 and _command.coast and not speeding_up:
+		accel_limit = minf(data.coast_deceleration, accel_limit)
 	var accel: float = clampf((target_speed - speed) / delta, -accel_limit, accel_limit)
 	# The tracks also cancel gravity along the slope (uphill pull, downhill push),
 	# up to what the steepest climbable slope needs.
@@ -2362,7 +2366,7 @@ func _apply_drive(state: PhysicsDirectBodyState3D, delta: float,
 	# the gun with it (no stabiliser), so jerky driving spoils the aim.
 	# The share of the tank's own limit counts, so driving off rocks as much as stopping.
 	var driving: bool = speed_factor > 0.0 and not immobilised
-	var effort: float = clampf(accel / maxf(accel_limit, 0.01), -1.0, 1.0) if driving else 0.0
+	var effort: float = clampf(accel / maxf(rock_limit, 0.01), -1.0, 1.0) if driving else 0.0
 	_rock = lerpf(_rock, effort, 1.0 - exp(-ROCK_SMOOTHING * delta))
 	_rock_slow = lerpf(_rock_slow, _rock, 1.0 - exp(-delta / maxf(data.pitch_rock_kick_time_s, 0.01)))
 	apply_torque(global_basis.x * mass * data.pitch_rock_accel

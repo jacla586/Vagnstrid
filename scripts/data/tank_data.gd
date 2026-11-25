@@ -17,6 +17,10 @@ extends Resource
 @export var acceleration: float = 1.5
 ## How fast the tank slows down when throttle is released or reversed (m/s²).
 @export var brake_deceleration: float = 4.0
+## Rolling out with no throttle when the command coasts (the player letting go of W):
+## rolling resistance and engine braking (m/s²). It rocks the hull by its share of
+## brake_deceleration, so it dips the nose gently.
+@export var coast_deceleration: float = 1.2
 ## Steepest slope the tracks can still climb (degrees). The tracks cancel gravity on
 ## slopes up to this; steeper and the tank stalls or slides back.
 @export var max_climb_deg: float = 32.0

@@ -87,6 +87,9 @@ func _physics_process(_delta: float) -> void:
 		_command.has_aim = true
 	_command.throttle = _drive_axis(&"move_backward", &"move_forward")
 	_command.steering = _drive_axis(&"turn_left", &"turn_right")
+	# Letting go of W rolls out instead of braking: tapping W to hold a pace is then a
+	# gentle push and a gentle slowing, not full throttle and full brakes in turn.
+	_command.coast = true
 	# Reversing steers like a car: the key turns the rear that way.
 	if _command.throttle < 0.0:
 		_command.steering = -_command.steering

@@ -9,6 +9,7 @@ const FLAG_FIRE: int = 2
 const FLAG_FIRE_MG: int = 4
 const FLAG_MG_ROOF: int = 8
 const FLAG_HATCH: int = 16
+const FLAG_COAST: int = 32
 
 
 static func write(buf: StreamPeerBuffer, c: TankCommand, wanted_ammo: int, spot_seq: int) -> void:
@@ -20,6 +21,7 @@ static func write(buf: StreamPeerBuffer, c: TankCommand, wanted_ammo: int, spot_
 	if c.fire_mg: f |= FLAG_FIRE_MG
 	if c.mg_use_roof: f |= FLAG_MG_ROOF
 	if c.hatch_open: f |= FLAG_HATCH
+	if c.coast: f |= FLAG_COAST
 	buf.put_u8(f)
 	buf.put_8(wanted_ammo)
 	buf.put_u8(spot_seq & 255)
@@ -37,6 +39,7 @@ static func read(buf: StreamPeerBuffer, c: TankCommand) -> Array[int]:
 	c.fire_mg = f & FLAG_FIRE_MG != 0
 	c.mg_use_roof = f & FLAG_MG_ROOF != 0
 	c.hatch_open = f & FLAG_HATCH != 0
+	c.coast = f & FLAG_COAST != 0
 	var wanted: int = buf.get_8()
 	var seq: int = buf.get_u8()
 	c.aim_point = Vector3(buf.get_float(), buf.get_float(), buf.get_float())

@@ -48,6 +48,7 @@ func _physics_process(delta: float) -> void:
 	var fresh: bool = _age < STALE_S
 	c.throttle = _received.throttle if fresh else 0.0
 	c.steering = _received.steering if fresh else 0.0
+	c.coast = _received.coast and fresh
 	c.has_aim = _received.has_aim and fresh
 	c.aim_point = _received.aim_point
 	c.fire = _received.fire and fresh

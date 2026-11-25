@@ -105,6 +105,7 @@ func _gunner(command: TankCommand, delta: float, data: TankData, wounded: bool) 
 static func _copy(from: TankCommand, to: TankCommand) -> void:
 	to.throttle = from.throttle
 	to.steering = from.steering
+	to.coast = from.coast
 	to.aim_point = from.aim_point
 	to.has_aim = from.has_aim
 	to.hatch_open = from.hatch_open
