@@ -57,10 +57,12 @@ FOTAVTRYCK_MARGINAL = 1.0
 LANDFASTE_PLANT_M = 3.0
 LANDFASTE_M = 10.0
 LANDFASTE_UNDER_M = 3.0
-LANDFASTE_SIDA_M = 1.5   # utanför däckets bredd på var sida
-# Räckena är smala (stolpar och slanor) och fick trianglar som kollision: en vagn som körde in i dem kunde
-# tryckas igenom och fastna grensle. Nu har de ingen kollision (glb-gruppen `Brorack`) och står i stället
-# framför en osynlig tjock vägg (`Kollision_broar`; spelets mesh_collision.gd döljer den).
+LANDFASTE_SIDA_M = 3.0   # utanför däckets bredd på var sida (gångvägar som korsar däckänden snett, Vallastaden)
+# Räckena är smala (stolpar och slanor). Som trianglar med kollision kunde en vagn tryckas igenom och fastna
+# grensle, och den osynliga tjocka väggen som ersatte dem (`Kollision_broar`) fastnade vagnarna också i.
+# Med en vältbar samling (step3 VALT) blir räckena bitar om ca STOLP_AVSTAND m (glb-gruppen `Valtbart`,
+# typerna Brorack*, spelets PropBreak välter dem när en vagn kör in i dem) och har ingen kollision alls;
+# kantbalken (0,22 m) är kvar. Utan samling: de gamla räckena och väggen.
 KANT_VAGG_H = 1.4
 KANT_VAGG_TJOCK = 0.6
 RACKE_HOJD = 1.0
@@ -301,8 +303,8 @@ class Broar:
     def landfasten(self, h, shape, transform, OX, OY, RES):
         """Marken vid varje däckände (riktiga broar) höjs till däckets ovansida: plant LANDFASTE_PLANT_M ut,
         tonat ned till den vanliga marken vid LANDFASTE_M; under däckets sista LANDFASTE_UNDER_M strax under
-        däcket. Bara höjning, aldrig sänkning (en undergång under däcket rörs inte: den ligger under
-        däcket, inte i dess förlängning)."""
+        däcket. Bara höjning, aldrig sänkning (en undergång under däcket rörs inte, men dess schakt och
+        slänter fylls igen utanför däckänden, där vägen ligger på marken)."""
         antal = 0
         for k, spann in self.spann.items():
             if not self.bro[k]:
@@ -335,9 +337,16 @@ class Broar:
                     if undre and inne.any():
                         punkter = shapely.points(cx[inne], cy[inne])
                         fri = np.zeros(int(inne.sum()), bool)
+                        golv = np.zeros(int(inne.sum()), bool)
                         for ru in undre:
-                            fri |= shapely.distance(punkter, ru['line']) < max(ru['width'], SCHAKT_MIN_BREDD) / 2 + 3.0
-                        inne[inne] = ~fri
+                            avst = shapely.distance(punkter, ru['line'])
+                            fri |= avst < max(ru['width'], SCHAKT_MIN_BREDD) / 2 + 3.0
+                            golv |= avst < ru['width'] / 2 + 0.5
+                        # den undre vägen själv rörs aldrig; schaktets botten och slänter lämnas bara längre in under
+                        # däcket än LANDFASTE_UNDER_M. Vid däckänden och utanför bär marken vägarna som ansluter där
+                        # (gångvägar under Vallastadens broar, road_to_science, grävde annars bort marken vid
+                        # brofästet och asfalten och gångvägarna där svävade)
+                        inne[inne] = ~(golv | (fri & (t[inne] < -LANDFASTE_UNDER_M)))
                     if not inne.any():
                         continue
                     w = np.clip((t - LANDFASTE_PLANT_M) / (LANDFASTE_M - LANDFASTE_PLANT_M), 0.0, 1.0)
@@ -515,7 +524,7 @@ class Broar:
         np.save(path, ndi.binary_dilation(m, iterations=2))
 
     # ---------- meshar ----------
-    def bygg_meshar(self, h, sample, to_world, add_merged, betong, tra, metall, mat=None):
+    def bygg_meshar(self, h, sample, to_world, add_merged, betong, tra, metall, mat=None, valt=None):
         # brobanor (bara vägar med bridge-tagg; vägar över tunnlar ligger på tunneltaken)
         dack = []
         for k, spann in self.spann.items():
@@ -587,6 +596,9 @@ class Broar:
                     continue
                 if d['tra']:
                     linje = d['pts'] + d['nrm'] * sida * (d['bredd'] / 2 - STOLPE)
+                    if valt is not None:
+                        _valtbart_racke(valt, to_world, linje, d['topp'] - 0.02, d['gc'], tra, metall, True)
+                        continue
                     mr.racke(linje, d['topp'] - 0.02, RACKE_HOJD_GC if d['gc'] else RACKE_HOJD)
                     mk.mur(linje, d['topp'] + KANT_VAGG_H, d['topp'] - 0.1, KANT_VAGG_TJOCK)
                     continue
@@ -594,6 +606,9 @@ class Broar:
                 balk = d['pts'] + d['nrm'] * sida * (d['bredd'] / 2 - KANTBALK_BRO_B / 2)
                 m.mur(balk, d['topp'] + KANTBALK_BRO_H, d['topp'] - 0.1, KANTBALK_BRO_B)
                 linje = d['pts'] + d['nrm'] * sida * (d['bredd'] / 2 - KANTBALK_BRO_B / 2)
+                if valt is not None:
+                    _valtbart_racke(valt, to_world, linje, d['topp'] + KANTBALK_BRO_H, d['gc'], tra, metall, False)
+                    continue
                 mr.racke(linje, d['topp'] + KANTBALK_BRO_H, RACKE_HOJD_GC if d['gc'] else RACKE_HOJD)
                 mk.mur(linje, d['topp'] + KANT_VAGG_H, d['topp'] - 0.1, KANT_VAGG_TJOCK)
             add_merged('Broar', m.trimesh(), tra if d['tra'] else betong)
@@ -614,11 +629,16 @@ class Broar:
                 n_ = max(2, int(2 * hw[i_]) + 1)
                 tvars = np.linspace(-hw[i_] + 0.3, hw[i_] - 0.3, n_)
                 linje = pts[i_] + dv[i_] * inat * STOLPE + np.outer(tvars, u)
+                if valt is not None:
+                    _valtbart_racke(valt, to_world, linje, np.full(n_, topp[i_]), False, tra, metall, False)
+                    continue
                 mr.racke(linje, np.full(n_, topp[i_]), RACKE_HOJD)
                 mk.mur(linje, np.full(n_, topp[i_] + KANT_VAGG_H), np.full(n_, topp[i_] - 0.1), KANT_VAGG_TJOCK)
             add_merged('Broar', m.trimesh(), betong)
-            add_merged('Brorack', mr.trimesh(), metall)
-            add_merged('Kollision_broar', mk.trimesh(), metall)
+            if mr.V:
+                add_merged('Brorack', mr.trimesh(), metall)
+            if mk.V:
+                add_merged('Kollision_broar', mk.trimesh(), metall)
         if mat is not None:
             self._undergangar(h, sample, to_world, add_merged, betong, mat)
         print(f'broar: {antal} brobanor, {len(self.tak)} tunneltak, '
@@ -777,6 +797,43 @@ def _gatsten_material():
     _GATSTEN = trimesh.visual.material.PBRMaterial(name='Gatsten', baseColorTexture=im, metallicFactor=0.0,
                                                    roughnessFactor=0.9)
     return _GATSTEN
+
+
+def _valtbart_racke(valt, to_world, linje, topp, gc, tra, metall, av_tra):
+    """Ett räcke som vältbara bitar (valtbart.Samling): en bit per ca STOLP_AVSTAND m, foten mitt på biten
+    (stolpen i början, ledstång och mellanslå längs hela, skalad till bitens längd), och en ensam stolpe i
+    slutet. Typerna Brorack[_tra][_gc] (material och höjd)."""
+    from jarnvag import ladar
+    from valtbart import lador_mesh
+    hojd = RACKE_HOJD_GC if gc else RACKE_HOJD
+    typ = 'Brorack' + ('_tra' if av_tra else '') + ('_gc' if gc else '')
+    material = tra if av_tra else metall
+    if not valt.har_mall(typ):
+        stolpe = ladar([[-1.0, 0.0]], [[1.0, 0.0]], STOLPE / 2, STOLPE / 2, 0.0, hojd)
+        valt.mall(typ, [(lador_mesh(np.vstack([
+            stolpe,
+            ladar([[0.0, 0.0]], [[1.0, 0.0]], 1.0, 0.035, hojd - 0.07, hojd),
+            ladar([[0.0, 0.0]], [[1.0, 0.0]], 1.0, 0.02, hojd * 0.5 - 0.05, hojd * 0.5)])), material)])
+        valt.mall(typ + '_stolpe', [(lador_mesh(ladar([[0.0, 0.0]], [[1.0, 0.0]], STOLPE / 2, STOLPE / 2,
+                                                       0.0, hojd)), material)])
+    linje = np.asarray(linje, float)
+    topp = np.asarray(topp, float)
+    s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(linje, axis=0), axis=1))]
+    if s[-1] < 0.3:
+        return
+    n = max(1, int(round(s[-1] / STOLP_AVSTAND)))
+    kant = np.linspace(0.0, s[-1], n + 1)
+    P = np.c_[np.interp(kant, s, linje[:, 0]), np.interp(kant, s, linje[:, 1])]
+    Z = np.interp(kant, s, topp)
+    W = np.array([to_world(x, y) for x, y in P])   # Godot (x, z)
+    for i in range(n):
+        wd = W[i + 1] - W[i]
+        L = float(np.linalg.norm(wd))
+        if L < 0.05:
+            continue
+        mitt = (W[i] + W[i + 1]) / 2
+        valt.placera(typ, [mitt[0], float(Z[i] + Z[i + 1]) / 2, mitt[1]], wd, skala_x=L / 2.0)
+    valt.placera(typ + '_stolpe', [W[-1][0], float(Z[-1]), W[-1][1]], W[-1] - W[-2] if n else [1.0, 0.0])
 
 
 class _Mesh:

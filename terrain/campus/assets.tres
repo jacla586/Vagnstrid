@@ -19,6 +19,7 @@
 
 [sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_wwml1"]
 name = "rock"
+albedo_color = Color(1.2984265, 1.2984265, 1.2984265, 1)
 albedo_texture = ExtResource("1_3oig3")
 normal_texture = ExtResource("2_e82h2")
 uv_scale = 0.08
@@ -28,6 +29,7 @@ detiling_shift = 0.2
 [sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_6wkww"]
 name = "meadow"
 id = 1
+albedo_color = Color(1.2984265, 1.2984265, 1.2984265, 1)
 albedo_texture = ExtResource("3_0fvd0")
 normal_texture = ExtResource("4_j7hti")
 detiling_rotation = 0.4
@@ -36,6 +38,7 @@ detiling_shift = 0.3
 [sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_ahip4"]
 name = "lawn"
 id = 2
+albedo_color = Color(1.2984265, 1.2984265, 1.2984265, 1)
 albedo_texture = ExtResource("5_wwml1")
 normal_texture = ExtResource("6_6wkww")
 uv_scale = 0.12
@@ -45,6 +48,7 @@ detiling_shift = 0.3
 [sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_hcd7i"]
 name = "field"
 id = 3
+albedo_color = Color(1.2984265, 1.2984265, 1.2984265, 1)
 albedo_texture = ExtResource("7_ahip4")
 normal_texture = ExtResource("8_hcd7i")
 detiling_rotation = 0.3
@@ -53,6 +57,7 @@ detiling_shift = 0.3
 [sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_gjgn4"]
 name = "forest_floor"
 id = 4
+albedo_color = Color(1.2984265, 1.2984265, 1.2984265, 1)
 albedo_texture = ExtResource("9_gjgn4")
 normal_texture = ExtResource("10_8br5s")
 detiling_rotation = 0.4
@@ -61,6 +66,7 @@ detiling_shift = 0.3
 [sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_8br5s"]
 name = "gravel"
 id = 5
+albedo_color = Color(1.2984265, 1.2984265, 1.2984265, 1)
 albedo_texture = ExtResource("11_grsq5")
 normal_texture = ExtResource("12_6ma00")
 uv_scale = 0.3
@@ -70,6 +76,7 @@ detiling_shift = 0.3
 [sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_grsq5"]
 name = "wet_grass"
 id = 6
+albedo_color = Color(1.2984265, 1.2984265, 1.2984265, 1)
 albedo_texture = ExtResource("13_bg3bm")
 normal_texture = ExtResource("14_bl1eb")
 detiling_rotation = 0.4
@@ -78,6 +85,7 @@ detiling_shift = 0.3
 [sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_6ma00"]
 name = "sand"
 id = 7
+albedo_color = Color(1.2984265, 1.2984265, 1.2984265, 1)
 albedo_texture = ExtResource("15_wd13w")
 normal_texture = ExtResource("16_ccgub")
 detiling_rotation = 0.3

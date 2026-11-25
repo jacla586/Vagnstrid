@@ -3,10 +3,9 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://mu2h3ruqx6h0"
-path.s3tc="res://.godot/imported/corson_objekt_1.png-e6b5a494c618f6a278c7e27d16d2a491.s3tc.ctex"
+path="res://.godot/imported/corson_objekt_1.png-e6b5a494c618f6a278c7e27d16d2a491.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 generator_parameters={
 "md5": "040599e4a6e0ee0dfcbc992b2f77fe4c"
@@ -15,11 +14,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/maps/corson/corson_objekt_1.png"
-dest_files=["res://.godot/imported/corson_objekt_1.png-e6b5a494c618f6a278c7e27d16d2a491.s3tc.ctex"]
+dest_files=["res://.godot/imported/corson_objekt_1.png-e6b5a494c618f6a278c7e27d16d2a491.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -41,4 +40,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1

@@ -152,7 +152,14 @@ for geom, t in feat['waterways']:
     wm = rasterize([(gg.buffer(1.5), 1)], out_shape=(H, W), transform=T).astype(bool)
     h[wm] -= depth * 0.7
 h = ndi.gaussian_filter(h, 0.6) * 0.5 + h * 0.5  # mjuka kanter efter schaktning
-overfarter.forma(overfarter.las(WORK.parent), h, OX, OY, RES)   # körbara diken (<projekt>/overfarter.json)
+_OVERFARTER = overfarter.las(WORK.parent)   # körbara diken (<projekt>/overfarter.json)
+if _OVERFARTER:
+    # utjämningen rör inte bilvägarnas schaktade band (däcken undantagna) och håller vattnet djupt nog
+    _skydd = rasterize([(road_union, 1)], out_shape=(H, W), transform=T).astype(bool) & ~BRO.dack_raster((H, W), T)
+    _niva = np.full((H, W), np.nan)
+    for _wp, _lvl in zip(water_polys, water_levels):
+        _niva[rasterize([(_wp, 1)], out_shape=(H, W), transform=T).astype(bool)] = _lvl
+    overfarter.forma(_OVERFARTER, h, OX, OY, RES, _skydd, _niva)
 BRO.schakta(h, sample, (H, W), T, OX, OY, RES)   # undergångar: fri höjd under däcken
 BRO.landfasten(h, (H, W), T, OX, OY, RES)   # marken möter däckändarna (inga gupp vid brofästena)
 TRUMMOR = trummor.las((X0, Y1 - H * RES, X0 + W * RES, Y1))   # vägtrummor (trummor.py)
@@ -378,11 +385,11 @@ MARK.bygg(add_merged, mat, to_world)
 scene.graph.update(frame_to='Broar', frame_from=scene.graph.base_frame)
 scene.graph.update(frame_to='Brorack', frame_from=scene.graph.base_frame)           # räckena: ingen kollision
 scene.graph.update(frame_to='Kollision_broar', frame_from=scene.graph.base_frame)   # osynliga tjocka väggar
+VALT = valtbart.Samling()   # vältbart (lyktstolpar, kontaktledning, broräcken): glb-gruppen Valtbart
 BRO.bygg_meshar(h, sample, to_world, add_merged, mat('Betong', (150, 148, 142), 0.95),
-                mat('Tra', (120, 88, 58), 0.9), mat('Racke', (72, 74, 76), 0.6), mat=mat)
+                mat('Tra', (120, 88, 58), 0.9), mat('Racke', (72, 74, 76), 0.6), mat=mat, valt=VALT)
 # Vägkanten (vagkant.py): kantstolpar, lyktor, räcken, skyltar, hållplatser
 scene.graph.update(frame_to='Vagkant', frame_from=scene.graph.base_frame)
-VALT = valtbart.Samling()   # vältbart (lyktstolpar, kontaktledning): glb-gruppen Valtbart
 vagkant.Vagkant(roads, MARK.korsningar, feat.get('vagpunkter', []), h, np.load(str(WORK / 'h_raw.npy')).astype(np.float64),
                 sample, to_world, add_merged, mat, valt=VALT, overgangar=MARK.overgangar, o_nosar=VY.o_nosar,
                 mly=mapillary_objekt.MlyObjekt(WORK.parent / 'data'),   # verkliga lyktor och skyltar

@@ -67,6 +67,17 @@ const ROAD_FORD_MAX_M: float = 0.8
 ## footpath embankment a tank slides off (Tinnerbäcken, Vidingsjö XL), so it is water; car roads over
 ## culverts are wider and stay open.
 const CROSSING_MIN_WIDTH_M: float = 5.0
+## A water cell (land cover, not the sea) whose lake/river water is nowhere deeper than this over the
+## ground at its sample points, and not steep, is a ford: wetland (dear, passable), not water, and the
+## widening of streams leaves it open. Tinnerbäcken by Söderleden (Vidingsjö XL) was filled to a flat
+## U at 0.4-0.6 m (geodata overfarter.json) so bots can cross when wrecks block the bridge.
+const SHALLOW_FORD_MAX_M: float = 0.6
+## Only a ford of at least this many touching shallow cells counts: single shallow cells scattered in
+## streams and on lake shores stay water, so a stream isn't opened through a gap with unknown banks.
+const SHALLOW_FORD_MIN_CELLS: int = 6
+## Shallow cells this many cells apart (or nearer) belong to one ford: a stream's land cover has gaps
+## (Tinnerbäcken north of the bridge: one dry cell split the ford in 4 + 2).
+const SHALLOW_FORD_REACH: int = 2
 const CROSSING_TOP_SLACK_M: float = 0.5
 const LANDCOVER_PATHS: Array[String] = ["res://geodata/%s/out/landcover_index.png",
 		"res://geodata/out/landcover_index.png"]
@@ -106,6 +117,53 @@ func _crossing_width(terrain_data: Object, centre: Vector3, axis: Vector3) -> fl
 	while hi < hs.size() - 1 and hs[hi + 1] >= hs[top] - CROSSING_TOP_SLACK_M:
 		hi += 1
 	return (hi - lo) * 0.5
+
+
+## Turns shallow clusters under SHALLOW_FORD_MIN_CELLS back into water (marks 1: WET was added,
+## 2: the land cover had it) and clears their marks; returns the cells kept as fords.
+func _keep_big_fords(grid: TacticalGridData, shallow: PackedByteArray) -> int:
+	var seen := PackedByteArray()
+	seen.resize(shallow.size())
+	var kept: int = 0
+	for start: int in shallow.size():
+		if shallow[start] == 0 or seen[start] == 1:
+			continue
+		var cluster: PackedInt32Array = [start]
+		seen[start] = 1
+		var k: int = 0
+		while k < cluster.size():
+			var i: int = cluster[k]
+			k += 1
+			var c := Vector2i(i % grid.width, i / grid.width)
+			for dz: int in range(-SHALLOW_FORD_REACH, SHALLOW_FORD_REACH + 1):
+				for dx: int in range(-SHALLOW_FORD_REACH, SHALLOW_FORD_REACH + 1):
+					var nb := Vector2i(c.x + dx, c.y + dz)
+					if not grid.has_cell(nb):
+						continue
+					var ni: int = grid.index_of(nb)
+					if shallow[ni] != 0 and seen[ni] == 0:
+						seen[ni] = 1
+						cluster.append(ni)
+		if cluster.size() >= SHALLOW_FORD_MIN_CELLS:
+			kept += cluster.size()
+			continue
+		for i: int in cluster:
+			var f: int = grid.flags[i] | TacticalGridData.WATER
+			if shallow[i] == 1:
+				f &= ~TacticalGridData.WET
+			grid.flags[i] = f
+			shallow[i] = 0
+	return kept
+
+
+## True when the lake/river levels know water at any of the cell's sample points (a water cell
+## of the land cover with no level, e.g. a pond the levels miss, is not called shallow).
+func _any_water_here(water: GroundCoverData, p: Vector3) -> bool:
+	for dx: float in DECK_SAMPLES_M:
+		for dz: float in DECK_SAMPLES_M:
+			if not is_nan(water.water_level_at(Vector3(p.x + dx, 0.0, p.z + dz))):
+				return true
+	return false
 
 
 ## Deepest lake/river water over the ground at the cell's deck sample points (0 on land).
@@ -152,6 +210,8 @@ func _run() -> void:
 	var landcover: Image = _load_landcover()
 	var water_data: GroundCoverData = GroundCoverData.find_for_scene(scene)
 	var fords: int = 0
+	var shallow := PackedByteArray()
+	shallow.resize(grid.width * grid.height)
 	var bridges := PackedByteArray()
 	bridges.resize(n)
 	var house_box := BoxShape3D.new()
@@ -203,6 +263,12 @@ func _run() -> void:
 			if _has_cover(space, p):
 				f |= TacticalGridData.CONCEALED
 			f |= lc
+			if is_nan(deck) and f & TacticalGridData.WATER and not f & (TacticalGridData.STEEP
+					| TacticalGridData.ROAD) and h > SEA_LEVEL_M and water_data != null \
+					and _deepest_water(water_data, terrain_data, p) <= SHALLOW_FORD_MAX_M \
+					and _any_water_here(water_data, p):
+				shallow[grid.index_of(c)] = 2 if f & TacticalGridData.WET else 1
+				f = (f & ~TacticalGridData.WATER) | TacticalGridData.WET
 			if is_nan(deck) and f & TacticalGridData.ROAD and water_data != null \
 					and _deepest_water(water_data, terrain_data, p) > ROAD_FORD_MAX_M:
 				f = (f & ~TacticalGridData.ROAD) | TacticalGridData.WATER
@@ -250,6 +316,7 @@ func _run() -> void:
 	var bridge_cells: int = 0
 	for b: int in bridges:
 		bridge_cells += b
+	print("shallow water cells (fords, wetland): ", _keep_big_fords(grid, shallow))
 	print("bridge deck cells: ", bridge_cells, ", road cells in deep water (fords) closed: ", fords)
 	# Streams and lake shores: widen water into its side neighbours (not across roads,
 	# where culverts and bridges are), so a diagonal stream is a closed line.
@@ -258,7 +325,7 @@ func _run() -> void:
 		for cx: int in grid.width:
 			var c := Vector2i(cx, cz)
 			var f: int = grid.flags[grid.index_of(c)]
-			if f & (TacticalGridData.WATER | TacticalGridData.ROAD):
+			if f & (TacticalGridData.WATER | TacticalGridData.ROAD) or shallow[grid.index_of(c)] == 1:
 				continue
 			for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 				var nb: Vector2i = c + d

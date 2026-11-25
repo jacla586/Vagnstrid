@@ -9,8 +9,9 @@ extends Resource
 @export var check_hz: float = 10.0
 ## A prop is hit when its foot is this close to the hull's footprint (m)...
 @export var tank_margin_m: float = 0.3
-## ...plus this much for wide kinds (kind name prefix -> m), e.g. bus shelters (3.3 m long).
-@export var kind_reach_m: Dictionary = {"Vaderskydd": 1.3}
+## ...plus this much for wide kinds (kind name prefix -> m), e.g. bus shelters (3.3 m long) and
+## bridge railing pieces (~2 m, foot in the middle; geodata broar.py).
+@export var kind_reach_m: Dictionary = {"Vaderskydd": 1.3, "Brorack": 0.9}
 ## Toppling: time to fall (angle grows as t²) and the angle it ends at (deg).
 @export var fall_time_s: float = 1.3
 @export var fallen_angle_deg: float = 86.0

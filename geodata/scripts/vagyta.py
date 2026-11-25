@@ -14,6 +14,7 @@ vägens lyft (broar.lyft). Brodäck (och vägar över tunnlar) ritas som förut 
 import math
 
 import numpy as np
+from scipy import ndimage as ndi
 import shapely
 import trimesh
 from shapely.geometry import Point, Polygon
@@ -51,7 +52,12 @@ TROTTOAR_YTTER_M = 0.12   # trottoarens ytterkant över marken (fall utåt)
 BUSSFICKA_B_M = 3.0       # busshållplatsficka (OSM bus_bay=right/left/both på vägen): bredd utanför kanten
 BUSSFICKA_KIL_M = 15.0    # avsmalning i varje ände (kortare vägar: en tredjedel var)    # spärrområdet slutar så långt från en anslutande gata          # där en GC-väg korsar mittremsan blir den en refug (fylls inte)         # smalare mittremsa mellan två körbanor med samma namn: asfalt (målad refug)         # ingen rundning i korsningar så nära ett däck (olika nivåer)
 CELL_M = 2.0              # trianguleringens rutor (terrängens hörnavstånd)
-BIL_CELL_M = 4.0          # bilvägarna: terrängen under är planad efter profilen, glesare räcker
+BIL_CELL_M = 4.0          # bilvägarna: terrängen under är planad efter profilen, glesare räcker...
+# ...utom där ytan går utanför det planade bandet (korsningsrundningar och trottoarer vid en ravinkant,
+# Vallastaden i road_to_science): en ruta vars mitt eller kantmitter ligger mer än OJAMN_M från hörnens plan
+# delas i CELL_M-rutor (och grannarna med, så att skarven hamnar där marken är jämn); annars spände en 4 m-triangel
+# fritt över slänten och asfalten svävade.
+OJAMN_M = 0.08
 RUTA_M = 250.0            # som step3:s MERGE_TILE
 HW_STEG = 0.1             # bredden kvantiseras för buffringen
 ENKEL_UV = 50.0           # lage_uv: enkelriktade körbanor får halvbredden + detta (shadern vet då körfälten)
@@ -669,7 +675,11 @@ class Vagyta:
         X, Y = np.meshgrid(xs, ys)
         rutor = shapely.box(X.ravel(), Y.ravel(), X.ravel() + CELL_M, Y.ravel() + CELL_M)
         shapely.prepare(poly)
-        rutor = rutor[shapely.intersects(poly, rutor)]
+        traff = shapely.intersects(poly, rutor)
+        if CELL_M > globals()['CELL_M'] + 1e-6 and traff.any():
+            rutor = self._dela_ojamna(X, Y, traff, h, sample, CELL_M)
+        else:
+            rutor = rutor[traff]
         bitar = shapely.intersection(rutor, poly)
         bitar = shapely.get_parts(bitar[~shapely.is_empty(bitar)])
         bitar = bitar[shapely.get_type_id(bitar) == 3]
@@ -690,6 +700,32 @@ class Vagyta:
         if uv_fn is not None:
             msh.metadata['uv'] = uv_fn(nyck)
         return msh
+
+    def _dela_ojamna(self, X, Y, traff, h, sample, cell):
+        """Rutorna (nedre vänstra hörn X, Y; de som träffar ytan i `traff`) som boxar, ojämna delade i fyra."""
+        fin = globals()['CELL_M']
+        x0, y0 = X.ravel(), Y.ravel()
+        m = cell / 2
+        # höjder i hörn, kantmitter och mitt; avvikelse från det bilinjära planet genom hörnen
+        hx = [x0, x0 + m, x0 + cell]
+        hy = [y0, y0 + m, y0 + cell]
+        z = {(a, b): sample(h, hx[a], hy[b]) for a in range(3) for b in range(3)}
+        avv = np.zeros(len(x0))
+        for a, b in ((1, 0), (1, 2), (0, 1), (2, 1), (1, 1)):
+            plan = (z[(0, 0)] * (2 - a) * (2 - b) + z[(2, 0)] * a * (2 - b) +
+                    z[(0, 2)] * (2 - a) * b + z[(2, 2)] * a * b) / 4.0
+            avv = np.maximum(avv, np.abs(z[(a, b)] - plan))
+        ojamn = (avv > OJAMN_M).reshape(X.shape)
+        ojamn = ndi.binary_dilation(ojamn, iterations=1) if ojamn.any() else ojamn
+        oj = ojamn.ravel() & traff
+        hela = traff & ~oj
+        delar = [shapely.box(x0[hela], y0[hela], x0[hela] + cell, y0[hela] + cell)]
+        n_ = int(round(cell / fin))
+        for i in range(n_):
+            for j in range(n_):
+                xa, ya = x0[oj] + i * fin, y0[oj] + j * fin
+                delar.append(shapely.box(xa, ya, xa + fin, ya + fin))
+        return np.concatenate(delar)
 
     def lage_uv(self, P):
         """Vägytans läge per punkt (för asfaltens shader, hjulspåren): (v, hw) med v = avstånd åt vänster

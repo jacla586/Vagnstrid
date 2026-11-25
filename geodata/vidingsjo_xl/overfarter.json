@@ -1,0 +1,61 @@
+{
+ "anm": "Diken som stridsvagnar ska kunna köra över (scripts/overfarter.py, step3). Tinnerbäcken 125 m åt varje håll från Söderledens bro (58.392028, 15.637918): bron fylldes av vrak och bäckens V-fåra (1,2 m vatten, branta kanter) gick knappt att ta sig över. Fåran fylls till 0,4-0,6 m vatten och dalen jämnas ut, utan att plattas till.",
+ "diken": [
+  {
+   "namn": "Tinnerbäcken vid Söderleden",
+   "linje_sweref": [
+    [
+     537275.8,
+     6472418.3
+    ],
+    [
+     537269.0,
+     6472442.9
+    ],
+    [
+     537268.2,
+     6472460.9
+    ],
+    [
+     537270.9,
+     6472469.2
+    ],
+    [
+     537294.8,
+     6472508.3
+    ],
+    [
+     537297.5,
+     6472515.5
+    ],
+    [
+     537298.9,
+     6472524.8
+    ],
+    [
+     537292.8,
+     6472581.1
+    ],
+    [
+     537294.5,
+     6472601.6
+    ],
+    [
+     537297.4,
+     6472618.7
+    ],
+    [
+     537311.2,
+     6472656.5
+    ]
+   ],
+   "botten_halv_m": 5.0,
+   "lyft_m": 0.8,
+   "slant_grader": 12.0,
+   "avsmalning_m": 25.0,
+   "utjamna_m": 9.0,
+   "utjamna_bredd_m": 40.0,
+   "min_vattendjup_m": 0.4
+  }
+ ]
+}

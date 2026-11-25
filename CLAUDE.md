@@ -317,7 +317,8 @@ shows on the minimap. This is what we test first.
   `valtbart.py`: templates `Mall_<kind>` + one empty node `<kind>__<key>` per prop) = street lamps,
   catenary masts (no collision any more), road signs (`Skylt_<face>`, bus stops with a name
   `Hallplats_<n>`, place names `Ortnamn_<n>`), reflector posts, guard rail pieces (`Racke`, 2 m,
-  scaled along x), bus shelters (`Vaderskydd`, wider reach `kind_reach_m`) and traffic lights
+  scaled along x), bridge railings (`Brorack`, `Brorack_gc`, `Brorack_tra[_gc]`, ~2 m pieces with the foot in
+  the middle, `kind_reach_m` 0.9, and `*_stolpe` end posts; geodata `broar.py` `_valtbart_racke`), bus shelters (`Vaderskydd`, wider reach `kind_reach_m`) and traffic lights
   (`Trafikljus`, `Trafikljus_gang` with a pedestrian light and push button, `Trafikljus_gangstolpe` a
   pedestrian post across the road from it; a repeater `Trafikljus` on the junction's far side for
   every approach; key `<n>_<phase>_<axis>`),
@@ -373,7 +374,10 @@ shows on the minimap. This is what we test first.
   again. Reversing steers like a car (steering flipped in PlayerController). Acceleration and
   braking pitch the hull by design only (track forces act at the centre of mass' height):
   the effort as a share of the tank's own limit times `pitch_rock_accel` ×
-  `pitch_rock_lever_m`, plus a kick while the effort changes (`pitch_rock_kick_*`); the
+  `pitch_rock_lever_m`, plus a kick while the effort changes (`pitch_rock_kick_*`). Letting go of W rolls out
+  (`TankCommand.coast`, set by PlayerController only, net flag `FLAG_COAST`: throttle 0 slows at
+  `TankData.coast_deceleration` 1.2 m/s², rocking by its share of the brakes; S brakes; bots stop as before), so
+  tapping W to hold a pace isn't full throttle and full brakes in turn; the
   builder scales with mass (`rock_mass_exponent`). Physics interpolation is on: cameras
   read `*_interpolated` poses and are themselves excluded, anything moved in `_process`
   sets its mode OFF, teleports call `reset_physics_interpolation()`, puppets move in
@@ -414,9 +418,12 @@ shows on the minimap. This is what we test first.
   fire, else the last penetration) with a chase camera (`PlayerViews.set_killcam` hides
   the optics), any key skips; then `KillcamPanel` shows the hit picture (English text;
   the tank's own model rendered top and side in two small SubViewports, turret and gun as
-  they were, all hits this life drawn on it) until the respawn; behind it (and after any knock-out without a
-  replay) `Killcam._spectate` follows the nearest living teammate from behind its turret (`KillcamData` "Spectate";
-  `fire` goes to the next), or holds still over the own wreck when none is left. Abandon: none.
+  they were, all hits this life drawn on it) for `KillcamData.panel_s` (7 s, `Killcam.panel_shown`); behind it and after it (and after
+  any knock-out without a replay) `Killcam._spectate` follows the nearest living teammate from behind its turret (`KillcamData` "Spectate";
+  `fire` goes to the next), or holds still over the own wreck when none is left. The followed tank is
+  `PlayerViews.set_spectated`: the minimap centres on it and every map draws it as the own (`MapView.get_focus_tank`,
+  view cone from the spectate camera), the own wreck as a teammate's cross; `SpectateLabel` (HUD, bottom) says
+  "SPECTATING <name> – <type>" (`Tank.get_player_name`: a player's name, else "Bot") and "click: next teammate". Abandon: none.
 - Smoke: `TankCommand.smoke` (key X; bots when too exposed, see below) fires a salvo,
   `TankData.smoke_salvos` (3) per life, `smoke_cooldown_s` (20) apart for players and bots: `smoke_clouds_per_salvo` `SmokeCloud`s
   ahead of the turret. Clients send it (and abandon) by `rpc_tank_action`; the host sends the
@@ -563,7 +570,10 @@ shows on the minimap. This is what we test first.
   (`use_player_config`) uses the choice offline; online the host takes the key from `rpc_deploy`
   and spawns carry a spec (`TankBuilder.spec_of`/`apply_spec`: "cfg:<key>"
   or a TankData path). KotH gives placed bot tanks random `KothData.bot_configs`
-  (`KothMode._give_bots_configs`, before tanks are ready). Line-ups (three tanks within
+  (`KothMode._give_bots_configs`, before tanks are ready). Every bot pick (KotH, ThunderRoad, Free fight waves and
+  allies) goes through `BotTankPick.pick`: at most `ChassisData.bot_max_share` of a team's tanks may be bots on a
+  chassis (rounded, at least 1; heavy/KV-2 0.2: 1 in 4-7, 2 in 8-12, 3 in 13-17, 4 in 20); players aren't limited
+  and don't count. Line-ups (three tanks within
   a budget) come later; cost is already computed.
 - The player's tank uses `data/tanks/player_medium.tres` (set in `player_rig.tscn`)
   unless a garage tank is chosen; a map's own bot tanks (`test_medium.tres` data) drive a random
@@ -581,7 +591,7 @@ shows on the minimap. This is what we test first.
   found (road neighbours tried in turn): Söderleden's bridge over Tinnerbäcken (Vidingsjö XL) had one deck cell of
   five, the main road was cut there and bots jammed on footpath crossings (2026-11-24). Road cells (land cover,
   not decks) in water deeper than `ROAD_FORD_MAX_M` (0.8 m) are water, and road cells with water on two opposite
-  sides whose flat top across is narrower than `CROSSING_MIN_WIDTH_M` (5 m, a footpath embankment) too. Rebaked
+  sides whose flat top across is narrower than `CROSSING_MIN_WIDTH_M` (5 m, a footpath embankment) too. Shallow fords: water cells (land cover) nowhere deeper than `SHALLOW_FORD_MAX_M` (0.6 m) and not steep are wetland (dear, passable) and not widened, if at least `SHALLOW_FORD_MIN_CELLS` (6) lie within `SHALLOW_FORD_REACH` (2) cells of each other (single shallow cells stay water): Tinnerbäcken by Söderleden was filled shallow for it (geodata `overfarter.json`, 2026-11-24; bots couldn't cross when wrecks filled the bridge), and a creek north of Garnisonen opened too. Rebaked
   with these so far: vidingsjo_xl only (`tools/ai/grid_probe.gd -- <map> x,z ... [line=x0,z0:x1,z1:n]` prints a
   point's grid flags, ground, water depth and what a ray down hits). Open areas under `TacticalMap.POCKET_MAX_CELLS` (150) cells
   that connect to nothing (courtyards walled in by houses, e.g. B-huset on campus) are closed
@@ -984,7 +994,8 @@ there and the break is over) and on the match's win/loss. Points
 - Layers (named in project settings): 1 `world` (terrain, hulls, tree trunks),
   2 `vehicles` (tanks, also on 1; watched by tree push triggers),
   3 `commander_hitbox` (exposed commander, Area3D), 5 `vision_blocker` (bushes,
-  canopies, Area3D). Anything that "sees" uses `Vision.has_line_of_sight()`;
+  canopies, Area3D), 6 `smoke` (`SmokeCloud`, also on 5: the solid ray of a see-through look,
+  `Vision.SIGHT_THROUGH_MASK`, stops at it, so infantry never see through smoke). Anything that "sees" uses `Vision.has_line_of_sight()`;
   shells and fragments use `Vision.SHOT_MASK` and pass through vision blockers.
 - Terrain: Terrain3D v1.1.0 in `addons/terrain_3d` (desktop binaries only). Maps
   must use collision mode Full / Game (shells and nests act far from the camera).
@@ -1038,7 +1049,7 @@ there and the break is over) and on the match's win/loss. Points
   (rewrites `terrain/<name>/`, copies object glb, trees and tree models to
   `assets/maps/<name>/`). `tools/build_geodata_scene.gd` made each scene once; don't
   rerun it on a scene that has been edited. Buildings get collision via
-  `scripts/world/mesh_collision.gd` (groups starting with `Kollision` are collision only, hidden: the invisible walls along bridge railings). Laser trees (`scripts/world/tree_field.gd`,
+  `scripts/world/mesh_collision.gd` (groups starting with `Kollision` are collision only, hidden: the invisible walls along bridge railings in maps built before 2026-11-24; since then railings are toppleable `Brorack*` pieces in `Valtbart`, no collision, only the 0.22 m kerb beam: tanks stuck in the walls). Laser trees (`scripts/world/tree_field.gd`,
   `@tool`, per-instance colour, models and species from the info file) follow the `BreakableTree` rules without nodes.
   Drawing: each 500 m data chunk is split into `draw_cell_m` (250 m) draw cells; the tree
   meshes get detail levels at load (`ImporterMesh.generate_lods`, lost when `_mesh_from`
