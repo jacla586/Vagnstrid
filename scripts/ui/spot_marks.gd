@@ -117,7 +117,8 @@ func _connect_to_mates() -> void:
 	if NetRole.is_online() or _tank == null:
 		return
 	for id: int in _mates.keys():
-		var old: Tank = _mates[id]
+		var old_v: Variant = _mates[id]
+		var old: Tank = (old_v as Tank) if is_instance_valid(old_v) else null
 		if not is_instance_valid(old):
 			_mates.erase(id)
 		elif old.team != _tank.team:

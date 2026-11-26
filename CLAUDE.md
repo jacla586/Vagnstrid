@@ -732,7 +732,9 @@ shows on the minimap. This is what we test first.
 - King of the Hill (`KothMode`, node `KothZone` in a scenario; its Marker3D children
   are the spots where zones may open; rules in `data/modes/koth_default.tres`,
   `KothData`). Zones one at a time: open at full size, hold, shrink while scoring
-  faster; a zone closes when it has paid out its point budget (zone scoring and kill
+  faster (also as they pay out: fully shrunk at `KothData.shrink_at_budget_share` (0.75) of the budget, whichever of
+  time and budget is further along, 2026-11-26: before, busy zones ran dry at ~15 % shrunk; `koth_match.gd -- koth=field:value`
+  overrides KothData and prints a ZONE line per zone); a zone closes when it has paid out its point budget (zone scoring and kill
   bonuses) or at its lifetime; the next spot shows on the map during the gap. First to
   `score_to_win` wins (`zone_count` 0 = no zone limit). Never
   contested: each team scores per own tank in the zone (capped), the team with most

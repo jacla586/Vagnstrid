@@ -63,7 +63,8 @@ func _route_ahead_of(position: Vector3) -> Array[Vector3]:
 
 
 func _on_contact(enemy: Tank, at: Vector3, reporter: BotController) -> void:
-	for member: BotController in members:
+	for member_v: Variant in members:
+		var member: BotController = (member_v as BotController) if is_instance_valid(member_v) else null
 		if member != reporter and is_instance_valid(member) and not member.tank.is_knocked_out():
 			member.share_contact(enemy, at)
 	if not _deployed:
@@ -75,7 +76,8 @@ func _deploy() -> void:
 	_deployed = true
 	var alive: Array[BotController] = []
 	var centre := Vector3.ZERO
-	for member: BotController in members:
+	for member_v: Variant in members:
+		var member: BotController = (member_v as BotController) if is_instance_valid(member_v) else null
 		if is_instance_valid(member) and not member.tank.is_knocked_out():
 			alive.append(member)
 			centre += member.tank.global_position

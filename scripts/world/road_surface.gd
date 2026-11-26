@@ -32,7 +32,8 @@ static func on_road(tree: SceneTree, ground: Vector3) -> Vector3:
 				or ground.z < aabb.position.z or ground.z > aabb.end.z \
 				or ground.y + MAX_ABOVE_M < aabb.position.y or ground.y - MAX_BELOW_M > aabb.end.y:
 			continue
-		var mi: MeshInstance3D = entry[1]
+		var mi_v: Variant = entry[1]
+		var mi: MeshInstance3D = (mi_v as MeshInstance3D) if is_instance_valid(mi_v) else null
 		if not is_instance_valid(mi):
 			continue
 		var faces: PackedVector3Array = _faces_of(mi)

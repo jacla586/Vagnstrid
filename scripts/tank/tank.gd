@@ -92,6 +92,14 @@ signal turret_tossed(velocity: Vector3, spin: Vector3)
 ## now (TankSwitch, NetGame).
 signal repaired
 
+## Own client: host and local reload countdowns this far apart (s) mean a new reload, take the host's.
+const NET_COUNTDOWN_RESYNC_S: float = 0.5
+## Own client: the host's MG rounds this many above the local count = a new belt.
+const NET_MG_ROUNDS_RESYNC: int = 20
+## Own client: how old the host's turret pose is when it arrives (NetPuppets' delay plus
+## travel, s). The predicted turret runs that far ahead while it traverses; only more than
+## that (plus 3°) is a real drift to correct.
+const NET_TURRET_SLACK_S: float = 0.35
 ## Rounds of at least this calibre count as a threat to bots (shell_threat); MG and
 ## rifle bullets don't (mm).
 const THREAT_MIN_CALIBER_MM: float = 20.0
@@ -541,7 +549,8 @@ func _add_stowage(m: Dictionary) -> void:
 
 ## Painted tactical numbers on the turret's side plates (TankModel "number_spots").
 func _add_number_labels(spots: Array) -> void:
-	for old: Label3D in number_labels:
+	for old_v: Variant in number_labels:
+		var old: Label3D = (old_v as Label3D) if is_instance_valid(old_v) else null
 		if is_instance_valid(old):
 			old.free()
 	number_labels.clear()
@@ -1257,12 +1266,25 @@ func toss_turret(velocity: Vector3, spin: Vector3) -> void:
 	body.angular_velocity = spin
 	# Back on the hull it may land on it. At rest it is a wreck tanks can push (Wreck:
 	# damped, sleeping when still; clients follow the host from then on).
-	get_tree().create_timer(TURRET_WRECK_EXCEPTION_S).timeout.connect(func() -> void:
-		if is_instance_valid(body) and is_instance_valid(self):
-			body.remove_collision_exception_with(self))
-	get_tree().create_timer(TURRET_WRECK_FREEZE_S).timeout.connect(func() -> void:
-		if is_instance_valid(body):
-			body.settle())
+	# Scene-tree timers outlive the map: they carry ids, not the objects (a lambda holding
+	# the turret ran after a map change: "Lambda capture at index 0 was freed").
+	get_tree().create_timer(TURRET_WRECK_EXCEPTION_S).timeout.connect(
+			Tank._end_toss_exception.bind(body.get_instance_id(), get_instance_id()))
+	get_tree().create_timer(TURRET_WRECK_FREEZE_S).timeout.connect(
+			Tank._settle_toss.bind(body.get_instance_id()))
+
+
+static func _end_toss_exception(body_id: int, tank_id: int) -> void:
+	var body := instance_from_id(body_id) as PhysicsBody3D
+	var tank := instance_from_id(tank_id) as PhysicsBody3D
+	if body != null and tank != null:
+		body.remove_collision_exception_with(tank)
+
+
+static func _settle_toss(body_id: int) -> void:
+	var body: Object = instance_from_id(body_id)
+	if body != null and body.has_method(&"settle"):
+		body.call(&"settle")
 
 
 ## Leaves a burnt-out copy of the tank where it stands, for the rest of the match: solid
@@ -2099,9 +2121,15 @@ func net_set_pose(xform: Transform3D, turret_yaw: float, gun_pitch: float, hatch
 			_turret.rotation.y = turret_yaw
 			_gun_pivot.rotation.x = gun_pitch
 		else:
-			if absf(wrapf(turret_yaw - _turret.rotation.y, -PI, PI)) > deg_to_rad(3.0):
+			# The host's pose is NET_TURRET_SLACK_S old: while the turret traverses the
+			# prediction is that far ahead, and pulling it back (it was 3° flat: 20°/s and
+			# more traverse got there) made the turret stutter.
+			var yaw_slack: float = deg_to_rad(3.0 + data.turret_traverse_speed_deg
+					* _damage.traverse_factor() * NET_TURRET_SLACK_S)
+			var pitch_slack: float = deg_to_rad(3.0 + data.gun_elevation_speed_deg * NET_TURRET_SLACK_S)
+			if absf(wrapf(turret_yaw - _turret.rotation.y, -PI, PI)) > yaw_slack:
 				_turret.rotation.y = lerp_angle(_turret.rotation.y, turret_yaw, 0.2)
-			if absf(gun_pitch - _gun_pivot.rotation.x) > deg_to_rad(3.0):
+			if absf(gun_pitch - _gun_pivot.rotation.x) > pitch_slack:
 				_gun_pivot.rotation.x = lerpf(_gun_pivot.rotation.x, gun_pitch, 0.2)
 		return
 	_turret.rotation.y = turret_yaw
@@ -2133,11 +2161,14 @@ func net_set_status(s: TankNetState) -> void:
 	elif not wounded:
 		_commander_wound_remaining = 0.0
 	if s.has(TankNetState.FLAG_OWNER_DATA):
-		_reload_remaining = s.reload_s
+		_reload_remaining = _net_countdown(_reload_remaining, s.reload_s)
 		_ammo_index = s.ammo_index
 		for i: int in 2:
-			_mg_rounds[i] = s.mg_rounds[i]
-			_mg_reload[i] = s.mg_reload[i]
+			# Counted here too while firing: the host's is older (a refill is a jump up).
+			if s.mg_rounds[i] < 0 or _mg_rounds[i] < 0 or s.mg_rounds[i] < _mg_rounds[i] \
+					or s.mg_rounds[i] > _mg_rounds[i] + NET_MG_ROUNDS_RESYNC:
+				_mg_rounds[i] = s.mg_rounds[i]
+			_mg_reload[i] = _net_countdown(_mg_reload[i], s.mg_reload[i])
 		_spot_cooldown_remaining = s.spot_cooldown_s
 		if wounded:
 			_commander_wound_remaining = s.wound_s
@@ -2191,6 +2222,16 @@ func _puppet_process(delta: float) -> void:
 	_spot_cooldown_remaining = maxf(_spot_cooldown_remaining - delta, 0.0)
 	if not _knocked_out:
 		_update_mg(delta)   # cosmetic bullets: own command, or the host's "firing" flag
+
+
+## Own client: a countdown it runs itself (reloads) against the host's value. The host's is
+## a packet's travel old and rounded up to tenths, so taking it as it comes set the gunner's
+## reload circle back a little every snapshot. Kept: the local count, unless the host is
+## further along or they differ by more than NET_COUNTDOWN_RESYNC_S (a reload started).
+func _net_countdown(local: float, host: float) -> float:
+	if absf(host - local) > NET_COUNTDOWN_RESYNC_S:
+		return host
+	return minf(local, host)
 
 
 func _fire_bullet(mg: MachineGunData, muzzle: Marker3D, roof: bool) -> void:

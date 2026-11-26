@@ -9,7 +9,6 @@ const INTERP_DELAY_S: float = 0.1
 const MAX_EXTRAPOLATE_S: float = 0.25
 const SNAP_DISTANCE_M: float = 25.0
 const KEEP: int = 30
-const HOST_TICK_S: float = 1.0 / 60.0
 
 ## net_id -> Tank
 var puppets: Dictionary = {}
@@ -17,6 +16,11 @@ var puppets: Dictionary = {}
 var _samples: Dictionary = {}
 var _clock_offset: float = INF
 var _newest_tick: int = -1
+## Seconds per host physics tick (the snapshot's tick counts them). Was a fixed 1/60 after
+## physics went to 30 Hz: host time ran at half speed, the clock offset fell ever further
+## behind and every puppet (the own hull too) was extrapolated 0.25 s on its last snapshot,
+## its rotation stepping at 20 Hz.
+var _host_tick_s: float = 1.0 / Engine.physics_ticks_per_second
 
 
 func register(tank: Tank) -> void:
@@ -32,7 +36,7 @@ func unregister(net_id: int) -> void:
 func receive(buf: StreamPeerBuffer) -> void:
 	var tick: int = buf.get_u32()
 	var count: int = buf.get_u8()
-	var host_time: float = tick * HOST_TICK_S
+	var host_time: float = tick * _host_tick_s
 	var now: float = Time.get_ticks_msec() / 1000.0
 	# Offset local - host: the smallest seen (least delayed packet), drifting slowly up.
 	var offset: float = now - host_time
@@ -51,7 +55,8 @@ func receive(buf: StreamPeerBuffer) -> void:
 		if list.size() > KEEP:
 			list.pop_front()
 		if newest:
-			var tank: Tank = puppets[s.net_id]
+			var tank_v: Variant = puppets[s.net_id]
+			var tank: Tank = (tank_v as Tank) if is_instance_valid(tank_v) else null
 			if is_instance_valid(tank):
 				tank.net_set_status(s)
 
@@ -63,7 +68,8 @@ func _physics_process(_delta: float) -> void:
 		return
 	var render_t: float = Time.get_ticks_msec() / 1000.0 - _clock_offset - INTERP_DELAY_S
 	for net_id: int in puppets:
-		var tank: Tank = puppets[net_id]
+		var tank_v: Variant = puppets[net_id]
+		var tank: Tank = (tank_v as Tank) if is_instance_valid(tank_v) else null
 		var list: Array = _samples[net_id]
 		if not is_instance_valid(tank) or list.is_empty():
 			continue

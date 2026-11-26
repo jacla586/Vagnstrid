@@ -187,7 +187,8 @@ func _apply() -> void:
 	var dust_factor: float = weather.dust_factor if weather != null else 1.0
 	var dust: float = minf(DUST_START + _driven_m * DUST_PER_M * dust_factor, DUST_MAX)
 	var wet: float = weather.rain_intensity if weather != null else 0.0
-	for mi: MeshInstance3D in _meshes:
+	for mi_v: Variant in _meshes:
+		var mi: MeshInstance3D = (mi_v as MeshInstance3D) if is_instance_valid(mi_v) else null
 		if is_instance_valid(mi):
 			mi.set_instance_shader_parameter(&"dust_amount", dust)
 			mi.set_instance_shader_parameter(&"wetness", wet)

@@ -268,6 +268,9 @@ form.settings .checks label { display: flex; gap: 6px; align-items: center; colo
       <label>Result shown (s)<input type="number" name="result_s" min="1" step="1"></label>
       <label>Vote time (s)<input type="number" name="vote_s" min="3" step="1"></label>
       <label>Longest match (min)<input type="number" name="max_match_min" min="1" step="1"></label>
+      <label>KotH: zones per match (0 = until score)<input type="number" name="koth_zones" min="0" max="20" step="1"></label>
+      <label>KotH: zone time (min)<input type="number" name="koth_zone_min" min="1" max="30" step="0.5"></label>
+      <label>KotH: score to win (0 = half of all zones' points)<input type="number" name="koth_score" min="0" step="50"></label>
       <div class="wide" style="grid-column:1/-1">
         <div class="muted" style="font-size:12px;margin-bottom:4px">Maps in the vote (none ticked = all)</div>
         <div class="checks" id="cfg-maps"></div>
@@ -467,7 +470,7 @@ function setState(online, text) { $("#dot").className = "dot " + (online ? "on" 
 function renderStatus(st) {
   status = st;
   const m = st.mode || {};
-  const phase = { playing: "Playing", result: "Result", vote: "Voting", idle: "Waiting for players" }[st.phase] || st.phase;
+  const phase = { playing: "Playing", result: "Result", vote: "Voting", reveal: "Next map", loading: "Loading map", idle: "Waiting for players" }[st.phase] || st.phase;
   setState(true, `${phase} · ${st.label || st.scenario}`);
   const left = st.phase === "playing" ? (m.kind === "thunder" ? m.time_left_s : st.phase_left_s) : st.phase_left_s;
   $("#live-tiles").replaceChildren(
@@ -604,6 +607,7 @@ async function loadConfig() {
   f.team_size.value = c.team_size; f.team_size.max = r.max_team_size;
   f.weather.replaceChildren(...r.weathers.map((w) => el("option", { value: w, selected: w === c.weather }, w)));
   f.result_s.value = c.result_s; f.vote_s.value = c.vote_s; f.max_match_min.value = Math.round(c.max_match_s / 60);
+  f.koth_zones.value = c.koth_zones; f.koth_zone_min.value = c.koth_zone_min; f.koth_score.value = c.koth_score;
   $("#cfg-maps").replaceChildren(...r.scenarios_available.map((sc) => el("label", {},
     el("input", { type: "checkbox", value: sc.name, checked: c.scenarios.includes(sc.name) }), sc.label)));
   const cur = $("#map-select").value;
@@ -616,6 +620,7 @@ $("#cfg-form").addEventListener("submit", async (ev) => {
   const f = ev.target;
   const values = { team_size: +f.team_size.value, weather: f.weather.value, result_s: +f.result_s.value,
     vote_s: +f.vote_s.value, max_match_s: +f.max_match_min.value * 60,
+    koth_zones: +f.koth_zones.value, koth_zone_min: +f.koth_zone_min.value, koth_score: +f.koth_score.value,
     scenarios: [...document.querySelectorAll("#cfg-maps input:checked")].map((i) => i.value) };
   const r = await api("/api/config", { values });
   $("#cfg-msg").textContent = r.ok ? "Saved: from the next match." : "Not saved: " + (r.refused ? Object.values(r.refused).join("; ") : r.error);

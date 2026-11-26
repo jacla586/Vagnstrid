@@ -64,7 +64,8 @@ func _exit_tree() -> void:
 
 func _process(_delta: float) -> void:
 	if _is_end:
-		for scanner: Node in _active:
+		for scanner_v: Variant in _active:
+			var scanner: Node = (scanner_v as Node) if is_instance_valid(scanner_v) else null
 			if is_instance_valid(scanner):
 				scanner.call("scan_end")
 		_active.clear()
@@ -76,7 +77,8 @@ func _process(_delta: float) -> void:
 	_job_index.clear()
 	var i: int = 0
 	while i < _scanners.size():
-		var scanner: Node = _scanners[i]
+		var scanner_v: Variant = _scanners[i]
+		var scanner: Node = (scanner_v as Node) if is_instance_valid(scanner_v) else null
 		if not is_instance_valid(scanner):
 			_scanners.remove_at(i)
 			continue

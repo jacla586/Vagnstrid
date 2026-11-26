@@ -516,7 +516,7 @@ func apply_net_state(state: Dictionary) -> void:
 	_progress = state.get("p", _progress)
 	_contested = state.get("c", _contested)
 	_overtime = state.get("ot", _overtime)
-	_time_left = state.get("t", _time_left)
+	_time_left = NetRole.sync_clock(_time_left, state.get("t", _time_left))
 	_lives = state.get("l", _lives)
 	_wave_left = state.get("w", _wave_left)
 	var pause_left: float = state.get("pz", _pause_left)
@@ -868,12 +868,12 @@ func _update_waves(delta: float) -> void:
 ## Knocked-out attackers come back together, a life each, while lives last.
 func _wave() -> void:
 	_wave_left = data.wave_interval_s
+	# A bot removed for a joining player may still wait here: typing or erase()-ing it
+	# crashed the release build (the dedicated server, 2026-11-26). Alive.prune never reads it.
+	Alive.prune(_waiting)
 	for tank: Tank in _waiting.duplicate():
 		if _lives <= 0:
 			break
-		if not is_instance_valid(tank):
-			_waiting.erase(tank)
-			continue
 		_lives -= 1
 		_waiting.erase(tank)
 		_place(tank, _attacker_spawn(tank))
@@ -902,6 +902,22 @@ func _on_knocked_out(tank: Tank) -> void:
 			_waiting.append(tank)
 	else:
 		_def_respawn[tank] = data.defender_respawn_s
+	_forget_when_gone(tank)
+
+
+## A tank in _waiting, _def_respawn, _outside or _mark_left leaves them when it leaves the
+## tree (a bot removed for a joining player), so no list holds a freed tank (Alive).
+func _forget_when_gone(tank: Tank) -> void:
+	if not tank.has_meta(&"thunder_forget"):
+		tank.set_meta(&"thunder_forget", true)
+		tank.tree_exiting.connect(_forget.bind(tank))
+
+
+func _forget(tank: Tank) -> void:
+	_waiting.erase(tank)
+	_def_respawn.erase(tank)
+	_outside.erase(tank)
+	_mark_left.erase(tank)
 
 
 ## A knock-out counts for the killer (fire and ammo included), an assist for every other
@@ -912,7 +928,8 @@ func _on_eliminated(killer: Tank, assists: Array[Tank]) -> void:
 	if killer != null and is_instance_valid(killer):
 		_stat_add(killer, 2)
 		_points_add(killer, data.kill_points, "kill")
-	for t: Tank in assists:
+	for t_v: Variant in assists:
+		var t: Tank = (t_v as Tank) if is_instance_valid(t_v) else null
 		if is_instance_valid(t):
 			_stat_add(t, 4)
 			_points_add(t, data.assist_points, "assist")
@@ -959,6 +976,7 @@ func _check_corridors(dt: float) -> void:
 		tank.fire_blocked = paused if last_stand else true
 		var out: float = float(_outside.get(tank, 0.0)) + dt
 		_outside[tank] = out
+		_forget_when_gone(tank)
 		var mark: float = float(_mark_left.get(tank, 0.0)) - dt
 		if mark <= 0.0:
 			mark = data.retreat_mark_s if last_stand else data.outside_mark_s

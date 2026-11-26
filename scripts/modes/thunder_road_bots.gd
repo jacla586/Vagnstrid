@@ -249,6 +249,10 @@ func _adopt(bot: BotController) -> void:
 	if _bots.has(bot):
 		return
 	_bots.append(bot)
+	# Out of every list the moment it leaves the tree, whoever frees it (NetGame removes
+	# bots for joining players): a freed bot in a list crashed the release server.
+	bot.tree_exiting.connect(_bot_gone.bind(bot))
+	bot.tank.tree_exiting.connect(_bot_gone.bind(bot))
 	bot.respawn_delay_s = 0.0   # the mode brings it back
 	bot.keep_goal = _keep_inside.bind(bot)
 
@@ -362,7 +366,8 @@ func make_room(team: int) -> Tank:
 	if size <= 0 or _team_tanks(team).size() < size:
 		return null
 	var pick: BotController = null
-	for bot: BotController in _bots:
+	for bot_v: Variant in _bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.team != team:
 			continue
 		pick = bot
@@ -408,7 +413,8 @@ func _reset_all() -> void:
 	_last_assault_screen.clear()
 	_phase_cp = -1
 	var per_team: Dictionary = {}
-	for bot: BotController in _bots:
+	for bot_v: Variant in _bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
 			continue
 		_forget(bot)
@@ -423,7 +429,8 @@ func _reset_all() -> void:
 ## aren't all planned in one frame.
 func _on_ceasefire_over() -> void:
 	_regrouped.clear()
-	for bot: BotController in _bots:
+	for bot_v: Variant in _bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
 			continue
 		_forget(bot)
@@ -441,6 +448,11 @@ func _regroup(bot: BotController) -> void:
 	bot.order_path(_keep_inside(bot.tank.global_position, bot), _travel_throttle(bot), true)
 
 
+func _bot_gone(bot: BotController) -> void:
+	_bots.erase(bot)
+	_forget(bot)
+
+
 func _forget(bot: BotController) -> void:
 	for d: Dictionary in [_ordered_cp, _ordered_front, _post_s, _repost, _standing, _mine_think, _mine_front,
 			_depart, _urgent, _back_in, _ordered_out, _hold, _countering, _ordered_pushed, _entering,
@@ -451,7 +463,8 @@ func _forget(bot: BotController) -> void:
 
 
 func _on_tank_placed(tank: Tank) -> void:
-	for bot: BotController in _bots:
+	for bot_v: Variant in _bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot) and bot.tank == tank:
 			_forget(bot)
 			_urgent[bot] = true
@@ -621,9 +634,10 @@ func _give_squad_tasks(team: int, c: TeamCommander, next: int) -> void:
 		var role := ThunderRoadMode.Role.DEFEND if defending else ThunderRoadMode.Role.ATTACK
 		point = mode.point_at(s, _lane_side(team, lane) * MAIN_LANE_SHARE * mode.half_width(role))
 	var have: int = 0
-	for bot: BotController in _squad_task.keys():
+	for bot_v: Variant in _squad_task.keys():
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
-			_squad_task.erase(bot)
+			_squad_task.erase(bot_v)
 			continue
 		if bot.tank.team != team:
 			continue
@@ -677,12 +691,13 @@ func _give_squad_tasks(team: int, c: TeamCommander, next: int) -> void:
 
 ## Ends the squad tasks of `team` (-1: every team).
 func _release_squads(team: int) -> void:
-	for bot: BotController in _squad_task.keys():
+	for bot_v: Variant in _squad_task.keys():
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot) and (team < 0 or (is_instance_valid(bot.tank) and bot.tank.team == team)):
 			bot.squad_held = false
-			_squad_task.erase(bot)
+			_squad_task.erase(bot_v)
 		elif not is_instance_valid(bot):
-			_squad_task.erase(bot)
+			_squad_task.erase(bot_v)
 
 
 ## Squad tasks: the tank within this share of the squad's reach of the place; the place
@@ -697,14 +712,16 @@ const SQUAD_TASK_RADIUS_M: float = 50.0
 ## The commander's answers to threats: hunters round each sniper, a guard against each
 ## flanker (nearest suitable bots, CommanderData.hunters/guards), none twice.
 func _give_commander_tasks(team: int, c: TeamCommander) -> void:
-	for bot: BotController in _hunt.keys():
+	for bot_v: Variant in _hunt.keys():
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or _kos.clock > float(_hunt[bot][1]):
-			_hunt.erase(bot)
-			_ordered_out.erase(bot)   # back to its job: fresh orders
-	for bot: BotController in _guard.keys():
+			_hunt.erase(bot_v)
+			_ordered_out.erase(bot_v)   # back to its job: fresh orders
+	for bot_v: Variant in _guard.keys():
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or _kos.clock > float(_guard[bot][1]):
-			_guard.erase(bot)
-			_ordered_out.erase(bot)
+			_guard.erase(bot_v)
+			_ordered_out.erase(bot_v)
 	for sniper: Vector3 in c.snipers:
 		if _tasked_near(_hunt, sniper):
 			continue
@@ -778,7 +795,8 @@ func _commander_task(bot: BotController) -> bool:
 
 ## Whether `team`'s bots know of `enemy` now (spotted by one of them).
 func _team_knows(team: int, enemy: Tank) -> bool:
-	for bot: BotController in _bots:
+	for bot_v: Variant in _bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot) and is_instance_valid(bot.tank) and bot.tank.team == team \
 				and bot.is_spotted(enemy):
 			return true
@@ -946,10 +964,11 @@ func _gathering(team: int, c: TeamCommander) -> bool:
 ## three tanks), those furthest back; it keeps its members while they live. None when
 ## time is short: everything goes.
 func _choose_reserve(team: int, next: int, short: bool) -> void:
-	for bot: BotController in _reserve.keys():
+	for bot_v: Variant in _reserve.keys():
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.is_knocked_out() \
 				or bot.tank.team != team:
-			_reserve.erase(bot)
+			_reserve.erase(bot_v)
 	if short or mode.is_overtime() or _reserve_in.has(team):
 		_reserve.clear()
 		return

@@ -18,7 +18,14 @@ const TICK_S: float = 0.5
 ## While anyone is connected an "online" line goes to the log this often (s).
 const ONLINE_EVERY_S: float = 120.0
 
-enum Phase { PLAYING, RESULT, VOTE, IDLE }
+## REVEAL: the vote's winner shows on every screen REVEAL_S before the map change.
+## LOADING: the next map loads (on a thread); the match starts once it is in the tree.
+enum Phase { PLAYING, RESULT, VOTE, IDLE, REVEAL, LOADING }
+
+## A map that hasn't loaded by then is given up for the next in the list (s).
+const LOAD_TIMEOUT_S: float = 180.0
+
+const REVEAL_S: float = 3.0
 
 ## The settings in force (defaults + server.cfg + test overrides).
 var data: ServerData
@@ -34,6 +41,7 @@ var _clock: float = 0.0
 var _phase_left: float = 0.0
 var _match_time: float = 0.0
 var _votes: Dictionary = {}       # peer -> scenario index
+var _next_path: String = ""       # REVEAL: the map that loads when it ends
 var _tick: float = 0.0
 var _defaults: ServerData
 var _test_max_match_s: float = 0.0
@@ -78,7 +86,7 @@ func start(first: String) -> void:
 			first, ProjectSettings.globalize_path(log_dir.path_join("server_log.jsonl")),
 			ProjectSettings.globalize_path(config_path)])
 	if net.host(first, true) == OK:
-		_begin_match(first)
+		_await_map(first)
 
 
 func _process(delta: float) -> void:
@@ -115,6 +123,17 @@ func _process(delta: float) -> void:
 				phase = Phase.IDLE
 			elif _phase_left <= 0.0:
 				_close_vote()
+		Phase.REVEAL:
+			_phase_left -= dt
+			if _phase_left <= 0.0:
+				_load(_next_path)
+		Phase.LOADING:
+			_phase_left -= dt
+			if NetSession.instance.is_map_ready(current):
+				_begin_match(current)
+			elif _phase_left <= 0.0:
+				log_event({"ev": "load_timeout", "scenario": current.get_file().get_basename()})
+				_load(_next_in_list())
 		Phase.IDLE:
 			if _peer_count() > 0:
 				_load(_next_in_list())
@@ -169,6 +188,7 @@ func _end_match(reason: String) -> void:
 	phase = Phase.RESULT
 	_apply_settings()   # the vote and the next match see edits made meanwhile
 	_phase_left = data.result_s
+	NetSession.instance.rpc("rpc_vote_coming", _phase_left)   # Scoreboard: "vote in n s"
 
 
 func _load(path: String) -> void:
@@ -176,7 +196,15 @@ func _load(path: String) -> void:
 	_apply_settings()
 	Weather.resolve()
 	NetSession.instance.change_map(path)
-	_begin_match(path)
+	_await_map(path)
+
+
+## The match starts when `path` is in the tree (Phase.LOADING): until then the old map and
+## its finished mode are still there, and _mode_over() ended the new match after 1 s.
+func _await_map(path: String) -> void:
+	current = path
+	phase = Phase.LOADING
+	_phase_left = LOAD_TIMEOUT_S
 
 
 func _next_in_list() -> String:
@@ -265,8 +293,10 @@ func _close_vote() -> void:
 	log_event({"ev": "vote", "votes": by_name, "ballots": ballots, "voters": _votes.size(),
 			"players": _peer_count(), "offered": scenarios.size(),
 			"winner": path.get_file().get_basename(), "tie": tie, "no_votes": best == 0})
-	NetSession.instance.rpc("rpc_vote_close", MainMenu.scenario_label(path))
-	_load(path)
+	NetSession.instance.rpc("rpc_vote_close", MainMenu.scenario_label(path), scenarios.find(path))
+	phase = Phase.REVEAL
+	_next_path = path
+	_phase_left = REVEAL_S
 
 
 # --- Statistics (NetSession / NetGame hooks) -----------------------------------------
@@ -358,6 +388,9 @@ func _apply_settings() -> void:
 	scenarios.sort()
 	MatchSettings.team_size = data.team_size
 	MatchSettings.weather = data.weather
+	MatchSettings.koth_zones = data.koth_zones
+	MatchSettings.koth_zone_s = data.koth_zone_min * 60.0
+	MatchSettings.koth_score = data.koth_score
 
 
 ## The settings the file holds now (what the next match gets).
@@ -387,7 +420,7 @@ func admin_change_map(path: String) -> void:
 		_end_match("admin")
 	log_event({"ev": "admin_change_map", "scenario": path.get_file().get_basename()})
 	if phase == Phase.VOTE:
-		NetSession.instance.rpc("rpc_vote_close", MainMenu.scenario_label(path))
+		NetSession.instance.rpc("rpc_vote_close", MainMenu.scenario_label(path), scenarios.find(path))
 	_load(path)
 
 
@@ -494,6 +527,8 @@ func _players() -> Array:
 
 
 func _mode_status() -> Dictionary:
+	if phase == Phase.LOADING:
+		return {}   # the old map's mode is still in the tree
 	if KothMode.instance != null and is_instance_valid(KothMode.instance):
 		var k: KothMode = KothMode.instance
 		return {"kind": "koth", "score": [roundi(k.get_score(0)), roundi(k.get_score(1))],

@@ -6,7 +6,8 @@ extends Node3D
 ## fallback_half_extent_m of this node. Runs the match offline and on the host;
 ## clients only show it.
 ##
-## Each zone opens at full size, holds zone_hold_s, then shrinks towards radius_end_m.
+## Each zone opens at full size, holds zone_hold_s, then shrinks towards radius_end_m
+## (sooner as it pays out: shrink_at_budget_share).
 ## It closes when it has paid out zone_point_budget points, or at zone_lifetime_s;
 ## the next spot is announced at once and opens zone_gap_s later. While a zone is open
 ## every team scores for each of its own tanks inside (horizontal distance, capped),
@@ -26,7 +27,7 @@ signal zone_moved(center: Vector3)
 ## Emitted once when the match ends. winner_team = -1 for a draw.
 signal match_over(winner_team: int)
 ## Emitted when a team earns an in-zone knock-out bonus.
-signal kill_bonus(team: int, points: float)
+signal kill_bonus(team: int, points: float, shooter: Tank)
 
 ## The running mode (null when the scene has none). The HUD and map read it.
 static var instance: KothMode
@@ -129,6 +130,9 @@ func _exit_tree() -> void:
 
 func _ready() -> void:
 	assert(data != null, "KothMode needs KothData")
+	if not NetRole.is_client():
+		apply_overrides(MatchSettings.koth_zones, MatchSettings.koth_zone_s, MatchSettings.koth_score)
+		apply_team_size(MatchSettings.team_size)
 	_rng.randomize()
 	_center = global_position
 	# Clients show the host's state (apply_net_state); they don't run the match, only
@@ -185,10 +189,16 @@ func get_radius() -> float:
 	return lerpf(data.radius_start_m, data.radius_end_m, get_shrink_progress())
 
 
-## 0 while the zone holds at full size, rising to 1 when it disappears.
+## 0 while the zone holds at full size, rising to 1 when it disappears: by time after
+## zone_hold_s, or by the share of the budget paid out (shrink_at_budget_share), whichever
+## is further along. Radius, scoring rate and kill bonus all follow it.
 func get_shrink_progress() -> float:
 	var shrink_time: float = maxf(data.zone_lifetime_s - data.zone_hold_s, 0.01)
-	return clampf((_zone_time() - data.zone_hold_s) / shrink_time, 0.0, 1.0)
+	var by_time: float = clampf((_zone_time() - data.zone_hold_s) / shrink_time, 0.0, 1.0)
+	if data.shrink_at_budget_share <= 0.0 or data.zone_point_budget <= 0.0:
+		return by_time
+	var paid: float = 1.0 - _budget_left / data.zone_point_budget
+	return maxf(by_time, clampf(paid / data.shrink_at_budget_share, 0.0, 1.0))
 
 
 ## 1-based number of the open zone (or the next one during a gap).
@@ -207,12 +217,13 @@ func get_budget_left() -> float:
 
 
 ## Seconds until the next timed event: shrinking starts, the zone closes by time, or
-## the next zone opens. (A zone also closes early when its budget runs out.)
+## the next zone opens. (A zone also closes early when its budget runs out, and shrinks
+## before zone_hold_s once it pays out: then this is the time to its close.)
 func get_time_to_next_event() -> float:
 	if not _zone_open:
 		return maxf(_gap_ends - _time, 0.0)
 	var t: float = _zone_time()
-	if t < data.zone_hold_s:
+	if t < data.zone_hold_s and get_shrink_progress() <= 0.0:
 		return data.zone_hold_s - t
 	return maxf(data.zone_lifetime_s - t, 0.0)
 
@@ -258,8 +269,52 @@ func has_started() -> bool:
 # --- Network (host -> clients) ----------------------------------------------------------
 
 ## The match state for clients (small: sent twice a second and on changes).
+## Server rules on top of the scenario's KothData (a copy, the .tres untouched): zones per
+## match, a zone's lifetime (s; the full-size hold keeps its share of it) and the score to
+## win (0 = half of all the zones' points, which decides the match: the other team can't
+## catch up). A negative value keeps the data's.
+func apply_overrides(zones: int, zone_s: float, score: float) -> void:
+	if zones < 0 and zone_s <= 0.0 and score < 0.0:
+		return
+	var hold_share: float = data.zone_hold_s / maxf(data.zone_lifetime_s, 1.0)
+	data = data.duplicate() as KothData
+	if zones >= 0:
+		data.zone_count = zones
+	if zone_s > 0.0:
+		data.zone_lifetime_s = zone_s
+		data.zone_hold_s = zone_s * hold_share
+	if score >= 0.0:
+		data.score_to_win = score   # 0: half of all the zones' points (apply_team_size)
+
+
+## Scales the zone budget to the teams' size (budget_size_exponent) and works out an
+## automatic score_to_win (0): half of all the zones' points. `team_size` 0 = as the map
+## places its tanks (counted).
+func apply_team_size(team_size: int) -> void:
+	var size: int = team_size
+	if size <= 0:
+		var per_team: Dictionary = {}
+		for node: Node in get_tree().get_nodes_in_group("tanks") if is_inside_tree() else []:
+			var t := node as Tank
+			if t != null:
+				per_team[t.team] = int(per_team.get(t.team, 0)) + 1
+		for n: Variant in per_team.values():
+			size = maxi(size, int(n))
+	var factor: float = 1.0
+	if data.budget_size_exponent != 0.0 and size > 0:
+		factor = pow(float(size) / maxf(data.budget_reference_team_size, 1), data.budget_size_exponent)
+	if factor == 1.0 and data.score_to_win > 0.0:
+		return
+	data = data.duplicate() as KothData
+	data.zone_point_budget *= factor
+	if data.score_to_win <= 0.0:
+		data.score_to_win = (data.zone_count * data.zone_point_budget * 0.5) if data.zone_count > 0 \
+				else 3000.0
+
+
 func get_net_state() -> Dictionary:
 	return {
+		"rules": [data.zone_count, data.zone_lifetime_s, data.zone_hold_s, data.score_to_win],
 		"t": _time, "zi": _zone_index, "open": _zone_open, "zs": _zone_started,
 		"ge": _gap_ends, "b": _budget_left, "c": _center,
 		"ss": _spawns.get(1, global_transform), "sn": _spawns.get(-1, global_transform),
@@ -270,7 +325,15 @@ func get_net_state() -> Dictionary:
 ## Client: takes over the host's state.
 func apply_net_state(state: Dictionary) -> void:
 	_started = true
-	_time = state.get("t", _time)
+	var rules: Array = state.get("rules", [])
+	if rules.size() == 4 and (int(rules[0]) != data.zone_count or float(rules[1]) != data.zone_lifetime_s
+			or float(rules[2]) != data.zone_hold_s or float(rules[3]) != data.score_to_win):
+		data = data.duplicate() as KothData   # the host's rules (its server settings)
+		data.zone_count = int(rules[0])
+		data.zone_lifetime_s = float(rules[1])
+		data.zone_hold_s = float(rules[2])
+		data.score_to_win = float(rules[3])
+	_time = NetRole.sync_clock(_time, state.get("t", _time))
 	_zone_index = state.get("zi", _zone_index)
 	_zone_open = state.get("open", _zone_open)
 	_zone_started = state.get("zs", _zone_started)
@@ -809,7 +872,8 @@ func _on_eliminated(killer: Tank, assists: Array[Tank]) -> void:
 		return
 	if killer != null and is_instance_valid(killer):
 		_stat_add(killer, 2, 1)
-	for t: Tank in assists:
+	for t_v: Variant in assists:
+		var t: Tank = (t_v as Tank) if is_instance_valid(t_v) else null
 		if is_instance_valid(t):
 			_stat_add(t, 5, 1)
 			_stat_add(t, 4, data.assist_points)
@@ -834,7 +898,7 @@ func _on_shot_landed(result: HitResult, shooter: Tank) -> void:
 	_budget_left -= points
 	_scores[shooter.team] = get_score(shooter.team) + points
 	_stat_add(shooter, 4, points)
-	kill_bonus.emit(shooter.team, points)
+	kill_bonus.emit(shooter.team, points, shooter)
 
 
 func _check_score_win() -> void:

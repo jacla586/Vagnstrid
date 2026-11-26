@@ -20,6 +20,7 @@ var _title: Label
 var _subtitle: Label
 var _tables: HBoxContainer
 var _buttons: HBoxContainer
+var _vote_note: Label
 var _refresh: float = 0.0
 var _was_over: bool = false
 
@@ -50,13 +51,18 @@ func _ready() -> void:
 	_tables = HBoxContainer.new()
 	_tables.add_theme_constant_override("separation", 40)
 	box.add_child(_tables)
+	_vote_note = _label("", font_size + 2, Color(1.0, 0.8, 0.4))
+	_vote_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_vote_note.visible = false
+	box.add_child(_vote_note)
 	_buttons = HBoxContainer.new()
 	_buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	_buttons.add_theme_constant_override("separation", 20)
 	box.add_child(_buttons)
 	if not NetRole.is_online():
 		_button("Play again", func() -> void: get_tree().reload_current_scene())
-	_button("Main menu", _on_menu)
+	# A client leaves the server with it (a dedicated server votes and goes on).
+	_button("Leave server" if NetRole.is_client() else "Main menu", _on_menu)
 	_buttons.visible = false
 	visible = false
 
@@ -86,6 +92,7 @@ func _process(delta: float) -> void:
 	visible = show
 	if not show:
 		return
+	_update_vote_note(over)
 	_refresh -= delta
 	if _refresh <= 0.0:
 		_refresh = REFRESH_S
@@ -184,6 +191,15 @@ func _table(caption: String, stats: Array, include: Callable, color: Color,
 	return grid
 
 
+## The dedicated server's next-map vote on its way (NetSession.vote_seconds_left).
+func _update_vote_note(over: bool) -> void:
+	var left: float = NetSession.instance.vote_seconds_left() if over and NetRole.is_client() else -1.0
+	var text: String = "" if left < 0.0 else "Vote for the next map in %d s – stay to play on" % ceili(left)
+	if text != _vote_note.text:
+		_vote_note.text = text
+		_vote_note.visible = not text.is_empty()
+
+
 func _on_menu() -> void:
 	if NetRole.is_online():
 		NetSession.instance.leave()
@@ -199,9 +215,10 @@ func _label(t: String, px: int, color: Color) -> Label:
 	return l
 
 
-func _button(t: String, cb: Callable) -> void:
+func _button(t: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = t
 	b.custom_minimum_size = Vector2(160, 40)
 	b.pressed.connect(cb)
 	_buttons.add_child(b)
+	return b

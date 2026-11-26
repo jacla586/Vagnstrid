@@ -35,7 +35,8 @@ static func assess(team: int, bots: Array[BotController], tree: SceneTree, insid
 				and bool(inside.call(tank.global_position)):
 			s.friends_in += 1
 	var known: Dictionary = {}
-	for bot: BotController in bots:
+	for bot_v: Variant in bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.team != team:
 			continue
 		var seen: Dictionary = bot.get_known_enemies(t.situation_memory_s)
@@ -79,7 +80,8 @@ func describe() -> String:
 ## their favourite. Returns the bots whose role changed (they need new orders).
 static func apply_contact_roles(bots: Array[BotController], situations: Dictionary) -> Array[BotController]:
 	var changed: Array[BotController] = []
-	for bot: BotController in bots:
+	for bot_v: Variant in bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
 			continue
 		var favourite: BotRoleData = bot.tank.data.bot_role if bot.tank.data != null else null
@@ -114,7 +116,8 @@ static func has_moment(bot: BotController, sit: TeamSituation, kos: KnockoutLog,
 static func ensure_spearhead(bots: Array[BotController], kos: KnockoutLog, entering: Dictionary,
 		t: TacticsData) -> void:
 	var teams: Dictionary = {}
-	for bot: BotController in bots:
+	for bot_v: Variant in bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot) and is_instance_valid(bot.tank) and not bot.tank.is_knocked_out():
 			if not teams.has(bot.tank.team):
 				teams[bot.tank.team] = []

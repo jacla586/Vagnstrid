@@ -22,11 +22,22 @@ extends Resource
 ## Zones per match; after the last the best score wins. 0 = no limit (score_to_win).
 @export var zone_count: int = 0
 ## Points one zone gives out in all (zone scoring and kill bonuses); then it closes.
+## This is for budget_reference_team_size tanks a side; bigger teams get more
+## (× (team size / reference)^budget_size_exponent, KothMode.apply_team_size): more tanks
+## in the zone and more kills emptied it in 3-4 min at 15 v 15 against 7 at 2 v 2.
 @export var zone_point_budget: float = 1000.0
+@export var budget_reference_team_size: int = 2
+## 0 = the same budget at every team size.
+@export var budget_size_exponent: float = 0.0
 ## A zone stays at full size this long after it opens (s)...
 @export var zone_hold_s: float = 120.0
 ## ...then shrinks, closing at the latest this long after opening (s).
 @export var zone_lifetime_s: float = 300.0
+## The zone also shrinks as it pays out: fully shrunk when this share of its budget is
+## gone (the rest is fought at radius_end_m). Shrinking goes by time or budget, whichever
+## is further along (KothMode.get_shrink_progress), so a busy zone can't run dry at full
+## size. 0 = by time only.
+@export_range(0.0, 1.0) var shrink_at_budget_share: float = 0.75
 ## Pause between one zone disappearing and the next opening (s).
 @export var zone_gap_s: float = 30.0
 ## Radius when the zone opens, and when it disappears (m, horizontal).
@@ -54,6 +65,7 @@ extends Resource
 ## the tank this many points of its own (scoreboard only, not the team's score).
 @export var assist_points: float = 15.0
 ## First team to this many points wins.
+## 0 with zone_count set = half of all the zones' points (decides the match).
 @export var score_to_win: float = 3000.0
 ## How often the zone is counted (s).
 @export var tick_interval_s: float = 0.25

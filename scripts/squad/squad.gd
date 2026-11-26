@@ -809,7 +809,8 @@ func _process(delta: float) -> void:
 		var shadow: bool = seen < LOD_NEAR_M
 		if shadow != _lod_shadow[i]:
 			_lod_shadow[i] = shadow
-			for mi: MeshInstance3D in _lod_meshes[i]:
+			for mi_v: Variant in _lod_meshes[i]:
+				var mi: MeshInstance3D = (mi_v as MeshInstance3D) if is_instance_valid(mi_v) else null
 				if is_instance_valid(mi):
 					mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadow \
 							else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -2806,7 +2807,8 @@ func _apply_look() -> void:
 	var friend: bool = TeamLook.is_friend(_look_team)
 	var camo: Material = TeamLook.camo(data.camo_pattern_per_m * (data.model_scale if data.model != null else 1.0))
 	for entry: Array in _uniform_surfaces:
-		var mi: MeshInstance3D = entry[0]
+		var mi_v: Variant = entry[0]
+		var mi: MeshInstance3D = (mi_v as MeshInstance3D) if is_instance_valid(mi_v) else null
 		if not is_instance_valid(mi):
 			continue
 		if entry[1] < 0:
@@ -2814,7 +2816,8 @@ func _apply_look() -> void:
 		else:
 			mi.set_surface_override_material(entry[1], entry[2] if friend else camo)
 	for entry: Array in _blue_surfaces:
-		var mi: MeshInstance3D = entry[0]
+		var mi_v: Variant = entry[0]
+		var mi: MeshInstance3D = (mi_v as MeshInstance3D) if is_instance_valid(mi_v) else null
 		if is_instance_valid(mi):
 			mi.set_surface_override_material(entry[1], TeamLook.blue() if friend else null)
 

@@ -9,7 +9,7 @@ extends RefCounted
 const SECTION: String = "server"
 ## Keys the file and AdminLink know, with the ServerData property each sets.
 const KEYS: PackedStringArray = ["team_size", "weather", "scenarios", "result_s", "vote_s",
-		"max_match_s"]
+		"max_match_s", "koth_zones", "koth_zone_min", "koth_score"]
 
 
 ## The defaults with the file's values on top (a fresh ServerData; `defaults` untouched).
@@ -62,6 +62,12 @@ static func apply(data: ServerData, values: Dictionary) -> Dictionary:
 				data.vote_s = clampf(float(v), 3.0, 600.0)
 			"max_match_s":
 				data.max_match_s = clampf(float(v), 30.0, 86400.0)
+			"koth_zones":
+				data.koth_zones = clampi(int(v), 0, 20)
+			"koth_zone_min":
+				data.koth_zone_min = clampf(float(v), 1.0, 30.0)
+			"koth_score":
+				data.koth_score = clampf(float(v), 0.0, 100000.0)
 			_:
 				refused[key] = "unknown setting"
 	return refused
@@ -82,7 +88,9 @@ static func to_dict(data: ServerData) -> Dictionary:
 	for p: String in data.scenarios:
 		names.append(p.get_file().get_basename())
 	return {"team_size": data.team_size, "weather": data.weather, "scenarios": names,
-			"result_s": data.result_s, "vote_s": data.vote_s, "max_match_s": data.max_match_s}
+			"result_s": data.result_s, "vote_s": data.vote_s, "max_match_s": data.max_match_s,
+			"koth_zones": data.koth_zones, "koth_zone_min": data.koth_zone_min,
+			"koth_score": data.koth_score}
 
 
 ## A scenario's res:// path from its name ("vidingsjo_koth") or path; "" if there is none.

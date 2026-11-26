@@ -43,6 +43,9 @@ var server: DedicatedServer
 ## Host: players who said ready while the next map was still loading.
 var _pending_ready: Array[int] = []
 var _vote_panel: VotePanel
+var _load_gen: int = 0
+## Client: when the dedicated server's next-map vote opens (ticks msec), -1 = none due.
+var _vote_due_ms: int = -1
 var map_path: String = ""
 var bots: bool = false
 ## The running game in the loaded map (null in menus).
@@ -152,7 +155,13 @@ func host(map: String, with_bots: bool) -> Error:
 	return OK
 
 
+## `ip` may carry a port ("host:port", e.g. a playit.gg tunnel); without one `port` is used.
 func join(ip: String) -> Error:
+	if ip.count(":") == 1:
+		var parts: PackedStringArray = ip.split(":")
+		if parts[1].is_valid_int():
+			ip = parts[0]
+			port = int(parts[1])
 	var peer := ENetMultiplayerPeer.new()
 	var err: Error = peer.create_client(ip, port, CHANNELS)
 	if err != OK:
@@ -170,6 +179,7 @@ func leave() -> void:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	NetRole.role = NetRole.Role.OFFLINE
+	_vote_due_ms = -1
 	game = null
 	get_tree().change_scene_to_file(MENU_SCENE)
 
@@ -191,18 +201,28 @@ func play_offline(path: String) -> void:
 
 ## Loads the map on a thread (so the connection keeps being serviced), then adds NetGame
 ## (offline: MatchLobby).
+## Each load gets a number; an older one still waiting gives up when a newer starts
+## (a map change during a slow load ran two change_scene and could make two NetGames).
 func _load_map(path: String, offline: bool = false) -> void:
+	_load_gen += 1
+	var gen: int = _load_gen
 	_set_status("loading %s ..." % path.get_file().get_basename())
 	ResourceLoader.load_threaded_request(path)
 	while ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 		await get_tree().process_frame
+		if gen != _load_gen:
+			return
 	var packed := ResourceLoader.load_threaded_get(path) as PackedScene
 	if packed == null:
 		_set_status("could not load %s" % path)
 		return
+	if gen != _load_gen:
+		return
 	get_tree().change_scene_to_packed(packed)
 	while get_tree().current_scene == null or get_tree().current_scene.scene_file_path != path:
 		await get_tree().process_frame
+		if gen != _load_gen:
+			return
 	if offline and path.get_file().get_basename().ends_with(TUTORIAL_TAG):
 		return   # the tutorial plays the map's own PlayerRig (TutorialMode)
 	if offline:
@@ -323,6 +343,14 @@ func take_pending_ready() -> Array[int]:
 
 ## Host: every client loads `path` (with this weather) and the host does too; the
 ## connections stay. Used by the dedicated server between matches.
+## Host: `path` is the scene in the tree and its NetGame is running (DedicatedServer's
+## LOADING ends here: before, the old map's mode still answered).
+func is_map_ready(path: String) -> bool:
+	var scene: Node = get_tree().current_scene
+	return scene != null and scene.scene_file_path == path and game != null \
+			and is_instance_valid(game) and game.is_inside_tree() and game.get_parent() == scene
+
+
 func change_map(path: String) -> void:
 	map_path = path
 	_close_vote_panel()
@@ -335,16 +363,31 @@ func rpc_change_map(path: String, weather_path: String) -> void:
 	map_path = path
 	Weather.set_by_path(weather_path)
 	_close_vote_panel()
+	_vote_due_ms = -1
 	game = null
 	_load_map(path)
 
 
 @rpc("authority", "call_remote", "reliable", 2)
 func rpc_vote_open(labels: Array, seconds: float, counts: Array, current: int) -> void:
+	_vote_due_ms = -1
 	_close_vote_panel()
 	_vote_panel = VotePanel.new()
 	get_tree().root.add_child(_vote_panel)
 	_vote_panel.open(labels, seconds, counts, current)
+
+
+## Dedicated server, at a match's end: the vote for the next map opens in `seconds`.
+@rpc("authority", "call_remote", "reliable", 2)
+func rpc_vote_coming(seconds: float) -> void:
+	_vote_due_ms = Time.get_ticks_msec() + roundi(seconds * 1000.0)
+
+
+## Seconds until the next-map vote opens (shown on the Scoreboard), -1 when none is due.
+func vote_seconds_left() -> float:
+	if _vote_due_ms < 0:
+		return -1.0
+	return maxf(0.0, (_vote_due_ms - Time.get_ticks_msec()) / 1000.0)
 
 
 @rpc("authority", "call_remote", "reliable", 2)
@@ -354,9 +397,9 @@ func rpc_vote_state(counts: Array) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 2)
-func rpc_vote_close(winner: String) -> void:
+func rpc_vote_close(winner: String, index: int) -> void:
 	if is_instance_valid(_vote_panel):
-		_vote_panel.close(winner)
+		_vote_panel.close(winner, index)
 
 
 @rpc("any_peer", "call_remote", "reliable", 2)
@@ -609,9 +652,9 @@ func rpc_thunder_state(state: Dictionary) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 2)
-func rpc_koth_bonus(team: int, points: float) -> void:
+func rpc_koth_bonus(team: int, points: float, shooter_id: int) -> void:
 	if game != null:
-		game.on_koth_bonus(team, points)
+		game.on_koth_bonus(team, points, shooter_id)
 
 
 ## Counts an RPC's payload for the statistics (approximate: arguments only).

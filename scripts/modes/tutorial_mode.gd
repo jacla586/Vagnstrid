@@ -313,7 +313,8 @@ func _goal_met(delta: float) -> bool:
 			return _hidden_time >= data.hide_hold_s
 		TutorialStepData.Goal.KNOCK_OUT_ALL:
 			var alive: int = 0
-			for t: Tank in _final:
+			for t_v: Variant in _final:
+				var t: Tank = (t_v as Tank) if is_instance_valid(t_v) else null
 				if is_instance_valid(t) and not t.is_knocked_out():
 					alive += 1
 			if alive == 1 and _final_left > 1:
@@ -462,7 +463,8 @@ func _update_final_hunt(delta: float) -> void:
 	_hunt_clock = 0.0
 	var at: Vector3 = _tank.global_position
 	for t: Tank in _final:
-		var bot: BotController = _bots.get(t) as BotController
+		var bot_v: Variant = _bots.get(t)
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if bot == null or not is_instance_valid(bot) or t.is_knocked_out():
 			continue
 		var away: Vector3 = t.global_position - at
@@ -554,7 +556,8 @@ func _open_near(p: Vector3, reach: float) -> Vector3:
 
 
 func _near_spawned(p: Vector3) -> bool:
-	for t: Tank in [_target, _heavy, _attacker] + _final:
+	for t_v: Variant in [_target, _heavy, _attacker] + _final:
+		var t: Tank = (t_v as Tank) if is_instance_valid(t_v) else null
 		if t != null and is_instance_valid(t) and t.global_position.distance_to(p) < 60.0:
 			return true
 	return false
@@ -619,7 +622,8 @@ func _spawn(at: Vector3, config: TankConfig, crew: BotData) -> Tank:
 func _remove(tank: Tank) -> void:
 	if tank == null or not is_instance_valid(tank):
 		return
-	var bot: Node = _bots.get(tank) as Node
+	var bot_v: Variant = _bots.get(tank)
+	var bot: Node = (bot_v as Node) if is_instance_valid(bot_v) else null
 	_bots.erase(tank)
 	if bot != null and is_instance_valid(bot):
 		bot.queue_free()

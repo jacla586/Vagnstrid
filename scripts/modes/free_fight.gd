@@ -151,7 +151,8 @@ func get_alive() -> int:
 	if NetRole.is_client():
 		return _net_alive
 	var n: int = 0
-	for bot: BotController in _wave:
+	for bot_v: Variant in _wave:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot) and is_instance_valid(bot.tank) and not bot.tank.is_knocked_out():
 			n += 1
 	return n
@@ -185,7 +186,7 @@ func apply_net_state(state: Dictionary) -> void:
 	var round_: int = state.get("r", _round)
 	_hard = state.get("h", _hard)
 	_cleared = state.get("cl", _cleared)
-	_gap_left = state.get("g", _gap_left)
+	_gap_left = NetRole.sync_clock(_gap_left, state.get("g", _gap_left))
 	_centre = state.get("c", _centre)
 	_net_alive = state.get("a", 0)
 	_net_stats = (state.get("st", []) as Array).duplicate(true)
@@ -276,6 +277,15 @@ func _physics_process(delta: float) -> void:
 				_update_attack(delta)
 
 
+## A bot leaving the tree leaves every list (a freed one in a typed list crashes release).
+func _bot_gone(bot: BotController) -> void:
+	_wave.erase(bot)
+	_old.erase(bot)
+	_allies.erase(bot)
+	for d: Dictionary in [_range, _think, _planned, _follow, _ally_think, _ally_range, _ally_prey]:
+		d.erase(bot)
+
+
 func _start_wave() -> void:
 	_gap_left = -1.0
 	for bot: BotController in _old:
@@ -321,7 +331,8 @@ func _on_wave_beaten() -> void:
 func _end_match() -> void:
 	_phase = Phase.OVER
 	_gap_left = -1.0
-	for bot: BotController in _wave + _allies:
+	for bot_v: Variant in _wave + _allies:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot):
 			var none: Array[Vector3] = []
 			bot.order_move(none, 0.0)
@@ -364,6 +375,8 @@ func _add_bot(at: Vector3, toward: Vector3, crew: BotData, pool: Array[TankConfi
 	bot.respawn_delay_s = 0.0   # beaten is beaten: no repair on the spot
 	parent.add_child(bot)
 	bot.contact.connect(_on_contact.bind(bot))
+	bot.tree_exiting.connect(_bot_gone.bind(bot))
+	tank.tree_exiting.connect(_bot_gone.bind(bot))
 	_wave.append(bot)
 	var game: NetGame = NetSession.instance.game if NetRole.is_host() else null
 	if game != null:
@@ -427,6 +440,8 @@ func _make_allies() -> void:
 		bot.respawn_delay_s = 0.0   # back with the players when the wave is beaten
 		parent.add_child(bot)
 		bot.contact.connect(_on_ally_contact.bind(bot))
+		bot.tree_exiting.connect(_bot_gone.bind(bot))
+		tank.tree_exiting.connect(_bot_gone.bind(bot))
 		_allies.append(bot)
 		_ally_think[bot] = _rng.randf_range(0.0, data.ally_think_s)
 		var game: NetGame = NetSession.instance.game if NetRole.is_host() else null
@@ -436,7 +451,8 @@ func _make_allies() -> void:
 
 ## An ally spotted an enemy (or was hit): the other allies hear of it.
 func _on_ally_contact(enemy: Tank, at: Vector3, from: BotController) -> void:
-	for bot: BotController in _allies:
+	for bot_v: Variant in _allies:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if bot != from and is_instance_valid(bot):
 			bot.share_contact(enemy, at)
 
@@ -446,7 +462,8 @@ func _on_player_spot(target: Node3D, point: Vector3) -> void:
 	var enemy := target as Tank
 	if enemy == null:
 		return
-	for bot: BotController in _allies:
+	for bot_v: Variant in _allies:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot):
 			bot.share_contact(enemy, point)
 
@@ -557,7 +574,8 @@ func _on_contact(enemy: Tank, at: Vector3, from: BotController) -> void:
 		return
 	if enemy != null:
 		_last_seen[enemy] = at
-	for bot: BotController in _wave:
+	for bot_v: Variant in _wave:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if bot != from and is_instance_valid(bot):
 			bot.share_contact(enemy, at)
 	if _phase == Phase.DEFEND:
@@ -572,7 +590,8 @@ func _on_contact(enemy: Tank, at: Vector3, from: BotController) -> void:
 ## it knows of (or the wave heard of last), closer each time it gets there.
 func _update_attack(delta: float) -> void:
 	var map: TacticalMap = TacticalMap.for_scene(get_tree().current_scene)
-	for bot: BotController in _wave:
+	for bot_v: Variant in _wave:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or bot.tank.is_knocked_out() or bot.is_relocating():
 			continue
 		_think[bot] = float(_think.get(bot, 0.0)) - delta
@@ -618,7 +637,8 @@ func _update_attack(delta: float) -> void:
 
 func _wave_positions(except: BotController) -> PackedVector3Array:
 	var out := PackedVector3Array()
-	for bot: BotController in _wave:
+	for bot_v: Variant in _wave:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if bot != except and is_instance_valid(bot) and not bot.tank.is_knocked_out():
 			out.append(bot.tank.global_position)
 	return out
@@ -808,7 +828,8 @@ func _living_players() -> Array[Tank]:
 ## The players' tanks without the bot allies.
 func _humans() -> Array[Tank]:
 	var allies: Array[Tank] = []
-	for bot: BotController in _allies:
+	for bot_v: Variant in _allies:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot):
 			allies.append(bot.tank)
 	return _players().filter(func(t: Tank) -> bool: return not allies.has(t))
@@ -846,7 +867,8 @@ func _connect_new_tanks() -> void:
 		tank.knocked_out.connect(func() -> void: _stat_add(tank, 3))
 		tank.spotted.connect(_on_player_spot)
 	# Kills are counted from the bots' side: a knock-out of a bot credits its killer.
-	for bot: BotController in _wave:
+	for bot_v: Variant in _wave:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot) and not _connected.has(-bot.tank.get_instance_id()):
 			_connected[-bot.tank.get_instance_id()] = true
 			bot.tank.eliminated.connect(_on_bot_eliminated)
@@ -855,7 +877,8 @@ func _connect_new_tanks() -> void:
 func _on_bot_eliminated(killer: Tank, assists: Array[Tank]) -> void:
 	if killer != null and is_instance_valid(killer):
 		_stat_add(killer, 2)
-	for t: Tank in assists:
+	for t_v: Variant in assists:
+		var t: Tank = (t_v as Tank) if is_instance_valid(t_v) else null
 		if is_instance_valid(t):
 			_stat_add(t, 4)
 

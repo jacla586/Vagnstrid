@@ -40,9 +40,10 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
-func _on_kill_bonus(team: int, points: float) -> void:
+## Only the player's own zone kills show (the team's score shows the rest).
+func _on_kill_bonus(_team: int, points: float, shooter: Tank) -> void:
 	var tank: Tank = views.get_tank() if views != null else null
-	if tank == null or team != tank.team:
+	if tank == null or shooter != tank:
 		return
 	_bonus_text = "ZONE KILL +%d" % roundi(points)
 	_bonus_timer = bonus_show_s

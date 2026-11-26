@@ -12,13 +12,18 @@
 [resource]
 script = ExtResource("1_koth")
 display_name = "King of the Hill – tactical"
-briefing = "Zones open one at a time; the next one shows on the map.\nEvery tank of yours inside the zone scores. More tanks there than the enemy: faster.\nA slower game: zones shrink little and last long.\nKnocking out any enemy inside the zone gives a bonus.\nFirst team to {score} points wins."
+briefing = "{zones} zones, one at a time, {zone_min} minutes each at most; the next one shows on the map.\nEvery tank of yours inside the zone scores. More tanks there than the enemy: faster.\nA zone shrinks as time runs and as it pays out its points.\nKnocking out any enemy inside the zone gives a bonus.\nBest score after the last zone wins, or the first team to {score} points."
 radius_start_m = 175.0
-radius_end_m = 110.0
+radius_end_m = 90.0
 zone_hold_s = 240.0
 zone_lifetime_s = 420.0
-zone_gap_s = 75.0
-points_per_tank_end = 2.5
+zone_count = 3
+zone_point_budget = 1200.0
+budget_size_exponent = 0.35
+score_to_win = 0.0
+zone_gap_s = 60.0
+points_per_tank_end = 1.5
+kill_bonus_factor_end = 2.0
 kill_bonus_needs_shooter_in_zone = false
 zone_placement = 1
 bot_attack_axes = true

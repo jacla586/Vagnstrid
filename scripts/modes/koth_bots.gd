@@ -233,6 +233,10 @@ func _adopt(bot: BotController) -> void:
 	if _bots.has(bot):
 		return
 	_bots.append(bot)
+	# Out of every list the moment it leaves the tree, whoever frees it (NetGame removes
+	# bots for joining players): a freed bot in a list crashed the release server.
+	bot.tree_exiting.connect(_forget_bot.bind(bot))
+	bot.tank.tree_exiting.connect(_forget_bot.bind(bot))
 	bot.respawn_delay_s = 0.0   # no repair on the spot: we bring it back at the spawn
 	bot.tank.knocked_out.connect(_on_knocked_out.bind(bot))
 	bot.tank.squad_contact.connect(_on_squad_contact.bind(bot))
@@ -416,7 +420,8 @@ func _physics_process(delta: float) -> void:
 	_update_commanders(delta)
 	_update_order_queue()
 	_update_bounding(delta)
-	for bot: BotController in _bots:
+	for bot_v: Variant in _bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
 			continue
 		if _respawn.has(bot):
@@ -790,7 +795,8 @@ func _assign_axes() -> void:
 	_axis_dirs.clear()
 	var c: Vector3 = mode.get_center()
 	var teams: Dictionary = {}  # team -> bots
-	for bot: BotController in _bots:
+	for bot_v: Variant in _bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot) and is_instance_valid(bot.tank):
 			if not teams.has(bot.tank.team):
 				teams[bot.tank.team] = []
@@ -863,7 +869,8 @@ func _axis_of(bot: BotController) -> int:
 	if _axis.has(bot):
 		return int(_axis[bot])
 	var count: Dictionary = {-1: 0, 1: 0}
-	for other: BotController in _axis:
+	for other_v: Variant in _axis:
+		var other: BotController = (other_v as BotController) if is_instance_valid(other_v) else null
 		if is_instance_valid(other) and is_instance_valid(other.tank) \
 				and other.tank.team == bot.tank.team:
 			count[int(_axis[other])] = int(count[int(_axis[other])]) + 1
@@ -949,7 +956,8 @@ func _lead_of(bot: BotController) -> BotController:
 		return null
 	var best: BotController = null
 	var best_d: float = INF
-	for other: BotController in _bots:
+	for other_v: Variant in _bots:
+		var other: BotController = (other_v as BotController) if is_instance_valid(other_v) else null
 		if other == bot or not is_instance_valid(other) or not is_instance_valid(other.tank) \
 				or other.tank.team != bot.tank.team or other.tank.is_knocked_out() \
 				or _respawn.has(other) or other.get_role().enters != BotRoleData.Enter.ALWAYS:
@@ -998,7 +1006,8 @@ func _update_follow(bot: BotController, delta: float) -> bool:
 ## get new orders.
 func _update_situation(delta: float) -> void:
 	var t: TacticsData = TacticalMap.DEFAULT_TACTICS
-	for bot: BotController in _bots:
+	for bot_v: Variant in _bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot):
 			t = _tactics_of(bot)
 			break
@@ -1025,7 +1034,8 @@ func _update_situation(delta: float) -> void:
 			_queue_order(bot)
 	if not _axes_on():
 		return
-	for bot: BotController in _bots:
+	for bot_v: Variant in _bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.is_knocked_out() \
 				or _respawn.has(bot) or _depart.has(bot):
 			continue
@@ -1054,7 +1064,8 @@ func _outside_spot(bot: BotController, ideal: Vector3, radius: float) -> Vector3
 	var c: Vector3 = mode.get_center()
 	var threat := Vector3(c.x - ideal.x, 0.0, c.z - ideal.z).normalized()
 	var friends := PackedVector3Array()
-	for other: BotController in _bots:
+	for other_v: Variant in _bots:
+		var other: BotController = (other_v as BotController) if is_instance_valid(other_v) else null
 		if other != bot and is_instance_valid(other) and is_instance_valid(other.tank) \
 				and other.tank.team == bot.tank.team and _goals.has(other):
 			friends.append(_goals[other])
@@ -1075,7 +1086,8 @@ func _update_assembly(bot: BotController, delta: float) -> void:
 		_queue_order(bot)   # e.g. added after the axes were chosen
 		return
 	_assembly_wait[bot] = float(_assembly_wait.get(bot, 0.0)) + delta
-	var partner: BotController = _mate.get(bot)
+	var partner_v: Variant = _mate.get(bot)
+	var partner: BotController = (partner_v as BotController) if is_instance_valid(partner_v) else null
 	if partner != null and (not is_instance_valid(partner) or not is_instance_valid(partner.tank)):
 		partner = null
 	var ready: bool = partner == null or partner.tank.is_knocked_out() or _respawn.has(partner) \
@@ -1204,7 +1216,8 @@ func _hunt_spot(bot: BotController, enemy_at: Vector3) -> Vector3:
 	if map == null:
 		return ideal
 	var friends := PackedVector3Array()
-	for other: BotController in _bots:
+	for other_v: Variant in _bots:
+		var other: BotController = (other_v as BotController) if is_instance_valid(other_v) else null
 		if other != bot and is_instance_valid(other) and is_instance_valid(other.tank) \
 				and other.tank.team == bot.tank.team and _goals.has(other):
 			friends.append(_goals[other])
@@ -1223,7 +1236,8 @@ func _flank_point(bot: BotController, goal: Vector3) -> Vector3:
 	if line.length() < FLANK_MIN_DRIVE_M:
 		return Vector3.INF
 	var taken: Array[int] = []
-	for other: BotController in _bots:
+	for other_v: Variant in _bots:
+		var other: BotController = (other_v as BotController) if is_instance_valid(other_v) else null
 		if other != bot and is_instance_valid(other) and is_instance_valid(other.tank) \
 				and other.tank.team == bot.tank.team and _flank.has(other):
 			taken.append(int(_flank[other]))
@@ -1262,7 +1276,8 @@ func _choose_spot(bot: BotController, radius: float, around: Vector3 = Vector3.I
 		threat = -mode.get_spawn_direction(bot.tank.team)
 	var friends := PackedVector3Array()
 	var exclude: Array[RID] = []
-	for other: BotController in _bots:
+	for other_v: Variant in _bots:
+		var other: BotController = (other_v as BotController) if is_instance_valid(other_v) else null
 		if other == bot or not is_instance_valid(other) or not is_instance_valid(other.tank):
 			continue
 		if other.tank.team == bot.tank.team and not other.tank.is_knocked_out():
@@ -1306,7 +1321,8 @@ func _on_bot_contact(enemy: Tank, at: Vector3, from: BotController) -> void:
 
 ## A bot's squad saw an enemy: the radio tells the rest of its team.
 func _on_squad_contact(enemy: Node3D, at: Vector3, from: BotController) -> void:
-	for other: BotController in _bots:
+	for other_v: Variant in _bots:
+		var other: BotController = (other_v as BotController) if is_instance_valid(other_v) else null
 		if other != from and is_instance_valid(other) and is_instance_valid(other.tank) \
 				and other.tank.team == from.tank.team and not other.tank.is_knocked_out():
 			other.share_contact(enemy as Tank, at)
@@ -1352,7 +1368,8 @@ func _update_commanders(delta: float) -> void:
 			if not tank.is_knocked_out() and Squad._flat(tank.global_position - centre).length() <= reach:
 				own_tanks.append(tank.global_position)
 		var seen: Dictionary = {}
-		for bot: BotController in _bots:
+		for bot_v: Variant in _bots:
+			var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 			if is_instance_valid(bot) and is_instance_valid(bot.tank) and bot.tank.team == team:
 				var k: Dictionary = bot.get_known_enemies(c.data.memory_s)
 				for enemy: Variant in k:
@@ -1400,9 +1417,10 @@ func _give_squad_tasks(team: int, c: TeamCommander) -> void:
 	if want > 0:
 		point = mode.get_center() + _lane_dir(team, c.threat_lane) * (mode.get_radius() + c.data.ambush_ahead_m)
 	var have: int = 0
-	for bot: BotController in _squad_task.keys():
+	for bot_v: Variant in _squad_task.keys():
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank):
-			_squad_task.erase(bot)
+			_squad_task.erase(bot_v)
 			continue
 		if bot.tank.team != team:
 			continue
@@ -1420,7 +1438,8 @@ func _give_squad_tasks(team: int, c: TeamCommander) -> void:
 	if have >= want or not TacticalMap.may_plan():
 		return
 	var candidates: Array[BotController] = []
-	for bot: BotController in _bots:
+	for bot_v: Variant in _bots:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if not is_instance_valid(bot) or not is_instance_valid(bot.tank) or bot.tank.team != team \
 				or bot.tank.is_knocked_out() or _respawn.has(bot) or _squad_task.has(bot):
 			continue
@@ -1452,7 +1471,8 @@ func _give_squad_tasks(team: int, c: TeamCommander) -> void:
 
 
 func _release_squads() -> void:
-	for bot: BotController in _squad_task:
+	for bot_v: Variant in _squad_task:
+		var bot: BotController = (bot_v as BotController) if is_instance_valid(bot_v) else null
 		if is_instance_valid(bot):
 			bot.squad_held = false
 	_squad_task.clear()

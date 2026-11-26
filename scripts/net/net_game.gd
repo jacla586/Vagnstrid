@@ -362,7 +362,8 @@ func respawn_player(peer: int) -> void:
 func _team_count(team: int) -> int:
 	var n: int = 0
 	for net_id: int in tanks:
-		var t: Tank = tanks[net_id]
+		var t_v: Variant = tanks[net_id]
+		var t: Tank = (t_v as Tank) if is_instance_valid(t_v) else null
 		if is_instance_valid(t) and not t.is_queued_for_deletion() and t.team == team:
 			n += 1
 	return n
@@ -550,7 +551,8 @@ func on_deploy(peer: int, config_key: String) -> void:
 func player_count(team: int) -> int:
 	var n: int = 0
 	for net_id: int in tanks:
-		var t: Tank = tanks[net_id]
+		var t_v: Variant = tanks[net_id]
+		var t: Tank = (t_v as Tank) if is_instance_valid(t_v) else null
 		if int(owners.get(net_id, 0)) > 0 and is_instance_valid(t) and not t.is_queued_for_deletion() \
 				and t.team == team:
 			n += 1
@@ -560,7 +562,8 @@ func player_count(team: int) -> int:
 func _make_roster() -> Array:
 	var rows: Array = []
 	for net_id: int in tanks:
-		var t: Tank = tanks[net_id]
+		var t_v: Variant = tanks[net_id]
+		var t: Tank = (t_v as Tank) if is_instance_valid(t_v) else null
 		if not is_instance_valid(t) or t.is_queued_for_deletion():
 			continue
 		var peer: int = int(owners.get(net_id, 0))
@@ -609,7 +612,10 @@ func _spawn_for(team: int, tank: Tank) -> Transform3D:
 
 
 func _send_spawn(peer: int, net_id: int) -> void:
-	var tank: Tank = tanks[net_id]
+	var tank_v: Variant = tanks.get(net_id)
+	if not is_instance_valid(tank_v):
+		return   # gone (a late joiner gets every tank in `tanks`, removed ones too until erased)
+	var tank: Tank = tank_v
 	NetSession.instance.rpc_id(peer, "rpc_spawn_tank", net_id, owners[net_id], tank.team, TankBuilder.spec_of(tank),
 			tank.global_transform)
 
@@ -658,10 +664,11 @@ func on_client_left(peer: int) -> void:
 	_names.erase(peer)
 	for net_id: int in owners.keys():
 		if owners[net_id] == peer:
-			var tank: Tank = tanks[net_id]
+			var tank_v: Variant = tanks[net_id]
 			tanks.erase(net_id)
 			owners.erase(net_id)
-			if is_instance_valid(tank):
+			if is_instance_valid(tank_v):
+				var tank: Tank = tank_v
 				tank.leave_wreck()
 				tank.queue_free()
 			NetSession.instance.rpc("rpc_despawn_tank", net_id)
@@ -765,7 +772,8 @@ func _physics_process(delta: float) -> void:
 		if _respawn_timers[net_id] > 0.0:
 			continue
 		_respawn_timers.erase(net_id)
-		var tank: Tank = tanks.get(net_id)
+		var tank_v: Variant = tanks.get(net_id)
+		var tank: Tank = (tank_v as Tank) if is_instance_valid(tank_v) else null
 		if not is_instance_valid(tank):
 			continue
 		var team: int = teams.get(owners.get(net_id, 0), tank.team)
@@ -783,9 +791,10 @@ func _update_koth(delta: float) -> void:
 		_koth_hooked = mode
 		mode.zone_moved.connect(func(_c: Vector3) -> void: _koth_timer = 0.0)
 		mode.match_over.connect(func(_w: int) -> void: _send_koth_state(mode))
-		mode.kill_bonus.connect(func(team: int, points: float) -> void:
+		mode.kill_bonus.connect(func(team: int, points: float, shooter: Tank) -> void:
 			if not multiplayer.get_peers().is_empty():
-				NetSession.instance.rpc("rpc_koth_bonus", team, points))
+				var shooter_id: int = shooter.net_id if is_instance_valid(shooter) else -1
+				NetSession.instance.rpc("rpc_koth_bonus", team, points, shooter_id))
 	_koth_timer -= delta
 	if _koth_timer <= 0.0:
 		_koth_timer = KOTH_SEND_INTERVAL_S
@@ -876,7 +885,8 @@ func _send_squads() -> void:
 	buf.put_u8(0)
 	var count: int = 0
 	for net_id: int in tanks:
-		var tank: Tank = tanks[net_id]
+		var tank_v: Variant = tanks[net_id]
+		var tank: Tank = (tank_v as Tank) if is_instance_valid(tank_v) else null
 		if not is_instance_valid(tank) or tank.squad == null or not is_instance_valid(tank.squad) \
 				or not tank.squad.is_inside_tree():   # a new tank's squad comes in a frame late
 			continue
@@ -924,7 +934,8 @@ func on_squads(buf: StreamPeerBuffer) -> void:
 	var count: int = buf.get_u8()
 	for i: int in count:
 		var net_id: int = buf.get_u16()
-		var tank: Tank = tanks.get(net_id)
+		var tank_v: Variant = tanks.get(net_id)
+		var tank: Tank = (tank_v as Tank) if is_instance_valid(tank_v) else null
 		if tank != null and is_instance_valid(tank) and tank.squad != null and is_instance_valid(tank.squad) \
 				and tank.squad.is_inside_tree():
 			tank.squad.read_net_state(buf)
@@ -933,7 +944,8 @@ func on_squads(buf: StreamPeerBuffer) -> void:
 
 
 func _squad_of(net_id: int) -> Squad:
-	var tank: Tank = tanks.get(net_id)
+	var tank_v: Variant = tanks.get(net_id)
+	var tank: Tank = (tank_v as Tank) if is_instance_valid(tank_v) else null
 	if tank == null or not is_instance_valid(tank) or tank.squad == null or not is_instance_valid(tank.squad):
 		return null
 	return tank.squad
@@ -1011,9 +1023,9 @@ func on_thunder_state(state: Dictionary) -> void:
 		ThunderRoadMode.instance.apply_net_state(state)
 
 
-func on_koth_bonus(team: int, points: float) -> void:
+func on_koth_bonus(team: int, points: float, shooter_id: int) -> void:
 	if KothMode.instance != null:
-		KothMode.instance.kill_bonus.emit(team, points)
+		KothMode.instance.kill_bonus.emit(team, points, tanks.get(shooter_id) as Tank)
 
 
 func on_snapshot(buf: StreamPeerBuffer) -> void:
@@ -1085,7 +1097,8 @@ func on_despawn_tank(net_id: int) -> void:
 
 
 func on_shell(net_id: int, shell_index: int, from: Vector3, velocity: Vector3, flash: bool) -> void:
-	var tank: Tank = tanks.get(net_id)
+	var tank_v: Variant = tanks.get(net_id)
+	var tank: Tank = (tank_v as Tank) if is_instance_valid(tank_v) else null
 	if is_instance_valid(tank):
 		tank.net_show_shell(shell_index, from, velocity, flash)
 
@@ -1098,14 +1111,16 @@ func on_shot_result(text: String, outcome: int) -> void:
 
 ## Client: an ammo explosion threw a tank's turret.
 func on_turret_toss(net_id: int, velocity: Vector3, spin: Vector3) -> void:
-	var tank: Tank = tanks.get(net_id)
+	var tank_v: Variant = tanks.get(net_id)
+	var tank: Tank = (tank_v as Tank) if is_instance_valid(tank_v) else null
 	if is_instance_valid(tank):
 		tank.toss_turret(velocity, spin)
 
 
 ## Client: a tank (any) fired smoke.
 func on_tank_smoke(net_id: int, points: PackedVector3Array) -> void:
-	var tank: Tank = tanks.get(net_id)
+	var tank_v: Variant = tanks.get(net_id)
+	var tank: Tank = (tank_v as Tank) if is_instance_valid(tank_v) else null
 	if is_instance_valid(tank):
 		tank.net_show_smoke(points)
 

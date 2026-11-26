@@ -98,7 +98,9 @@ func _fill_briefing() -> void:
 	if KothMode.instance != null and KothMode.instance.data != null:
 		var koth: KothData = KothMode.instance.data
 		title = koth.display_name
-		rules = koth.briefing.format({"score": "%d" % roundi(koth.score_to_win)})
+		rules = koth.briefing.format({"score": ("%d" % roundi(koth.score_to_win)) if koth.score_to_win > 0.0
+				else "half of all the points",   # a client before the host's rules came
+				"zones": "%d" % koth.zone_count, "zone_min": "%d" % roundi(koth.zone_lifetime_s / 60.0)})
 	elif ThunderRoadMode.instance != null and ThunderRoadMode.instance.data != null:
 		title = ThunderRoadMode.instance.data.display_name
 		rules = ThunderRoadMode.instance.data.briefing
@@ -281,7 +283,8 @@ func _deploy_offline() -> void:
 	var parent: Node = _rig_parent if is_instance_valid(_rig_parent) else get_tree().current_scene
 	parent.add_child(rig)
 	KothMode.place_tank(tank, _offline_spawn(tank))
-	for respawn: RespawnAtStart in _respawns:
+	for respawn_v: Variant in _respawns:
+		var respawn: RespawnAtStart = (respawn_v as RespawnAtStart) if is_instance_valid(respawn_v) else null
 		if is_instance_valid(respawn):
 			respawn.set_tank(tank)
 	if director != null:

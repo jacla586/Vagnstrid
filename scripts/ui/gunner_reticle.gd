@@ -82,7 +82,7 @@ func _draw() -> void:
 
 func _draw_load_ring(centre: Vector2, radius: float, width: float) -> void:
 	var remaining: float = views.get_tank().get_reload_remaining()
-	if remaining > _reload_last + 0.05:
+	if remaining > _reload_last + 0.3:
 		_reload_total = remaining   # a reload (or an ammo change) started
 	_reload_last = remaining
 	if remaining <= 0.0 or _reload_total <= 0.0:

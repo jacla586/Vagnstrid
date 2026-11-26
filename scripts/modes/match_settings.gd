@@ -19,6 +19,12 @@ const MAX_FREE_ALLIES: int = 8
 static var bot_commander: int = 2
 const COMMANDER_PATHS: PackedStringArray = ["", "res://data/bots/commander_normal.tres",
 		"res://data/bots/commander_sharp.tres"]
+## King of the Hill rules set by the dedicated server (ServerData koth_*), never saved; -1 =
+## the scenario's KothData. KothMode._ready applies them (KothMode.apply_overrides).
+static var koth_zones: int = -1
+static var koth_zone_s: float = -1.0
+## 0 = half of all the zones' points (KothMode.apply_overrides).
+static var koth_score: float = -1.0
 ## The player's name as last typed in the main menu ("" = none yet).
 static var player_name: String = ""
 static var _loaded: bool = false

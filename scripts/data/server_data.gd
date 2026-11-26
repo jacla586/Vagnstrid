@@ -15,3 +15,11 @@ extends Resource
 @export var vote_s: float = 30.0
 ## A match running longer than this (s) ends and goes to the vote.
 @export var max_match_s: float = 2700.0
+
+@export_group("King of the Hill")
+## Zones per match (the best score after the last wins); 0 = until the score limit.
+@export var koth_zones: int = 3
+## A zone's lifetime (min); it may close sooner when its points run out.
+@export var koth_zone_min: float = 7.0
+## Points to win at once; 0 = half of all the zones' points (decides the match).
+@export var koth_score: float = 0.0

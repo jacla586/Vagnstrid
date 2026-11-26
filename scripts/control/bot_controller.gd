@@ -223,6 +223,10 @@ var _last_known: Dictionary = {}
 
 func _ready() -> void:
 	_rng.randomize()
+	# A bot is its tank's sibling: when the tank goes (NetGame removing it, a map without
+	# bots online) the bot goes too, instead of thinking on with a freed tank.
+	if is_instance_valid(tank):
+		tank.tree_exiting.connect(queue_free)
 	if bot_data != null and unstick_after_s <= 0.0:
 		unstick_after_s = bot_data.unstick_after_s
 		unstick_reverse_s = bot_data.unstick_reverse_s
@@ -473,7 +477,7 @@ func share_contact(enemy: Tank, at: Vector3) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if tank == null or bot_data == null:
+	if not is_instance_valid(tank) or bot_data == null:
 		return
 	if tank.is_knocked_out():
 		# The tank holds this command object: an abandon left set would bail the crew
@@ -962,7 +966,8 @@ func _space() -> PhysicsDirectSpaceState3D:
 func _pick_target() -> void:
 	var nearest: Tank = null
 	var best_distance: float = INF
-	for other: Tank in _awareness.keys():
+	for other_v: Variant in _awareness.keys():
+		var other: Tank = (other_v as Tank) if is_instance_valid(other_v) else null
 		if not is_instance_valid(other) or not is_spotted(other) or other.is_knocked_out():
 			continue
 		var distance: float = tank.global_position.distance_to(other.global_position)

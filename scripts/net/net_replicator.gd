@@ -26,7 +26,8 @@ func _physics_process(delta: float) -> void:
 		buf.put_u8(0)
 		var count: int = 0
 		for net_id: int in game.tanks:
-			var tank: Tank = game.tanks[net_id]
+			var tank_v: Variant = game.tanks[net_id]
+			var tank: Tank = (tank_v as Tank) if is_instance_valid(tank_v) else null
 			if not is_instance_valid(tank) or not NetRelevance.include(tank, peer, _snapshot, viewer):
 				continue
 			tank.get_net_state(game.owners.get(net_id, 0) == peer).write(buf)
