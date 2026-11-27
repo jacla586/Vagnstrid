@@ -2,6 +2,10 @@
 
 _Hobbyprojekt · Godot 4.7 · Linköping i skala 1:1_
 
+**▶ [Se trailern på YouTube](https://youtu.be/sA6pKXXAKo8)**
+
+[![Vagnstrid – trailer](https://img.youtube.com/vi/sA6pKXXAKo8/maxresdefault.jpg)](https://youtu.be/sA6pKXXAKo8)
+
 Du är vagnchefen. **Allt du vet om fienden ser du med egna ögon.**
 
 ![Stridsvagn och infanterigrupp i gryningen medan en granat briserar på fältet](docs/readme/hero.jpg)
