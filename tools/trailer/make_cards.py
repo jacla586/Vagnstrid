@@ -270,7 +270,7 @@ CARDS = [
         1204, "idag 08:15", "PRESTANDA"), -0.7),
     ("08_forum_pling", lambda: forum(
         "KV-2", "Tung användare", 1, "Idag 14:22",
-        "Pling.", likes=3, avatar_colour=(70, 80, 60)), 1.1),
+        "Pling, motherlovers!", likes=3, avatar_colour=(70, 80, 60)), 1.1),
     ("09_sz_nastan_bra", lambda: swezone(
         "Nästan bra",
         "Jag hade inte så tråkigt. Min sambo frågade vad jag höll på med. Jag svarade.",

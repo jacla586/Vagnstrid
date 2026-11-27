@@ -10,13 +10,16 @@ extends SceneTree
 ##   size=<W>x<H>      film size (default 1920x1080)
 ##   max_t=<s>         stops a shot that runs away (default 90 s)
 ##   snap=1 / snap=all a JPG in renders/trailer/snaps/ at every cue / every half second
-## The screen is black while the map loads; the cue list (printed and written next to the
+## The screen is black while the map loads and the actors settle (SETTLE_FRAMES); the cue list (printed and written next to the
 ## frames as cues.txt) says from which second the action runs.
 
 const SHOTS_DIR: String = "res://tools/trailer/shots/%s.gd"
 const RIG_SCENE: String = "res://scenes/player/player_rig.tscn"
-## Frames the map gets to settle (trees, ground cover, shaders) before the action.
+## Frames the map gets to settle (trees, ground cover, shaders) before the shot's setup.
 const LOAD_FRAMES: int = 200
+## Frames between the setup and the action, still black: spawned tanks drop onto their
+## springs and settle, soldiers snap into place (it showed as a jolt at the start).
+const SETTLE_FRAMES: int = 120
 ## HUD nodes that stay visible without hud=1: the optics themselves.
 const KEEP_HUD: Array[String] = ["RainGlass", "OpticsDirt", "ViewOverlay", "FireHaze", "GunnerReticle"]
 
@@ -70,10 +73,12 @@ func _process(_delta: float) -> bool:
 	if _frame == 2:
 		_prepare_map()
 	if _frame == LOAD_FRAMES:
-		_black.visible = false
 		current_scene.add_child(_shot)
 		_shot.call("begin", _frame)
-	if _frame > LOAD_FRAMES and bool(_shot.call("is_done")):
+	if _frame == LOAD_FRAMES + SETTLE_FRAMES:
+		_black.visible = false
+		_shot.call("go")
+	if _frame > LOAD_FRAMES + SETTLE_FRAMES and bool(_shot.call("is_done")):
 		_shot.call("write_cues", _out_dir)
 		return true
 	return false

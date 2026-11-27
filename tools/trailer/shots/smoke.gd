@@ -4,10 +4,12 @@ extends "res://tools/trailer/trailer_shot.gd"
 ## lands in front of it.
 ##  0 s      low behind the Sherman: four enemy tanks come over the field
 ##  ~3       gunner's sight: two kills (the second throws its turret)
-##  then     an HE round bursts just in front ("Närträff!"): wide, smoke salvo, the
-##           Sherman backs into it; cut to the enemy side (a cheat: the Sherman is moved
-##           meanwhile); it comes up out of the trees SCOOT_M to the side
-##  then     gunner's sight again: the last two
+##  then     an HE round bursts just in front ("Närträff!"), dirt on the sight; still in
+##           the sight the smoke goes up, then wide: the Sherman backs into it
+##  then     the camera on the smoke: the last two come out through it (a cheat: they are
+##           moved up behind it meanwhile), stop and search with their turrets; the
+##           Sherman is gone. A round in the first one's side: the Sherman has come up
+##           SCOOT_M to the side; cut to it as it swings onto the second and kills it
 ##  end      wide behind the Sherman over four burning wrecks
 ## The shot finds its own forest edge: open, flat ground with a clear view to the enemy
 ## line from both firing spots. Options: spot=<n> (the n-th spot found), weather=<preset>.
@@ -32,7 +34,13 @@ const END_AFTER_S: float = 6.0
 ## Where the search starts: the opening's forest edge west of Haningeleden.
 const FIRST_TRY: Vector2 = Vector2(400.0, 610.0)
 
-enum Phase { FIRST_PAIR, NEAR_MISS, SMOKE, REVERSE, ENEMY_VIEW, COME_UP, SECOND_PAIR, END }
+enum Phase { FIRST_PAIR, NEAR_MISS, SMOKE, REVERSE, WATCH, STRIKE, END }
+
+## The last two come through the smoke from behind it to these spots ((ahead, right) of
+## the Sherman's old spot), then search.
+const THROUGH_FROM: Array[Vector2] = [Vector2(58.0, 3.0), Vector2(72.0, 17.0)]
+const THROUGH_TO: Array[Vector2] = [Vector2(13.0, 2.0), Vector2(22.0, 15.0)]
+const SEARCH_S: float = 3.2
 
 var enemies: Array[Tank] = []
 var _phase: Phase = Phase.FIRST_PAIR
@@ -47,6 +55,10 @@ var _last_kill_t: float = -1.0
 var _he_point: Vector3
 var _smoke_eye: Vector3
 var _why_line: Dictionary = {}
+var _watch_eye: Vector3
+var _arrived: Array[bool] = [false, false]
+var _searching_t: float = -1.0
+var _sherman_up: bool = false
 
 
 func _init() -> void:
@@ -81,15 +93,30 @@ func setup() -> void:
 	enemies[1].data.turret_toss_min_m = 9.0
 	enemies[1].data.turret_toss_max_m = 9.0
 	cmd(enemies[2]).ammo_select = ammo_index(enemies[2], "HE")
+	# The burst throws dirt on the sight (the rule gives a little at this distance).
+	enemies[2].fired.connect(func(s: Shell) -> void:
+		s.finished.connect(func(_struck: Array[Tank]) -> void:
+			player.add_optics_dirt(0.9)
+			shake(0.7)
+			cue("HE bursts: dirt on the sight")), CONNECT_ONE_SHOT)
 	# The smoke camera: the first spot with nothing (bushes count) in front of it.
 	_smoke_eye = ground_v(_home - _fwd * 18.0 + _left * 9.0) + Vector3.UP * 1.3
-	for off: Vector3 in [-_fwd * 18.0 + _left * 9.0, -_fwd * 16.0 - _left * 9.0, _left * 16.0 - _fwd * 4.0,
+	for off: Vector3 in [-_fwd * 16.0 - _left * 9.0, -_fwd * 18.0 + _left * 9.0, _left * 16.0 - _fwd * 4.0,
 			-_left * 16.0 - _fwd * 4.0, -_fwd * 12.0 + _left * 5.0, -_fwd * 12.0 - _left * 5.0]:
 		var e: Vector3 = ground_v(_home + off) + Vector3.UP * 1.3
 		if clear_line(e, _home + Vector3.UP * 1.5, 0.6, false):
 			_smoke_eye = e
 			break
 	_he_point = ground_v(_home + _fwd * 9.0 + right * 2.0)
+	# The smoke camera: right of the old spot at the edge, on the smoke and the field
+	# behind it (the new spot, to the left, out of the frame).
+	_watch_eye = ground_v(_home + right * 16.0 - _fwd * 2.0) + Vector3.UP * 1.6
+	for off2: Vector3 in [right * 16.0 - _fwd * 2.0, right * 18.0 + _fwd * 2.0, right * 13.0 - _fwd * 4.0,
+			right * 20.0 + _fwd * 5.0, right * 12.0 + _fwd * 3.0]:
+		var e2: Vector3 = ground_v(_home + off2) + Vector3.UP * 1.6
+		if clear_line(e2, ground_v(_home + _fwd * 16.0 + right * 3.0) + Vector3.UP * 1.5, 0.8, false):
+			_watch_eye = e2
+			break
 	for e: Tank in enemies:
 		e.knocked_out.connect(_on_kill.bind(e))
 	use_cam()
@@ -237,6 +264,9 @@ func physics(_delta: float) -> void:
 		if e.is_knocked_out():
 			stop(e)
 			continue
+		if _phase >= Phase.WATCH:
+			_through(i - 2)
+			continue
 		drive_to(e, e.global_position - e.global_basis.z * 50.0, ENEMY_THROTTLE)
 		if i == 2:
 			aim_ballistic(e, _he_point)
@@ -265,7 +295,7 @@ func physics(_delta: float) -> void:
 			if once("smoke", 0.0):
 				c.smoke = true
 				cue("smoke salvo")
-			if _phase_t > 1.4:
+			if _phase_t > 2.4:
 				_set_phase(Phase.REVERSE)
 		Phase.REVERSE:
 			if once("reverse", 0.0):
@@ -273,26 +303,34 @@ func physics(_delta: float) -> void:
 			c.throttle = -0.8
 			c.steering = 0.0
 			if _phase_t > 3.0:
-				_set_phase(Phase.ENEMY_VIEW)
-		Phase.ENEMY_VIEW:
-			# Cut away: the Sherman is put back in the trees by the new spot meanwhile.
+				_set_phase(Phase.WATCH)
+		Phase.WATCH:
+			# Cut away: the Sherman is put in the trees by the new spot, the last two
+			# behind the smoke; the Sherman creeps up while they come through.
 			if once("move", 0.0):
 				var from: Vector3 = _scoot - _fwd * COME_UP_M
 				place(player, Vector2(from.x, from.z), rad_to_deg(atan2(_fwd.x, -_fwd.z)))
-				cue("enemy side: the smoke wall (Sherman moved)")
-			stop(player)
-			if _phase_t > 2.4:
-				_set_phase(Phase.COME_UP)
-		Phase.COME_UP:
-			if once("come_up", 0.0):
-				cue("Sherman comes up at the new spot")
+				var toward_us: float = rad_to_deg(atan2(-_fwd.x, _fwd.z))
+				for k: int in 2:
+					var p: Vector3 = _home + _fwd * THROUGH_FROM[k].x - _left * THROUGH_FROM[k].y
+					place(enemies[k + 2], Vector2(p.x, p.z), toward_us)
+					enemies[k + 2].linear_velocity = -_fwd * 4.0
+				cue("on the smoke: the last two come through it (Sherman moved)")
 			_aim_next([2, 3])
-			if drive_to(player, _scoot + _fwd * 1.0, 0.6) < 1.5 or _phase_t > 8.0:
+			if not _sherman_up and drive_to(player, _scoot + _fwd * 1.0, 0.45) < 1.5:
+				_sherman_up = true
+				cue("Sherman at the new spot")
+			if _sherman_up:
 				stop(player)
-				_set_phase(Phase.SECOND_PAIR)
-		Phase.SECOND_PAIR:
+			if _arrived[0] and _arrived[1] and _searching_t < 0.0:
+				_searching_t = t
+				cue("they search")
+			if (_searching_t >= 0.0 and t > _searching_t + SEARCH_S and _sherman_up) or _phase_t > 20.0:
+				_set_phase(Phase.STRIKE)
+		Phase.STRIKE:
 			stop(player)
-			_hunt([2, 3])
+			# Close by: the lay is a degree or two off the turret's centre line.
+			_hunt([2, 3], 2.0)
 			if _kills >= 4:
 				_set_phase(Phase.END)
 		Phase.END:
@@ -309,17 +347,34 @@ func _set_phase(p: Phase) -> void:
 
 
 ## Lays on the first living tank of `which` (lead and drop allowed for) and fires when on.
-func _hunt(which: Array) -> void:
+func _hunt(which: Array, tol: float = FIRE_ERR_DEG) -> void:
 	var e: Tank = _aim_next(which)
-	if e == null or t < GUNNER_AT_S + 0.8 or (_phase == Phase.SECOND_PAIR and _phase_t < 1.0):
+	if e == null or t < GUNNER_AT_S + 0.8:
 		return
 	var c: TankCommand = cmd(player)
 	var muzzle: Transform3D = player.get_muzzle_transform()
 	var err: float = rad_to_deg((-muzzle.basis.z).angle_to(c.aim_point - muzzle.origin))
-	if err < FIRE_ERR_DEG and player.is_loaded() and t > _shot_fired_t + 0.5:
+	if err < tol and player.is_loaded() and t > _shot_fired_t + 0.5:
 		c.fire = true
 		_shot_fired_t = t
 		cue("FIRE at %s" % e.name)
+
+
+## One of the last two (k 0/1) comes through the smoke to its spot, then searches with
+## its turret: sweeps ahead and to the right, never towards the Sherman's new spot.
+func _through(k: int) -> void:
+	var e: Tank = enemies[k + 2]
+	cmd(e).fire = false
+	var to: Vector3 = ground_v(_home + _fwd * THROUGH_TO[k].x - _left * THROUGH_TO[k].y)
+	if not _arrived[k]:
+		if drive_to(e, to, 0.5) < 2.5:
+			_arrived[k] = true
+		aim(e, e.global_position - e.global_basis.z * 100.0 + Vector3.UP * 1.5)
+		return
+	stop(e)
+	var centre: Vector3 = (-_fwd - _left * 0.6).normalized()
+	var swing: float = sin((t - maxf(_searching_t, 0.0)) * 0.9 + float(k) * 2.1) * deg_to_rad(65.0)
+	aim(e, e.global_position + centre.rotated(Vector3.UP, swing) * 80.0 + Vector3.UP * 1.5)
 
 
 func _aim_next(which: Array) -> Tank:
@@ -349,7 +404,7 @@ func frame(_delta: float) -> void:
 	var sherman_c: Vector3 = player.get_global_transform_interpolated().origin
 	var right: Vector3 = -_left
 	match _phase:
-		Phase.FIRST_PAIR, Phase.SECOND_PAIR:
+		Phase.FIRST_PAIR:
 			if t < GUNNER_AT_S:
 				# Low behind the Sherman's right shoulder, over the field.
 				var eye: Vector3 = ground_v(sherman_c - _fwd * 7.0 + right * 3.0) + Vector3.UP * 1.4
@@ -360,34 +415,30 @@ func frame(_delta: float) -> void:
 			elif once("gunner_%d" % _phase, 0.0):
 				use_gunner(SIGHT_ZOOM)
 				cue("gunner's sight")
-		Phase.NEAR_MISS:
-			pass   # still in the sight: the burst fills it
-		Phase.SMOKE, Phase.REVERSE:
+		Phase.NEAR_MISS, Phase.SMOKE:
+			pass   # still in the sight: the burst, the dirt, the smoke going up
+		Phase.REVERSE:
 			if once("wide_smoke", 0.0):
 				use_cam()
 				cue("wide: smoke")
 			# Low, behind and to the left: the Sherman backs towards us out of the smoke.
 			look_cam(_smoke_eye, sherman_c + Vector3.UP * 1.2 + _fwd * 6.0, 46.0)
-		Phase.ENEMY_VIEW:
-			# Over an enemy tank's turret towards the smoke wall at the forest edge.
-			var e: Tank = enemies[3] if not enemies[3].is_knocked_out() else enemies[2]
-			var ec: Vector3 = e.get_global_transform_interpolated().origin
-			var to_us: Vector3 = (_home - ec).normalized()
-			var eye: Vector3 = ec - to_us * 7.0 + _left * 2.0 + Vector3.UP * 2.6
-			look_cam(eye, ec + to_us * 40.0 + Vector3.UP * 1.0, 40.0)
-		Phase.COME_UP:
-			# Low beside the new spot: the Sherman noses out of the trees.
-			var eye: Vector3 = ground_v(_scoot + _fwd * 6.0 + _left * 8.0) + Vector3.UP * 0.9
-			look_cam(eye, sherman_c + Vector3.UP * 1.3, 50.0)
-		Phase.END:
-			if _phase_t > 1.6:
-				if once("wide_end", 0.0):
+		Phase.WATCH, Phase.STRIKE:
+			if _kills < 3 or t < _last_kill_t + 1.3:
+				# On the smoke at the old spot; they come out of it and search.
+				if once("watch_cam", 0.0):
 					use_cam()
-					cue("wide over the wrecks")
-				var mid: Vector3 = Vector3.ZERO
-				for e: Tank in enemies:
-					mid += e.global_position
-				mid /= float(enemies.size())
-				var push: float = ease_in_out((_phase_t - 1.6) / 5.0)
-				var eye: Vector3 = sherman_c - _fwd * (13.0 - push * 3.0) + right * 4.0 + Vector3.UP * 4.5
-				look_cam(eye, mid + Vector3.UP * 2.0, 32.0)
+				look_cam(_watch_eye, ground_v(_home + _fwd * 16.0 - _left * 3.0) + Vector3.UP * 1.6, 48.0)
+			else:
+				if once("new_spot_cam", 0.0):
+					cue("the Sherman at its new spot")
+				# Behind the Sherman's shoulder at the new spot, on the last one.
+				var e3: Vector3 = enemies[3].get_global_transform_interpolated().origin
+				var to_e: Vector3 = (e3 - sherman_c)
+				to_e.y = 0.0
+				to_e = to_e.normalized()
+				var eye: Vector3 = sherman_c - to_e * 8.0 + Vector3.UP * 2.6 + to_e.cross(Vector3.UP) * 2.5
+				look_cam(eye, e3 + Vector3.UP * 1.0, 44.0)
+		Phase.END:
+			# Back on the smoke: the two burning where they searched.
+			look_cam(_watch_eye, ground_v(_home + _fwd * 16.0 - _left * 3.0) + Vector3.UP * 1.6, 48.0)

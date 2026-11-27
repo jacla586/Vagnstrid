@@ -1131,7 +1131,13 @@ there and the break is over) and on the match's win/loss. Points
   smoke (Sherman, four kills, smoke and a cut-away move; reload, sight and wind are cheats),
   kv2_plow (two T-34s, a field of wrecks, a KV-2 that shoves them aside and shrugs off AP; end=flank|kv;
   cheats: reload, AP that pings, light wrecks, a pushed turret, hits that always land), advance (filler: seven
-  T-34s and their squads cross the field towards Vallastaden, HE in the field);
+  T-34s and their squads cross the field towards Vallastaden, HE in the field; cam=commander rides in the line
+  buttoned up, the hatch opens on the move; cam=drone adds burning wrecks and enemies firing HE from the town),
+  mine (a soldier lays a mine on a road, a Pz IV loses its track), rally (Garnisonen: a T-34 far too fast through
+  a sign into a wall, "Lugn nu, Rally-Kalle!"). Every take settles `SETTLE_FRAMES` (2 s) in the black after
+  setup() before the action (`go()`/`started()`), so spawns don't drop in view; thrown turrets are auto-named
+  Wrecks (find them by position, not name). Cut: `geodata/.venv/bin/python -I tools/trailer/make_cut.py [--preview]`
+  -> `renders/trailer/cut/vagnstrid_trailer_v4.mp4` (old v3 takes in `renders/trailer/v3_takes/`);
   `record_all.sh` films every take.
 - Spot views of a geodata map by SWEREF coordinates (checking hand-placed details against photos): `godot --path . --disable-vsync --script res://tools/render_spots.gd -- <map> <out dir> "name:E,N,dy:E,N,dy:fov" ...` (needs a window; origin from `geodata/<map>/work/grid.json`). Orthophoto/laser crops with a grid: geodata `scripts/ortobild.py`.
 - Graphics before/after: `godot --path . --disable-vsync --script res://tools/render_views.gd --

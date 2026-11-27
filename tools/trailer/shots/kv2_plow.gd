@@ -4,11 +4,14 @@ extends "res://tools/trailer/trailer_shot.gd"
 ##  ~7      the camera cranes down behind them: a field full of burning wrecks and turrets
 ##  ~10     they cease fire. Then a KV-2 comes through the smoke and ploughs through the
 ##          wrecks (a low camera at one it shoves aside); the T-34s fire: ping, ping, ping
-##  then    the KV-2 stops and fires: the first T-34's turret flies absurdly far
-##  end=flank (default): the second T-34 puts HE in the KV-2's track while its 152 mm
-##          reloads, drives round it (the box turret can't keep up) and kills it from
-##          behind: its turret goes
-##  end=kv: the KV-2 takes the second T-34 too
+##  then    the KV-2 stops and fires: over its shoulder the first T-34 blows up, its turret
+##          flies sky-high (slow motion)
+##  end=flank (default): the KV-2 rolls on; the second T-34 puts HE in its track (the
+##          gunner's sight); the KV-2 grinds to a stop. The T-34 swings round it, the box
+##          turret turning after it but too slowly: a round in its side on the way (no
+##          harm), then from behind a salvo into the engine deck: its turret goes
+##  end=kv: the KV-2 stops and fires: the first T-34's turret flies absurdly far, then
+##          the KV-2 takes the second T-34 too
 ## Cheats (this shot's tank data only): the T-34s reload in RELOAD_S, their AP can't get
 ## through the KV-2 until the shot from behind (which always kills), the wrecks are light,
 ## the thrown turret gets a push, the HE always throws the track. Options: end=flank|kv,
@@ -18,6 +21,13 @@ const RELOAD_S: float = 2.5
 const PAIR_GAP_M: float = 7.0       # each T-34 this far to the side of the spot
 const KV_START_M: float = 175.0
 const KV_STOP_M: float = 85.0
+## end=flank: the HE goes at the track once the KV-2 is this near; it never gets nearer
+## than KV_MIN_M (a stop by hand if the track holds).
+const KV_HE_AT_M: float = 112.0
+const KV_MIN_M: float = 55.0
+## end=flank: the KV-2's turret turns this slowly (deg/s) while the T-34 swings round it.
+const KV_TRAVERSE_DEG_S: float = 7.0
+const REAR_SALVO: int = 2
 const KV_GO_S: float = 8.0
 const CEASE_FIRE_S: float = 10.0
 const PING_FROM_S: float = 12.5
@@ -26,8 +36,11 @@ const BURNING: int = 8
 const WRECK_MASS_KG: float = 1500.0
 const PING_PEN_MM: float = 20.0
 const FIRE_ERR_DEG: float = 0.35
-const FLING_UP_MPS: float = 21.0
-const FLING_AWAY_MPS: float = 13.0
+const FLING_UP_MPS: float = 35.0
+const FLING_AWAY_MPS: float = 14.0
+## The KV-2's kill in slow motion: this time scale for this long (game seconds).
+const SLOW_SCALE: float = 0.35
+const SLOW_S: float = 1.5
 const END_HOLD_S: float = 6.0
 ## Where the search starts: the smoke shot's field west of the forest.
 const FIRST_TRY: Vector2 = Vector2(570.0, 1380.0)
@@ -59,6 +72,16 @@ var _overhead_end: Transform3D
 var _pings: int = 0
 var _rear_fire_t: float = -1.0
 var _chase_eye: Vector3 = Vector3.ZERO
+var _kv_stopped_at: Vector3 = Vector3.ZERO
+var _side_shot: bool = false
+var _rear_shots: int = 0
+var _slow_until: float = -1.0
+var _shoulder_eye: Vector3 = Vector3.ZERO
+var _rear_side: float = 0.0
+var _flung: RigidBody3D
+var _toss_wide_eye: Vector3 = Vector3.ZERO
+var _toss_look: Vector3 = Vector3.ZERO
+var _last_rear_t: float = -10.0
 
 
 func _init() -> void:
@@ -161,8 +184,23 @@ func _field_ok(home: Vector3, fwd: Vector3) -> bool:
 ## The second T-34's way round the stopped KV-2: its side, then its rear quarter.
 func _flank_points(home: Vector3, fwd: Vector3, right: Vector3) -> Array[Vector3]:
 	var stop_at: Vector3 = home + fwd * KV_STOP_M
+	var rear: Vector3 = stop_at + right * 5.0 + fwd * 32.0
+	for off: Vector2 in [Vector2(5.0, 32.0), Vector2(14.0, 30.0), Vector2(-4.0, 32.0), Vector2(8.0, 40.0),
+			Vector2(18.0, 38.0), Vector2(-10.0, 30.0)]:
+		var c: Vector3 = stop_at + right * off.x + fwd * off.y
+		if _clear_of_wrecks(c, 13.0):
+			rear = c
+			break
 	return [stop_at + right * 34.0 - fwd * 22.0, stop_at + right * 36.0 + fwd * 8.0,
-			stop_at + right * 22.0 + fwd * 28.0]
+			stop_at + right * 18.0 + fwd * 30.0, rear]
+
+
+## No wreck or loose turret within `r` m of `p` (flat).
+func _clear_of_wrecks(p: Vector3, r: float) -> bool:
+	for n: Node in get_tree().get_nodes_in_group(&"wrecks"):
+		if _flat((n as Node3D).global_position - p).length() < r:
+			return false
+	return true
 
 
 ## Earlier victims: tanks knocked out where they stand (most throw their turret), made
@@ -231,6 +269,10 @@ func _settle_wrecks() -> void:
 # --- Action ------------------------------------------------------------------------
 
 func physics(_delta: float) -> void:
+	if _slow_until >= 0.0 and t > _slow_until:
+		_slow_until = -1.0
+		Engine.time_scale = 1.0
+		cue("slow motion over")
 	for tank: Tank in [player, t34a, kv]:
 		cmd(tank).fire = false
 	if once("settle", 3.0):
@@ -274,7 +316,9 @@ func physics(_delta: float) -> void:
 			else:
 				_ping_at_kv(t34a)
 				_fire_at(kv, _turret_of(t34a), pt > 1.4, 0.4)
-			if _kill_t >= 0.0 and t > _kill_t + 4.5:
+			if _kill_t >= 0.0 and t > _kill_t + 1.4 and options.get("end", "flank") != "kv":
+				drive_to(kv, _home, 1.0)   # it rolls on, the gun still smoking
+			if _kill_t >= 0.0 and t > _kill_t + 3.2:
 				if options.get("end", "flank") == "kv":
 					_set_phase(Phase.KV_SECOND)
 					kv.data.reload_time_s = 4.0
@@ -288,18 +332,18 @@ func physics(_delta: float) -> void:
 						cue("the second T-34 goes too")
 						_end_t = t, CONNECT_ONE_SHOT)
 				else:
-					_set_phase(Phase.HE_SHOT)
-					cmd(player).ammo_select = ammo_index(player, "HE")
-					cue("gunner's sight: HE")
-					player.fired.connect(func(s: Shell) -> void:
-						_he_fired = true
-						cue("HE at the track")
-						s.finished.connect(func(_struck: Array[Tank]) -> void:
-							_he_landed_t = t), CONNECT_ONE_SHOT)
+					_start_he_shot()   # the KV-2 rolls on meanwhile
 		Phase.HE_SHOT:
-			aim(kv, _turret_of(player))
+			# The KV-2 rolls on until the track goes (and never past KV_MIN_M).
+			var kv_d: float = _flat(kv.global_position - _home).length()
+			if _he_landed_t < 0.0 and kv_d > KV_MIN_M:
+				drive_to(kv, _home, 1.0)
+				aim(kv, _home + Vector3.UP * 1.5)
+			else:
+				stop(kv)
+			_ping_at_kv(t34a)
 			if not _he_fired:
-				_fire_at(player, _track_point(), pt > 2.2 and player.get_loaded_shell().short_name == "HE", 0.3)
+				_fire_at(player, _track_point(), pt > 2.3 and player.get_loaded_shell().short_name == "HE", 0.3)
 			elif _he_landed_t >= 0.0 and t > _he_landed_t + 0.3:
 				var dmg3: TankDamage = kv.get("_damage")
 				if not dmg3.is_immobilised():
@@ -307,8 +351,13 @@ func physics(_delta: float) -> void:
 					dmg3.apply_mine(_track_id())
 				if once("tracked", 0.0):
 					cue("track broken")
-				if t > _he_landed_t + 1.4:
-					_waypoints = _flank_points(_home, _fwd, _right)
+				if t > _he_landed_t + 2.6:
+					_kv_stopped_at = kv.global_position
+					_waypoints = _flank_points(_kv_stopped_at - _fwd * KV_STOP_M, _fwd, _right)
+					# From here the T-34s' AP gets through (the shot decides the harm).
+					_ap.penetration_mm = 400.0
+					kv.damage_immune = true
+					kv.data.turret_traverse_speed_deg = KV_TRAVERSE_DEG_S
 					# The cut hides a jump: the T-34 is already on its way, at the first point.
 					var from: Vector3 = _waypoints[0]
 					var along: Vector3 = _flat(_waypoints[1] - from).normalized()
@@ -320,18 +369,25 @@ func physics(_delta: float) -> void:
 					cue("round it")
 		Phase.FLANK:
 			aim(kv, _turret_of(player))
-			aim(player, kv.global_position + Vector3.UP * 1.5)
 			var wp: Vector3 = ground_v(_waypoints[_wp])
+			# On the way past its side: one round into the hull side, on the move.
+			var side_p: Vector3 = kv.to_global(Vector3(0.0, 0.1, 0.4))
+			if _wp >= 2 and not _side_shot:
+				_fire_at(player, side_p, player.get_loaded_shell().short_name == "AP", 3.0)
+				if options.has("snap") and once("dbg_side%d" % floori(t * 4.0), 0.0):
+					print("side t=%.2f loaded=%s shell=%s err=%.2f" % [t, player.is_loaded(),
+							player.get_loaded_shell().short_name, _lay_err(player)])
+				if cmd(player).fire:
+					_side_shot = true
+					cue("a round in its side")
+			else:
+				aim(player, kv.global_position + Vector3.UP * 1.0)
 			if drive_to(player, wp, 1.0) < 7.0:
 				_wp += 1
 				if _wp >= _waypoints.size():
 					stop(player)
 					_set_phase(Phase.REAR_SHOT)
 					cue("behind it")
-					_ap.penetration_mm = 400.0   # the rear always gives
-					make_fragile(kv)
-					var dmg4: TankDamage = kv.get("_damage")
-					dmg4.ammo_exploded = true
 					kv.data.turret_toss_min_m = 12.0
 					kv.data.turret_toss_max_m = 12.0
 					kv.data.turret_toss_side_mps = 2.0
@@ -341,17 +397,30 @@ func physics(_delta: float) -> void:
 		Phase.REAR_SHOT:
 			if not kv.is_knocked_out():
 				aim(kv, _turret_of(player))
-				# The turret's rear (the hull's is below the gun's depression this close).
-				_fire_at(player, kv.to_global(kv.get_turret_local_position() + Vector3(0.0, 0.3, 1.3)),
-						pt > 1.0 and player.get_loaded_shell().short_name == "AP", 2.0)
-				if cmd(player).fire and _rear_fire_t < 0.0:
-					_rear_fire_t = t
-					cue("fire from behind")
-				# This close the lay is ~1° off (the gun sits off the turret's centre): if
-				# the round hasn't done it by the time it gets there, the KV-2 goes anyway.
+				# The engine deck: the rear of the hull, a little above the middle.
+				var hs: Vector3 = kv.data.hull_size
+				var rear: Vector3 = kv.to_global(Vector3(0.0, hs.y * 0.15, hs.z * 0.5 - 0.4))
+				var last: bool = _rear_shots >= REAR_SALVO - 1
+				_fire_at(player, rear, pt > 0.8 and player.get_loaded_shell().short_name == "AP"
+						and t > _last_rear_t + 0.5, 2.5 if pt < 3.0 else 6.0)
+				if options.has("snap") and once("dbg_rear%d" % floori(t * 4.0), 0.0):
+					print("rear t=%.2f loaded=%s shell=%s err=%.2f" % [t, player.is_loaded(),
+							player.get_loaded_shell().short_name, _lay_err(player)])
+				if cmd(player).fire:
+					_rear_shots += 1
+					_last_rear_t = t
+					cue("rear shot %d" % _rear_shots)
+					if last:
+						# The salvo's last round does it.
+						kv.damage_immune = false
+						make_fragile(kv)
+						var dmg4: TankDamage = kv.get("_damage")
+						dmg4.ammo_exploded = true
+						_rear_fire_t = t
+				# If the last round hasn't done it by the time it gets there, the KV-2 goes anyway.
 				var flight: float = player.global_position.distance_to(kv.global_position) / _ap.muzzle_velocity_mps
-				if _rear_fire_t >= 0.0 and t > _rear_fire_t + flight + 2.0 / 60.0:
-					effect(&"impact_armour", _turret_of(kv), 1.5)
+				if _rear_fire_t >= 0.0 and t > _rear_fire_t + flight + 4.0 / 60.0:
+					effect(&"impact_armour", rear, 1.5)
 					kv.call("_knock_out")
 			if _end_t >= 0.0:
 				_set_phase(Phase.END)
@@ -371,6 +440,18 @@ func _set_phase(p: Phase) -> void:
 	_phase_t = t
 
 
+## end=flank: HE in the track of the KV-2 as it comes (gunner's sight).
+func _start_he_shot() -> void:
+	_set_phase(Phase.HE_SHOT)
+	cmd(player).ammo_select = ammo_index(player, "HE")
+	cue("gunner's sight: HE")
+	player.fired.connect(func(s: Shell) -> void:
+		_he_fired = true
+		cue("HE at the track")
+		s.finished.connect(func(_struck: Array[Tank]) -> void:
+			_he_landed_t = t), CONNECT_ONE_SHOT)
+
+
 ## Lays on `point` (drop allowed for) and fires when `ok`, loaded and within `tol` degrees.
 func _fire_at(tank: Tank, point: Vector3, ok: bool, tol: float) -> void:
 	aim_ballistic(tank, point)
@@ -380,6 +461,11 @@ func _fire_at(tank: Tank, point: Vector3, ok: bool, tol: float) -> void:
 	var err: float = rad_to_deg((-muzzle.basis.z).angle_to(cmd(tank).aim_point - muzzle.origin))
 	if err < tol:
 		cmd(tank).fire = true
+
+
+func _lay_err(tank: Tank) -> float:
+	var muzzle: Transform3D = tank.get_muzzle_transform()
+	return rad_to_deg((-muzzle.basis.z).angle_to(cmd(tank).aim_point - muzzle.origin))
 
 
 ## The opening: targets nobody sees, 350-650 m out; after each shot the next lay is a
@@ -428,21 +514,31 @@ func _on_kv_struck(outcome: int, _dir: Vector3) -> void:
 
 func _on_t34a_out() -> void:
 	_kill_t = t
-	cue("the first T-34's turret flies")
-	effect(&"explosion", _turret_of(t34a), 2.2)
+	cue("the first T-34's turret flies (slow motion)")
+	effect(&"explosion", _turret_of(t34a), 3.0)
+	Engine.time_scale = SLOW_SCALE
+	_slow_until = t + SLOW_S
 
 
 ## Gives a tossed turret a push away from the KV-2: high and far.
 func _fling(_v: Vector3, _spin: Vector3, tank: Tank) -> void:
 	var away: Vector3 = _flat(tank.global_position - kv.global_position).normalized()
 	var side: Vector3 = away.cross(Vector3.UP)
-	var wrecks: Array[Node] = get_tree().get_nodes_in_group(&"wrecks")
-	for j: int in range(wrecks.size() - 1, -1, -1):
-		var body := wrecks[j] as RigidBody3D
-		if body != null and not (body is Wreck):
-			body.linear_velocity = Vector3.UP * FLING_UP_MPS + away * FLING_AWAY_MPS + side * 2.5
-			body.angular_velocity = side * 4.0 + Vector3.UP * 2.0
-			return
+	# This tank's own turret: the thrown copy (a Wreck, auto-named) nearest where its
+	# turret stood (older victims' turrets lie about the field as wrecks too).
+	var at: Vector3 = _turret_of(tank)
+	var best: RigidBody3D = null
+	for n: Node in get_tree().current_scene.get_children():
+		var body := n as RigidBody3D
+		if body is Wreck and (best == null or body.global_position.distance_to(at) < best.global_position.distance_to(at)):
+			best = body
+	if best == null or best.global_position.distance_to(at) > 5.0:
+		push_warning("no thrown turret by %s" % tank.name)
+		return
+	_flung = best
+	best.linear_velocity = Vector3.UP * FLING_UP_MPS + away * FLING_AWAY_MPS + side * 2.5
+	best.angular_velocity = side * 4.0 + Vector3.UP * 2.0
+	cue("%s's turret flung" % tank.name)
 
 
 ## Wrecks and turrets in the KV-2's way give like cardboard: woken, thawed and shoved
@@ -532,18 +628,50 @@ func frame(delta: float) -> void:
 				var dist: float = eye3.distance_to(_look)
 				look_cam(eye3, _look, clampf(rad_to_deg(2.0 * atan(14.0 / dist)), 8.0, 30.0) * (1.6 if close else 1.0))
 		Phase.KV_FIRES:
+			# Low over the KV-2's shoulder, its box turret big in the frame, on the first
+			# T-34; when it goes the camera stays and tilts up after the turret.
+			var back: Vector3 = _flat(kv_p - t34a.global_position).normalized()
+			# Before the shot: low beside the T-34 with the KV-2 behind it. When it goes:
+			# well out to the side, wide and steady, the ground in the frame, the turret
+			# rising in a long arc (slow motion).
+			var victim: Vector3 = t34a.global_position
+			var gc: GroundCover = GroundCover.of(self)
+			if _shoulder_eye == Vector3.ZERO:
+				var side: Vector3 = back.cross(Vector3.UP)
+				_shoulder_eye = ground_v(victim + side * 20.0 - back * 14.0) + Vector3.UP * 1.3
+				for sd: float in [1.0, -1.0, 1.3, -1.3]:
+					var e: Vector3 = ground_v(victim + side * 20.0 * sd - back * 14.0) + Vector3.UP * 1.3
+					var cls: GroundCoverClassData = gc.class_at(e) if gc != null else null
+					if cls != null and cls.name != "ingen" and clear_line(e, kv_p + Vector3.UP * 2.0, 1.0, false) \
+							and clear_line(e, victim + Vector3.UP, 0.5, false):
+						_shoulder_eye = e
+						break
+				_look = victim.lerp(kv_p, 0.35) + Vector3.UP * 2.0
 			if _kill_t < 0.0:
-				# Over the KV-2's shoulder, on the first T-34.
-				var back: Vector3 = _flat(kv_p - t34a.global_position).normalized()
-				var eye4: Vector3 = kv_p + back * 9.0 + Vector3.UP * 4.2 + back.cross(Vector3.UP) * 3.0
-				look_cam(eye4, _turret_of(t34a), 11.0)
+				_look = _look.lerp(victim.lerp(kv_p, 0.35) + Vector3.UP * 2.0, 1.0 - exp(-5.0 * delta))
+				look_cam(_shoulder_eye, _look, 46.0)
 			else:
-				_toss_cam(t34a)
+				if _toss_wide_eye == Vector3.ZERO:
+					var side2: Vector3 = back.cross(Vector3.UP)
+					_toss_wide_eye = ground_v(victim - side2 * 46.0 + back * 6.0) + Vector3.UP * 1.6
+					for sd2: float in [-1.0, 1.0]:
+						var e2: Vector3 = ground_v(victim + side2 * 46.0 * sd2 + back * 6.0) + Vector3.UP * 1.6
+						if clear_line(e2, victim + Vector3.UP * 20.0, 1.0, false) and clear_line(e2, victim + Vector3.UP, 0.5, false):
+							_toss_wide_eye = e2
+							break
+				var turret: Vector3 = _flying_turret()
+				var at2: Vector3 = victim + Vector3.UP * 24.0
+				if turret != Vector3.ZERO:
+					at2 = Vector3(lerpf(victim.x, turret.x, 0.6), maxf(at2.y, victim.y + (turret.y - victim.y) * 0.72),
+							lerpf(victim.z, turret.z, 0.6))
+				_toss_look = at2 if _toss_look == Vector3.ZERO else _toss_look.lerp(at2, 1.0 - exp(-3.0 * delta))
+				at2 = _toss_look
+				look_cam(_toss_wide_eye, at2, 56.0)
 		Phase.KV_SECOND:
 			var back2: Vector3 = _flat(kv_p - player.global_position).normalized()
 			look_cam(kv_p + back2 * 9.0 + Vector3.UP * 4.2 - back2.cross(Vector3.UP) * 3.0, _turret_of(player), 11.0)
 		Phase.HE_SHOT:
-			if _he_landed_t < 0.0 or t < _he_landed_t + 1.0:
+			if t - _phase_t < 1.1:
 				if once("gunner on", 0.0):
 					use_gunner(1)
 			else:
@@ -553,22 +681,36 @@ func frame(delta: float) -> void:
 		Phase.FLANK:
 			if once("gunner off 2", 0.0):
 				use_cam()
-			# Low behind the T-34 as it swings round; the box turret tries to follow.
+			# Over the T-34's shoulder on the KV-2 as it swings round it: the box turret
+			# turns after it, too slowly; the round in its side.
 			var p: Vector3 = player.get_global_transform_interpolated().origin
-			var back: Vector3 = player.global_basis.z
-			back.y = 0.0
-			_chase_eye = p + back.normalized() * 11.0 + Vector3.UP * 3.0 if _chase_eye == Vector3.ZERO \
-					else _chase_eye.lerp(p + back.normalized() * 11.0 + Vector3.UP * 3.0, 1.0 - exp(-2.5 * delta))
-			look_cam(_chase_eye, p.lerp(kv_p, 0.3) + Vector3.UP * 1.0, 55.0)
+			var away: Vector3 = _flat(p - kv_p).normalized()
+			var want: Vector3 = p + away * 8.0 + Vector3.UP * 3.2 + away.cross(Vector3.UP) * 2.0
+			_chase_eye = want if _chase_eye == Vector3.ZERO else _chase_eye.lerp(want, 1.0 - exp(-4.0 * delta))
+			look_cam(_chase_eye, kv_p + Vector3.UP * 1.2, 48.0)
 		Phase.REAR_SHOT:
 			var p2: Vector3 = player.get_global_transform_interpolated().origin
 			var to_kv: Vector3 = _flat(kv_p - p2).normalized()
-			look_cam(p2 - to_kv * 8.0 + Vector3.UP * 2.8 + to_kv.cross(Vector3.UP) * 1.8, kv_p + Vector3.UP * 1.5, 38.0)
+			# Behind the T-34 and off to the side that has nothing (a wreck) in the way.
+			if _rear_side == 0.0:
+				_rear_side = 1.0
+				for sd: float in [1.0, -1.0]:
+					var e: Vector3 = p2 - to_kv * 9.0 + Vector3.UP * 3.6 + to_kv.cross(Vector3.UP) * 5.0 * sd
+					if clear_line(e, kv_p + Vector3.UP * 1.2, 0.6):
+						_rear_side = sd
+						break
+			look_cam(p2 - to_kv * 9.0 + Vector3.UP * 3.6 + to_kv.cross(Vector3.UP) * 5.0 * _rear_side,
+					kv_p + Vector3.UP * 1.2, 28.0)
 		Phase.END:
 			if options.get("end", "flank") == "kv":
 				_toss_cam(player)
 			else:
 				_toss_cam(kv)
+
+
+## The thrown turret's position (the newest loose body), or zero.
+func _flying_turret() -> Vector3:
+	return _flung.global_position if is_instance_valid(_flung) else Vector3.ZERO
 
 
 ## Low beside the lane wreck as the KV-2 comes through it.
@@ -582,9 +724,10 @@ func _plough_cam() -> void:
 ## Low at the KV-2's side as the track goes.
 func _low_track_cam() -> void:
 	var kv_p: Vector3 = kv.get_global_transform_interpolated().origin
-	var side: Vector3 = _flat(player.global_position - kv_p).normalized()
-	var eye: Vector3 = ground_v(kv_p + side * 13.0 + _fwd * 7.0) + Vector3.UP * 0.9
-	look_cam(eye, kv_p + Vector3.UP * 0.8, 46.0)
+	# Beside it on the T-34's side, a little ahead, riding along while it rolls.
+	var sgn: float = signf(_right.dot(player.global_position - kv_p) + 0.01)
+	var eye: Vector3 = ground_v(kv_p + _right * sgn * 17.0 - _fwd * 7.0) + Vector3.UP * 1.0
+	look_cam(eye, kv_p + Vector3.UP * 0.8, 44.0)
 
 
 ## Wide from the side of a tank whose turret is flying, following the turret up.
@@ -596,13 +739,18 @@ func _toss_cam(tank: Tank) -> void:
 		_toss_of = tank
 		var away: Vector3 = _flat(c - kv.global_position).normalized()
 		_toss_eye = ground_v(c + away.cross(Vector3.UP) * 34.0 + away * 10.0) + Vector3.UP * 2.0
+		if tank == t34a:   # the KV-2's victim: its turret goes very high, the camera stands well back
+			_toss_eye = ground_v(c + away.cross(Vector3.UP) * 52.0 + away * 6.0) + Vector3.UP * 2.0
 		if tank == kv:
 			_toss_eye = ground_v(c + _right * 32.0 - _fwd * 20.0) + Vector3.UP * 2.0
 	var look: Vector3 = c
-	var wrecks: Array[Node] = get_tree().get_nodes_in_group(&"wrecks")
-	for j: int in range(wrecks.size() - 1, -1, -1):
-		var body := wrecks[j] as RigidBody3D
-		if body != null and not (body is Wreck):
-			look = c.lerp(body.global_position, 0.6)
-			break
+	# The turret in the air: the fastest thrown one near this tank.
+	var fastest: RigidBody3D = null
+	for n: Node in get_tree().current_scene.get_children():
+		var body := n as RigidBody3D
+		if body is Wreck and _flat(body.global_position - c).length() < 60.0 and body.linear_velocity.length() > 1.0 \
+				and (fastest == null or body.linear_velocity.length() > fastest.linear_velocity.length()):
+			fastest = body
+	if fastest != null:
+		look = c.lerp(fastest.global_position, 0.6)
 	look_cam(_toss_eye, look, 58.0)

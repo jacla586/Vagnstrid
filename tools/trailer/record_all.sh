@@ -16,3 +16,6 @@ tools/trailer/record.sh kv2_plow
 tools/trailer/record.sh kv2_plow end=kv
 tools/trailer/record.sh advance
 tools/trailer/record.sh advance cam=drone
+tools/trailer/record.sh advance cam=commander
+tools/trailer/record.sh mine
+tools/trailer/record.sh rally

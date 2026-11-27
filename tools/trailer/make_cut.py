@@ -3,7 +3,7 @@
   geodata/.venv/bin/python -I tools/trailer/make_cut.py [--preview]
 
 Reads renders/trailer/<take>.mp4 and renders/trailer/cards/*.png (make_cards.py), writes
-renders/trailer/cut/vagnstrid_trailer_v3.mp4 (1080p60; --preview: 640x360, fast) via one
+renders/trailer/cut/vagnstrid_trailer_v4.mp4 (1080p60; --preview: 640x360, fast) via one
 intermediate file per segment. Times are seconds in each take's film (its cue list).
 A card plays over the given stretch of a take, dimmed and blurred, the take's sound low.
 """
@@ -23,35 +23,38 @@ OUT = os.path.join(TAKES, "cut")
 # sound, "mix" = [(sound file, film time, volume)] laid over it); ("CARD", card, take, start, end) for a card over a take;
 # ("TITLE", take, start, end) for the end title.
 EDIT = [
-    ("advance", 3.5, 8.3),                      # the line on Vallastaden, HE in the field
-    ("CARD", "01_fc_helt_okej", "advance", 8.3, 10.8),
+    # Buttoned up in the line, the hatch opens on the move: tanks and squads all round, HE in the field.
+    ("advance_cam-commander", 5.4, 14.2),
+    ("CARD", "01_fc_helt_okej", "advance_cam-commander", 14.2, 17.7),
     # The AT gunner rises, "Skott kommer! Klart bakåt!", the round, "Vi är träffade!", then the
     # squad's "Träff!" (not in the take: the enemy squad's radio) over the take ducked.
     ("ambush", 15.0, 22.35, {"duck_at": 20.8, "mix": [("assets/audio/radio/at_hit.ogg", 20.85, 0.6)]}),
     # HE into the smoke; the take's scream (wilhelm_3) filtered out, wilhelm_2 laid in.
-    ("ambush", 29.0, 33.0, {"notch": (30.75, 31.85), "mix": [("assets/audio/voice/wilhelm_2.ogg", 30.85, 0.55)]}),
-    ("CARD", "02_sz_ai_slop", "ambush", 33.0, 35.5),
-    ("smoke", 6.5, 15.3),                       # kills 1 and 2 in the sight, near miss, smoke, backing in
-    ("smoke", 23.6, 28.4),                      # kills 3 and 4
-    ("CARD", "07_fc_flaskhals", "smoke", 28.4, 30.9),
-    ("playground_cam-chase", 10.5, 15.0),       # the playground goes
-    ("CARD", "04_fc_lunchrast", "playground_cam-chase", 15.0, 17.5),
-    ("kv2_plow", 4.8, 14.5),                    # firing from straight above, the crane: a field of wrecks
-    ("kv2_plow", 22.4, 27.0),                   # the KV-2 ploughs through, ping
-    ("CARD", "08_forum_pling", "kv2_plow", 27.0, 29.0),
-    ("kv2_plow", 29.0, 33.0),                   # the turret flies
-    ("CARD", "05_sz_tornen", "kv2_plow", 33.0, 35.0),
-    ("turret_toss_toss-20", 6.8, 13.0),         # 152 mm, slow motion, the turret goes
-    ("CARD", "09_sz_nastan_bra", "turret_toss_toss-20", 13.0, 15.5),
-    ("opening", 31.6, 34.8),                    # a kill in the gunner's sight
-    ("CARD", "06_forum_asikt", "opening", 34.8, 37.3),
-    ("kv2_plow", 36.1, 38.8),                   # HE in the KV-2's track
-    ("kv2_plow", 42.9, 47.5),                   # from behind: the KV-2's turret goes
-    ("CARD", "13_sz_tva_av_fem", "kv2_plow", 47.5, 50.0),
-    ("CARD", "11_forum_last", "column_cam-drone", 14.0, 16.5),
-    ("TITLE", "advance_cam-drone", 4.5, 10.5),   # film times include the 3.3 s black load
+    ("ambush", 29.0, 32.0, {"notch": (30.75, 31.85), "mix": [("assets/audio/voice/wilhelm_2.ogg", 30.85, 0.55)]}),
+    ("CARD", "02_sz_ai_slop", "ambush", 32.0, 35.35),
+    # A mine on the road ("Upprättar minering!" ... "Mina armerad!"), the Pz IV comes and loses its track.
+    ("mine", 6.5, 12.3),                        # from after "Avsittning!" to just past "Mina armerad!" ("Uppsittning!" at 12.6)
+    ("mine", 19.2, 25.6),
+    # Shoot and scoot: two kills in the sight, the near miss dirties it, smoke, back away;
+    # the last two come through the smoke and search; a round in the side from the new spot.
+    ("smoke", 8.4, 20.4),
+    ("smoke", 21.6, 31.9),
+    ("smoke", 32.0, 36.2),
+    ("CARD", "07_fc_flaskhals", "smoke", 36.2, 39.7),
+    ("playground_cam-chase", 15.6, 22.6),       # the playground goes: swings, slide, tower, fence
+    ("CARD", "04_fc_lunchrast", "playground_cam-chase", 22.6, 26.0),
+    ("kv2_plow", 6.8, 14.0),                    # firing from straight above, the crane: a field of wrecks
+    ("kv2_plow", 19.0, 27.4),                   # the KV-2 comes through the wrecks: ping, ping
+    ("CARD", "08_forum_pling", "kv2_plow", 27.4, 30.4),
+    ("kv2_plow", 30.4, 37.4),                   # it stops and fires: the T-34's turret goes sky-high
+    ("CARD", "05_sz_tornen", "kv2_plow", 37.4, 40.0),
+    ("kv2_plow", 40.0, 48.6),                   # it rolls on: HE in the track, it stops; the T-34 swings round, a round in its side
+    ("kv2_plow", 50.2, 57.4),                   # from behind: the salvo, the KV-2's turret goes
+    ("CARD", "13_sz_tva_av_fem", "kv2_plow", 57.4, 60.6),
+    ("CARD", "11_forum_last", "column_cam-drone", 14.0, 17.5),
+    ("TITLE", "advance_cam-drone", 6.3, 14.8),   # film times include the black load and settle
 ]
-FALLBACK = {"advance_cam-drone": ("column_cam-drone", 12.0, 18.0), "advance": ("column", 8.0, 12.5)}   # until they exist
+FALLBACK: dict = {}
 FADE = 0.04
 
 
@@ -148,7 +151,7 @@ def main() -> None:
     lst = os.path.join(OUT, "parts.txt")
     with open(lst, "w") as f:
         f.writelines(f"file '{p}'\n" for p in parts)
-    final = os.path.join(OUT, "vagnstrid_trailer_v3_preview.mp4" if preview else "vagnstrid_trailer_v3.mp4")
+    final = os.path.join(OUT, "vagnstrid_trailer_v4_preview.mp4" if preview else "vagnstrid_trailer_v4.mp4")
     ffmpeg(["-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", "-movflags", "+faststart", final])
     for p in parts:
         os.remove(p)

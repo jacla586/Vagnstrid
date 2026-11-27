@@ -26,6 +26,10 @@ var views: PlayerViews
 var cam: Camera3D
 var t: float = 0.0
 var done: bool = false
+## True between setup() and the action (go()): the actors drop onto the ground and settle,
+## the screen is black; physics() isn't called, frame(0) is (cameras in place for the
+## ground cover and trees to build round them).
+var settling: bool = true
 
 var _commands: Dictionary = {}
 var _cues: PackedStringArray = []
@@ -70,8 +74,20 @@ func begin(start_frame: int) -> void:
 	cam.near = 0.05
 	cam.far = 6000.0
 	get_parent().add_child(cam)
-	cue("ACTION")
 	setup()
+
+
+## The action begins (t = 0 from here).
+func go() -> void:
+	settling = false
+	cue("ACTION")
+	started()
+
+
+## Override: the first moment of the action (after the actors have settled), e.g. to set
+## tanks rolling.
+func started() -> void:
+	pass
 
 
 func is_done() -> bool:
@@ -79,13 +95,17 @@ func is_done() -> bool:
 
 
 func _physics_process(delta: float) -> void:
-	if player == null:
+	if player == null or settling:
 		return
 	physics(delta)
 
 
 func _process(delta: float) -> void:
 	if player == null:
+		return
+	if settling:
+		if not done:
+			frame(0.0)
 		return
 	t += delta
 	if t > float(options.get("max_t", "90")):

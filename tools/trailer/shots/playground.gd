@@ -17,6 +17,11 @@ var _dir: Vector3
 var _end: Vector3
 var _arrived_t: float = -1.0
 var _cam_at: Vector3
+var _points: Array[Vector3] = []
+## The line is moved up to this far to the KV-2's right, to the offset that runs over the
+## most playground pieces (option shift=<m> forces one).
+const MAX_SHIFT_M: float = 9.0
+const HIT_REACH_M: float = 2.6
 
 
 func _init() -> void:
@@ -63,7 +68,12 @@ func setup() -> void:
 		push_warning("no playground with a clear run-up")
 		done = true
 		return
+	# The start stays where the run-up was checked clear; the line swings from it through
+	# the playground's middle moved to the right (more pieces in the way).
 	var start: Vector3 = _centre - _dir * RUN_UP_M
+	_shift_right()
+	_dir = Vector3(_centre.x - start.x, 0.0, _centre.z - start.z).normalized()
+	_end = ground_v(_centre + _dir * RUN_ON_M)
 	kv2 = spawn("kv2", 1, Vector2(start.x, start.z), rad_to_deg(atan2(_dir.x, -_dir.z)), "KV2")
 	var side: Vector3 = _dir.cross(Vector3.UP).normalized()
 	# The camera beside the playground, on whichever side has nothing in front of it.
@@ -98,10 +108,11 @@ func frame(_delta: float) -> void:
 		return
 	var tank_c: Vector3 = kv2.get_global_transform_interpolated().origin + Vector3.UP * 0.6
 	if options.get("cam", "") == "chase":
-		var back: Vector3 = -_dir * 11.0 + _dir.cross(Vector3.UP) * 2.5
+		# Raised over the KV-2's own exhaust and dust, looking down past its turret.
+		var back: Vector3 = -_dir * 13.0 + _dir.cross(Vector3.UP) * 3.0
 		var eye: Vector3 = tank_c + back
-		eye.y = ground_v(eye).y + 1.3
-		look_cam(eye, tank_c + _dir * 8.0, 60.0)
+		eye.y = ground_v(eye).y + 4.6
+		look_cam(eye, tank_c + _dir * 12.0, 60.0)
 	else:
 		look_cam(_cam_at, tank_c, 50.0)
 
@@ -119,6 +130,7 @@ func _playgrounds() -> Array:
 				var mi := m as MeshInstance3D
 				if mi.mesh != null:
 					points.append(mi.global_transform * mi.mesh.get_aabb().get_center())
+	_points = points
 	var clusters: Array = []   # [sum, count]
 	for p: Vector3 in points:
 		var joined: bool = false
@@ -135,6 +147,38 @@ func _playgrounds() -> Array:
 		out.append([(c[0] as Vector3) / float(c[1]), c[1]])
 	out.sort_custom(func(a: Array, b: Array) -> bool: return int(a[1]) > int(b[1]))
 	return out
+
+
+## Moves the line (centre and end) to the KV-2's right, where it runs over the most pieces.
+func _shift_right() -> void:
+	var right: Vector3 = _dir.cross(Vector3.UP).normalized()
+	var best: float = 0.0
+	var best_n: int = _pieces_on(0.0, right)
+	if options.has("shift"):
+		best = float(options["shift"])
+	else:
+		for k: int in range(1, int(MAX_SHIFT_M * 2.0) + 1):
+			var off: float = k * 0.5
+			var n: int = _pieces_on(off, right)
+			if n > best_n:
+				best_n = n
+				best = off
+	print("playground: line moved %.1f m right, %d pieces on it (%d at 0)" % [best, _pieces_on(best, right), _pieces_on(0.0, right)])
+	_centre = ground_v(_centre + right * best)
+	_end = ground_v(_end + right * best)
+
+
+## Pieces within HIT_REACH_M of the line through the playground (±CLUSTER_M along it).
+func _pieces_on(off: float, right: Vector3) -> int:
+	var n: int = 0
+	var c: Vector3 = _centre + right * off
+	for p: Vector3 in _points:
+		var rel: Vector3 = p - c
+		rel.y = 0.0
+		var along: float = rel.dot(_dir)
+		if absf(along) < CLUSTER_M and absf(rel.dot(right)) < HIT_REACH_M:
+			n += 1
+	return n
 
 
 ## Not near the map's edge, where the camera would look out over nothing.
